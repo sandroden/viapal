@@ -34,26 +34,43 @@ lint-backend:
     cd backend && uv run ruff check .
 
 # === Frontend ===
+# NB: Quasar @quasar/app-vite richiede Node >= 22.22; lo selezioniamo via nvm
+# (lo script .nvmrc in frontend/ fissa la versione)
 
 # Avvia Quasar dev server (proxy verso backend :8000)
 frontend:
-    cd frontend && bun run dev
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source ~/.nvm/nvm.sh
+    cd frontend && nvm use > /dev/null && bun run dev
 
 # Build PWA produzione
 build-frontend:
-    cd frontend && bun run build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source ~/.nvm/nvm.sh
+    cd frontend && nvm use > /dev/null && bun run build
 
 # Lint frontend
 lint-frontend:
-    cd frontend && bun run lint
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source ~/.nvm/nvm.sh
+    cd frontend && nvm use > /dev/null && bun run lint
 
 # Type-check frontend
 type-check:
-    cd frontend && bunx vue-tsc --noEmit
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source ~/.nvm/nvm.sh
+    cd frontend && nvm use > /dev/null && bunx vue-tsc --noEmit
 
 # Install dipendenze frontend
 install-frontend:
-    cd frontend && bun install
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source ~/.nvm/nvm.sh
+    cd frontend && nvm use > /dev/null && bun install
 
 # === Stack completo ===
 
