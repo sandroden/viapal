@@ -36,10 +36,10 @@ RATE_CONDOMINIO = [
     ("2024/2025", "2025-06-17", 1250, "4ª rata (bonifico)"),
     ("2024/2025", "2025-07-31", 1250, "5ª rata MAV"),
     ("2024/2025", "2025-11-04", 1250, "1ª rata 25/26 (bonifico)"),
-    ("2024/2025", "2024-12-08", 511, "Ascensori (bonifico)"),
+    # NB: rata "ascensori" non va inserita: e' gia' compresa nelle rate del
+    # condominio. Rileva solo per la suddivisione fra proprietari/inquilini.
     # Esercizio 2025/2026 (in corso)
     ("2025/2026", "2025-11-04", 1250, "1ª rata (bonifico)"),
-    ("2025/2026", "2025-12-08", 510, "1ª rata ascensori (bonifico)"),
     ("2025/2026", "2026-02-01", 1250, "2ª rata (bonifico)"),
     ("2025/2026", "2026-02-27", 971, "3ª rata (bonifico)"),
     ("2025/2026", "2026-03-23", 1041, "4ª rata (bonifico)"),
@@ -105,7 +105,7 @@ class Command(BaseCommand):
 
         self.stdout.write("")
         for anno, importo in TARI_ANNI:
-            data = datetime.date(anno, 12, 16)  # F24 saldo TARI
+            data = datetime.date(anno, 10, 16)  # F24 saldo TARI (Sandro)
             descrizione = f"TARI {anno} (F24)"
             obj, was_created = Expense.objects.update_or_create(
                 data=data,
