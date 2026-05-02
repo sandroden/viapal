@@ -136,3 +136,35 @@ class Expense(TimestampedModel):
 
     def __str__(self):
         return f"{self.data} — {self.descrizione} ({self.importo}€)"
+
+
+class TenantCondominioRate(TimestampedModel):
+    """
+    Quota mensile delle spese condominiali a carico degli inquilini, definita
+    da contratto e aggiornata dopo ogni consuntivo dell'amministratore.
+
+    Storicizzato: ogni record vale dalla data valid_from fino a (esclusivo)
+    valid_from del record successivo, oppure indefinitamente se valid_to nullo.
+    """
+
+    valid_from = models.DateField(verbose_name="valido dal")
+    valid_to = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="valido fino al",
+        help_text="Lasciare vuoto se la quota e' tuttora in vigore.",
+    )
+    importo_mensile = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        verbose_name="importo mensile (€)",
+    )
+    note = models.TextField(blank=True, verbose_name="note")
+
+    class Meta:
+        verbose_name = "quota condominiale inquilini"
+        verbose_name_plural = "quote condominiali inquilini"
+        ordering = ["-valid_from"]
+
+    def __str__(self):
+        return f"{self.importo_mensile}€/mese dal {self.valid_from}"

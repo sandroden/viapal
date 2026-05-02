@@ -1,4 +1,4 @@
-from .expenses import Expense, ExpenseCategory, Supplier
+from .expenses import Expense, ExpenseCategory, Supplier, TenantCondominioRate
 from .payments import BankTransaction, ExtraCharge, RentPayment, StatoPagamento
 from .utilities import (
     AnnualUtilityCost,
@@ -16,6 +16,7 @@ __all__ = [
     "Supplier",
     "ExpenseCategory",
     "Expense",
+    "TenantCondominioRate",
     "UtilityBill",
     "AnnualUtilityCost",
     "UtilityChargePeriod",

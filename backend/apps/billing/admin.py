@@ -16,6 +16,7 @@ from .models import (
     ExtraCharge,
     RentPayment,
     Supplier,
+    TenantCondominioRate,
     UtilityBill,
     UtilityCharge,
     UtilityChargeLine,
@@ -380,5 +381,25 @@ class UtilityChargeLineAdmin(JumboModelAdmin):
     fieldsets = (
         ("Riga", {
             "fields": ("charge", "voce", "importo", "dettaglio"),
+        }),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TenantCondominioRate
+# ---------------------------------------------------------------------------
+
+
+@admin.register(TenantCondominioRate)
+class TenantCondominioRateAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 700
+    list_display = (
+        "valid_from", "valid_to", "importo_mensile",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
+    ordering = ("-valid_from",)
+    fieldsets = (
+        ("Quota a carico inquilini", {
+            "fields": ("valid_from", "valid_to", "importo_mensile", "note"),
         }),
     )
