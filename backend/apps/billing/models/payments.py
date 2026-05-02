@@ -130,6 +130,18 @@ class ExtraCharge(TimestampedModel):
         default=StatoPagamento.ATTESO,
         verbose_name="stato",
     )
+    importo_pagato = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="importo pagato",
+    )
+    data_pagamento = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="data pagamento",
+    )
     note = models.TextField(
         blank=True,
         verbose_name="note",

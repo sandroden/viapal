@@ -189,6 +189,8 @@ class ExtraChargeSerializer(serializers.ModelSerializer):
             "scadenza",
             "stato",
             "stato_display",
+            "importo_pagato",
+            "data_pagamento",
             "note",
         ]
         read_only_fields = ["stato_display"]

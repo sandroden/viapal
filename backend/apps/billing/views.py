@@ -265,11 +265,15 @@ class ExtraChargeViewSet(ModelViewSet):
     Addebiti extra.
     - GET: proprietari = tutti; inquilini = solo i propri.
     - POST/PATCH/DELETE: solo proprietari.
+    - action dichiara_pagato / conferma_pagato analoghe a RentPayment.
     """
 
     serializer_class = ExtraChargeSerializer
 
     def get_permissions(self):
+        if self.action in ("dichiara_pagato", "conferma_pagato"):
+            from rest_framework.permissions import IsAuthenticated
+            return [IsAuthenticated()]
         if self.action in ("create", "update", "partial_update", "destroy"):
             return [IsProprietario()]
         return [IsInquilinoSelf()]
@@ -282,6 +286,57 @@ class ExtraChargeViewSet(ModelViewSet):
         if _is_proprietario(user):
             return qs
         return qs.filter(assignment__tenant__user=user)
+
+    @action(detail=True, methods=["post"], url_path="dichiara_pagato")
+    def dichiara_pagato(self, request, pk=None):
+        charge = self.get_object()
+
+        if not _is_proprietario(request.user):
+            if charge.assignment.tenant.user != request.user:
+                return Response(
+                    {"detail": "Puoi dichiarare solo i tuoi addebiti."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        if charge.stato == StatoPagamento.PAGATO:
+            return Response(
+                {"detail": "Addebito gia' confermato dai proprietari."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        charge.stato = StatoPagamento.DICHIARATO
+        charge.data_pagamento = datetime.date.today()
+        charge.importo_pagato = charge.importo
+        charge.save(update_fields=["stato", "data_pagamento", "importo_pagato"])
+        return Response(ExtraChargeSerializer(charge).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="conferma_pagato")
+    def conferma_pagato(self, request, pk=None):
+        if not _is_proprietario(request.user):
+            return Response(
+                {"detail": "Solo i proprietari possono confermare un pagamento."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        charge = self.get_object()
+
+        if charge.stato not in (
+            StatoPagamento.DICHIARATO,
+            StatoPagamento.ATTESO,
+            StatoPagamento.IN_RITARDO,
+        ):
+            return Response(
+                {"detail": f"Impossibile confermare un addebito in stato '{charge.stato}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        charge.stato = StatoPagamento.PAGATO
+        if not charge.importo_pagato:
+            charge.importo_pagato = charge.importo
+        if not charge.data_pagamento:
+            charge.data_pagamento = datetime.date.today()
+        charge.save(update_fields=["stato", "importo_pagato", "data_pagamento"])
+        return Response(ExtraChargeSerializer(charge).data, status=status.HTTP_200_OK)
 
 
 class BankTransactionViewSet(ReadOnlyModelViewSet):
