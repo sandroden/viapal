@@ -14,7 +14,36 @@ const routes: RouteRecordRaw[] = [
     component: () => import('layouts/ProprietarioLayout.vue'),
     meta: { role: 'proprietario' },
     children: [
-      { path: '', component: () => import('pages/ProprietarioHome.vue') },
+      { path: '', name: 'p-home', component: () => import('pages/ProprietarioHome.vue') },
+      {
+        path: 'ritardi',
+        name: 'p-ritardi',
+        component: () => import('pages/ProprietarioRitardi.vue'),
+      },
+      {
+        path: 'inquilini',
+        name: 'p-inquilini',
+        component: () => import('pages/ProprietarioInquilini.vue'),
+      },
+      {
+        path: 'quadro-annuale',
+        name: 'p-quadro',
+        component: () => import('pages/ProprietarioQuadro.vue'),
+      },
+      {
+        path: 'spese',
+        name: 'p-spese',
+        component: () => import('pages/ProprietarioSpese.vue'),
+      },
+      {
+        path: 'quick-add',
+        name: 'p-quick-add',
+        component: () => import('pages/ProprietarioQuickAdd.vue'),
+      },
+      {
+        path: ':catchAll(.*)*',
+        component: () => import('pages/ErrorNotFound.vue'),
+      },
     ],
   },
   {
@@ -22,7 +51,31 @@ const routes: RouteRecordRaw[] = [
     component: () => import('layouts/InquilinoLayout.vue'),
     meta: { role: 'inquilino' },
     children: [
-      { path: '', component: () => import('pages/InquilinoHome.vue') },
+      { path: '', name: 'i-home', component: () => import('pages/InquilinoHome.vue') },
+      {
+        path: 'paga/:tipo/:id',
+        name: 'i-paga',
+        component: () => import('pages/InquilinoPaga.vue'),
+      },
+      {
+        path: 'pagamenti',
+        name: 'i-pagamenti',
+        component: () => import('pages/InquilinoPagamenti.vue'),
+      },
+      {
+        path: 'conguaglio/:id',
+        name: 'i-conguaglio',
+        component: () => import('pages/InquilinoConguaglio.vue'),
+      },
+      {
+        path: 'profilo',
+        name: 'i-profilo',
+        component: () => import('pages/InquilinoProfilo.vue'),
+      },
+      {
+        path: ':catchAll(.*)*',
+        component: () => import('pages/ErrorNotFound.vue'),
+      },
     ],
   },
   {
