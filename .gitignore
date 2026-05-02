@@ -55,3 +55,6 @@ design/**/node_modules/
 dati/*
 !dati/.gitkeep
 !dati/README.md
+
+# Emacs lockfiles
+.#*
