@@ -59,8 +59,9 @@ PROPRIETARI = [
         "last_name": "Dentella",
         "nominativo": "Bruna Laura Dentella",
         "cf": "DNTBNL61H41Z404Q",
-        "iban": "",  # placeholder, da riempire
-        "banca": "BPER",
+        # IBAN reale da inserire (placeholder per ora)
+        "iban": "BRUNA-IBAN-PLACEHOLDER",
+        "banca": "BPER (placeholder)",
     },
     {
         "username": "fabio",
@@ -206,7 +207,11 @@ CONTRATTO_NUOVO = {
     "deposito_totale": Decimal("4660.00"),         # 2 mensilità
     "spese_acconto_mensile": Decimal("350.00"),
     "n_inquilini": 5,
-    "note": "Contratto 5 stanze 2025-02 / 2029-02, asseverato cedolare 10%",
+    "note": (
+        "Contratto 5 stanze 2025-02 / 2029-02, asseverato cedolare 10%. "
+        "Spese condominiali per inquilino partite a 70€/mese e poi alzate "
+        "a 90€/mese (caldaia: tengono troppo caldo)."
+    ),
 }
 
 
@@ -435,13 +440,13 @@ class Command(BaseCommand):
         for u, s in nuovo:
             tp = tenants[u]
             room = rooms[s]
-            # Elisa lascia, Diana subentra. Stima: cessione 2025-09-01 (Diana
-            # appare nei movimenti da gen 2026 ma utenze "dicembre/gennaio",
-            # quindi entrata fine 2025). Sandro confermera' la data esatta.
+            # Elisa lascia, Diana subentra il 10/7/2025 (22 gg di luglio).
+            # Tra Elisa (uscita) e Diana (entrata) la stanza e' rimasta
+            # sfitta qualche settimana -> Elisa esce circa 2025-06-15.
             if u == "elisa":
-                vt = date(2025, 8, 31)
-                cessione = date(2025, 8, 31)
-                note = "Elisa: cessione fine ago-2025 a Diana (data da confermare)"
+                vt = date(2025, 6, 15)
+                cessione = date(2025, 7, 10)
+                note = "Elisa: uscita giu-2025; cessione registrata 10/7/2025 a Diana"
             else:
                 vt = None
                 cessione = None
@@ -457,15 +462,15 @@ class Command(BaseCommand):
                 },
             )
 
-        # Diana subentra il 2025-09-01
+        # Diana subentra il 2025-07-10 (22 gg in luglio: 10..31)
         RoomAssignment.objects.update_or_create(
-            tenant=tenants["diana"], room=rooms["sala"], valid_from=date(2025, 9, 1),
+            tenant=tenants["diana"], room=rooms["sala"], valid_from=date(2025, 7, 10),
             defaults={
                 "valid_to": None,
                 "canone_mensile": canone_n,
                 "deposito_versato": deposito_n,
-                "data_atto_cessione": date(2025, 8, 31),
-                "note": "Diana subentra a Elisa Chiappini (cessione)",
+                "data_atto_cessione": date(2025, 7, 10),
+                "note": "Diana subentra a Elisa Chiappini (cessione AdE)",
             },
         )
 
@@ -534,20 +539,32 @@ class Command(BaseCommand):
         self.stdout.write("  template + reminder rules: 4 + 8")
 
     def import_bank(self):
-        path = DATI_DIR / "movimenti-sandro.csv"
-        if not path.exists():
-            self.stdout.write(self.style.WARNING(f"  bank: {path} mancante, skip"))
-            return
-        # Trovo l'OwnerBankAccount di Sandro (l'unico con IBAN reale)
+        # Sandro
         try:
-            ba = OwnerBankAccount.objects.get(iban="IT72I0503401799000000081536")
+            ba_sandro = OwnerBankAccount.objects.get(
+                iban="IT72I0503401799000000081536")
+            n = self._import_csv_bank(DATI_DIR / "movimenti-sandro.csv", ba_sandro)
+            self.stdout.write(self.style.SUCCESS(f"  bank Sandro: {n} BankTransaction nuove"))
         except OwnerBankAccount.DoesNotExist:
-            self.stdout.write(self.style.WARNING("  bank: nessun BA Sandro, skip"))
-            return
+            self.stdout.write(self.style.WARNING("  bank Sandro: BA non trovato, skip"))
+
+        # Bruna (CSV multipli per anno)
+        try:
+            ba_bruna = OwnerBankAccount.objects.get(iban="BRUNA-IBAN-PLACEHOLDER")
+            for fname in ["movimenti-bruna-2024.csv", "movimenti-bruna-2025.csv"]:
+                n = self._import_csv_bank(DATI_DIR / fname, ba_bruna)
+                self.stdout.write(self.style.SUCCESS(f"  bank Bruna {fname}: {n} BankTransaction nuove"))
+        except OwnerBankAccount.DoesNotExist:
+            self.stdout.write(self.style.WARNING("  bank Bruna: BA non trovato, skip"))
+
+    def _import_csv_bank(self, path: Path, ba) -> int:
+        if not path.exists():
+            self.stdout.write(self.style.WARNING(f"  {path.name}: file mancante, skip"))
+            return 0
         n_creati = 0
         with open(path) as f:
             for r in csv.DictReader(f):
-                bt, created = BankTransaction.objects.get_or_create(
+                _, created = BankTransaction.objects.get_or_create(
                     data=r["data"],
                     importo=Decimal(r["importo_signed"]),
                     descrizione=r["descrizione"][:500],
@@ -555,7 +572,7 @@ class Command(BaseCommand):
                 )
                 if created:
                     n_creati += 1
-        self.stdout.write(self.style.SUCCESS(f"  bank: {n_creati} BankTransaction nuove"))
+        return n_creati
 
     def import_bollette(self):
         path = DATI_DIR / "bollette.csv"

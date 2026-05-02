@@ -17,15 +17,21 @@ from properties.models import RoomAssignment
 # Mappa nominativi inquilini -> stringa di match nelle descrizioni bonifici
 # (case-insensitive, OR su keywords)
 MATCH_INQUILINO = {
-    "Davide Di Maio": ["DI MAIO DAVIDE", "DI MAIO  DAVIDE"],
-    "Maria Severa Armas": ["MARIA SEVERA ARMAS", "ARMAS MARIA SEVERA", "ARMAS MARIA  SEVERA"],
-    "Salvatore D'Angella": ["D'ANGELLA SALVATORE", "DANGELLA SALVATORE"],
-    "Eugenia Blundetto": ["BLUNDETTO EUGENIA"],
-    "Marianna Di Marino": ["DI MARINO MARIANNA"],
+    # Le keyword sono testate in ordine, prima match vince.
+    # Coprono sia descrizioni Webank ("BON.DA <NOMINATIVO>") sia
+    # foglio sintetico Bruna ("ARUN", "ESHANI", "DIANA", ecc.)
+    "Davide Di Maio": ["DI MAIO DAVIDE", "DI MAIO  DAVIDE", "DAVIDE"],
+    "Maria Severa Armas": [
+        "MARIA SEVERA ARMAS", "ARMAS MARIA SEVERA", "ARMAS MARIA  SEVERA",
+        "MARIASEVERA", "SEVERA",
+    ],
+    "Salvatore D'Angella": ["D'ANGELLA SALVATORE", "DANGELLA SALVATORE", "SALVATORE"],
+    "Eugenia Blundetto": ["BLUNDETTO EUGENIA", "EUGENIA"],
+    "Marianna Di Marino": ["DI MARINO MARIANNA", "MARIANNA"],
     "Eshani Nimansha Polkotu Hetti Arachchilage": ["POLKOTU", "ESHANI"],
-    "Arun Singarayar": ["SINGARAYAR ARUN", "SINGARAYAR  ARUN"],
-    "Elisa Chiappini": ["CHIAPPINI ELISA", "CHIAPPINI  ELISA"],
-    "Diana Carolina Porras Rodriguez": ["PORRAS DIANA", "PORRAS  DIANA"],
+    "Arun Singarayar": ["SINGARAYAR ARUN", "SINGARAYAR  ARUN", "ARUN"],
+    "Elisa Chiappini": ["CHIAPPINI ELISA", "CHIAPPINI  ELISA", "ELISA"],
+    "Diana Carolina Porras Rodriguez": ["PORRAS DIANA", "PORRAS  DIANA", "DIANA"],
 }
 
 
