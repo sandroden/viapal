@@ -69,7 +69,8 @@ import type { QTableProps } from 'quasar';
 import { Notify } from 'quasar';
 import { useDashboardStore, type ProprietarioRiga } from 'stores/dashboard';
 import { usePaymentsStore } from 'stores/payments';
-import SemaforoBadge, { type SemaforoLivello } from 'src/components/SemaforoBadge.vue';
+import SemaforoBadge from 'src/components/SemaforoBadge.vue';
+import type { SemaforoLivello } from 'src/types/semaforo';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 

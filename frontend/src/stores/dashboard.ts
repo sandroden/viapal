@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
-import type { SemaforoLivello } from 'src/components/SemaforoBadge.vue';
+import type { SemaforoLivello } from 'src/types/semaforo';
 
 export type TipoPagamento = 'rent' | 'utility_charge' | 'extra';
 

@@ -7,8 +7,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-
-export type SemaforoLivello = 'salvia' | 'miele' | 'argilla_chiaro' | 'argilla_scuro';
+import type { SemaforoLivello } from 'src/types/semaforo';
 
 const props = defineProps<{
   livello: SemaforoLivello;

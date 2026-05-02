@@ -38,7 +38,8 @@
 import { computed, onMounted, ref } from 'vue';
 import { useDashboardStore } from 'stores/dashboard';
 import EmptyState from 'src/components/EmptyState.vue';
-import SemaforoBadge, { type SemaforoLivello } from 'src/components/SemaforoBadge.vue';
+import SemaforoBadge from 'src/components/SemaforoBadge.vue';
+import type { SemaforoLivello } from 'src/types/semaforo';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
