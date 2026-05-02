@@ -1,10 +1,12 @@
-# TODO: migrare a jmb.jadmin (admin-tabs, ajax-inlines, modal-edit) quando il pacchetto sarà disponibile
 """
 Admin Django per l'app billing.
 Gestisce pagamenti affitto, transazioni bancarie, fornitori,
 categorie spese, spese, addebiti extra, bollette e conguagli utenze.
 """
 from django.contrib import admin
+from django.utils.translation import gettext_lazy as _
+
+from jmb.jadmin import JumboModelAdmin, ModalEditMixin
 
 from .models import (
     AnnualUtilityCost,
@@ -53,7 +55,7 @@ class UtilityChargeLineInline(admin.TabularInline):
 
 
 @admin.register(Supplier)
-class SupplierAdmin(admin.ModelAdmin):
+class SupplierAdmin(JumboModelAdmin):
     list_display = ("nome", "tipo", "partita_iva")
     list_filter = ("tipo",)
     search_fields = ("nome", "partita_iva")
@@ -75,7 +77,7 @@ class SupplierAdmin(admin.ModelAdmin):
 
 
 @admin.register(ExpenseCategory)
-class ExpenseCategoryAdmin(admin.ModelAdmin):
+class ExpenseCategoryAdmin(JumboModelAdmin):
     list_display = ("nome", "codice", "ripartibile_inquilini")
     search_fields = ("nome", "codice")
     ordering = ("nome",)
@@ -87,10 +89,12 @@ class ExpenseCategoryAdmin(admin.ModelAdmin):
 
 
 @admin.register(RentPayment)
-class RentPaymentAdmin(admin.ModelAdmin):
+class RentPaymentAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 900
     list_display = (
         "assignment", "competenza_da", "competenza_a",
         "importo_dovuto", "importo_pagato", "stato",
+        "get_modal_edit_icon", "get_modal_delete_icon",
     )
     list_filter = ("stato", "competenza_da", "is_aggiustamento")
     search_fields = (
@@ -126,7 +130,7 @@ class RentPaymentAdmin(admin.ModelAdmin):
 
 
 @admin.register(BankTransaction)
-class BankTransactionAdmin(admin.ModelAdmin):
+class BankTransactionAdmin(JumboModelAdmin):
     list_display = (
         "data", "descrizione_breve", "importo",
         "owner_account", "riconciliato_con_payment",
@@ -163,7 +167,7 @@ class BankTransactionAdmin(admin.ModelAdmin):
 
 
 @admin.register(Expense)
-class ExpenseAdmin(admin.ModelAdmin):
+class ExpenseAdmin(JumboModelAdmin):
     list_display = (
         "data", "category", "supplier", "importo",
         "anticipata_da_owner", "ripartibile_su_inquilini",
@@ -199,8 +203,13 @@ class ExpenseAdmin(admin.ModelAdmin):
 
 
 @admin.register(ExtraCharge)
-class ExtraChargeAdmin(admin.ModelAdmin):
-    list_display = ("assignment", "descrizione", "importo", "scadenza", "stato")
+class ExtraChargeAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 900
+    list_display = (
+        "assignment", "descrizione", "importo", "scadenza",
+        "stato", "data_pagamento",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     list_filter = ("stato",)
     search_fields = ("descrizione", "assignment__tenant__nominativo")
     list_select_related = ("assignment__tenant",)
@@ -209,6 +218,9 @@ class ExtraChargeAdmin(admin.ModelAdmin):
     fieldsets = (
         ("Addebito", {
             "fields": ("assignment", "data", "descrizione", "importo", "scadenza", "stato"),
+        }),
+        ("Pagamento", {
+            "fields": ("data_pagamento", "importo_pagato"),
         }),
         ("Note", {
             "fields": ("note",),
@@ -224,7 +236,7 @@ class ExtraChargeAdmin(admin.ModelAdmin):
 
 
 @admin.register(UtilityBill)
-class UtilityBillAdmin(admin.ModelAdmin):
+class UtilityBillAdmin(JumboModelAdmin):
     list_display = (
         "supplier", "numero_fattura", "periodo_da",
         "periodo_a", "importo_totale", "pagata_da_owner",
@@ -260,7 +272,7 @@ class UtilityBillAdmin(admin.ModelAdmin):
 
 
 @admin.register(AnnualUtilityCost)
-class AnnualUtilityCostAdmin(admin.ModelAdmin):
+class AnnualUtilityCostAdmin(JumboModelAdmin):
     list_display = ("voce", "anno", "importo_annuale", "valid_from", "valid_to")
     list_filter = ("voce", "anno")
     ordering = ("-anno", "voce")
@@ -285,7 +297,7 @@ class AnnualUtilityCostAdmin(admin.ModelAdmin):
 
 
 @admin.register(UtilityChargePeriod)
-class UtilityChargePeriodAdmin(admin.ModelAdmin):
+class UtilityChargePeriodAdmin(JumboModelAdmin):
     list_display = (
         "periodo_da", "periodo_a",
         "criterio_ripartizione", "stato", "data_invio",
@@ -300,14 +312,18 @@ class UtilityChargePeriodAdmin(admin.ModelAdmin):
         }),
         ("Import storico", {
             "fields": ("manual_totals",),
-            "classes": ("collapse",),
         }),
         ("Note", {
             "fields": ("note",),
-            "classes": ("collapse",),
         }),
     )
     readonly_fields = ("created_at", "updated_at")
+    tabs = (
+        (_("Periodo"), {"items": ["Periodo"]}),
+        (_("Charges per inquilino"), {"items": [UtilityChargeInline]}),
+        (_("Import storico"), {"items": ["Import storico"]}),
+        (_("Note"), {"items": ["Note"]}),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -316,10 +332,12 @@ class UtilityChargePeriodAdmin(admin.ModelAdmin):
 
 
 @admin.register(UtilityCharge)
-class UtilityChargeAdmin(admin.ModelAdmin):
+class UtilityChargeAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 900
     list_display = (
         "assignment", "period", "importo_totale",
         "scadenza", "stato", "importo_pagato",
+        "get_modal_edit_icon", "get_modal_delete_icon",
     )
     list_filter = ("stato", "period")
     search_fields = (
@@ -352,7 +370,7 @@ class UtilityChargeAdmin(admin.ModelAdmin):
 
 
 @admin.register(UtilityChargeLine)
-class UtilityChargeLineAdmin(admin.ModelAdmin):
+class UtilityChargeLineAdmin(JumboModelAdmin):
     list_display = ("charge", "voce", "importo")
     list_filter = ("voce",)
     list_select_related = ("charge__assignment__tenant", "charge__period")

@@ -15,6 +15,10 @@ BASE_DIR = os.path.dirname(PROJECT_DIR)
 # Application definition
 
 INSTALLED_APPS = [
+    # jmb.filters PRIMA di contrib.admin (template loader)
+    'jmb.filters',
+    'jmb.jadmin',
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -24,6 +28,7 @@ INSTALLED_APPS = [
     'django.contrib.sites',
 
     # Third-party
+    'django_filters',
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
@@ -59,12 +64,18 @@ TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [],
-        'APP_DIRS': True,
+        # NB: con loader espliciti, NIENTE 'APP_DIRS': True (Django lo vieta).
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+            ],
+            'loaders': [
+                # Risolve 'filters:...' e 'admin:...' usati da jmb.jadmin/jmb.filters
+                'jmb.filters.admin.templateloader.Loader',
+                'django.template.loaders.filesystem.Loader',
+                'django.template.loaders.app_directories.Loader',
             ],
         },
     },
