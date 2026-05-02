@@ -6,11 +6,17 @@ export interface Expense {
   data: string;
   descrizione: string;
   importo: string | number;
+  category?: number | null;
+  category_nome?: string | null;
+  anticipata_da_owner?: number | null;
+  anticipata_da_nominativo?: string | null;
+  ripartibile_su_inquilini?: boolean;
+  note?: string | null;
+  // legacy / form fields
   categoria?: string | null;
   fornitore?: string | null;
   metodo_pagamento?: string | null;
   ricevuta?: string | null;
-  note?: string | null;
 }
 
 export interface NuovaSpesa {
