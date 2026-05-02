@@ -6,8 +6,39 @@
         Buon lavoro, {{ saluto }}
       </h1>
       <p class="vp-p-home__sottotitolo">
-        Quadro complessivo dell'anno {{ annoCorrente }}.
+        Quadro complessivo
+        <template v-if="data?.is_storico">
+          dell'anno {{ data.anno }} (vista storica).
+        </template>
+        <template v-else-if="data">
+          dell'anno {{ data.anno }}, mese {{ nomeMese(data.mese) }}.
+        </template>
       </p>
+
+      <div class="vp-p-home__filtri">
+        <q-select
+          v-model="annoSelezionato"
+          :options="anniDisponibili"
+          dense
+          outlined
+          label="Anno"
+          class="vp-p-home__sel"
+          @update:model-value="onPeriodoChange"
+        />
+        <q-select
+          v-model="meseSelezionato"
+          :options="mesiOptions"
+          dense
+          outlined
+          option-label="label"
+          option-value="value"
+          emit-value
+          map-options
+          label="Mese"
+          class="vp-p-home__sel"
+          @update:model-value="onPeriodoChange"
+        />
+      </div>
     </header>
 
     <div v-if="store.loadingProprietario && !data" class="vp-p-home__loader">
@@ -18,30 +49,76 @@
       <section class="vp-p-home__kpi">
         <KpiCard
           label="Incasso anno"
-          :value="data.kpi.incasso_anno_corrente"
+          :value="data.kpi.incasso_anno"
           is-currency
-          :sublabel="`Mese corrente: ${formattaEuro(data.kpi.incasso_mese_corrente)}`"
+          :sublabel="`Mese ${nomeMese(data.mese)}: ${formattaEuro(data.kpi.incasso_mese)}`"
           accent
-        />
+          info-tooltip="Dettaglio composizione incassi"
+        >
+          <template #dettaglio>
+            <div class="vp-eyebrow">Anno {{ data.anno }} — composizione</div>
+            <q-list dense class="vp-p-home__breakdown">
+              <q-item>
+                <q-item-section>Affitti</q-item-section>
+                <q-item-section side class="vp-mono">
+                  {{ formattaEuro(data.incasso_anno_dettaglio.rent) }}
+                </q-item-section>
+              </q-item>
+              <q-item>
+                <q-item-section>Conguagli utenze</q-item-section>
+                <q-item-section side class="vp-mono">
+                  {{ formattaEuro(data.incasso_anno_dettaglio.utility) }}
+                </q-item-section>
+              </q-item>
+              <q-item>
+                <q-item-section>Addebiti extra</q-item-section>
+                <q-item-section side class="vp-mono">
+                  {{ formattaEuro(data.incasso_anno_dettaglio.extra) }}
+                </q-item-section>
+              </q-item>
+              <q-separator />
+              <q-item>
+                <q-item-section class="text-bold">Totale</q-item-section>
+                <q-item-section side class="vp-mono text-bold">
+                  {{ formattaEuro(data.incasso_anno_dettaglio.totale) }}
+                </q-item-section>
+              </q-item>
+            </q-list>
+
+            <div class="vp-eyebrow q-mt-md">Per inquilino</div>
+            <q-table
+              flat
+              dense
+              :rows="data.breakdown_incassi"
+              :columns="colonneBreakdown"
+              row-key="tenant"
+              :pagination="{ rowsPerPage: 0 }"
+              hide-bottom
+              class="vp-p-home__breakdown-table"
+            />
+          </template>
+        </KpiCard>
         <KpiCard
           label="Spese anno"
-          :value="data.kpi.spese_anno_corrente"
+          :value="data.kpi.spese_anno"
           is-currency
           sublabel="Totale spese registrate"
         />
         <KpiCard
+          v-if="!data.is_storico"
           label="Pagamenti in ritardo"
           :value="data.kpi.ritardi_count"
           :sublabel="data.kpi.ritardi_count === 0 ? 'Nessuno' : 'Da sollecitare'"
         />
         <KpiCard
+          v-if="!data.is_storico"
           label="In scadenza (7 gg)"
           :value="data.kpi.in_scadenza_count"
           sublabel="Prossime scadenze"
         />
       </section>
 
-      <section class="vp-p-home__sezione">
+      <section v-if="!data.is_storico" class="vp-p-home__sezione">
         <div class="vp-p-home__sezione-head">
           <div>
             <div class="vp-eyebrow">Ritardi</div>
@@ -75,7 +152,7 @@
         </q-list>
       </section>
 
-      <section class="vp-p-home__sezione">
+      <section v-if="!data.is_storico" class="vp-p-home__sezione">
         <div class="vp-p-home__sezione-head">
           <div>
             <div class="vp-eyebrow">In scadenza</div>
@@ -107,12 +184,23 @@
           </q-item>
         </q-list>
       </section>
+
+      <section v-if="data.is_storico" class="vp-p-home__nota-storico">
+        <q-banner rounded class="bg-cream">
+          <template #avatar>
+            <q-icon name="history" color="primary" />
+          </template>
+          Stai consultando dati storici dell'anno {{ data.anno }}. Le sezioni "Ritardi" e
+          "In scadenza" sono attive solo sull'anno corrente.
+        </q-banner>
+      </section>
     </template>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import type { QTableProps } from 'quasar';
 import { useAuthStore } from 'stores/auth';
 import { useDashboardStore } from 'stores/dashboard';
 import KpiCard from 'src/components/KpiCard.vue';
@@ -127,13 +215,40 @@ const store = useDashboardStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
 
-const annoCorrente = new Date().getFullYear();
+const oggi = new Date();
+const annoCorrente = oggi.getFullYear();
+const meseCorrente = oggi.getMonth() + 1;
+
+const annoSelezionato = ref<number>(annoCorrente);
+const meseSelezionato = ref<number>(meseCorrente);
+
+const anniDisponibili = computed<number[]>(() => {
+  const lista: number[] = [];
+  for (let a = annoCorrente; a >= annoCorrente - 5; a -= 1) lista.push(a);
+  return lista;
+});
+
+const NOMI_MESI = [
+  'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+  'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
+];
+const mesiOptions = computed(() =>
+  NOMI_MESI.map((label, i) => ({ label, value: i + 1 })),
+);
+function nomeMese(m: number): string {
+  return NOMI_MESI[m - 1] ?? '';
+}
+
 const saluto = computed(() => auth.user?.first_name || auth.user?.username || 'Proprietario');
 const data = computed(() => store.proprietarioData);
 
 onMounted(() => {
-  void store.loadProprietario();
+  void store.loadProprietario(annoSelezionato.value, meseSelezionato.value);
 });
+
+function onPeriodoChange() {
+  void store.loadProprietario(annoSelezionato.value, meseSelezionato.value);
+}
 
 function livelloDaGiorni(g: number): SemaforoLivello {
   if (g > 7) return 'argilla_scuro';
@@ -141,6 +256,42 @@ function livelloDaGiorni(g: number): SemaforoLivello {
   if (g > -7) return 'miele';
   return 'salvia';
 }
+
+const colonneBreakdown: QTableProps['columns'] = [
+  { name: 'tenant', label: 'Inquilino', field: 'tenant', align: 'left', sortable: true },
+  {
+    name: 'rent',
+    label: 'Affitti',
+    field: 'rent',
+    align: 'right',
+    format: (v: number) => formattaEuro(v),
+    sortable: true,
+  },
+  {
+    name: 'utility',
+    label: 'Conguagli',
+    field: 'utility',
+    align: 'right',
+    format: (v: number) => formattaEuro(v),
+    sortable: true,
+  },
+  {
+    name: 'extra',
+    label: 'Extra',
+    field: 'extra',
+    align: 'right',
+    format: (v: number) => formattaEuro(v),
+    sortable: true,
+  },
+  {
+    name: 'totale',
+    label: 'Totale',
+    field: 'totale',
+    align: 'right',
+    format: (v: number) => formattaEuro(v),
+    sortable: true,
+  },
+];
 </script>
 
 <style scoped>
@@ -153,7 +304,15 @@ function livelloDaGiorni(g: number): SemaforoLivello {
 }
 .vp-p-home__sottotitolo {
   color: var(--vp-ink-2);
-  margin: 0;
+  margin: 0 0 var(--vp-gap-3);
+}
+.vp-p-home__filtri {
+  display: flex;
+  gap: var(--vp-gap-3);
+  flex-wrap: wrap;
+}
+.vp-p-home__sel {
+  min-width: 140px;
 }
 .vp-p-home__kpi {
   display: grid;
@@ -185,5 +344,19 @@ function livelloDaGiorni(g: number): SemaforoLivello {
   display: flex;
   justify-content: center;
   padding: var(--vp-gap-7);
+}
+.vp-p-home__nota-storico {
+  margin-top: var(--vp-gap-4);
+}
+.vp-p-home__breakdown {
+  background: var(--vp-paper-2);
+  border-radius: var(--vp-r-md);
+}
+.vp-p-home__breakdown-table {
+  background: var(--vp-cream);
+  margin-top: var(--vp-gap-2);
+}
+.vp-mono {
+  font-variant-numeric: tabular-nums;
 }
 </style>

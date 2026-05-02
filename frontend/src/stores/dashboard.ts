@@ -34,8 +34,15 @@ export interface StanzaCorrente {
 export interface TenantInfo {
   id: number;
   nominativo: string;
+  username?: string;
   email?: string;
+  email_alt?: string;
   telefono?: string;
+  codice_fiscale?: string;
+  giorno_pagamento_affitto?: number;
+  frequenza_conguagli?: string;
+  frequenza_conguagli_display?: string;
+  note_pagamento?: string;
   user?: number;
   [k: string]: unknown;
 }
@@ -59,15 +66,36 @@ export interface ProprietarioRiga {
 }
 
 export interface ProprietarioKpi {
-  incasso_anno_corrente: number;
-  incasso_mese_corrente: number;
-  spese_anno_corrente: number;
+  incasso_anno: number;
+  incasso_mese: number;
+  spese_anno: number;
   ritardi_count: number;
   in_scadenza_count: number;
 }
 
+export interface IncassoDettaglio {
+  rent: number;
+  utility: number;
+  extra: number;
+  totale: number;
+}
+
+export interface BreakdownTenantRow {
+  tenant: string;
+  rent: number;
+  utility: number;
+  extra: number;
+  totale: number;
+}
+
 export interface ProprietarioDashboardData {
+  anno: number;
+  mese: number;
+  is_storico: boolean;
   kpi: ProprietarioKpi;
+  incasso_anno_dettaglio: IncassoDettaglio;
+  incasso_mese_dettaglio: IncassoDettaglio;
+  breakdown_incassi: BreakdownTenantRow[];
   ritardi: ProprietarioRiga[];
   in_scadenza: ProprietarioRiga[];
 }
@@ -75,15 +103,21 @@ export interface ProprietarioDashboardData {
 interface State {
   inquilinoData: InquilinoDashboardData | null;
   proprietarioData: ProprietarioDashboardData | null;
+  proprietarioByPeriodo: Record<string, ProprietarioDashboardData>;
   loadingInquilino: boolean;
   loadingProprietario: boolean;
   errore: string | null;
+}
+
+function chiavePeriodo(anno: number, mese: number): string {
+  return `${anno}-${mese}`;
 }
 
 export const useDashboardStore = defineStore('dashboard', {
   state: (): State => ({
     inquilinoData: null,
     proprietarioData: null,
+    proprietarioByPeriodo: {},
     loadingInquilino: false,
     loadingProprietario: false,
     errore: null,
@@ -102,14 +136,24 @@ export const useDashboardStore = defineStore('dashboard', {
         this.loadingInquilino = false;
       }
     },
-    async loadProprietario(force = false): Promise<void> {
-      if (this.proprietarioData && !force) return;
+    async loadProprietario(anno?: number, mese?: number, force = false): Promise<void> {
+      const oggi = new Date();
+      const a = anno ?? oggi.getFullYear();
+      const m = mese ?? oggi.getMonth() + 1;
+      const key = chiavePeriodo(a, m);
+      const cached = this.proprietarioByPeriodo[key];
+      if (cached && !force) {
+        this.proprietarioData = cached;
+        return;
+      }
       this.loadingProprietario = true;
       this.errore = null;
       try {
         const { data } = await api.get<ProprietarioDashboardData>(
           '/api/v1/dashboard/proprietario/',
+          { params: { anno: a, mese: m } },
         );
+        this.proprietarioByPeriodo[key] = data;
         this.proprietarioData = data;
       } catch (e: unknown) {
         this.errore = (e as Error)?.message ?? 'Errore nel caricamento';
@@ -120,6 +164,7 @@ export const useDashboardStore = defineStore('dashboard', {
     invalida(): void {
       this.inquilinoData = null;
       this.proprietarioData = null;
+      this.proprietarioByPeriodo = {};
     },
   },
 });

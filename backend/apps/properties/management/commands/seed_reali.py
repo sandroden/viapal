@@ -575,7 +575,7 @@ class Command(BaseCommand):
         # Bruna (CSV multipli per anno)
         try:
             ba_bruna = OwnerBankAccount.objects.get(iban="BRUNA-IBAN-PLACEHOLDER")
-            for fname in ["movimenti-bruna-2024.csv", "movimenti-bruna-2025.csv"]:
+            for fname in ["movimenti-bruna-2024.csv", "movimenti-bruna-2025.csv", "movimenti-bruna-2026.csv"]:
                 n = self._import_csv_bank(DATI_DIR / fname, ba_bruna)
                 self.stdout.write(self.style.SUCCESS(f"  bank Bruna {fname}: {n} BankTransaction nuove"))
         except OwnerBankAccount.DoesNotExist:

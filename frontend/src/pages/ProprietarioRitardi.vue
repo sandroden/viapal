@@ -131,12 +131,16 @@ const paginazione = {
   descending: true,
 };
 
+const oggi = new Date();
+const annoCorrente = oggi.getFullYear();
+const meseCorrente = oggi.getMonth() + 1;
+
 onMounted(() => {
-  void store.loadProprietario();
+  void store.loadProprietario(annoCorrente, meseCorrente);
 });
 
 function ricarica() {
-  void store.loadProprietario(true);
+  void store.loadProprietario(annoCorrente, meseCorrente, true);
 }
 
 function livelloDaGiorni(g: number): SemaforoLivello {
@@ -151,7 +155,7 @@ async function conferma(row: RigaTabella) {
   try {
     await payments.confermaPagato(row.tipo, row.id, {});
     Notify.create({ type: 'positive', message: 'Pagamento confermato', icon: 'check_circle' });
-    await store.loadProprietario(true);
+    await store.loadProprietario(annoCorrente, meseCorrente, true);
   } catch (e: unknown) {
     const msg =
       (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||

@@ -29,7 +29,8 @@ class OwnerProfileViewSet(ReadOnlyModelViewSet):
 class TenantProfileViewSet(ReadOnlyModelViewSet):
     """
     Profili inquilini.
-    - Proprietari: vedono tutti.
+    - Proprietari: vedono tutti. Per default solo gli attivi (con assignment in
+      corso oggi); query param ``?solo_attivi=0`` per includere anche gli storici.
     - Inquilini: vedono solo il proprio.
     """
 
@@ -41,9 +42,23 @@ class TenantProfileViewSet(ReadOnlyModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = TenantProfile.objects.select_related("user").order_by("nominativo")
-        if user.groups.filter(name="proprietari").exists() or user.is_superuser:
+        is_proprietario = (
+            user.groups.filter(name="proprietari").exists() or user.is_superuser
+        )
+        if not is_proprietario:
+            return qs.filter(user=user)
+
+        solo_attivi = self.request.query_params.get("solo_attivi", "1")
+        if solo_attivi in ("0", "false", "False"):
             return qs
-        return qs.filter(user=user)
+
+        oggi = datetime.date.today()
+        return qs.filter(
+            assignments__valid_from__lte=oggi,
+        ).filter(
+            Q(assignments__valid_to__isnull=True)
+            | Q(assignments__valid_to__gt=oggi)
+        ).distinct()
 
 
 class RoomViewSet(ReadOnlyModelViewSet):

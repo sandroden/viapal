@@ -26,6 +26,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/ProprietarioInquilini.vue'),
       },
       {
+        path: 'inquilini/:id',
+        name: 'p-inquilino-dettaglio',
+        component: () => import('pages/ProprietarioInquilinoDettaglio.vue'),
+      },
+      {
         path: 'quadro-annuale',
         name: 'p-quadro',
         component: () => import('pages/ProprietarioQuadro.vue'),

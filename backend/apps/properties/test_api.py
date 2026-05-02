@@ -174,12 +174,44 @@ class TestOwnerProfileViewSet:
 
 
 class TestTenantProfileViewSet:
-    def test_proprietario_vede_tutti(self, client_prop, tenant_1, tenant_2):
+    def test_proprietario_vede_attivi_default(
+        self, client_prop, tenant_1, tenant_2, assignment_1, assignment_2
+    ):
         resp = client_prop.get("/api/v1/tenants/")
         assert resp.status_code == 200
         ids = [t["id"] for t in resp.json()]
         assert tenant_1.id in ids
         assert tenant_2.id in ids
+
+    def test_proprietario_default_esclude_storici(
+        self, client_prop, tenant_1, tenant_2, assignment_1
+    ):
+        # tenant_2 senza assignment attivo → non deve comparire di default
+        resp = client_prop.get("/api/v1/tenants/")
+        assert resp.status_code == 200
+        ids = [t["id"] for t in resp.json()]
+        assert tenant_1.id in ids
+        assert tenant_2.id not in ids
+
+    def test_proprietario_solo_attivi_zero_include_tutti(
+        self, client_prop, tenant_1, tenant_2, assignment_1
+    ):
+        resp = client_prop.get("/api/v1/tenants/?solo_attivi=0")
+        assert resp.status_code == 200
+        ids = [t["id"] for t in resp.json()]
+        assert tenant_1.id in ids
+        assert tenant_2.id in ids
+
+    def test_proprietario_assignment_chiuso_non_attivo(
+        self, client_prop, tenant_1, tenant_2, assignment_1, assignment_2
+    ):
+        # Chiudo assignment_2 nel passato → tenant_2 non più attivo
+        assignment_2.valid_to = datetime.date(2024, 12, 31)
+        assignment_2.save()
+        resp = client_prop.get("/api/v1/tenants/")
+        ids = [t["id"] for t in resp.json()]
+        assert tenant_1.id in ids
+        assert tenant_2.id not in ids
 
     def test_inquilino_vede_solo_se_stesso(self, client_inq_1, tenant_1, tenant_2):
         resp = client_inq_1.get("/api/v1/tenants/")

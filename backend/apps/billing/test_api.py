@@ -456,14 +456,17 @@ class TestDashboardProprietario:
         assert "kpi" in data
         assert "ritardi" in data
         assert "in_scadenza" in data
+        assert data["is_storico"] is False
+        assert data["anno"] == datetime.date.today().year
+        assert data["mese"] == datetime.date.today().month
 
     def test_kpi_campi_presenti(self, client_prop):
         resp = client_prop.get("/api/v1/dashboard/proprietario/")
         kpi = resp.json()["kpi"]
         expected_keys = [
-            "incasso_anno_corrente",
-            "incasso_mese_corrente",
-            "spese_anno_corrente",
+            "incasso_anno",
+            "incasso_mese",
+            "spese_anno",
             "ritardi_count",
             "in_scadenza_count",
         ]
@@ -473,6 +476,71 @@ class TestDashboardProprietario:
     def test_inquilino_non_accede(self, client_inq_1):
         resp = client_inq_1.get("/api/v1/dashboard/proprietario/")
         assert resp.status_code == 403
+
+    def test_dashboard_proprietario_anno_passato(
+        self, client_prop, assignment_1, assignment_2
+    ):
+        # Crea un pagamento storico nell'anno scorso
+        anno_scorso = datetime.date.today().year - 1
+        RentPayment.objects.create(
+            assignment=assignment_1,
+            competenza_da=datetime.date(anno_scorso, 6, 1),
+            competenza_a=datetime.date(anno_scorso, 6, 30),
+            importo_dovuto=Decimal("400"),
+            importo_pagato=Decimal("400"),
+            scadenza=datetime.date(anno_scorso, 6, 1),
+            data_pagamento=datetime.date(anno_scorso, 6, 3),
+            stato=StatoPagamento.PAGATO,
+        )
+        resp = client_prop.get(f"/api/v1/dashboard/proprietario/?anno={anno_scorso}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["anno"] == anno_scorso
+        assert data["is_storico"] is True
+        assert data["ritardi"] == []
+        assert data["in_scadenza"] == []
+        assert data["kpi"]["incasso_anno"] == 400.0
+
+    def test_dashboard_proprietario_mese_specifico(
+        self, client_prop, assignment_1
+    ):
+        # 2 pagamenti diversi mesi nello stesso anno
+        anno_scorso = datetime.date.today().year - 1
+        RentPayment.objects.create(
+            assignment=assignment_1,
+            competenza_da=datetime.date(anno_scorso, 3, 1),
+            competenza_a=datetime.date(anno_scorso, 3, 31),
+            importo_dovuto=Decimal("400"),
+            importo_pagato=Decimal("400"),
+            scadenza=datetime.date(anno_scorso, 3, 1),
+            data_pagamento=datetime.date(anno_scorso, 3, 5),
+            stato=StatoPagamento.PAGATO,
+        )
+        RentPayment.objects.create(
+            assignment=assignment_1,
+            competenza_da=datetime.date(anno_scorso, 11, 1),
+            competenza_a=datetime.date(anno_scorso, 11, 30),
+            importo_dovuto=Decimal("400"),
+            importo_pagato=Decimal("400"),
+            scadenza=datetime.date(anno_scorso, 11, 1),
+            data_pagamento=datetime.date(anno_scorso, 11, 4),
+            stato=StatoPagamento.PAGATO,
+        )
+        resp = client_prop.get(
+            f"/api/v1/dashboard/proprietario/?anno={anno_scorso}&mese=11"
+        )
+        assert resp.status_code == 200
+        kpi = resp.json()["kpi"]
+        assert kpi["incasso_anno"] == 800.0
+        assert kpi["incasso_mese"] == 400.0
+
+    def test_dashboard_proprietario_anno_invalido_400(self, client_prop):
+        resp = client_prop.get("/api/v1/dashboard/proprietario/?anno=abc")
+        assert resp.status_code == 400
+
+    def test_dashboard_proprietario_mese_fuori_range_400(self, client_prop):
+        resp = client_prop.get("/api/v1/dashboard/proprietario/?mese=13")
+        assert resp.status_code == 400
 
 
 # ---------------------------------------------------------------------------
@@ -510,3 +578,68 @@ class TestQuadroAnnuale:
     def test_inquilino_non_accede(self, client_inq_1):
         resp = client_inq_1.get("/api/v1/quadro-annuale/2026/")
         assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Test Tenant Situazione (drilldown inquilino)
+# ---------------------------------------------------------------------------
+
+
+class TestTenantSituazione:
+    def test_proprietario_accede_default_anno(
+        self, client_prop, tenant_1, assignment_1
+    ):
+        resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/situazione/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["tenant"]["id"] == tenant_1.id
+        assert data["anno"] == datetime.date.today().year
+        assert "assignments" in data
+        assert len(data["assignments"]) == 1
+        assert data["assignments"][0]["room_id"] == assignment_1.room_id
+        # Senza fixture rent/charge/extra, totali dovrebbero essere 0
+        assert data["rent"]["dovuto_anno"] == 0.0
+        assert data["utility"]["dovuto_anno"] == 0.0
+        assert data["totali_anno"]["dovuto"] == 0.0
+        assert data["ritardo_medio_giorni"] == 0.0
+
+    def test_situazione_anno_2026(
+        self, client_prop, tenant_1, rent_payment_1, charge_1, extra_charge_1
+    ):
+        resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/situazione/?anno=2026")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["anno"] == 2026
+        assert data["rent"]["dovuto_anno"] == 400.0
+        assert len(data["rent"]["righe"]) == 1
+        assert data["utility"]["dovuto_anno"] == 45.0
+        assert len(data["utility"]["righe"]) == 1
+        # 3 lines: luce/gas/tari
+        assert len(data["utility"]["righe"][0]["lines"]) == 3
+        assert data["extra"]["totale_anno"] == 50.0
+        # Totali aggregati
+        assert data["totali_anno"]["dovuto"] == 495.0  # 400 + 45 + 50
+        assert data["totali_anno"]["pagato"] == 0.0
+
+    def test_situazione_anno_diverso_filtra(
+        self, client_prop, tenant_1, rent_payment_1
+    ):
+        # rent_payment_1 è 2026; richiediamo 2025
+        resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/situazione/?anno=2025")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["anno"] == 2025
+        assert data["rent"]["dovuto_anno"] == 0.0
+        assert data["rent"]["righe"] == []
+
+    def test_situazione_inquilino_403(self, client_inq_1, tenant_1):
+        resp = client_inq_1.get(f"/api/v1/tenants/{tenant_1.id}/situazione/")
+        assert resp.status_code == 403
+
+    def test_situazione_tenant_inesistente_404(self, client_prop):
+        resp = client_prop.get("/api/v1/tenants/99999/situazione/")
+        assert resp.status_code == 404
+
+    def test_situazione_anno_invalido_400(self, client_prop, tenant_1):
+        resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/situazione/?anno=abc")
+        assert resp.status_code == 400

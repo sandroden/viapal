@@ -17,6 +17,7 @@ interface State {
   tenants: Tenant[];
   loading: boolean;
   errore: string | null;
+  ultimoSoloAttivi: boolean | null;
 }
 
 function asArray<T>(data: T[] | { results: T[] } | undefined | null): T[] {
@@ -30,6 +31,7 @@ export const useTenantsStore = defineStore('tenants', {
     tenants: [],
     loading: false,
     errore: null,
+    ultimoSoloAttivi: null,
   }),
   getters: {
     tenantById(state) {
@@ -37,13 +39,16 @@ export const useTenantsStore = defineStore('tenants', {
     },
   },
   actions: {
-    async fetchTenants(force = false): Promise<void> {
-      if (this.tenants.length > 0 && !force) return;
+    async fetchTenants(soloAttivi = true, force = false): Promise<void> {
+      if (this.tenants.length > 0 && !force && this.ultimoSoloAttivi === soloAttivi) return;
       this.loading = true;
       this.errore = null;
       try {
-        const { data } = await api.get<Tenant[] | { results: Tenant[] }>('/api/v1/tenants/');
+        const { data } = await api.get<Tenant[] | { results: Tenant[] }>('/api/v1/tenants/', {
+          params: { solo_attivi: soloAttivi ? 1 : 0 },
+        });
         this.tenants = asArray(data);
+        this.ultimoSoloAttivi = soloAttivi;
       } catch (e: unknown) {
         this.errore = (e as Error)?.message ?? 'Errore';
       } finally {

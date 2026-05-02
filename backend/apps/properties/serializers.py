@@ -23,18 +23,24 @@ class OwnerProfileSerializer(serializers.ModelSerializer):
 
 class TenantProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.CharField(source="user.email", read_only=True)
+    frequenza_conguagli_display = serializers.CharField(
+        source="get_frequenza_conguagli_display", read_only=True
+    )
 
     class Meta:
         model = TenantProfile
         fields = [
             "id",
             "username",
+            "email",
             "nominativo",
             "codice_fiscale",
             "telefono",
             "email_alt",
             "giorno_pagamento_affitto",
             "frequenza_conguagli",
+            "frequenza_conguagli_display",
             "note_pagamento",
         ]
 
