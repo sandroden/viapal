@@ -139,6 +139,16 @@ INQUILINI = [
         "giorno_pagamento": 5,   # storica, paga ancora come prima
         "stanza_codice": "guardaroba",
     },
+    {
+        "username": "lindy",
+        "password": "lindypwd",
+        "first_name": "Lindy Jo-Anne",
+        "last_name": "Nyathi",
+        "nominativo": "Lindy Jo-Anne Nyathi",
+        "cf": "NYTLDY92E54Z337Q",
+        "giorno_pagamento": 16,  # bonifico ricevuto il 16/12 e 16/01
+        "stanza_codice": None,   # storica fugace 21/12/24 - 7/2/25
+    },
     # Storici (contratto 2023, usciti)
     {
         "username": "salvatore",
@@ -461,6 +471,20 @@ class Command(BaseCommand):
                     "note": note,
                 },
             )
+
+        # Lindy: presenza fugace nella stanza "sala" 21/12/24 - 7/2/25
+        # (prima che Elisa la prendesse col nuovo contratto del 15/2/25)
+        RoomAssignment.objects.update_or_create(
+            tenant=tenants["lindy"], room=rooms["sala"],
+            valid_from=date(2024, 12, 21),
+            defaults={
+                "valid_to": date(2025, 2, 7),
+                "canone_mensile": canone_v,
+                "deposito_versato": Decimal("1060.00"),  # da foglio Bruna
+                "data_atto_cessione": None,
+                "note": "Lindy Nyathi: contratto temporaneo 21/12/24 - 7/2/25",
+            },
+        )
 
         # Diana subentra il 2025-07-10 (22 gg in luglio: 10..31)
         RoomAssignment.objects.update_or_create(

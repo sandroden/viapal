@@ -32,6 +32,7 @@ MATCH_INQUILINO = {
     "Arun Singarayar": ["SINGARAYAR ARUN", "SINGARAYAR  ARUN", "ARUN"],
     "Elisa Chiappini": ["CHIAPPINI ELISA", "CHIAPPINI  ELISA", "ELISA"],
     "Diana Carolina Porras Rodriguez": ["PORRAS DIANA", "PORRAS  DIANA", "DIANA"],
+    "Lindy Jo-Anne Nyathi": ["NYATHI", "LINDY"],
 }
 
 
