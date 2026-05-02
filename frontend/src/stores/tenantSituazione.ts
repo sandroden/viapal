@@ -54,10 +54,23 @@ export interface ExtraRiga {
   stato: string;
 }
 
+export interface QuotaCondominioRiga {
+  valid_from: string;
+  valid_to: string | null;
+  importo_mensile: number;
+  note: string;
+}
+
+export interface QuotaCondominio {
+  corrente: QuotaCondominioRiga | null;
+  storico: QuotaCondominioRiga[];
+}
+
 export interface TenantSituazione {
   tenant: TenantInfo;
   anno: number;
   assignments: AssignmentRiga[];
+  quota_condominio: QuotaCondominio;
   rent: {
     dovuto_anno: number;
     pagato_anno: number;

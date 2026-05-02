@@ -88,6 +88,17 @@ export interface BreakdownTenantRow {
   totale: number;
 }
 
+export interface SpeseDettaglioRow {
+  nome: string;
+  importo: number;
+}
+
+export interface SpeseDettaglio {
+  per_categoria: SpeseDettaglioRow[];
+  per_owner: SpeseDettaglioRow[];
+  totale: number;
+}
+
 export interface ProprietarioDashboardData {
   anno: number;
   mese: number;
@@ -95,9 +106,11 @@ export interface ProprietarioDashboardData {
   kpi: ProprietarioKpi;
   incasso_anno_dettaglio: IncassoDettaglio;
   incasso_mese_dettaglio: IncassoDettaglio;
+  spese_anno_dettaglio: SpeseDettaglio;
   breakdown_incassi: BreakdownTenantRow[];
   ritardi: ProprietarioRiga[];
   in_scadenza: ProprietarioRiga[];
+  finestra_scadenza_giorni?: number;
 }
 
 interface State {

@@ -306,6 +306,62 @@
               </q-card-section>
             </q-card>
 
+            <q-card flat bordered class="vp-p-id__card-info">
+              <q-card-section>
+                <div class="vp-eyebrow">Quota condominio (da contratto)</div>
+                <template v-if="situazione.quota_condominio?.corrente">
+                  <q-list dense>
+                    <q-item>
+                      <q-item-section>
+                        <q-item-label caption>In vigore</q-item-label>
+                        <q-item-label class="vp-mono">
+                          {{ formattaEuro(situazione.quota_condominio.corrente.importo_mensile) }}/mese
+                        </q-item-label>
+                        <q-item-label caption>
+                          dal {{ formattaData(situazione.quota_condominio.corrente.valid_from) }}
+                          <template v-if="situazione.quota_condominio.corrente.valid_to">
+                            al {{ formattaData(situazione.quota_condominio.corrente.valid_to) }}
+                          </template>
+                        </q-item-label>
+                      </q-item-section>
+                    </q-item>
+                  </q-list>
+                  <div
+                    v-if="situazione.quota_condominio.storico.length > 1"
+                    class="vp-eyebrow q-mt-md"
+                  >
+                    Storico
+                  </div>
+                  <q-list
+                    v-if="situazione.quota_condominio.storico.length > 1"
+                    separator
+                    dense
+                  >
+                    <q-item
+                      v-for="(q, i) in situazione.quota_condominio.storico"
+                      :key="i"
+                    >
+                      <q-item-section>
+                        <q-item-label class="vp-mono">
+                          {{ formattaEuro(q.importo_mensile) }}/mese
+                        </q-item-label>
+                        <q-item-label caption>
+                          {{ formattaData(q.valid_from) }} →
+                          {{ q.valid_to ? formattaData(q.valid_to) : 'in corso' }}
+                        </q-item-label>
+                      </q-item-section>
+                    </q-item>
+                  </q-list>
+                </template>
+                <EmptyState
+                  v-else
+                  icon="domain"
+                  title="Quota non definita"
+                  message="Nessuna quota condominio configurata sul contratto attivo."
+                />
+              </q-card-section>
+            </q-card>
+
             <q-card flat bordered class="vp-p-id__card-info vp-p-id__card-info--full">
               <q-card-section>
                 <div class="vp-eyebrow">Stanze e cauzioni</div>

@@ -11,8 +11,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsInquilino, IsProprietario
-from billing.models import ExtraCharge, RentPayment, StatoPagamento, UtilityCharge, UtilityChargePeriod
-from properties.models import RoomAssignment, TenantProfile
+from billing.models import ExtraCharge, RentPayment, StatoPagamento, TenantCondominioRate, UtilityCharge, UtilityChargePeriod
+from properties.models import Contract, RoomAssignment, TenantProfile
 from properties.serializers import TenantProfileSerializer, RoomAssignmentSerializer
 
 
@@ -245,7 +245,8 @@ class DashboardProprietarioView(APIView):
             )
 
         is_storico = anno != oggi.year
-        soglia_scadenza = oggi + datetime.timedelta(days=7)
+        FINESTRA_SCADENZA_GIORNI = 14
+        soglia_scadenza = oggi + datetime.timedelta(days=FINESTRA_SCADENZA_GIORNI)
 
         # KPI: incasso anno (RentPayment pagati)
         incasso_rent_anno = (
@@ -300,10 +301,31 @@ class DashboardProprietarioView(APIView):
 
         # KPI: spese anno
         from billing.models import Expense
-        spese_anno = (
-            Expense.objects.filter(data__year=anno).aggregate(tot=Sum("importo"))["tot"]
-            or Decimal("0")
+        spese_qs = Expense.objects.filter(data__year=anno).select_related(
+            "category", "anticipata_da_owner"
         )
+        spese_anno = spese_qs.aggregate(tot=Sum("importo"))["tot"] or Decimal("0")
+
+        # Breakdown spese per categoria e per proprietario anticipante
+        spese_per_categoria: dict[str, Decimal] = {}
+        spese_per_owner: dict[str, Decimal] = {}
+        for sp in spese_qs:
+            cat = sp.category.nome if sp.category else "Senza categoria"
+            spese_per_categoria[cat] = spese_per_categoria.get(cat, Decimal("0")) + sp.importo
+            owner = sp.anticipata_da_owner.nominativo if sp.anticipata_da_owner else "—"
+            spese_per_owner[owner] = spese_per_owner.get(owner, Decimal("0")) + sp.importo
+
+        spese_dettaglio = {
+            "per_categoria": sorted(
+                [{"nome": k, "importo": float(v)} for k, v in spese_per_categoria.items()],
+                key=lambda x: -x["importo"],
+            ),
+            "per_owner": sorted(
+                [{"nome": k, "importo": float(v)} for k, v in spese_per_owner.items()],
+                key=lambda x: -x["importo"],
+            ),
+            "totale": float(spese_anno),
+        }
 
         # Breakdown incassi per inquilino (annuale)
         breakdown_per_tenant: dict[str, dict[str, Decimal]] = {}
@@ -462,9 +484,11 @@ class DashboardProprietarioView(APIView):
                 "extra": float(incasso_extra_mese),
                 "totale": float(incasso_mese),
             },
+            "spese_anno_dettaglio": spese_dettaglio,
             "breakdown_incassi": breakdown_incassi,
             "ritardi": ritardi,
             "in_scadenza": in_scadenza,
+            "finestra_scadenza_giorni": FINESTRA_SCADENZA_GIORNI,
         })
 
 
@@ -722,10 +746,41 @@ class TenantSituazioneView(APIView):
         totale_dovuto = rent_dovuto + utility_dovuto + extra_totale
         totale_pagato = rent_pagato + utility_pagato
 
+        # Quota condominio: dal contratto attivo (in vigore alla data oggi)
+        contract_attivo = (
+            Contract.objects.filter(data_decorrenza__lte=oggi)
+            .order_by("-data_decorrenza")
+            .first()
+        )
+        quota_condominio = {
+            "corrente": None,
+            "storico": [],
+        }
+        if contract_attivo:
+            quote_qs = (
+                TenantCondominioRate.objects
+                .filter(contract=contract_attivo)
+                .order_by("-valid_from")
+            )
+            quote_storico = []
+            for q in quote_qs:
+                row = {
+                    "valid_from": q.valid_from.isoformat(),
+                    "valid_to": q.valid_to.isoformat() if q.valid_to else None,
+                    "importo_mensile": float(q.importo_mensile),
+                    "note": q.note,
+                }
+                quote_storico.append(row)
+                attiva = q.valid_from <= oggi and (q.valid_to is None or q.valid_to >= oggi)
+                if attiva and not quota_condominio["corrente"]:
+                    quota_condominio["corrente"] = row
+            quota_condominio["storico"] = quote_storico
+
         return Response({
             "tenant": TenantProfileSerializer(tenant).data,
             "anno": anno,
             "assignments": assignments_payload,
+            "quota_condominio": quota_condominio,
             "rent": {
                 "dovuto_anno": float(rent_dovuto),
                 "pagato_anno": float(rent_pagato),

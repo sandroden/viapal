@@ -108,7 +108,32 @@
           :value="data.kpi.spese_anno"
           is-currency
           sublabel="Totale spese registrate"
-        />
+          info-tooltip="Dettaglio spese per categoria"
+        >
+          <template #dettaglio>
+            <div class="vp-eyebrow">Anno {{ data.anno }} — per categoria</div>
+            <q-list dense class="vp-p-home__breakdown">
+              <q-item v-for="row in data.spese_anno_dettaglio.per_categoria" :key="row.nome">
+                <q-item-section>{{ row.nome }}</q-item-section>
+                <q-item-section side class="vp-mono">{{ formattaEuro(row.importo) }}</q-item-section>
+              </q-item>
+              <q-separator />
+              <q-item>
+                <q-item-section class="text-bold">Totale</q-item-section>
+                <q-item-section side class="vp-mono text-bold">
+                  {{ formattaEuro(data.spese_anno_dettaglio.totale) }}
+                </q-item-section>
+              </q-item>
+            </q-list>
+            <div class="vp-eyebrow q-mt-md">Anticipate da</div>
+            <q-list dense class="vp-p-home__breakdown">
+              <q-item v-for="row in data.spese_anno_dettaglio.per_owner" :key="row.nome">
+                <q-item-section>{{ row.nome }}</q-item-section>
+                <q-item-section side class="vp-mono">{{ formattaEuro(row.importo) }}</q-item-section>
+              </q-item>
+            </q-list>
+          </template>
+        </KpiCard>
         <KpiCard
           v-if="!data.is_storico"
           label="Pagamenti in ritardo"
@@ -117,7 +142,7 @@
         />
         <KpiCard
           v-if="!data.is_storico"
-          label="In scadenza (7 gg)"
+          :label="`In scadenza (${data.finestra_scadenza_giorni ?? 14} gg)`"
           :value="data.kpi.in_scadenza_count"
           sublabel="Prossime scadenze"
         />
@@ -161,7 +186,9 @@
         <div class="vp-p-home__sezione-head">
           <div>
             <div class="vp-eyebrow">In scadenza</div>
-            <h2 class="vp-display vp-p-home__h2">Prossimi 7 giorni</h2>
+            <h2 class="vp-display vp-p-home__h2">
+              Prossimi {{ data.finestra_scadenza_giorni ?? 14 }} giorni
+            </h2>
           </div>
         </div>
 
