@@ -33,6 +33,7 @@
     <!-- Andamento storico -->
     <section class="vp-p-spese__storico" v-if="anniDisponibili.length">
       <div class="vp-eyebrow">Andamento per anno</div>
+      <BarChartAnni :righe="datiGrafico" />
       <q-table
         flat
         dense
@@ -46,16 +47,36 @@
       />
     </section>
 
-    <!-- Tab per anno -->
-    <q-tabs
-      v-model="annoSelezionato"
-      align="left"
-      dense
-      indicator-color="primary"
-      class="vp-p-spese__tabs"
-    >
-      <q-tab v-for="a in anniDisponibili" :key="a" :name="a" :label="String(a)" />
-    </q-tabs>
+    <!-- Tab per anno con frecce -->
+    <div class="vp-p-spese__tabs-wrapper">
+      <q-btn
+        flat
+        round
+        dense
+        icon="chevron_left"
+        aria-label="Anno precedente"
+        :disable="!puoIndietroAnno"
+        @click="cambiaAnno(-1)"
+      />
+      <q-tabs
+        v-model="annoSelezionato"
+        align="left"
+        dense
+        indicator-color="primary"
+        class="vp-p-spese__tabs"
+      >
+        <q-tab v-for="a in anniDisponibili" :key="a" :name="a" :label="String(a)" />
+      </q-tabs>
+      <q-btn
+        flat
+        round
+        dense
+        icon="chevron_right"
+        aria-label="Anno successivo"
+        :disable="!puoAvantiAnno"
+        @click="cambiaAnno(1)"
+      />
+    </div>
 
     <q-tab-panels v-model="annoSelezionato" animated class="vp-p-spese__panels">
       <q-tab-panel v-for="a in anniDisponibili" :key="a" :name="a" class="q-pa-none">
@@ -145,6 +166,7 @@ import { Notify } from 'quasar';
 import { useExpensesStore, type Expense, type NuovaSpesa } from 'stores/expenses';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
+import BarChartAnni from 'src/components/BarChartAnni.vue';
 
 const store = useExpensesStore();
 const { formattaEuro } = useFormatoEuro();
@@ -197,6 +219,28 @@ watch(anniDisponibili, (anni) => {
     annoSelezionato.value = anni[0]!;
   }
 });
+
+const puoIndietroAnno = computed(() => {
+  const anni = anniDisponibili.value;
+  const i = anni.indexOf(annoSelezionato.value);
+  return i >= 0 && i < anni.length - 1;
+});
+
+const puoAvantiAnno = computed(() => {
+  const anni = anniDisponibili.value;
+  const i = anni.indexOf(annoSelezionato.value);
+  return i > 0;
+});
+
+function cambiaAnno(delta: number) {
+  // anniDisponibili è ordinato decrescente: indice + 1 = anno precedente
+  const anni = anniDisponibili.value;
+  const i = anni.indexOf(annoSelezionato.value);
+  if (i < 0) return;
+  const nuovoIndex = delta > 0 ? i - 1 : i + 1;
+  if (nuovoIndex < 0 || nuovoIndex >= anni.length) return;
+  annoSelezionato.value = anni[nuovoIndex]!;
+}
 
 const filtroCategoria = ref<string>('Tutte');
 
@@ -263,6 +307,22 @@ interface StoricoRow {
   totale: number;
   [k: `anno_${number}`]: number;
 }
+
+interface DatoGrafico {
+  anno: number;
+  perCategoria: Record<string, number>;
+}
+
+const datiGrafico = computed<DatoGrafico[]>(() => {
+  const map: Record<number, DatoGrafico> = {};
+  for (const e of store.expenses) {
+    const a = new Date(e.data).getFullYear();
+    if (!map[a]) map[a] = { anno: a, perCategoria: {} };
+    const cat = categoriaOf(e);
+    map[a].perCategoria[cat] = (map[a].perCategoria[cat] ?? 0) + toNumber(e.importo);
+  }
+  return Object.values(map).sort((a, b) => a.anno - b.anno);
+});
 
 const storicoRows = computed<StoricoRow[]>(() => {
   const map: Record<string, StoricoRow> = {};
@@ -372,10 +432,15 @@ async function salva() {
 .vp-p-spese__storico-table {
   margin-top: var(--vp-gap-2);
 }
-.vp-p-spese__tabs {
+.vp-p-spese__tabs-wrapper {
+  display: flex;
+  align-items: center;
   background: var(--vp-paper-2);
   border-radius: var(--vp-r-md) var(--vp-r-md) 0 0;
   margin-top: var(--vp-gap-2);
+}
+.vp-p-spese__tabs {
+  flex: 1;
 }
 .vp-p-spese__panels {
   background: transparent;
