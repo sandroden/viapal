@@ -16,6 +16,15 @@
       </p>
 
       <div class="vp-p-home__filtri">
+        <q-btn
+          flat
+          round
+          dense
+          icon="chevron_left"
+          aria-label="Anno precedente"
+          @click="cambiaAnno(-1)"
+          :disable="!puoIndietro"
+        />
         <q-select
           v-model="annoSelezionato"
           :options="anniDisponibili"
@@ -25,18 +34,14 @@
           class="vp-p-home__sel"
           @update:model-value="onPeriodoChange"
         />
-        <q-select
-          v-model="meseSelezionato"
-          :options="mesiOptions"
+        <q-btn
+          flat
+          round
           dense
-          outlined
-          option-label="label"
-          option-value="value"
-          emit-value
-          map-options
-          label="Mese"
-          class="vp-p-home__sel"
-          @update:model-value="onPeriodoChange"
+          icon="chevron_right"
+          aria-label="Anno successivo"
+          @click="cambiaAnno(1)"
+          :disable="!puoAvanti"
         />
       </div>
     </header>
@@ -222,19 +227,22 @@ const meseCorrente = oggi.getMonth() + 1;
 const annoSelezionato = ref<number>(annoCorrente);
 const meseSelezionato = ref<number>(meseCorrente);
 
+const ANNO_MIN = annoCorrente - 5;
+const ANNO_MAX = annoCorrente;
+
 const anniDisponibili = computed<number[]>(() => {
   const lista: number[] = [];
-  for (let a = annoCorrente; a >= annoCorrente - 5; a -= 1) lista.push(a);
+  for (let a = ANNO_MAX; a >= ANNO_MIN; a -= 1) lista.push(a);
   return lista;
 });
+
+const puoIndietro = computed(() => annoSelezionato.value > ANNO_MIN);
+const puoAvanti = computed(() => annoSelezionato.value < ANNO_MAX);
 
 const NOMI_MESI = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
   'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
 ];
-const mesiOptions = computed(() =>
-  NOMI_MESI.map((label, i) => ({ label, value: i + 1 })),
-);
 function nomeMese(m: number): string {
   return NOMI_MESI[m - 1] ?? '';
 }
@@ -248,6 +256,13 @@ onMounted(() => {
 
 function onPeriodoChange() {
   void store.loadProprietario(annoSelezionato.value, meseSelezionato.value);
+}
+
+function cambiaAnno(delta: number) {
+  const nuovo = annoSelezionato.value + delta;
+  if (nuovo < ANNO_MIN || nuovo > ANNO_MAX) return;
+  annoSelezionato.value = nuovo;
+  onPeriodoChange();
 }
 
 function livelloDaGiorni(g: number): SemaforoLivello {
