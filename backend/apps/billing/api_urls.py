@@ -1,0 +1,25 @@
+"""
+URL router per le API dell'app billing.
+"""
+from rest_framework.routers import DefaultRouter
+
+from billing.views import (
+    BankTransactionViewSet,
+    ExpenseViewSet,
+    ExtraChargeViewSet,
+    RentPaymentViewSet,
+    UtilityBillViewSet,
+    UtilityChargeViewSet,
+    UtilityChargePeriodViewSet,
+)
+
+router = DefaultRouter()
+router.register(r"rent-payments", RentPaymentViewSet, basename="rent-payment")
+router.register(r"utility-charges", UtilityChargeViewSet, basename="utility-charge")
+router.register(r"utility-charge-periods", UtilityChargePeriodViewSet, basename="utility-charge-period")
+router.register(r"utility-bills", UtilityBillViewSet, basename="utility-bill")
+router.register(r"expenses", ExpenseViewSet, basename="expense")
+router.register(r"extra-charges", ExtraChargeViewSet, basename="extra-charge")
+router.register(r"bank-transactions", BankTransactionViewSet, basename="bank-transaction")
+
+urlpatterns = router.urls
