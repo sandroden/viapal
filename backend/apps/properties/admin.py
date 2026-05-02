@@ -5,6 +5,9 @@ Gestisce proprietari, quote di proprietà, conti bancari,
 stanze, contratto e assegnazioni stanze.
 """
 from django.contrib import admin
+from django.utils.translation import gettext_lazy as _
+
+from jmb.jadmin import JumboModelAdmin
 
 from .models import (
     Contract,
@@ -171,7 +174,10 @@ class RoomAdmin(admin.ModelAdmin):
 
 
 @admin.register(Contract)
-class ContractAdmin(admin.ModelAdmin):
+class ContractAdmin(JumboModelAdmin):
+    # AjaxInline definita in billing per le quote condominiali storicizzate.
+    from billing.admin_inlines import TenantCondominioRateAjaxInline  # noqa: PLC0415
+
     list_display = ("data_stipula", "data_decorrenza", "regime_fiscale", "asseverato", "durata_anni")
     list_filter = ("regime_fiscale", "asseverato")
     ordering = ("-data_decorrenza",)
@@ -184,10 +190,16 @@ class ContractAdmin(admin.ModelAdmin):
         }),
         ("Note", {
             "fields": ("note",),
-            "classes": ("collapse",),
         }),
     )
     readonly_fields = ("created_at", "updated_at")
+    tabs = (
+        (_("Anagrafica"), {"items": [_("Anagrafica"), _("Fiscale")]}),
+        (_("Quote condominio inquilini"), {
+            "items": [TenantCondominioRateAjaxInline],
+        }),
+        (_("Note"), {"items": [_("Note")]}),
+    )
 
 
 # ---------------------------------------------------------------------------

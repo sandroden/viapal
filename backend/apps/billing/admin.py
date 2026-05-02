@@ -392,14 +392,17 @@ class UtilityChargeLineAdmin(JumboModelAdmin):
 
 @admin.register(TenantCondominioRate)
 class TenantCondominioRateAdmin(ModalEditMixin, JumboModelAdmin):
+    from .admin_inlines import TenantCondominioRateForm  # noqa: PLC0415
+    form = TenantCondominioRateForm
     modal_edit_width = 700
     list_display = (
-        "valid_from", "valid_to", "importo_mensile",
+        "contract", "valid_from", "valid_to", "importo_mensile",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
+    list_select_related = ("contract",)
     ordering = ("-valid_from",)
     fieldsets = (
         ("Quota a carico inquilini", {
-            "fields": ("valid_from", "valid_to", "importo_mensile", "note"),
+            "fields": ("contract", "valid_from", "valid_to", "importo_mensile", "note"),
         }),
     )

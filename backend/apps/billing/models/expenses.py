@@ -3,7 +3,7 @@ Modelli per fornitori, categorie di spesa e spese dell'immobile.
 """
 from django.db import models
 
-from properties.models import OwnerProfile, TimestampedModel
+from properties.models import Contract, OwnerProfile, TimestampedModel
 
 
 class Supplier(TimestampedModel):
@@ -141,12 +141,18 @@ class Expense(TimestampedModel):
 class TenantCondominioRate(TimestampedModel):
     """
     Quota mensile delle spese condominiali a carico degli inquilini, definita
-    da contratto e aggiornata dopo ogni consuntivo dell'amministratore.
+    dal contratto e aggiornata dopo ogni consuntivo dell'amministratore.
 
-    Storicizzato: ogni record vale dalla data valid_from fino a (esclusivo)
-    valid_from del record successivo, oppure indefinitamente se valid_to nullo.
+    Storicizzato per contratto: ogni record vale dalla data valid_from fino
+    a valid_to (incluso), o indefinitamente se valid_to nullo.
     """
 
+    contract = models.ForeignKey(
+        Contract,
+        on_delete=models.CASCADE,
+        related_name="quote_condominio_inquilini",
+        verbose_name="contratto",
+    )
     valid_from = models.DateField(verbose_name="valido dal")
     valid_to = models.DateField(
         null=True,
