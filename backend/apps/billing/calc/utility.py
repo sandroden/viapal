@@ -154,8 +154,29 @@ def calcola_conguaglio_periodo(period_id: int, persist: bool = False) -> dict:
         }
     else:
         # Bollette fornitori (luce, gas)
-        totali_per_voce = _raccoglie_voci_bollette(periodo_da, periodo_a)
-        # TARI e altri costi annuali
+        bollette = _raccoglie_voci_bollette(periodo_da, periodo_a)
+        # Regola Sandro 2026-05-02: non emettere conguagli "solo TARI". I conguagli
+        # vanno emessi solo quando c'e' almeno una bolletta luce/gas. Se manca,
+        # il periodo viene saltato del tutto.
+        # TODO carry-over TARI: la quota TARI dei mesi saltati va cumulata nel
+        # prossimo conguaglio con bollette (oggi e' "persa"). Implementare quando
+        # avremo dati piu' completi.
+        if not bollette:
+            if persist and period.charges.exists():
+                period.charges.all().delete()
+            return {
+                "period_id": period_id,
+                "periodo_da": periodo_da,
+                "periodo_a": periodo_a,
+                "totale_periodo": Decimal("0.00"),
+                "totali_per_voce": {},
+                "sum_giorni_presenza": 0,
+                "quote": [],
+                "diff_arrotondamento": Decimal("0.00"),
+                "skipped": "no_bollette_luce_gas",
+            }
+        totali_per_voce = bollette
+        # TARI e altri costi annuali (aggiunti solo se ci sono bollette)
         totali_annual = _raccoglie_voci_annual(periodo_da, periodo_a)
         for voce, importo in totali_annual.items():
             totali_per_voce[voce] = totali_per_voce.get(voce, Decimal("0.00")) + importo
