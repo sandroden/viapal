@@ -47,3 +47,6 @@ htmlcov/
 
 # Bundle Claude Design — non versioniamo i node_modules dei prototipi
 design/**/node_modules/
+
+# Claude Code workspace
+.claude/
