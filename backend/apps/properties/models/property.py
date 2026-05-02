@@ -70,6 +70,18 @@ class Contract(TimestampedModel):
         default=RegimeFiscale.CEDOLARE_10,
         verbose_name="regime fiscale",
     )
+    default_pagatore_bollette = models.ForeignKey(
+        OwnerProfile,
+        on_delete=models.PROTECT,
+        related_name="contratti_pagatore_bollette",
+        null=True,
+        blank=True,
+        verbose_name="paga le bollette utenze",
+        help_text=(
+            "Proprietario che, per convenzione, anticipa il pagamento "
+            "delle bollette luce/gas verso i fornitori."
+        ),
+    )
     note = models.TextField(
         blank=True,
         verbose_name="note",

@@ -179,6 +179,7 @@ class ContractAdmin(JumboModelAdmin):
     from billing.admin_inlines import TenantCondominioRateAjaxInline  # noqa: PLC0415
 
     list_display = ("data_stipula", "data_decorrenza", "regime_fiscale", "asseverato", "durata_anni")
+    list_display_links = ("data_stipula", "data_decorrenza")
     list_filter = ("regime_fiscale", "asseverato")
     ordering = ("-data_decorrenza",)
     fieldsets = (
@@ -188,13 +189,16 @@ class ContractAdmin(JumboModelAdmin):
         ("Fiscale", {
             "fields": ("regime_fiscale", "asseverato"),
         }),
+        ("Convenzioni di pagamento", {
+            "fields": ("default_pagatore_bollette",),
+        }),
         ("Note", {
             "fields": ("note",),
         }),
     )
     readonly_fields = ("created_at", "updated_at")
     tabs = (
-        (_("Anagrafica"), {"items": [_("Anagrafica"), _("Fiscale")]}),
+        (_("Anagrafica"), {"items": [_("Anagrafica"), _("Fiscale"), _("Convenzioni di pagamento")]}),
         (_("Quote condominio inquilini"), {
             "items": [TenantCondominioRateAjaxInline],
         }),

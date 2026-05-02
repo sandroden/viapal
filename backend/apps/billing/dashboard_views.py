@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsInquilino, IsProprietario
 from billing.models import ExtraCharge, RentPayment, StatoPagamento, TenantCondominioRate, UtilityCharge, UtilityChargePeriod
-from properties.models import Contract, RoomAssignment, TenantProfile
+from properties.models import Contract, OwnerProfile, RoomAssignment, TenantProfile
 from properties.serializers import TenantProfileSerializer, RoomAssignmentSerializer
 
 
@@ -327,6 +327,87 @@ class DashboardProprietarioView(APIView):
             "totale": float(spese_anno),
         }
 
+        # Bilancio per proprietario (entrate - uscite) — anno selezionato
+        # NB: solo RentPayment ha incassato_da_owner. UtilityCharge ed ExtraCharge
+        # non lo hanno modellato esplicitamente: per ora vengono attribuiti al
+        # default_pagatore_bollette del contratto (placeholder, da rivedere).
+        contract_attivo_blc = (
+            Contract.objects.order_by("-data_decorrenza")
+            .select_related("default_pagatore_bollette")
+            .first()
+        )
+        bilancio_per_owner: dict[int, dict] = {}
+        for o in OwnerProfile.objects.all():
+            bilancio_per_owner[o.id] = {
+                "owner_id": o.id,
+                "nominativo": o.nominativo,
+                "entrate_rent": Decimal("0"),
+                "entrate_utility": Decimal("0"),
+                "entrate_extra": Decimal("0"),
+                "uscite": Decimal("0"),
+                "uscite_dettaglio": {},
+            }
+
+        for r in RentPayment.objects.filter(
+            stato=StatoPagamento.PAGATO,
+            data_pagamento__year=anno,
+            incassato_da_owner__isnull=False,
+        ):
+            bilancio_per_owner[r.incassato_da_owner_id]["entrate_rent"] += (
+                r.importo_pagato or Decimal("0")
+            )
+
+        # Utility ed extra: attribuiti per ora a Sandro (default_pagatore_bollette)
+        # come proxy "chi gestisce gli incassi non-rent"
+        owner_proxy = (
+            contract_attivo_blc.default_pagatore_bollette_id
+            if contract_attivo_blc and contract_attivo_blc.default_pagatore_bollette_id
+            else None
+        )
+        if owner_proxy:
+            tot_u = (
+                UtilityCharge.objects.filter(
+                    stato=StatoPagamento.PAGATO, data_pagamento__year=anno
+                ).aggregate(t=Sum("importo_pagato"))["t"]
+                or Decimal("0")
+            )
+            tot_e = (
+                ExtraCharge.objects.filter(
+                    stato=StatoPagamento.PAGATO, data_pagamento__year=anno
+                ).aggregate(t=Sum("importo_pagato"))["t"]
+                or Decimal("0")
+            )
+            bilancio_per_owner[owner_proxy]["entrate_utility"] = tot_u
+            bilancio_per_owner[owner_proxy]["entrate_extra"] = tot_e
+
+        for sp in spese_qs:
+            if sp.anticipata_da_owner_id and sp.anticipata_da_owner_id in bilancio_per_owner:
+                bilancio_per_owner[sp.anticipata_da_owner_id]["uscite"] += sp.importo
+                cat_nome = sp.category.nome if sp.category else "Altro"
+                d = bilancio_per_owner[sp.anticipata_da_owner_id]["uscite_dettaglio"]
+                d[cat_nome] = d.get(cat_nome, Decimal("0")) + sp.importo
+
+        bilancio_proprietari = []
+        for o_data in bilancio_per_owner.values():
+            entrate_tot = (
+                o_data["entrate_rent"] + o_data["entrate_utility"] + o_data["entrate_extra"]
+            )
+            saldo = entrate_tot - o_data["uscite"]
+            bilancio_proprietari.append({
+                "owner_id": o_data["owner_id"],
+                "nominativo": o_data["nominativo"],
+                "entrate_rent": float(o_data["entrate_rent"]),
+                "entrate_utility": float(o_data["entrate_utility"]),
+                "entrate_extra": float(o_data["entrate_extra"]),
+                "entrate_totali": float(entrate_tot),
+                "uscite": float(o_data["uscite"]),
+                "uscite_dettaglio": {
+                    k: float(v) for k, v in o_data["uscite_dettaglio"].items()
+                },
+                "saldo": float(saldo),
+            })
+        bilancio_proprietari.sort(key=lambda x: x["nominativo"])
+
         # Breakdown incassi per inquilino (annuale)
         breakdown_per_tenant: dict[str, dict[str, Decimal]] = {}
 
@@ -485,6 +566,7 @@ class DashboardProprietarioView(APIView):
                 "totale": float(incasso_mese),
             },
             "spese_anno_dettaglio": spese_dettaglio,
+            "bilancio_proprietari": bilancio_proprietari,
             "breakdown_incassi": breakdown_incassi,
             "ritardi": ritardi,
             "in_scadenza": in_scadenza,
@@ -749,6 +831,7 @@ class TenantSituazioneView(APIView):
         # Quota condominio: dal contratto attivo (in vigore alla data oggi)
         contract_attivo = (
             Contract.objects.filter(data_decorrenza__lte=oggi)
+            .select_related("default_pagatore_bollette")
             .order_by("-data_decorrenza")
             .first()
         )
@@ -756,7 +839,17 @@ class TenantSituazioneView(APIView):
             "corrente": None,
             "storico": [],
         }
+        contract_payload = None
         if contract_attivo:
+            contract_payload = {
+                "id": contract_attivo.id,
+                "data_decorrenza": contract_attivo.data_decorrenza.isoformat(),
+                "default_pagatore_bollette": (
+                    contract_attivo.default_pagatore_bollette.nominativo
+                    if contract_attivo.default_pagatore_bollette
+                    else None
+                ),
+            }
             quote_qs = (
                 TenantCondominioRate.objects
                 .filter(contract=contract_attivo)
@@ -780,6 +873,7 @@ class TenantSituazioneView(APIView):
             "tenant": TenantProfileSerializer(tenant).data,
             "anno": anno,
             "assignments": assignments_payload,
+            "contract": contract_payload,
             "quota_condominio": quota_condominio,
             "rent": {
                 "dovuto_anno": float(rent_dovuto),

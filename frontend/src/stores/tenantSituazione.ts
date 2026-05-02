@@ -66,10 +66,17 @@ export interface QuotaCondominio {
   storico: QuotaCondominioRiga[];
 }
 
+export interface ContractInfo {
+  id: number;
+  data_decorrenza: string;
+  default_pagatore_bollette: string | null;
+}
+
 export interface TenantSituazione {
   tenant: TenantInfo;
   anno: number;
   assignments: AssignmentRiga[];
+  contract: ContractInfo | null;
   quota_condominio: QuotaCondominio;
   rent: {
     dovuto_anno: number;

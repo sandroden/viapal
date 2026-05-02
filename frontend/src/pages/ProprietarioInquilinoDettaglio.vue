@@ -308,7 +308,17 @@
 
             <q-card flat bordered class="vp-p-id__card-info">
               <q-card-section>
-                <div class="vp-eyebrow">Quota condominio (da contratto)</div>
+                <div class="vp-eyebrow">Convenzione contratto</div>
+                <q-list dense v-if="situazione.contract">
+                  <q-item v-if="situazione.contract.default_pagatore_bollette">
+                    <q-item-section>
+                      <q-item-label caption>Bollette luce/gas anticipate da</q-item-label>
+                      <q-item-label>{{ situazione.contract.default_pagatore_bollette }}</q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </q-list>
+
+                <div class="vp-eyebrow q-mt-md">Quota condominio</div>
                 <template v-if="situazione.quota_condominio?.corrente">
                   <q-list dense>
                     <q-item>
