@@ -217,6 +217,40 @@
         </q-list>
       </section>
 
+      <section
+        v-if="data.bilancio_proprietari?.length"
+        class="vp-p-home__sezione"
+      >
+        <div class="vp-p-home__sezione-head">
+          <div>
+            <div class="vp-eyebrow">Bilancio proprietari</div>
+            <h2 class="vp-display vp-p-home__h2">Entrate vs uscite — anno {{ data.anno }}</h2>
+          </div>
+        </div>
+        <q-table
+          flat
+          dense
+          bordered
+          :rows="data.bilancio_proprietari"
+          :columns="colonneBilancio"
+          row-key="owner_id"
+          :pagination="{ rowsPerPage: 0 }"
+          hide-bottom
+          class="vp-p-home__bilancio"
+        >
+          <template #body-cell-saldo="props">
+            <q-td :props="props" class="text-right">
+              <span
+                class="vp-mono"
+                :class="props.row.saldo >= 0 ? 'text-positive' : 'text-negative'"
+              >
+                {{ formattaEuro(props.row.saldo) }}
+              </span>
+            </q-td>
+          </template>
+        </q-table>
+      </section>
+
       <section v-if="data.is_storico" class="vp-p-home__nota-storico">
         <q-banner rounded class="bg-cream">
           <template #avatar>
@@ -298,6 +332,25 @@ function livelloDaGiorni(g: number): SemaforoLivello {
   if (g > -7) return 'miele';
   return 'salvia';
 }
+
+const colonneBilancio: QTableProps['columns'] = [
+  { name: 'nominativo', label: 'Proprietario', field: 'nominativo', align: 'left' },
+  {
+    name: 'entrate_totali',
+    label: 'Entrate',
+    field: 'entrate_totali',
+    align: 'right',
+    format: (v: number) => formattaEuro(v),
+  },
+  {
+    name: 'uscite',
+    label: 'Uscite',
+    field: 'uscite',
+    align: 'right',
+    format: (v: number) => formattaEuro(v),
+  },
+  { name: 'saldo', label: 'Saldo', field: 'saldo', align: 'right' },
+];
 
 const colonneBreakdown: QTableProps['columns'] = [
   { name: 'tenant', label: 'Inquilino', field: 'tenant', align: 'left', sortable: true },
@@ -398,6 +451,11 @@ const colonneBreakdown: QTableProps['columns'] = [
   background: var(--vp-cream);
   margin-top: var(--vp-gap-2);
 }
+.vp-p-home__bilancio {
+  background: var(--vp-cream);
+}
+.text-positive { color: var(--vp-salvia, #4f6e3f); }
+.text-negative { color: var(--vp-argilla, #9c4a4a); }
 .vp-mono {
   font-variant-numeric: tabular-nums;
 }

@@ -99,6 +99,18 @@ export interface SpeseDettaglio {
   totale: number;
 }
 
+export interface BilancioProprietario {
+  owner_id: number;
+  nominativo: string;
+  entrate_rent: number;
+  entrate_utility: number;
+  entrate_extra: number;
+  entrate_totali: number;
+  uscite: number;
+  uscite_dettaglio: Record<string, number>;
+  saldo: number;
+}
+
 export interface ProprietarioDashboardData {
   anno: number;
   mese: number;
@@ -107,6 +119,7 @@ export interface ProprietarioDashboardData {
   incasso_anno_dettaglio: IncassoDettaglio;
   incasso_mese_dettaglio: IncassoDettaglio;
   spese_anno_dettaglio: SpeseDettaglio;
+  bilancio_proprietari: BilancioProprietario[];
   breakdown_incassi: BreakdownTenantRow[];
   ritardi: ProprietarioRiga[];
   in_scadenza: ProprietarioRiga[];
