@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>Viapal — Proposta grafica</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,400&family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="tokens.css">
+  <style>
+    body { background:#f0eee9; }
+    /* ensure DC overlay & artboards inherit our font */
+    .dc-card * { font-family: inherit; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="ios-frame.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="vp-icons.jsx"></script>
+  <script type="text/babel" src="vp-logos.jsx"></script>
+  <script type="text/babel" src="vp-logos2.jsx"></script>
+  <script type="text/babel" src="canvas-sections.jsx"></script>
+  <script type="text/babel" src="canvas-logos.jsx"></script>
+  <script type="text/babel" src="canvas-logos2.jsx"></script>
+  <script type="text/babel" src="canvas-logo-real.jsx"></script>
+  <script type="text/babel" src="proto-dashboard.jsx"></script>
+  <script type="text/babel" src="proto-mobile.jsx"></script>
+  <script type="text/babel" src="proto-desktop.jsx"></script>
+
+  <script type="text/babel">
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "palette": "materica",
+      "type": "umanista",
+      "density": "cozy",
+      "theme": "light"
+    }/*EDITMODE-END*/;
+
+    function ApplyTweaks({ tweaks }) {
+      React.useEffect(() => {
+        const root = document.documentElement;
+        if (tweaks.palette === 'block') root.setAttribute('data-vp-palette','block');
+        else root.removeAttribute('data-vp-palette');
+        root.setAttribute('data-vp-density', tweaks.density);
+        root.setAttribute('data-vp-theme', tweaks.theme);
+        if (tweaks.type === 'grotesk') root.setAttribute('data-vp-type','grotesk');
+        else if (tweaks.type === 'literata') root.setAttribute('data-vp-type','literata');
+        else root.removeAttribute('data-vp-type');
+      }, [tweaks]);
+      return null;
+    }
+
+    function ViapalTweaks() {
+      const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+      return (
+        <>
+          <ApplyTweaks tweaks={tweaks}/>
+          <TweaksPanel title="Tweaks · Viapal">
+            <TweakSection title="Direzione visiva">
+              <TweakRadio label="Palette" value={tweaks.palette} onChange={v=>setTweak('palette',v)}
+                options={[{value:'materica',label:'Materica'},{value:'block',label:'Block'}]}/>
+              <TweakRadio label="Tipografia" value={tweaks.type} onChange={v=>setTweak('type',v)}
+                options={[
+                  {value:'umanista',label:'Umanista'},
+                  {value:'grotesk',label:'Grotesk'},
+                  {value:'literata',label:'Literata'},
+                ]}/>
+            </TweakSection>
+            <TweakSection title="Comfort">
+              <TweakRadio label="Densità" value={tweaks.density} onChange={v=>setTweak('density',v)}
+                options={[{value:'cozy',label:'Arioso'},{value:'compact',label:'Compatto'}]}/>
+              <TweakRadio label="Tema" value={tweaks.theme} onChange={v=>setTweak('theme',v)}
+                options={[{value:'light',label:'Chiaro'},{value:'dark',label:'Scuro'}]}/>
+            </TweakSection>
+          </TweaksPanel>
+        </>
+      );
+    }
+
+    // ─── Canvas ────────────────────────────────────────────
+    function Frame({ children, kind = 'desktop', width, height }) {
+      // Lightweight desktop window chrome
+      if (kind === 'desktop') {
+        return (
+          <div style={{
+            width, height, background: 'var(--vp-paper)', borderRadius: 12,
+            overflow: 'hidden', boxShadow: '0 1px 0 rgba(0,0,0,0.08)',
+            display: 'flex', flexDirection: 'column',
+            border: '1px solid rgba(0,0,0,0.06)',
+          }}>
+            <div style={{
+              height: 32, background: '#f6f3ed', borderBottom: '1px solid rgba(0,0,0,0.06)',
+              display:'flex', alignItems:'center', padding:'0 12px', gap: 8,
+            }}>
+              <span style={{width:11,height:11,borderRadius:'50%',background:'#e36058'}}/>
+              <span style={{width:11,height:11,borderRadius:'50%',background:'#e8b73e'}}/>
+              <span style={{width:11,height:11,borderRadius:'50%',background:'#43c14a'}}/>
+              <span style={{flex:1,textAlign:'center',fontSize:12,color:'var(--vp-ink-3)',fontFamily:'var(--vp-font-ui)'}}>viapal.casa</span>
+            </div>
+            <div style={{flex:1, minHeight:0, overflow:'hidden'}}>{children}</div>
+          </div>
+        );
+      }
+      // iPhone-ish frame (simple)
+      return (
+        <div style={{
+          width, height, background:'#0c0a08', padding: 8, borderRadius: 44,
+          boxShadow:'0 1px 0 rgba(0,0,0,0.1)',
+        }}>
+          <div style={{
+            width:'100%', height:'100%', borderRadius:36, overflow:'hidden',
+            background:'var(--vp-paper)', position:'relative',
+          }}>
+            {children}
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      return (
+        <>
+          <ViapalTweaks/>
+          <DesignCanvas>
+            {/* MOODBOARD */}
+            <DCSection id="moodboard" title="01 · Moodboard"
+              subtitle="Due direzioni. Materica scelta, Block come alternativa di confronto.">
+              <DCArtboard id="mood-materica" label="Materica · scelta" width={1100} height={620}>
+                <MoodMaterica/>
+              </DCArtboard>
+              <DCArtboard id="mood-block" label="Block organizer · alternativa" width={1100} height={620}>
+                <MoodBlock/>
+              </DCArtboard>
+            </DCSection>
+
+            {/* DESIGN SYSTEM */}
+            <DCSection id="ds" title="02 · Design system"
+              subtitle="Palette semantica, tipografia, badge stato pagamento, banner sollecito, card, tabella semaforo.">
+              <DCArtboard id="ds-blocks" label="Blocchi base" width={1280} height={920}>
+                <DesignSystem/>
+              </DCArtboard>
+            </DCSection>
+
+            {/* SITEMAP */}
+            <DCSection id="sitemap" title="03 · Sitemap visiva"
+              subtitle="Tre superfici, una casa. Desktop proprietari, mobile inquilino, mobile proprietario veloce.">
+              <DCArtboard id="sm" label="Architettura informativa" width={1280} height={680}>
+                <Sitemap/>
+              </DCArtboard>
+            </DCSection>
+
+            {/* PROTOTIPI */}
+            <DCSection id="proto-d" title="04 · Flussi chiave — desktop"
+              subtitle="Cliccabili. Cambia mese, criterio di ripartizione, ecc.">
+              <DCArtboard id="p-dashboard" label="① Dashboard rendita" width={1280} height={820}>
+                <Frame kind="desktop" width={1280} height={820}><ProtoDashboard/></Frame>
+              </DCArtboard>
+              <DCArtboard id="p-conguaglio" label="③ Calcolo conguaglio bollette" width={1280} height={820}>
+                <Frame kind="desktop" width={1280} height={820}><ProtoConguaglio/></Frame>
+              </DCArtboard>
+              <DCArtboard id="p-fratelli" label="⑤ Conti tra fratelli" width={1280} height={820}>
+                <Frame kind="desktop" width={1280} height={820}><ProtoFratelli/></Frame>
+              </DCArtboard>
+            </DCSection>
+
+            <DCSection id="proto-m" title="05 · Flussi chiave — mobile"
+              subtitle="L'inquilino manda la ricevuta. Il proprietario, dalla notifica, approva.">
+              <DCArtboard id="p-invia" label="② Inquilino — invia ricevuta" width={400} height={820}>
+                <Frame kind="mobile" width={400} height={820}><ProtoInviaRicevuta/></Frame>
+              </DCArtboard>
+              <DCArtboard id="p-approva" label="② Proprietario — approva" width={400} height={820}>
+                <Frame kind="mobile" width={400} height={820}><ProtoApprovaRicevuta/></Frame>
+              </DCArtboard>
+            </DCSection>
+
+            {/* STATI VUOTI / ERRORI */}
+            <DCSection id="empty" title="06 · Stati vuoti & errori"
+              subtitle="I dettagli umani. Tre scelti tra i più rappresentativi.">
+              <DCArtboard id="e-dash" label="Dashboard · primo accesso" width={900} height={560}>
+                <EmptyDashboard/>
+              </DCArtboard>
+              <DCArtboard id="e-receipt" label="Errore foto ricevuta" width={400} height={700}>
+                <Frame kind="mobile" width={400} height={700}><ErrorReceipt/></Frame>
+              </DCArtboard>
+              <DCArtboard id="e-tickets" label="Manutenzioni · tutto in ordine" width={900} height={560}>
+                <EmptyTickets/>
+              </DCArtboard>
+            </DCSection>
+
+            {/* LOGO — intarsio reale (vettorializzato) */}
+            <DCSection id="logo-real" title="07 · Logo — intarsio reale"
+              subtitle="Vettoriale ricavato dall'immagine del mobile. Palette nativa coerente con Materica.">
+              <DCArtboard id="logo-intarsio" label="colore · mono · reverse · scala · lockup · app icon" width={1280} height={1480}>
+                <LogoIntarsioShowcase/>
+              </DCArtboard>
+            </DCSection>
+
+            {/* LOGO — pappagallo nella casa (esplorazione disegnata) */}
+            <DCSection id="logo2" title="07b · Logo disegnato (alternativa)"
+              subtitle="Versione ridisegnata in SVG geometrico — più stilizzata, scala benissimo a icona.">
+              <DCArtboard id="logos2" label="D · pieno · E · stencil · F · reverse" width={1280} height={1320}>
+                <LogoExploration2/>
+              </DCArtboard>
+            </DCSection>
+
+            {/* LOGO — prime esplorazioni più astratte */}
+            <DCSection id="logo" title="07b · Esplorazioni precedenti (archivio)"
+              subtitle="Stilizzazioni più astratte dell'intarsio — utili come timbri/sigilli decorativi.">
+              <DCArtboard id="logos" label="A · B · C — più astratti" width={1280} height={900}>
+                <LogoExploration/>
+              </DCArtboard>
+            </DCSection>
+
+            {/* ICONA + SPLASH */}
+            <DCSection id="brand" title="08 · Icona PWA & splash"
+              subtitle="Tre direzioni. Tutte testate da 24px a 160px — la più piccola è la prova del nove.">
+              <DCArtboard id="icons" label="Icone · 3 opzioni + splash" width={1100} height={780}>
+                <IconExploration/>
+              </DCArtboard>
+            </DCSection>
+          </DesignCanvas>
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>

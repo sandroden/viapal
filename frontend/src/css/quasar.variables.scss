@@ -1,0 +1,15 @@
+// Quasar SCSS variables — palette Materica.
+// Mappiamo le variabili Quasar sui token oklch del design system.
+// I valori puri qui sono fallback per la build SCSS; a runtime CSS prevalgono i var(--vp-*).
+
+$primary    : #9b5a3a; // terracotta (vp-terra)
+$secondary  : #4f6f53; // salvia    (vp-sage-deep)
+$accent     : #b88347; // miele     (vp-honey)
+
+$dark       : #2a201a;
+$dark-page  : #f7eed8;
+
+$positive   : #4f6f53; // salvia
+$negative   : #a14530; // argilla scura
+$info       : #b88347; // miele
+$warning    : #b88347;

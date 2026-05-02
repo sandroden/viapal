@@ -1,0 +1,17 @@
+{
+  "name": "Viapal — la casa, in tasca",
+  "short_name": "Viapal",
+  "description": "Gestionale familiare per l'affitto a stanze di Via Palestrina",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7eed8",
+  "theme_color": "#9b5a3a",
+  "lang": "it",
+  "icons": [
+    { "src": "icons/icon-128x128.png", "sizes": "128x128", "type": "image/png" },
+    { "src": "icons/icon-192x192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-256x256.png", "sizes": "256x256", "type": "image/png" },
+    { "src": "icons/icon-384x384.png", "sizes": "384x384", "type": "image/png" },
+    { "src": "icons/icon-512x512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

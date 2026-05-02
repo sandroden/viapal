@@ -1,0 +1,20 @@
+/* app global css */
+@import './tokens.css';
+
+html, body, #q-app {
+  background: var(--vp-paper);
+  color: var(--vp-ink);
+  font-family: var(--vp-font-ui);
+}
+
+.text-display {
+  font-family: var(--vp-font-display);
+  letter-spacing: -0.01em;
+}
+
+.viapal-card {
+  background: var(--vp-cream);
+  border-radius: var(--vp-r-lg);
+  box-shadow: var(--vp-shadow-1);
+  padding: var(--vp-gap-5);
+}

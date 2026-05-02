@@ -1,0 +1,49 @@
+# Python / Django
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+.envrc
+db.sqlite3
+db.sqlite3-journal
+*.log
+
+# uv
+.uv/
+
+# Django local
+backend/core/settings/local.py
+backend/core/settings/settings.py
+backend/static/
+backend/media/
+
+# Frontend
+node_modules/
+.quasar/
+frontend/dist/
+frontend/.eslintcache
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+*~
+.direnv/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Tests / output
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Bundle Claude Design — non versioniamo i node_modules dei prototipi
+design/**/node_modules/

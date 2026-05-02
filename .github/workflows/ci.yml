@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (lint + test)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: viapal_test
+          POSTGRES_USER: viapal
+          POSTGRES_PASSWORD: viapal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U viapal"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.8.18"
+      - name: Setup Python 3.13
+        run: uv python install 3.13
+      - name: Sync deps
+        run: uv sync --extra dev || uv sync
+      - name: Ruff (lint, non-blocking se non configurato)
+        run: uv run ruff check . || true
+      - name: Django check
+        env:
+          ENV: production
+          DJANGO_SECRET_KEY: ci-test
+          POSTGRES_DB: viapal_test
+          POSTGRES_USER: viapal
+          POSTGRES_PASSWORD: viapal
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: '5432'
+          DJANGO_ALLOWED_HOSTS: localhost
+        run: uv run python manage.py check
+      - name: Migrate
+        env:
+          ENV: production
+          DJANGO_SECRET_KEY: ci-test
+          POSTGRES_DB: viapal_test
+          POSTGRES_USER: viapal
+          POSTGRES_PASSWORD: viapal
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: '5432'
+          DJANGO_ALLOWED_HOSTS: localhost
+        run: uv run python manage.py migrate
+      - name: Pytest
+        env:
+          ENV: production
+          DJANGO_SECRET_KEY: ci-test
+          POSTGRES_DB: viapal_test
+          POSTGRES_USER: viapal
+          POSTGRES_PASSWORD: viapal
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: '5432'
+          DJANGO_ALLOWED_HOSTS: localhost
+        run: uv run pytest -v
+
+  frontend:
+    name: Frontend (lint + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.2'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.2'
+      - run: bun install --frozen-lockfile
+      - run: bun run lint || true
+      - run: bun run build

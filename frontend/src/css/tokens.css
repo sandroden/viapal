@@ -1,0 +1,266 @@
+/* Viapal — Design Tokens
+   Direzione: Materica (terra/legno/salvia + tipografia umanista)
+   Tono: domestico, caldo, familiare. Non gestionale.
+*/
+
+:root {
+  /* ── Palette materica ─────────────────────────────────── */
+  /* Sfondi: avena, latte, lino — caldi e morbidi */
+  --vp-paper:        oklch(0.975 0.012 75);   /* avena chiara, sfondo principale */
+  --vp-paper-2:      oklch(0.945 0.018 75);   /* avena, card secondarie */
+  --vp-paper-3:      oklch(0.91  0.022 75);   /* avena scura, divider/hover */
+  --vp-cream:        oklch(0.985 0.008 80);   /* quasi bianco, card primaria */
+
+  /* Inchiostro: bruno scuro, mai nero puro */
+  --vp-ink:          oklch(0.26  0.022 50);   /* testo primario */
+  --vp-ink-2:        oklch(0.42  0.020 55);   /* testo secondario */
+  --vp-ink-3:        oklch(0.58  0.018 60);   /* testo terziario */
+  --vp-ink-4:        oklch(0.78  0.015 70);   /* placeholder, disabled */
+
+  /* Accenti: terracotta + salvia + miele */
+  --vp-terra:        oklch(0.62  0.115 38);   /* terracotta, primario */
+  --vp-terra-soft:   oklch(0.88  0.045 40);   /* terracotta tenue, fill */
+  --vp-terra-deep:   oklch(0.45  0.105 35);   /* terracotta scuro, hover */
+
+  --vp-sage:         oklch(0.58  0.055 145);  /* salvia, ok/positivo */
+  --vp-sage-soft:    oklch(0.90  0.030 145);  /* salvia tenue */
+  --vp-sage-deep:    oklch(0.42  0.055 145);
+
+  --vp-honey:        oklch(0.72  0.105 75);   /* miele, in attesa/avviso */
+  --vp-honey-soft:   oklch(0.92  0.045 80);
+
+  --vp-clay:         oklch(0.55  0.110 25);   /* argilla, errore/morosità */
+  --vp-clay-soft:    oklch(0.90  0.035 28);
+
+  --vp-wood:         oklch(0.50  0.045 55);   /* legno, accenti decorativi */
+  --vp-leaf:         oklch(0.48  0.075 150);
+
+  /* ── Shadow morbide (mai nere dure) ──────────────────── */
+  --vp-shadow-1: 0 1px 2px oklch(0.30 0.02 50 / 0.06), 0 1px 3px oklch(0.30 0.02 50 / 0.04);
+  --vp-shadow-2: 0 2px 4px oklch(0.30 0.02 50 / 0.05), 0 6px 14px oklch(0.30 0.02 50 / 0.08);
+  --vp-shadow-3: 0 6px 14px oklch(0.30 0.02 50 / 0.08), 0 18px 36px oklch(0.30 0.02 50 / 0.10);
+
+  /* ── Tipografia ───────────────────────────────────────── */
+  /* Display: serif umanista. UI: sans-serif neo-grotesco caldo */
+  --vp-font-display: "Source Serif 4", "Source Serif Pro", Georgia, serif;
+  --vp-font-ui:      "Geist", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --vp-font-mono:    "Geist Mono", "IBM Plex Mono", "SF Mono", Menlo, monospace;
+
+  /* Type scale — generosa, leggibile a chi non è contabile */
+  --vp-text-xs:  12px;
+  --vp-text-sm:  13px;
+  --vp-text-md:  15px;
+  --vp-text-lg:  17px;
+  --vp-text-xl:  20px;
+  --vp-text-2xl: 26px;
+  --vp-text-3xl: 34px;
+  --vp-text-4xl: 44px;
+  --vp-text-5xl: 56px;
+
+  /* ── Spacing & radius ─────────────────────────────────── */
+  --vp-r-sm: 8px;
+  --vp-r-md: 12px;
+  --vp-r-lg: 18px;
+  --vp-r-xl: 24px;
+  --vp-r-pill: 9999px;
+
+  --vp-gap-1: 4px;
+  --vp-gap-2: 8px;
+  --vp-gap-3: 12px;
+  --vp-gap-4: 16px;
+  --vp-gap-5: 24px;
+  --vp-gap-6: 32px;
+  --vp-gap-7: 48px;
+
+  /* ── Stati pagamento (semaforo morbido) ──────────────── */
+  --vp-status-ok-bg:    var(--vp-sage-soft);
+  --vp-status-ok-fg:    var(--vp-sage-deep);
+  --vp-status-wait-bg:  var(--vp-honey-soft);
+  --vp-status-wait-fg:  oklch(0.42 0.080 70);
+  --vp-status-late-bg:  var(--vp-clay-soft);
+  --vp-status-late-fg:  oklch(0.40 0.110 28);
+}
+
+/* ── Dark mode (legno scuro + paglia) ───────────────────── */
+[data-vp-theme="dark"] {
+  --vp-paper:        oklch(0.20 0.012 50);
+  --vp-paper-2:      oklch(0.245 0.014 55);
+  --vp-paper-3:      oklch(0.30 0.015 55);
+  --vp-cream:        oklch(0.225 0.013 55);
+
+  --vp-ink:          oklch(0.95 0.012 75);
+  --vp-ink-2:        oklch(0.78 0.015 70);
+  --vp-ink-3:        oklch(0.62 0.015 65);
+  --vp-ink-4:        oklch(0.45 0.015 60);
+
+  --vp-terra:        oklch(0.72 0.115 40);
+  --vp-terra-soft:   oklch(0.36 0.075 38);
+  --vp-terra-deep:   oklch(0.82 0.090 42);
+
+  --vp-sage-soft:    oklch(0.32 0.045 145);
+  --vp-honey-soft:   oklch(0.34 0.060 75);
+  --vp-clay-soft:    oklch(0.34 0.080 28);
+
+  --vp-shadow-1: 0 1px 2px rgba(0,0,0,0.4);
+  --vp-shadow-2: 0 4px 12px rgba(0,0,0,0.4);
+  --vp-shadow-3: 0 12px 32px rgba(0,0,0,0.5);
+}
+
+/* ── Direzione alternativa: Block Organizer caldo ───────── */
+[data-vp-palette="block"] {
+  --vp-paper:        oklch(0.985 0.004 90);
+  --vp-paper-2:      oklch(0.965 0.005 90);
+  --vp-paper-3:      oklch(0.93 0.006 90);
+  --vp-cream:        oklch(1 0 0);
+  --vp-ink:          oklch(0.22 0.008 270);
+  --vp-ink-2:        oklch(0.42 0.010 270);
+  --vp-ink-3:        oklch(0.60 0.008 270);
+  --vp-terra:        oklch(0.60 0.140 30);
+  --vp-terra-soft:   oklch(0.93 0.040 35);
+  --vp-terra-deep:   oklch(0.45 0.130 28);
+  --vp-sage:         oklch(0.55 0.080 165);
+  --vp-sage-soft:    oklch(0.93 0.040 165);
+  --vp-honey:        oklch(0.72 0.130 80);
+  --vp-honey-soft:   oklch(0.94 0.060 85);
+}
+
+/* Densità */
+[data-vp-density="cozy"] { --vp-density-pad: 16px; --vp-density-row: 56px; }
+[data-vp-density="compact"] { --vp-density-pad: 10px; --vp-density-row: 44px; }
+
+/* Tipografia alternative */
+[data-vp-type="grotesk"] {
+  --vp-font-display: "Geist", "Inter", system-ui, sans-serif;
+  --vp-font-ui: "Geist", "Inter", system-ui, sans-serif;
+}
+[data-vp-type="literata"] {
+  --vp-font-display: "Literata", Georgia, serif;
+  --vp-font-ui: "Literata", Georgia, serif;
+}
+
+/* ── Reset minimo + base ─────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  font-family: var(--vp-font-ui);
+  color: var(--vp-ink);
+  background: var(--vp-paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ── Componenti chiave ─────────────────────────────────── */
+.vp-card {
+  background: var(--vp-cream);
+  border: 1px solid var(--vp-paper-3);
+  border-radius: var(--vp-r-lg);
+  box-shadow: var(--vp-shadow-1);
+}
+
+.vp-display {
+  font-family: var(--vp-font-display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.vp-eyebrow {
+  font-family: var(--vp-font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-ink-3);
+}
+
+.vp-mono { font-family: var(--vp-font-mono); font-variant-numeric: tabular-nums; }
+
+.vp-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 10px;
+  border-radius: var(--vp-r-pill);
+  font-size: 12px; font-weight: 500;
+  white-space: nowrap;
+}
+.vp-badge--ok   { background: var(--vp-status-ok-bg);   color: var(--vp-status-ok-fg); }
+.vp-badge--wait { background: var(--vp-status-wait-bg); color: var(--vp-status-wait-fg); }
+.vp-badge--late { background: var(--vp-status-late-bg); color: var(--vp-status-late-fg); }
+.vp-badge--neutral { background: var(--vp-paper-3); color: var(--vp-ink-2); }
+
+.vp-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.vp-dot--ok   { background: var(--vp-sage); }
+.vp-dot--wait { background: var(--vp-honey); }
+.vp-dot--late { background: var(--vp-clay); }
+
+.vp-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 40px; padding: 0 18px;
+  border-radius: var(--vp-r-md);
+  font-family: var(--vp-font-ui);
+  font-size: 14px; font-weight: 500;
+  border: none; cursor: pointer;
+  transition: transform .08s, background .15s, box-shadow .15s;
+}
+.vp-btn:active { transform: translateY(1px); }
+.vp-btn--primary { background: var(--vp-terra); color: var(--vp-cream); }
+.vp-btn--primary:hover { background: var(--vp-terra-deep); }
+.vp-btn--ghost { background: transparent; color: var(--vp-ink); border: 1px solid var(--vp-paper-3); }
+.vp-btn--ghost:hover { background: var(--vp-paper-2); }
+.vp-btn--soft { background: var(--vp-terra-soft); color: var(--vp-terra-deep); }
+
+.vp-banner {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--vp-r-md);
+  background: var(--vp-honey-soft);
+  border-left: 3px solid var(--vp-honey);
+  color: var(--vp-ink);
+  font-size: 14px; line-height: 1.45;
+}
+.vp-banner--late { background: var(--vp-clay-soft); border-left-color: var(--vp-clay); }
+.vp-banner--ok   { background: var(--vp-sage-soft); border-left-color: var(--vp-sage); }
+
+.vp-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+}
+.vp-table th, .vp-table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--vp-paper-3);
+}
+.vp-table th {
+  font-weight: 500; color: var(--vp-ink-3);
+  font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase;
+  background: var(--vp-paper-2);
+}
+.vp-table tr:last-child td { border-bottom: none; }
+.vp-table tr:hover td { background: var(--vp-paper-2); }
+
+.vp-input {
+  width: 100%; height: 44px; padding: 0 14px;
+  border-radius: var(--vp-r-md);
+  border: 1px solid var(--vp-paper-3);
+  background: var(--vp-cream);
+  color: var(--vp-ink);
+  font-family: var(--vp-font-ui); font-size: 15px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.vp-input:focus { border-color: var(--vp-terra); box-shadow: 0 0 0 3px var(--vp-terra-soft); }
+
+/* Texture sottile carta — usato come accent decorativo */
+.vp-paper-tex {
+  background-image:
+    radial-gradient(oklch(0.85 0.020 70 / 0.20) 1px, transparent 1px),
+    radial-gradient(oklch(0.80 0.022 70 / 0.15) 1px, transparent 1px);
+  background-size: 18px 18px, 24px 24px;
+  background-position: 0 0, 9px 12px;
+}
+
+/* Scrollbars discrete */
+.vp-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.vp-scroll::-webkit-scrollbar-thumb { background: var(--vp-paper-3); border-radius: 4px; }
+.vp-scroll::-webkit-scrollbar-track { background: transparent; }
