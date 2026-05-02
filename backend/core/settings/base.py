@@ -33,6 +33,10 @@ INSTALLED_APPS = [
 
     # Local apps
     'accounts',
+    'properties',
+    'billing',
+    'accounting',
+    'notifications',
 ]
 
 SITE_ID = 1
