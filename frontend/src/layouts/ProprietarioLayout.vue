@@ -3,6 +3,12 @@
     <q-header elevated class="vp-header">
       <q-toolbar>
         <q-btn flat dense round icon="menu" aria-label="Menu" @click="toggleDrawer" />
+        <img
+          v-if="!drawerOpen"
+          src="/viapal.png"
+          alt="Viapal"
+          class="vp-header__logo"
+        />
         <q-toolbar-title class="text-display">
           Viapal — area proprietari
         </q-toolbar-title>
@@ -21,6 +27,10 @@
       :breakpoint="900"
       class="vp-drawer"
     >
+      <div class="vp-drawer__brand">
+        <img src="/viapal.png" alt="Viapal" class="vp-drawer__brand-img" />
+      </div>
+
       <q-list padding>
         <q-item-label header class="vp-drawer__header">Navigazione</q-item-label>
 
@@ -80,6 +90,14 @@ async function logout() {
   background: var(--vp-terra-deep);
   color: var(--vp-cream);
 }
+.vp-header__logo {
+  height: 32px;
+  width: auto;
+  margin-left: var(--vp-gap-2);
+  border-radius: var(--vp-r-sm);
+  background: var(--vp-cream);
+  padding: 2px;
+}
 .vp-user-chip {
   color: var(--vp-cream);
   border-color: var(--vp-cream);
@@ -87,6 +105,19 @@ async function logout() {
 .vp-drawer {
   background: var(--vp-paper-2);
   border-right: 1px solid var(--vp-paper-3);
+}
+.vp-drawer__brand {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: var(--vp-gap-4) var(--vp-gap-3);
+  border-bottom: 1px solid var(--vp-paper-3);
+}
+.vp-drawer__brand-img {
+  width: 100%;
+  max-width: 180px;
+  height: auto;
+  display: block;
 }
 .vp-drawer__header {
   color: var(--vp-ink-3);
