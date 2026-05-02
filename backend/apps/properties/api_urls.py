@@ -13,11 +13,11 @@ from properties.views import (
 )
 
 router = DefaultRouter()
-router.register(r"owner-profiles", OwnerProfileViewSet, basename="owner-profile")
-router.register(r"tenant-profiles", TenantProfileViewSet, basename="tenant-profile")
+router.register(r"owners", OwnerProfileViewSet, basename="owner-profile")
+router.register(r"tenants", TenantProfileViewSet, basename="tenant-profile")
 router.register(r"rooms", RoomViewSet, basename="room")
 router.register(r"room-assignments", RoomAssignmentViewSet, basename="room-assignment")
 router.register(r"contracts", ContractViewSet, basename="contract")
-router.register(r"owner-bank-accounts", OwnerBankAccountViewSet, basename="owner-bank-account")
+router.register(r"bank-accounts", OwnerBankAccountViewSet, basename="owner-bank-account")
 
 urlpatterns = router.urls

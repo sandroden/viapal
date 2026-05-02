@@ -16,7 +16,7 @@ from billing.views import (
 router = DefaultRouter()
 router.register(r"rent-payments", RentPaymentViewSet, basename="rent-payment")
 router.register(r"utility-charges", UtilityChargeViewSet, basename="utility-charge")
-router.register(r"utility-charge-periods", UtilityChargePeriodViewSet, basename="utility-charge-period")
+router.register(r"utility-periods", UtilityChargePeriodViewSet, basename="utility-charge-period")
 router.register(r"utility-bills", UtilityBillViewSet, basename="utility-bill")
 router.register(r"expenses", ExpenseViewSet, basename="expense")
 router.register(r"extra-charges", ExtraChargeViewSet, basename="extra-charge")

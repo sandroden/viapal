@@ -154,17 +154,17 @@ def client_inq_2(api_client, user_inq_2):
 
 class TestOwnerProfileViewSet:
     def test_proprietario_vede_lista(self, client_prop, owner_profile):
-        resp = client_prop.get("/api/v1/owner-profiles/")
+        resp = client_prop.get("/api/v1/owners/")
         assert resp.status_code == 200
         assert len(resp.json()) >= 1
 
     def test_inquilino_non_autorizzato(self, client_inq_1):
-        resp = client_inq_1.get("/api/v1/owner-profiles/")
+        resp = client_inq_1.get("/api/v1/owners/")
         assert resp.status_code == 403
 
     def test_anonimo_non_autorizzato(self):
         client = APIClient()
-        resp = client.get("/api/v1/owner-profiles/")
+        resp = client.get("/api/v1/owners/")
         assert resp.status_code == 403
 
 
@@ -175,25 +175,25 @@ class TestOwnerProfileViewSet:
 
 class TestTenantProfileViewSet:
     def test_proprietario_vede_tutti(self, client_prop, tenant_1, tenant_2):
-        resp = client_prop.get("/api/v1/tenant-profiles/")
+        resp = client_prop.get("/api/v1/tenants/")
         assert resp.status_code == 200
         ids = [t["id"] for t in resp.json()]
         assert tenant_1.id in ids
         assert tenant_2.id in ids
 
     def test_inquilino_vede_solo_se_stesso(self, client_inq_1, tenant_1, tenant_2):
-        resp = client_inq_1.get("/api/v1/tenant-profiles/")
+        resp = client_inq_1.get("/api/v1/tenants/")
         assert resp.status_code == 200
         ids = [t["id"] for t in resp.json()]
         assert tenant_1.id in ids
         assert tenant_2.id not in ids
 
     def test_inquilino_detail_se_stesso(self, client_inq_1, tenant_1):
-        resp = client_inq_1.get(f"/api/v1/tenant-profiles/{tenant_1.id}/")
+        resp = client_inq_1.get(f"/api/v1/tenants/{tenant_1.id}/")
         assert resp.status_code == 200
 
     def test_inquilino_non_vede_altro(self, client_inq_1, tenant_2):
-        resp = client_inq_1.get(f"/api/v1/tenant-profiles/{tenant_2.id}/")
+        resp = client_inq_1.get(f"/api/v1/tenants/{tenant_2.id}/")
         assert resp.status_code == 404
 
 
@@ -262,10 +262,10 @@ class TestContractViewSet:
 
 class TestOwnerBankAccountViewSet:
     def test_proprietario_vede_conti(self, client_prop, bank_account):
-        resp = client_prop.get("/api/v1/owner-bank-accounts/")
+        resp = client_prop.get("/api/v1/bank-accounts/")
         assert resp.status_code == 200
         assert len(resp.json()) >= 1
 
     def test_inquilino_non_autorizzato(self, client_inq_1):
-        resp = client_inq_1.get("/api/v1/owner-bank-accounts/")
+        resp = client_inq_1.get("/api/v1/bank-accounts/")
         assert resp.status_code == 403

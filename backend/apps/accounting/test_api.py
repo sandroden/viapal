@@ -110,18 +110,18 @@ def client_inq(api_client, user_inq):
 
 class TestOwnerLedgerEntryViewSet:
     def test_proprietario_vede_lista(self, client_prop, ledger_entry):
-        resp = client_prop.get("/api/v1/ledger-entries/")
+        resp = client_prop.get("/api/v1/owner-ledger/")
         assert resp.status_code == 200
         ids = [e["id"] for e in resp.json()]
         assert ledger_entry.id in ids
 
     def test_proprietario_vede_dettaglio(self, client_prop, ledger_entry):
-        resp = client_prop.get(f"/api/v1/ledger-entries/{ledger_entry.id}/")
+        resp = client_prop.get(f"/api/v1/owner-ledger/{ledger_entry.id}/")
         assert resp.status_code == 200
         assert resp.json()["importo"] == "400.00"
 
     def test_inquilino_non_accede(self, client_inq):
-        resp = client_inq.get("/api/v1/ledger-entries/")
+        resp = client_inq.get("/api/v1/owner-ledger/")
         assert resp.status_code == 403
 
 
