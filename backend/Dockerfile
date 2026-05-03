@@ -9,7 +9,7 @@ WORKDIR /code/
 COPY backend/pyproject.toml backend/uv.lock /code/
 ENV UV_SYSTEM_PYTHON=1
 ENV UV_PROJECT_ENVIRONMENT=/usr/local
-RUN uv sync --inexact
+RUN uv sync --inexact --index-strategy unsafe-best-match
 
 COPY backend/ /code/
 
