@@ -3,17 +3,16 @@ Endpoint custom per le dashboard inquilino, proprietario e quadro annuale.
 """
 import datetime
 from decimal import Decimal
-from itertools import chain
 
 from django.db.models import Q, Sum
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated  # noqa: F401
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsInquilino, IsProprietario
-from billing.models import ExtraCharge, RentPayment, StatoPagamento, TenantCondominioRate, UtilityCharge, UtilityChargePeriod
+from billing.models import Receivable, StatoPagamento, TenantCondominioRate, UtilityChargePeriod
 from properties.models import Contract, OwnerProfile, RoomAssignment, TenantProfile
-from properties.serializers import TenantProfileSerializer, RoomAssignmentSerializer
+from properties.serializers import TenantProfileSerializer  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
@@ -25,6 +24,13 @@ STATI_DA_PAGARE = {
     StatoPagamento.IN_RITARDO,
     StatoPagamento.INSOLUTO,
     StatoPagamento.DICHIARATO,
+}
+
+# Mapping causale Receivable -> "tipo" esposto nell'API (compatibilità FE)
+TIPO_PER_CAUSALE = {
+    Receivable.Causale.AFFITTO: "rent",
+    Receivable.Causale.UTENZE: "utility_charge",
+    Receivable.Causale.EXTRA: "extra",
 }
 
 
@@ -50,23 +56,24 @@ def _giorni_ritardo(scadenza: datetime.date, oggi: datetime.date) -> int:
     return (oggi - scadenza).days
 
 
-def _build_item_da_pagare(
-    tipo: str,
-    obj_id: int,
-    descrizione: str,
-    importo: Decimal,
-    scadenza: datetime.date,
-    stato: str,
-    oggi: datetime.date,
-) -> dict:
-    giorni = _giorni_ritardo(scadenza, oggi)
+def _descrizione_receivable(r: Receivable) -> str:
+    if r.causale == Receivable.Causale.AFFITTO:
+        return f"Affitto {r.competenza_da.strftime('%B %Y')}"
+    if r.causale == Receivable.Causale.UTENZE:
+        base = r.utility_period.periodo_da if r.utility_period else r.competenza_da
+        return f"Conguaglio utenze {base.strftime('%B %Y')}"
+    return r.descrizione or "Addebito extra"
+
+
+def _build_item_da_pagare(r: Receivable, oggi: datetime.date) -> dict:
+    giorni = _giorni_ritardo(r.scadenza, oggi)
     return {
-        "tipo": tipo,
-        "id": obj_id,
-        "descrizione": descrizione,
-        "importo": float(importo),
-        "scadenza": scadenza.isoformat(),
-        "stato": stato,
+        "tipo": TIPO_PER_CAUSALE[r.causale],
+        "id": r.id,
+        "descrizione": _descrizione_receivable(r),
+        "importo": float(r.importo_dovuto),
+        "scadenza": r.scadenza.isoformat(),
+        "stato": r.stato,
         "giorni_ritardo": giorni,
         "semaforo": _calcola_semaforo(giorni),
     }
@@ -85,7 +92,6 @@ class DashboardInquilinoView(APIView):
         user = request.user
         oggi = datetime.date.today()
 
-        # Profilo inquilino
         try:
             tenant = TenantProfile.objects.select_related("user").get(user=user)
         except TenantProfile.DoesNotExist:
@@ -94,7 +100,6 @@ class DashboardInquilinoView(APIView):
                 status=404,
             )
 
-        # Assignment attivo
         assignment_attivo = (
             RoomAssignment.objects.select_related("room", "tenant")
             .filter(tenant=tenant, valid_from__lte=oggi)
@@ -111,100 +116,39 @@ class DashboardInquilinoView(APIView):
                 "valid_from": assignment_attivo.valid_from.isoformat(),
             }
 
-        # Tutti gli assignment dell'inquilino (per rent + charge + extra)
         assignments = RoomAssignment.objects.filter(tenant=tenant)
 
-        # Da pagare: RentPayment
-        rent_da_pagare = RentPayment.objects.filter(
-            assignment__in=assignments,
-            stato__in=STATI_DA_PAGARE,
-        ).select_related("assignment__room").order_by("scadenza")
-
-        # Da pagare: UtilityCharge
-        charge_da_pagare = UtilityCharge.objects.filter(
-            assignment__in=assignments,
-            stato__in=STATI_DA_PAGARE,
-        ).select_related("assignment__room", "period").order_by("scadenza")
-
-        # Da pagare: ExtraCharge
-        extra_da_pagare = ExtraCharge.objects.filter(
-            assignment__in=assignments,
-            stato__in=STATI_DA_PAGARE,
-        ).select_related("assignment__room").order_by("scadenza")
-
-        da_pagare = []
-
-        for r in rent_da_pagare:
-            mese = r.competenza_da.strftime("%B %Y")
-            da_pagare.append(_build_item_da_pagare(
-                tipo="rent",
-                obj_id=r.id,
-                descrizione=f"Affitto {mese}",
-                importo=r.importo_dovuto,
-                scadenza=r.scadenza,
-                stato=r.stato,
-                oggi=oggi,
-            ))
-
-        for c in charge_da_pagare:
-            mese = c.period.periodo_da.strftime("%B %Y")
-            da_pagare.append(_build_item_da_pagare(
-                tipo="utility_charge",
-                obj_id=c.id,
-                descrizione=f"Conguaglio utenze {mese}",
-                importo=c.importo_totale,
-                scadenza=c.scadenza,
-                stato=c.stato,
-                oggi=oggi,
-            ))
-
-        for e in extra_da_pagare:
-            da_pagare.append(_build_item_da_pagare(
-                tipo="extra",
-                obj_id=e.id,
-                descrizione=e.descrizione,
-                importo=e.importo,
-                scadenza=e.scadenza,
-                stato=e.stato,
-                oggi=oggi,
-            ))
-
-        # Ordina per scadenza
-        da_pagare.sort(key=lambda x: x["scadenza"])
-
-        # Ultimi 10 pagamenti confermati (rent + charge)
-        ultimi_rent = (
-            RentPayment.objects.filter(assignment__in=assignments, stato=StatoPagamento.PAGATO)
-            .select_related("assignment__room")
-            .order_by("-data_pagamento")[:5]
-        )
-        ultimi_charge = (
-            UtilityCharge.objects.filter(assignment__in=assignments, stato=StatoPagamento.PAGATO)
-            .select_related("assignment__room", "period")
-            .order_by("-data_pagamento")[:5]
+        da_pagare_qs = (
+            Receivable.objects.filter(
+                assignment__in=assignments,
+                stato__in=STATI_DA_PAGARE,
+            )
+            .select_related("assignment__room", "utility_period")
+            .order_by("scadenza")
         )
 
+        da_pagare = [_build_item_da_pagare(r, oggi) for r in da_pagare_qs]
+
+        ultimi_pagati_qs = (
+            Receivable.objects.filter(
+                assignment__in=assignments,
+                stato=StatoPagamento.PAGATO,
+                causale__in=[Receivable.Causale.AFFITTO, Receivable.Causale.UTENZE],
+            )
+            .select_related("assignment__room", "utility_period")
+            .order_by("-data_pagamento")[:10]
+        )
         ultimi_pagamenti = []
-        for r in ultimi_rent:
+        for r in ultimi_pagati_qs:
             ultimi_pagamenti.append({
-                "tipo": "rent",
+                "tipo": TIPO_PER_CAUSALE[r.causale],
                 "id": r.id,
-                "descrizione": f"Affitto {r.competenza_da.strftime('%B %Y')}",
+                "descrizione": _descrizione_receivable(r),
                 "importo": float(r.importo_pagato or r.importo_dovuto),
                 "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
                 "stato": r.stato,
             })
-        for c in ultimi_charge:
-            ultimi_pagamenti.append({
-                "tipo": "utility_charge",
-                "id": c.id,
-                "descrizione": f"Conguaglio {c.period.periodo_da.strftime('%B %Y')}",
-                "importo": float(c.importo_pagato or c.importo_totale),
-                "data_pagamento": c.data_pagamento.isoformat() if c.data_pagamento else None,
-                "stato": c.stato,
-            })
         ultimi_pagamenti.sort(key=lambda x: x["data_pagamento"] or "", reverse=True)
-        ultimi_pagamenti = ultimi_pagamenti[:10]
 
         return Response({
             "tenant": TenantProfileSerializer(tenant).data,
@@ -248,55 +192,24 @@ class DashboardProprietarioView(APIView):
         FINESTRA_SCADENZA_GIORNI = 14
         soglia_scadenza = oggi + datetime.timedelta(days=FINESTRA_SCADENZA_GIORNI)
 
-        # KPI: incasso anno (RentPayment pagati)
-        incasso_rent_anno = (
-            RentPayment.objects.filter(
+        def _incasso_per_causale(causale: str, anno_: int, mese_: int | None = None) -> Decimal:
+            qs = Receivable.objects.filter(
+                causale=causale,
                 stato=StatoPagamento.PAGATO,
-                data_pagamento__year=anno,
-            ).aggregate(tot=Sum("importo_pagato"))["tot"]
-            or Decimal("0")
-        )
-        incasso_utility_anno = (
-            UtilityCharge.objects.filter(
-                stato=StatoPagamento.PAGATO,
-                data_pagamento__year=anno,
-            ).aggregate(tot=Sum("importo_pagato"))["tot"]
-            or Decimal("0")
-        )
-        incasso_extra_anno = (
-            ExtraCharge.objects.filter(
-                stato=StatoPagamento.PAGATO,
-                data_pagamento__year=anno,
-            ).aggregate(tot=Sum("importo_pagato"))["tot"]
-            or Decimal("0")
-        )
+                data_pagamento__year=anno_,
+            )
+            if mese_ is not None:
+                qs = qs.filter(data_pagamento__month=mese_)
+            return qs.aggregate(tot=Sum("importo_pagato"))["tot"] or Decimal("0")
+
+        incasso_rent_anno = _incasso_per_causale(Receivable.Causale.AFFITTO, anno)
+        incasso_utility_anno = _incasso_per_causale(Receivable.Causale.UTENZE, anno)
+        incasso_extra_anno = _incasso_per_causale(Receivable.Causale.EXTRA, anno)
         incasso_anno = incasso_rent_anno + incasso_utility_anno + incasso_extra_anno
 
-        # KPI: incasso mese specifico
-        incasso_rent_mese = (
-            RentPayment.objects.filter(
-                stato=StatoPagamento.PAGATO,
-                data_pagamento__year=anno,
-                data_pagamento__month=mese,
-            ).aggregate(tot=Sum("importo_pagato"))["tot"]
-            or Decimal("0")
-        )
-        incasso_utility_mese = (
-            UtilityCharge.objects.filter(
-                stato=StatoPagamento.PAGATO,
-                data_pagamento__year=anno,
-                data_pagamento__month=mese,
-            ).aggregate(tot=Sum("importo_pagato"))["tot"]
-            or Decimal("0")
-        )
-        incasso_extra_mese = (
-            ExtraCharge.objects.filter(
-                stato=StatoPagamento.PAGATO,
-                data_pagamento__year=anno,
-                data_pagamento__month=mese,
-            ).aggregate(tot=Sum("importo_pagato"))["tot"]
-            or Decimal("0")
-        )
+        incasso_rent_mese = _incasso_per_causale(Receivable.Causale.AFFITTO, anno, mese)
+        incasso_utility_mese = _incasso_per_causale(Receivable.Causale.UTENZE, anno, mese)
+        incasso_extra_mese = _incasso_per_causale(Receivable.Causale.EXTRA, anno, mese)
         incasso_mese = incasso_rent_mese + incasso_utility_mese + incasso_extra_mese
 
         # KPI: spese anno
@@ -306,7 +219,6 @@ class DashboardProprietarioView(APIView):
         )
         spese_anno = spese_qs.aggregate(tot=Sum("importo"))["tot"] or Decimal("0")
 
-        # Breakdown spese per categoria e per proprietario anticipante
         spese_per_categoria: dict[str, Decimal] = {}
         spese_per_owner: dict[str, Decimal] = {}
         for sp in spese_qs:
@@ -327,15 +239,7 @@ class DashboardProprietarioView(APIView):
             "totale": float(spese_anno),
         }
 
-        # Bilancio per proprietario (entrate - uscite) — anno selezionato
-        # NB: solo RentPayment ha incassato_da_owner. UtilityCharge ed ExtraCharge
-        # non lo hanno modellato esplicitamente: per ora vengono attribuiti al
-        # default_pagatore_bollette del contratto (placeholder, da rivedere).
-        contract_attivo_blc = (
-            Contract.objects.order_by("-data_decorrenza")
-            .select_related("default_pagatore_bollette")
-            .first()
-        )
+        # Bilancio per proprietario (entrate - uscite) — anno selezionato.
         bilancio_per_owner: dict[int, dict] = {}
         for o in OwnerProfile.objects.all():
             bilancio_per_owner[o.id] = {
@@ -348,37 +252,21 @@ class DashboardProprietarioView(APIView):
                 "uscite_dettaglio": {},
             }
 
-        for r in RentPayment.objects.filter(
+        VOCE_KEY_PER_CAUSALE = {
+            Receivable.Causale.AFFITTO: "entrate_rent",
+            Receivable.Causale.UTENZE: "entrate_utility",
+            Receivable.Causale.EXTRA: "entrate_extra",
+        }
+        for r in Receivable.objects.filter(
             stato=StatoPagamento.PAGATO,
             data_pagamento__year=anno,
             incassato_da_owner__isnull=False,
         ):
-            bilancio_per_owner[r.incassato_da_owner_id]["entrate_rent"] += (
-                r.importo_pagato or Decimal("0")
-            )
-
-        # Utility ed extra: attribuiti per ora a Sandro (default_pagatore_bollette)
-        # come proxy "chi gestisce gli incassi non-rent"
-        owner_proxy = (
-            contract_attivo_blc.default_pagatore_bollette_id
-            if contract_attivo_blc and contract_attivo_blc.default_pagatore_bollette_id
-            else None
-        )
-        if owner_proxy:
-            tot_u = (
-                UtilityCharge.objects.filter(
-                    stato=StatoPagamento.PAGATO, data_pagamento__year=anno
-                ).aggregate(t=Sum("importo_pagato"))["t"]
-                or Decimal("0")
-            )
-            tot_e = (
-                ExtraCharge.objects.filter(
-                    stato=StatoPagamento.PAGATO, data_pagamento__year=anno
-                ).aggregate(t=Sum("importo_pagato"))["t"]
-                or Decimal("0")
-            )
-            bilancio_per_owner[owner_proxy]["entrate_utility"] = tot_u
-            bilancio_per_owner[owner_proxy]["entrate_extra"] = tot_e
+            if r.incassato_da_owner_id in bilancio_per_owner:
+                voce_key = VOCE_KEY_PER_CAUSALE[r.causale]
+                bilancio_per_owner[r.incassato_da_owner_id][voce_key] += (
+                    r.importo_pagato or Decimal("0")
+                )
 
         for sp in spese_qs:
             if sp.anticipata_da_owner_id and sp.anticipata_da_owner_id in bilancio_per_owner:
@@ -411,26 +299,19 @@ class DashboardProprietarioView(APIView):
         # Breakdown incassi per inquilino (annuale)
         breakdown_per_tenant: dict[str, dict[str, Decimal]] = {}
 
-        def _add(nominativo: str, voce: str, importo: Decimal):
+        VOCE_BREAKDOWN_PER_CAUSALE = {
+            Receivable.Causale.AFFITTO: "rent",
+            Receivable.Causale.UTENZE: "utility",
+            Receivable.Causale.EXTRA: "extra",
+        }
+        for r in Receivable.objects.filter(
+            stato=StatoPagamento.PAGATO, data_pagamento__year=anno
+        ).select_related("assignment__tenant"):
             row = breakdown_per_tenant.setdefault(
-                nominativo, {"rent": Decimal("0"), "utility": Decimal("0"), "extra": Decimal("0")}
+                r.assignment.tenant.nominativo,
+                {"rent": Decimal("0"), "utility": Decimal("0"), "extra": Decimal("0")},
             )
-            row[voce] += importo
-
-        for r in RentPayment.objects.filter(
-            stato=StatoPagamento.PAGATO, data_pagamento__year=anno
-        ).select_related("assignment__tenant"):
-            _add(r.assignment.tenant.nominativo, "rent", r.importo_pagato or Decimal("0"))
-
-        for c in UtilityCharge.objects.filter(
-            stato=StatoPagamento.PAGATO, data_pagamento__year=anno
-        ).select_related("assignment__tenant"):
-            _add(c.assignment.tenant.nominativo, "utility", c.importo_pagato or Decimal("0"))
-
-        for e in ExtraCharge.objects.filter(
-            stato=StatoPagamento.PAGATO, data_pagamento__year=anno
-        ).select_related("assignment__tenant"):
-            _add(e.assignment.tenant.nominativo, "extra", e.importo_pagato or Decimal("0"))
+            row[VOCE_BREAKDOWN_PER_CAUSALE[r.causale]] += r.importo_pagato or Decimal("0")
 
         breakdown_incassi = sorted(
             [
@@ -446,101 +327,44 @@ class DashboardProprietarioView(APIView):
             key=lambda x: x["tenant"],
         )
 
-        # Per anni storici, ritardi/in-scadenza non hanno senso (sono "ad oggi")
+        # Ritardi e in-scadenza (vista operativa, no storico)
         if is_storico:
-            ritardi_rent = ritardi_charge = ritardi_extra = []
-            scadenza_rent = scadenza_charge = scadenza_extra = []
+            ritardi_qs = scadenza_qs = Receivable.objects.none()
         else:
-            ritardi_rent = list(
-                RentPayment.objects.filter(
+            ritardi_qs = (
+                Receivable.objects.filter(
                     stato__in=[StatoPagamento.IN_RITARDO, StatoPagamento.INSOLUTO],
-                ).select_related("assignment__tenant", "assignment__room")
+                )
+                .select_related(
+                    "assignment__tenant", "assignment__room", "utility_period"
+                )
             )
-            ritardi_charge = list(
-                UtilityCharge.objects.filter(
-                    stato__in=[StatoPagamento.IN_RITARDO, StatoPagamento.INSOLUTO],
-                ).select_related("assignment__tenant", "assignment__room", "period")
-            )
-            ritardi_extra = list(
-                ExtraCharge.objects.filter(
-                    stato__in=[StatoPagamento.IN_RITARDO, StatoPagamento.INSOLUTO],
-                ).select_related("assignment__tenant")
+            scadenza_qs = (
+                Receivable.objects.filter(
+                    stato__in=[StatoPagamento.ATTESO, StatoPagamento.DICHIARATO],
+                    scadenza__lte=soglia_scadenza,
+                    scadenza__gte=oggi,
+                )
+                .select_related(
+                    "assignment__tenant", "assignment__room", "utility_period"
+                )
             )
 
-            scadenza_rent = list(
-                RentPayment.objects.filter(
-                    stato__in=[StatoPagamento.ATTESO, StatoPagamento.DICHIARATO],
-                    scadenza__lte=soglia_scadenza,
-                    scadenza__gte=oggi,
-                ).select_related("assignment__tenant", "assignment__room")
-            )
-            scadenza_charge = list(
-                UtilityCharge.objects.filter(
-                    stato__in=[StatoPagamento.ATTESO, StatoPagamento.DICHIARATO],
-                    scadenza__lte=soglia_scadenza,
-                    scadenza__gte=oggi,
-                ).select_related("assignment__tenant", "assignment__room", "period")
-            )
-            scadenza_extra = list(
-                ExtraCharge.objects.filter(
-                    stato__in=[StatoPagamento.ATTESO, StatoPagamento.DICHIARATO],
-                    scadenza__lte=soglia_scadenza,
-                    scadenza__gte=oggi,
-                ).select_related("assignment__tenant")
-            )
-
-        def _fmt_rent(r):
+        def _fmt(r: Receivable) -> dict:
             giorni = _giorni_ritardo(r.scadenza, oggi)
             return {
-                "tipo": "rent",
+                "tipo": TIPO_PER_CAUSALE[r.causale],
                 "id": r.id,
                 "tenant": r.assignment.tenant.nominativo,
-                "descrizione": f"Affitto {r.competenza_da.strftime('%B %Y')}",
+                "descrizione": _descrizione_receivable(r),
                 "importo": float(r.importo_dovuto),
                 "scadenza": r.scadenza.isoformat(),
                 "stato": r.stato,
                 "giorni_ritardo": giorni,
             }
 
-        def _fmt_charge(c):
-            giorni = _giorni_ritardo(c.scadenza, oggi)
-            return {
-                "tipo": "utility_charge",
-                "id": c.id,
-                "tenant": c.assignment.tenant.nominativo,
-                "descrizione": f"Conguaglio {c.period.periodo_da.strftime('%B %Y')}",
-                "importo": float(c.importo_totale),
-                "scadenza": c.scadenza.isoformat(),
-                "stato": c.stato,
-                "giorni_ritardo": giorni,
-            }
-
-        def _fmt_extra(e):
-            giorni = _giorni_ritardo(e.scadenza, oggi)
-            return {
-                "tipo": "extra",
-                "id": e.id,
-                "tenant": e.assignment.tenant.nominativo,
-                "descrizione": e.descrizione,
-                "importo": float(e.importo),
-                "scadenza": e.scadenza.isoformat(),
-                "stato": e.stato,
-                "giorni_ritardo": giorni,
-            }
-
-        ritardi = (
-            [_fmt_rent(r) for r in ritardi_rent]
-            + [_fmt_charge(c) for c in ritardi_charge]
-            + [_fmt_extra(e) for e in ritardi_extra]
-        )
-        ritardi.sort(key=lambda x: x["scadenza"])
-
-        in_scadenza = (
-            [_fmt_rent(r) for r in scadenza_rent]
-            + [_fmt_charge(c) for c in scadenza_charge]
-            + [_fmt_extra(e) for e in scadenza_extra]
-        )
-        in_scadenza.sort(key=lambda x: x["scadenza"])
+        ritardi = sorted([_fmt(r) for r in ritardi_qs], key=lambda x: x["scadenza"])
+        in_scadenza = sorted([_fmt(r) for r in scadenza_qs], key=lambda x: x["scadenza"])
 
         return Response({
             "anno": anno,
@@ -575,6 +399,104 @@ class DashboardProprietarioView(APIView):
 
 
 # ---------------------------------------------------------------------------
+# Dettaglio bilancio per proprietario (voci singole entrate/uscite)
+# ---------------------------------------------------------------------------
+
+class BilancioOwnerDettaglioView(APIView):
+    """GET /api/v1/dashboard/proprietario/<owner_id>/dettaglio-bilancio/?anno=YYYY&tipo=entrate|uscite
+
+    Restituisce le righe singole (non aggregate) che compongono entrate o
+    uscite di un proprietario per un dato anno. Stessa logica di filtro usata
+    in `DashboardProprietarioView` per gli aggregati: la somma delle righe
+    deve quindi quadrare con la cella della dashboard.
+    """
+
+    permission_classes = [IsProprietario]
+
+    CAUSALE_LABEL = {
+        Receivable.Causale.AFFITTO: "Affitto",
+        Receivable.Causale.UTENZE: "Conguaglio utenze",
+        Receivable.Causale.EXTRA: "Addebito extra",
+    }
+
+    def get(self, request, owner_id: int):
+        try:
+            anno = int(request.query_params.get("anno"))
+        except (TypeError, ValueError):
+            return Response({"detail": "Parametro 'anno' obbligatorio (intero)."}, status=400)
+
+        tipo = request.query_params.get("tipo")
+        if tipo not in ("entrate", "uscite"):
+            return Response(
+                {"detail": "Parametro 'tipo' deve essere 'entrate' o 'uscite'."},
+                status=400,
+            )
+
+        try:
+            owner = OwnerProfile.objects.get(pk=owner_id)
+        except OwnerProfile.DoesNotExist:
+            return Response({"detail": "Proprietario non trovato."}, status=404)
+
+        if tipo == "entrate":
+            righe_qs = (
+                Receivable.objects.filter(
+                    stato=StatoPagamento.PAGATO,
+                    data_pagamento__year=anno,
+                    incassato_da_owner_id=owner_id,
+                )
+                .select_related("assignment__tenant", "utility_period")
+                .order_by("-data_pagamento", "-id")
+            )
+            righe = [
+                {
+                    "id": r.id,
+                    "tipo": TIPO_PER_CAUSALE[r.causale],
+                    "causale": r.causale,
+                    "causale_label": self.CAUSALE_LABEL[r.causale],
+                    "tenant": r.assignment.tenant.nominativo,
+                    "descrizione": _descrizione_receivable(r),
+                    "importo_dovuto": float(r.importo_dovuto),
+                    "importo_pagato": float(r.importo_pagato or 0),
+                    "scadenza": r.scadenza.isoformat() if r.scadenza else None,
+                    "data_pagamento": (
+                        r.data_pagamento.isoformat() if r.data_pagamento else None
+                    ),
+                    "stato": r.stato,
+                }
+                for r in righe_qs
+            ]
+            totale = sum((r["importo_pagato"] for r in righe), 0.0)
+        else:
+            from billing.models import Expense
+            spese_qs = (
+                Expense.objects.filter(data__year=anno, anticipata_da_owner_id=owner_id)
+                .select_related("category", "supplier")
+                .order_by("-data", "-id")
+            )
+            righe = [
+                {
+                    "id": sp.id,
+                    "data": sp.data.isoformat(),
+                    "categoria": sp.category.nome if sp.category else "—",
+                    "supplier": sp.supplier.nome if sp.supplier else None,
+                    "descrizione": sp.descrizione,
+                    "importo": float(sp.importo),
+                }
+                for sp in spese_qs
+            ]
+            totale = sum((r["importo"] for r in righe), 0.0)
+
+        return Response({
+            "owner_id": owner.id,
+            "owner_nominativo": owner.nominativo,
+            "anno": anno,
+            "tipo": tipo,
+            "totale": totale,
+            "righe": righe,
+        })
+
+
+# ---------------------------------------------------------------------------
 # Quadro annuale
 # ---------------------------------------------------------------------------
 
@@ -587,45 +509,39 @@ class QuadroAnnualeView(APIView):
     permission_classes = [IsProprietario]
 
     def get(self, request, anno: int):
-        # Periodi dell'anno
         periods = UtilityChargePeriod.objects.filter(
             periodo_da__year=anno
         ).order_by("periodo_da")
 
         if not periods.exists():
-            # Prova anche con periodo_a
             periods = UtilityChargePeriod.objects.filter(
                 periodo_a__year=anno
             ).order_by("periodo_da")
 
-        # Tutti i charge per questi periodi
-        charges = (
-            UtilityCharge.objects.filter(period__in=periods)
-            .select_related(
-                "assignment__tenant",
-                "period",
+        receivables = (
+            Receivable.objects.filter(
+                causale=Receivable.Causale.UTENZE,
+                utility_period__in=periods,
             )
-            .order_by("period__periodo_da", "assignment__tenant__nominativo")
+            .select_related("assignment__tenant", "utility_period")
+            .order_by("utility_period__periodo_da", "assignment__tenant__nominativo")
         )
 
-        # Raccoglie i nomi degli inquilini coinvolti (ordinati)
         tenant_names_set = set()
-        for c in charges:
-            tenant_names_set.add(c.assignment.tenant.nominativo)
+        for r in receivables:
+            tenant_names_set.add(r.assignment.tenant.nominativo)
         tenant_names = sorted(tenant_names_set)
 
-        # Indicizzazione: {(period_id, tenant_nominativo): charge}
-        charge_index = {}
-        for c in charges:
-            key = (c.period_id, c.assignment.tenant.nominativo)
-            charge_index[key] = c
+        receivable_index = {}
+        for r in receivables:
+            key = (r.utility_period_id, r.assignment.tenant.nominativo)
+            receivable_index[key] = r
 
         righe = []
         totale_anno_per_tenant: dict[str, Decimal] = {n: Decimal("0") for n in tenant_names}
         totale_anno = Decimal("0")
 
         for period in periods:
-            # Label periodo
             if period.periodo_da.month == period.periodo_a.month:
                 label = period.periodo_da.strftime("%B %Y")
             else:
@@ -638,11 +554,10 @@ class QuadroAnnualeView(APIView):
             per_tenant = {}
 
             for nome in tenant_names:
-                charge = charge_index.get((period.id, nome))
-                if charge:
-                    importo = charge.importo_totale
-                    stato = charge.stato
-                    # Giorni di presenza: da valid_from e valid_to del periodo
+                r = receivable_index.get((period.id, nome))
+                if r:
+                    importo = r.importo_dovuto
+                    stato = r.stato
                     giorni = (period.periodo_a - period.periodo_da).days + 1
                 else:
                     importo = Decimal("0")
@@ -734,8 +649,10 @@ class TenantSituazioneView(APIView):
 
         # Affitti dell'anno (per competenza_da)
         rent_qs = (
-            RentPayment.objects.filter(
-                assignment__tenant=tenant, competenza_da__year=anno
+            Receivable.objects.filter(
+                assignment__tenant=tenant,
+                causale=Receivable.Causale.AFFITTO,
+                competenza_da__year=anno,
             )
             .select_related("assignment__room")
             .order_by("competenza_da")
@@ -748,69 +665,78 @@ class TenantSituazioneView(APIView):
             rent_righe.append({
                 "id": r.id,
                 "competenza_da": r.competenza_da.isoformat(),
-                "competenza_a": r.competenza_a.isoformat(),
+                "competenza_a": r.competenza_a.isoformat() if r.competenza_a else None,
                 "importo_dovuto": float(r.importo_dovuto),
                 "importo_pagato": float(r.importo_pagato or 0),
                 "scadenza": r.scadenza.isoformat(),
                 "stato": r.stato,
                 "giorni_ritardo": giorni,
                 "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
-                "is_aggiustamento": getattr(r, "is_aggiustamento", False),
+                "is_aggiustamento": r.is_aggiustamento,
             })
             rent_dovuto += r.importo_dovuto
             if r.importo_pagato:
                 rent_pagato += r.importo_pagato
 
-        # Conguagli utenze dell'anno (per period.periodo_da)
+        # Conguagli utenze dell'anno (per utility_period.periodo_da)
         utility_qs = (
-            UtilityCharge.objects.filter(
-                assignment__tenant=tenant, period__periodo_da__year=anno
+            Receivable.objects.filter(
+                assignment__tenant=tenant,
+                causale=Receivable.Causale.UTENZE,
+                utility_period__periodo_da__year=anno,
             )
-            .select_related("period")
-            .prefetch_related("lines")
-            .order_by("period__periodo_da")
+            .select_related("utility_period")
+            .prefetch_related("utility_lines")
+            .order_by("utility_period__periodo_da")
         )
         utility_righe = []
         utility_dovuto = Decimal("0")
         utility_pagato = Decimal("0")
-        for c in utility_qs:
+        for r in utility_qs:
             lines = [
                 {"voce": ln.voce, "importo": float(ln.importo)}
-                for ln in c.lines.all()
+                for ln in r.utility_lines.all()
             ]
+            period = r.utility_period
             utility_righe.append({
-                "id": c.id,
-                "period_id": c.period_id,
-                "period_da": c.period.periodo_da.isoformat(),
-                "period_a": c.period.periodo_a.isoformat(),
-                "importo_totale": float(c.importo_totale),
-                "importo_pagato": float(c.importo_pagato or 0),
-                "scadenza": c.scadenza.isoformat() if c.scadenza else None,
-                "stato": c.stato,
-                "data_pagamento": c.data_pagamento.isoformat() if c.data_pagamento else None,
+                "id": r.id,
+                "period_id": period.id if period else None,
+                "period_da": period.periodo_da.isoformat() if period else r.competenza_da.isoformat(),
+                "period_a": period.periodo_a.isoformat() if period else (
+                    r.competenza_a.isoformat() if r.competenza_a else None
+                ),
+                "importo_totale": float(r.importo_dovuto),
+                "importo_pagato": float(r.importo_pagato or 0),
+                "scadenza": r.scadenza.isoformat() if r.scadenza else None,
+                "stato": r.stato,
+                "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
                 "lines": lines,
             })
-            utility_dovuto += c.importo_totale
-            if c.importo_pagato:
-                utility_pagato += c.importo_pagato
+            utility_dovuto += r.importo_dovuto
+            if r.importo_pagato:
+                utility_pagato += r.importo_pagato
 
-        # Addebiti extra dell'anno
+        # Addebiti extra dell'anno (filtra su competenza_da come data dell'addebito)
         extra_qs = (
-            ExtraCharge.objects.filter(assignment__tenant=tenant, data__year=anno)
-            .order_by("data")
+            Receivable.objects.filter(
+                assignment__tenant=tenant,
+                causale=Receivable.Causale.EXTRA,
+                competenza_da__year=anno,
+            )
+            .order_by("competenza_da")
         )
         extra_righe = []
         extra_totale = Decimal("0")
-        for e in extra_qs:
+        for r in extra_qs:
             extra_righe.append({
-                "id": e.id,
-                "data": e.data.isoformat(),
-                "descrizione": e.descrizione,
-                "importo": float(e.importo),
-                "scadenza": e.scadenza.isoformat() if e.scadenza else None,
-                "stato": e.stato,
+                "id": r.id,
+                "data": r.competenza_da.isoformat(),
+                "descrizione": r.descrizione,
+                "importo": float(r.importo_dovuto),
+                "scadenza": r.scadenza.isoformat() if r.scadenza else None,
+                "stato": r.stato,
             })
-            extra_totale += e.importo
+            extra_totale += r.importo_dovuto
 
         # Ritardo medio (giorni positivi su rent pagati nell'anno)
         ritardi_giorni = []
@@ -828,7 +754,7 @@ class TenantSituazioneView(APIView):
         totale_dovuto = rent_dovuto + utility_dovuto + extra_totale
         totale_pagato = rent_pagato + utility_pagato
 
-        # Quota condominio: dal contratto attivo (in vigore alla data oggi)
+        # Quota condominio: dal contratto attivo
         contract_attivo = (
             Contract.objects.filter(data_decorrenza__lte=oggi)
             .select_related("default_pagatore_bollette")

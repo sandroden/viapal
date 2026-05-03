@@ -111,6 +111,40 @@ export interface BilancioProprietario {
   saldo: number;
 }
 
+export type TipoBilancio = 'entrate' | 'uscite';
+
+export interface BilancioDettaglioEntrata {
+  id: number;
+  tipo: TipoPagamento;
+  causale: string;
+  causale_label: string;
+  tenant: string;
+  descrizione: string;
+  importo_dovuto: number;
+  importo_pagato: number;
+  scadenza: string | null;
+  data_pagamento: string | null;
+  stato: string;
+}
+
+export interface BilancioDettaglioUscita {
+  id: number;
+  data: string;
+  categoria: string;
+  supplier: string | null;
+  descrizione: string;
+  importo: number;
+}
+
+export interface BilancioDettaglioResponse {
+  owner_id: number;
+  owner_nominativo: string;
+  anno: number;
+  tipo: TipoBilancio;
+  totale: number;
+  righe: BilancioDettaglioEntrata[] | BilancioDettaglioUscita[];
+}
+
 export interface ProprietarioDashboardData {
   anno: number;
   mese: number;
@@ -130,9 +164,15 @@ interface State {
   inquilinoData: InquilinoDashboardData | null;
   proprietarioData: ProprietarioDashboardData | null;
   proprietarioByPeriodo: Record<string, ProprietarioDashboardData>;
+  bilancioDettaglio: Record<string, BilancioDettaglioResponse>;
   loadingInquilino: boolean;
   loadingProprietario: boolean;
+  loadingBilancioDettaglio: boolean;
   errore: string | null;
+}
+
+function chiaveBilancio(ownerId: number, anno: number, tipo: TipoBilancio): string {
+  return `${ownerId}-${anno}-${tipo}`;
 }
 
 function chiavePeriodo(anno: number, mese: number): string {
@@ -144,8 +184,10 @@ export const useDashboardStore = defineStore('dashboard', {
     inquilinoData: null,
     proprietarioData: null,
     proprietarioByPeriodo: {},
+    bilancioDettaglio: {},
     loadingInquilino: false,
     loadingProprietario: false,
+    loadingBilancioDettaglio: false,
     errore: null,
   }),
   actions: {
@@ -187,10 +229,36 @@ export const useDashboardStore = defineStore('dashboard', {
         this.loadingProprietario = false;
       }
     },
+    async loadDettaglioBilancio(
+      ownerId: number,
+      anno: number,
+      tipo: TipoBilancio,
+      force = false,
+    ): Promise<BilancioDettaglioResponse | null> {
+      const key = chiaveBilancio(ownerId, anno, tipo);
+      const cached = this.bilancioDettaglio[key];
+      if (cached && !force) return cached;
+      this.loadingBilancioDettaglio = true;
+      this.errore = null;
+      try {
+        const { data } = await api.get<BilancioDettaglioResponse>(
+          `/api/v1/dashboard/proprietario/${ownerId}/dettaglio-bilancio/`,
+          { params: { anno, tipo } },
+        );
+        this.bilancioDettaglio[key] = data;
+        return data;
+      } catch (e: unknown) {
+        this.errore = (e as Error)?.message ?? 'Errore nel caricamento';
+        return null;
+      } finally {
+        this.loadingBilancioDettaglio = false;
+      }
+    },
     invalida(): void {
       this.inquilinoData = null;
       this.proprietarioData = null;
       this.proprietarioByPeriodo = {};
+      this.bilancioDettaglio = {};
     },
   },
 });

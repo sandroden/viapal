@@ -46,6 +46,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/ProprietarioQuickAdd.vue'),
       },
       {
+        path: 'bilancio/:ownerId',
+        name: 'p-bilancio-dettaglio',
+        component: () => import('pages/ProprietarioBilancioDettaglio.vue'),
+      },
+      {
         path: ':catchAll(.*)*',
         component: () => import('pages/ErrorNotFound.vue'),
       },

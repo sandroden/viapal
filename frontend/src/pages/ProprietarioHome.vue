@@ -238,6 +238,30 @@
           hide-bottom
           class="vp-p-home__bilancio"
         >
+          <template #body-cell-entrate_totali="props">
+            <q-td :props="props" class="text-right">
+              <button
+                type="button"
+                class="vp-p-home__cella-cliccabile vp-mono"
+                :disabled="props.row.entrate_totali === 0"
+                @click="apriDettaglioEntrate(props.row)"
+              >
+                {{ formattaEuro(props.row.entrate_totali) }}
+              </button>
+            </q-td>
+          </template>
+          <template #body-cell-uscite="props">
+            <q-td :props="props" class="text-right">
+              <button
+                type="button"
+                class="vp-p-home__cella-cliccabile vp-mono"
+                :disabled="props.row.uscite === 0"
+                @click="apriDettaglioUscite(props.row)"
+              >
+                {{ formattaEuro(props.row.uscite) }}
+              </button>
+            </q-td>
+          </template>
           <template #body-cell-saldo="props">
             <q-td :props="props" class="text-right">
               <span
@@ -249,6 +273,62 @@
             </q-td>
           </template>
         </q-table>
+
+        <q-dialog v-model="dettaglioBilancioOpen">
+          <q-card class="vp-p-home__dialog">
+            <q-card-section class="row items-center q-pb-none">
+              <div class="vp-display vp-p-home__dialog-titolo">
+                {{ dettaglioBilancioTitolo }}
+              </div>
+              <q-space />
+              <q-btn icon="close" flat round dense v-close-popup />
+            </q-card-section>
+            <q-card-section>
+              <div class="vp-eyebrow">
+                {{ dettaglioBilancioOwner?.nominativo }} — anno {{ data.anno }}
+              </div>
+              <q-list dense class="vp-p-home__breakdown">
+                <q-item v-for="row in dettaglioBilancioVoci" :key="row.nome">
+                  <q-item-section>{{ row.nome }}</q-item-section>
+                  <q-item-section side class="vp-mono">
+                    {{ formattaEuro(row.importo) }}
+                  </q-item-section>
+                </q-item>
+                <q-item v-if="dettaglioBilancioVoci.length === 0">
+                  <q-item-section class="text-italic">
+                    Nessuna voce.
+                  </q-item-section>
+                </q-item>
+                <q-separator />
+                <q-item>
+                  <q-item-section class="text-bold">Totale</q-item-section>
+                  <q-item-section side class="vp-mono text-bold">
+                    {{ formattaEuro(dettaglioBilancioTotale) }}
+                  </q-item-section>
+                </q-item>
+              </q-list>
+            </q-card-section>
+            <q-card-actions
+              v-if="dettaglioBilancioOwner"
+              align="right"
+              class="q-px-md q-pb-md"
+            >
+              <q-btn
+                flat
+                color="primary"
+                no-caps
+                icon-right="arrow_forward"
+                label="Vedi tutte le voci"
+                :to="{
+                  name: 'p-bilancio-dettaglio',
+                  params: { ownerId: dettaglioBilancioOwner.owner_id },
+                  query: { anno: data.anno, tipo: dettaglioBilancioTipo },
+                }"
+                @click="dettaglioBilancioOpen = false"
+              />
+            </q-card-actions>
+          </q-card>
+        </q-dialog>
       </section>
 
       <section v-if="data.is_storico" class="vp-p-home__nota-storico">
@@ -268,7 +348,7 @@
 import { computed, onMounted, ref } from 'vue';
 import type { QTableProps } from 'quasar';
 import { useAuthStore } from 'stores/auth';
-import { useDashboardStore } from 'stores/dashboard';
+import { useDashboardStore, type BilancioProprietario } from 'stores/dashboard';
 import KpiCard from 'src/components/KpiCard.vue';
 import SemaforoBadge from 'src/components/SemaforoBadge.vue';
 import type { SemaforoLivello } from 'src/types/semaforo';
@@ -287,6 +367,50 @@ const meseCorrente = oggi.getMonth() + 1;
 
 const annoSelezionato = ref<number>(annoCorrente);
 const meseSelezionato = ref<number>(meseCorrente);
+
+type DettaglioBilancioTipo = 'entrate' | 'uscite';
+const dettaglioBilancioOpen = ref(false);
+const dettaglioBilancioTipo = ref<DettaglioBilancioTipo>('entrate');
+const dettaglioBilancioOwner = ref<BilancioProprietario | null>(null);
+
+const dettaglioBilancioTitolo = computed(() =>
+  dettaglioBilancioTipo.value === 'entrate' ? 'Entrate — dettaglio' : 'Uscite — dettaglio',
+);
+
+const dettaglioBilancioVoci = computed<{ nome: string; importo: number }[]>(() => {
+  const owner = dettaglioBilancioOwner.value;
+  if (!owner) return [];
+  if (dettaglioBilancioTipo.value === 'entrate') {
+    return [
+      { nome: 'Affitti', importo: owner.entrate_rent },
+      { nome: 'Conguagli utenze', importo: owner.entrate_utility },
+      { nome: 'Addebiti extra', importo: owner.entrate_extra },
+    ].filter((v) => v.importo !== 0);
+  }
+  return Object.entries(owner.uscite_dettaglio)
+    .map(([nome, importo]) => ({ nome, importo }))
+    .sort((a, b) => b.importo - a.importo);
+});
+
+const dettaglioBilancioTotale = computed(() => {
+  const owner = dettaglioBilancioOwner.value;
+  if (!owner) return 0;
+  return dettaglioBilancioTipo.value === 'entrate' ? owner.entrate_totali : owner.uscite;
+});
+
+function apriDettaglioEntrate(owner: BilancioProprietario) {
+  if (owner.entrate_totali === 0) return;
+  dettaglioBilancioOwner.value = owner;
+  dettaglioBilancioTipo.value = 'entrate';
+  dettaglioBilancioOpen.value = true;
+}
+
+function apriDettaglioUscite(owner: BilancioProprietario) {
+  if (owner.uscite === 0) return;
+  dettaglioBilancioOwner.value = owner;
+  dettaglioBilancioTipo.value = 'uscite';
+  dettaglioBilancioOpen.value = true;
+}
 
 const ANNO_MIN = annoCorrente - 5;
 const ANNO_MAX = annoCorrente;
@@ -458,5 +582,32 @@ const colonneBreakdown: QTableProps['columns'] = [
 .text-negative { color: var(--vp-argilla, #9c4a4a); }
 .vp-mono {
   font-variant-numeric: tabular-nums;
+}
+.vp-p-home__cella-cliccabile {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--vp-terra, #b56a3b);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.vp-p-home__cella-cliccabile:hover {
+  color: var(--vp-ink);
+}
+.vp-p-home__cella-cliccabile:disabled {
+  color: var(--vp-ink-3);
+  text-decoration: none;
+  cursor: default;
+}
+.vp-p-home__dialog {
+  min-width: min(480px, 92vw);
+  max-width: 640px;
+  border-radius: var(--vp-r-lg);
+  background: var(--vp-cream);
+}
+.vp-p-home__dialog-titolo {
+  font-size: var(--vp-text-xl);
 }
 </style>
