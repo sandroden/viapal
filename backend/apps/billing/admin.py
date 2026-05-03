@@ -1,7 +1,7 @@
 """
 Admin Django per l'app billing.
-Gestisce pagamenti affitto, transazioni bancarie, fornitori,
-categorie spese, spese, addebiti extra, bollette e conguagli utenze.
+Gestisce: addebiti inquilini (Receivable, con filtro per causale: affitto/utenze/extra),
+fornitori, categorie spese, spese, bollette, conguagli utenze e transazioni bancarie.
 """
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
@@ -11,14 +11,13 @@ from jmb.jadmin import JumboModelAdmin, ModalEditMixin
 from .models import (
     AnnualUtilityCost,
     BankTransaction,
+    BankTransactionAllocation,
     Expense,
     ExpenseCategory,
-    ExtraCharge,
-    RentPayment,
+    Receivable,
     Supplier,
     TenantCondominioRate,
     UtilityBill,
-    UtilityCharge,
     UtilityChargeLine,
     UtilityChargePeriod,
 )
@@ -29,25 +28,41 @@ from .models import (
 # ---------------------------------------------------------------------------
 
 
-class UtilityChargeInline(admin.TabularInline):
-    """Addebiti utenze per inquilino in linea nel periodo (sola lettura)."""
+class ReceivableUtilityInline(admin.TabularInline):
+    """Addebiti utenze (Receivable causale=utenze) inline nel UtilityChargePeriod."""
 
-    model = UtilityCharge
+    model = Receivable
+    fk_name = "utility_period"
     extra = 0
-    fields = ("assignment", "importo_totale", "scadenza", "stato")
-    readonly_fields = ("assignment", "importo_totale", "scadenza", "stato")
+    fields = ("assignment", "importo_dovuto", "scadenza", "stato")
+    readonly_fields = ("assignment", "importo_dovuto", "scadenza", "stato")
     show_change_link = True
+    verbose_name = "addebito utenze inquilino"
+    verbose_name_plural = "addebiti utenze inquilini"
 
     def has_add_permission(self, request, obj=None):
         return False
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(causale=Receivable.Causale.UTENZE)
+
 
 class UtilityChargeLineInline(admin.TabularInline):
-    """Righe di dettaglio conguaglio in linea nel conguaglio inquilino."""
+    """Righe di dettaglio (luce/gas/TARI) inline su Receivable utenze."""
 
     model = UtilityChargeLine
+    fk_name = "receivable"
     extra = 0
     fields = ("voce", "importo", "dettaglio")
+
+
+class BankTransactionAllocationInline(admin.TabularInline):
+    """Allocazioni inline su BankTransaction (bonifico → addebiti)."""
+
+    model = BankTransactionAllocation
+    extra = 0
+    fields = ("receivable", "importo")
+    autocomplete_fields = ("receivable",)
 
 
 # ---------------------------------------------------------------------------
@@ -56,8 +71,12 @@ class UtilityChargeLineInline(admin.TabularInline):
 
 
 @admin.register(Supplier)
-class SupplierAdmin(JumboModelAdmin):
-    list_display = ("nome", "tipo", "partita_iva")
+class SupplierAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 700
+    list_display = (
+        "nome", "tipo", "partita_iva",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     list_filter = ("tipo",)
     search_fields = ("nome", "partita_iva")
     ordering = ("nome",)
@@ -78,39 +97,76 @@ class SupplierAdmin(JumboModelAdmin):
 
 
 @admin.register(ExpenseCategory)
-class ExpenseCategoryAdmin(JumboModelAdmin):
-    list_display = ("nome", "codice", "ripartibile_inquilini")
+class ExpenseCategoryAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 600
+    list_display = (
+        "nome", "codice", "ripartibile_inquilini",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     search_fields = ("nome", "codice")
     ordering = ("nome",)
 
 
 # ---------------------------------------------------------------------------
-# RentPayment
+# Receivable (addebito unificato: affitto / utenze / extra)
 # ---------------------------------------------------------------------------
 
 
-@admin.register(RentPayment)
-class RentPaymentAdmin(ModalEditMixin, JumboModelAdmin):
-    modal_edit_width = 900
+@admin.register(Receivable)
+class ReceivableAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 1000
     list_display = (
-        "assignment", "competenza_da", "competenza_a",
-        "importo_dovuto", "importo_pagato", "stato",
+        "causale", "assignment", "competenza_da", "competenza_a",
+        "importo_dovuto", "scadenza", "stato",
+        "incassato_da_owner",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
-    list_filter = ("stato", "competenza_da", "is_aggiustamento")
+    list_filter = ("causale", "stato", "is_aggiustamento")
     search_fields = (
+        "descrizione",
         "assignment__tenant__nominativo",
         "assignment__room__nome",
     )
-    list_select_related = ("assignment__tenant", "assignment__room")
-    autocomplete_fields = ("assignment", "incassato_da_owner", "bank_account_destinazione")
-    date_hierarchy = "competenza_da"
+    list_select_related = (
+        "assignment__tenant", "assignment__room",
+        "incassato_da_owner", "utility_period",
+    )
+    autocomplete_fields = (
+        "assignment", "incassato_da_owner",
+        "bank_account_destinazione", "utility_period",
+    )
+    date_hierarchy = "scadenza"
     ordering = ("-scadenza", "assignment__tenant__nominativo")
+    inlines = (UtilityChargeLineInline,)
+    advanced_search_fields = (
+        ("assignment__tenant__nominativo__icontains:inquilino",
+         "assignment__room__nome__icontains:stanza",
+         "descrizione__icontains:descrizione"),
+        ("causale", "stato", "is_aggiustamento"),
+        ("scadenza__range", "scadenza__gte:scadenza ≥", "scadenza__lte:scadenza ≤"),
+        ("competenza_da__range", "competenza_da__gte:competenza ≥", "competenza_da__lte:competenza ≤"),
+        ("importo_dovuto__gte:dovuto ≥", "importo_dovuto__lte:dovuto ≤"),
+        ("data_pagamento__range", "incassato_da_owner:incassato da", "utility_period:periodo conguaglio"),
+    )
+
+    def lookup_allowed(self, lookup, value, request):
+        # Whitelist dei lookup attraverso FK profonde usati in advanced_search_fields:
+        # Django blocca per default i lookup che attraversano relazioni > 1 livello.
+        if lookup in {
+            "assignment__tenant__nominativo__icontains",
+            "assignment__room__nome__icontains",
+        }:
+            return True
+        return super().lookup_allowed(lookup, value, request)
     fieldsets = (
-        ("Periodo", {
-            "fields": ("assignment", "competenza_da", "competenza_a", "scadenza", "is_aggiustamento"),
+        ("Addebito", {
+            "fields": (
+                "assignment", "causale", "descrizione",
+                "competenza_da", "competenza_a", "scadenza",
+                "is_aggiustamento", "utility_period",
+            ),
         }),
-        ("Importi", {
+        ("Importi e stato", {
             "fields": ("importo_dovuto", "importo_pagato", "stato", "data_pagamento"),
         }),
         ("Riconciliazione bancaria", {
@@ -131,24 +187,29 @@ class RentPaymentAdmin(ModalEditMixin, JumboModelAdmin):
 
 
 @admin.register(BankTransaction)
-class BankTransactionAdmin(JumboModelAdmin):
+class BankTransactionAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 900
     list_display = (
         "data", "descrizione_breve", "importo",
-        "owner_account", "riconciliato_con_payment",
+        "owner_account", "n_allocations",
+        "get_modal_edit_icon", "get_modal_delete_icon",
     )
     list_filter = ("owner_account",)
     search_fields = ("descrizione",)
-    list_select_related = ("owner_account__owner", "riconciliato_con_payment")
-    autocomplete_fields = ("owner_account", "riconciliato_con_payment", "riconciliato_con_charge")
+    list_select_related = ("owner_account__owner",)
+    autocomplete_fields = ("owner_account",)
     date_hierarchy = "data"
     ordering = ("-data",)
+    inlines = (BankTransactionAllocationInline,)
+    advanced_search_fields = (
+        ("descrizione__icontains:descrizione", "note__icontains:note"),
+        ("data__range", "data__gte:dal", "data__lte:al"),
+        ("importo__gte:importo ≥", "importo__lte:importo ≤"),
+        ("owner_account:conto",),
+    )
     fieldsets = (
         ("Transazione", {
             "fields": ("data", "descrizione", "importo", "owner_account"),
-        }),
-        ("Riconciliazione", {
-            "fields": ("riconciliato_con_payment", "riconciliato_con_charge"),
-            "classes": ("collapse",),
         }),
         ("Note", {
             "fields": ("note",),
@@ -161,6 +222,10 @@ class BankTransactionAdmin(JumboModelAdmin):
     def descrizione_breve(self, obj):
         return (obj.descrizione[:60] + "…") if len(obj.descrizione) > 60 else obj.descrizione
 
+    @admin.display(description="Allocazioni")
+    def n_allocations(self, obj):
+        return obj.allocations.count()
+
 
 # ---------------------------------------------------------------------------
 # Expense
@@ -168,10 +233,12 @@ class BankTransactionAdmin(JumboModelAdmin):
 
 
 @admin.register(Expense)
-class ExpenseAdmin(JumboModelAdmin):
+class ExpenseAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 900
     list_display = (
         "data", "category", "supplier", "importo",
         "anticipata_da_owner", "ripartibile_su_inquilini",
+        "get_modal_edit_icon", "get_modal_delete_icon",
     )
     list_filter = ("category", "anticipata_da_owner", "ripartibile_su_inquilini")
     search_fields = ("descrizione", "category__nome", "supplier__nome")
@@ -179,6 +246,12 @@ class ExpenseAdmin(JumboModelAdmin):
     autocomplete_fields = ("category", "supplier", "anticipata_da_owner", "riferimento_quota_owner")
     date_hierarchy = "data"
     ordering = ("-data",)
+    advanced_search_fields = (
+        ("descrizione__icontains:descrizione", "category", "supplier"),
+        ("data__range", "data__gte:dal", "data__lte:al"),
+        ("importo__gte:importo ≥", "importo__lte:importo ≤"),
+        ("anticipata_da_owner:anticipata da", "ripartibile_su_inquilini"),
+    )
     fieldsets = (
         ("Spesa", {
             "fields": ("data", "descrizione", "category", "supplier", "importo", "ripartibile_su_inquilini"),
@@ -199,61 +272,36 @@ class ExpenseAdmin(JumboModelAdmin):
 
 
 # ---------------------------------------------------------------------------
-# ExtraCharge
-# ---------------------------------------------------------------------------
-
-
-@admin.register(ExtraCharge)
-class ExtraChargeAdmin(ModalEditMixin, JumboModelAdmin):
-    modal_edit_width = 900
-    list_display = (
-        "assignment", "descrizione", "importo", "scadenza",
-        "stato", "data_pagamento",
-        "get_modal_edit_icon", "get_modal_delete_icon",
-    )
-    list_filter = ("stato",)
-    search_fields = ("descrizione", "assignment__tenant__nominativo")
-    list_select_related = ("assignment__tenant",)
-    autocomplete_fields = ("assignment",)
-    ordering = ("-scadenza",)
-    fieldsets = (
-        ("Addebito", {
-            "fields": ("assignment", "data", "descrizione", "importo", "scadenza", "stato"),
-        }),
-        ("Pagamento", {
-            "fields": ("data_pagamento", "importo_pagato"),
-        }),
-        ("Note", {
-            "fields": ("note",),
-            "classes": ("collapse",),
-        }),
-    )
-    readonly_fields = ("created_at", "updated_at")
-
-
-# ---------------------------------------------------------------------------
 # UtilityBill
 # ---------------------------------------------------------------------------
 
 
 @admin.register(UtilityBill)
-class UtilityBillAdmin(JumboModelAdmin):
+class UtilityBillAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 900
     list_display = (
-        "supplier", "numero_fattura", "periodo_da",
-        "periodo_a", "importo_totale", "pagata_da_owner",
+        "supplier", "prodotto", "numero_fattura", "periodo_da",
+        "periodo_a", "consumo", "importo_totale", "pagata_da_owner",
+        "get_modal_edit_icon", "get_modal_delete_icon",
     )
-    list_filter = ("supplier",)
+    list_filter = ("prodotto", "supplier")
     search_fields = ("numero_fattura", "supplier__nome")
     list_select_related = ("supplier", "pagata_da_owner")
     autocomplete_fields = ("supplier", "pagata_da_owner")
     date_hierarchy = "periodo_da"
     ordering = ("-data_emissione",)
+    advanced_search_fields = (
+        ("supplier", "prodotto", "numero_fattura__icontains:numero fattura"),
+        ("periodo_da__range", "periodo_da__gte:periodo dal ≥", "periodo_a__lte:periodo al ≤"),
+        ("data_emissione__range", "data_emissione__gte:emessa dal", "data_emissione__lte:emessa al"),
+        ("importo_totale__gte:importo ≥", "importo_totale__lte:importo ≤", "pagata_da_owner:pagata da"),
+    )
     fieldsets = (
         ("Bolletta", {
-            "fields": ("supplier", "numero_fattura", "data_emissione"),
+            "fields": ("supplier", "prodotto", "numero_fattura", "data_emissione"),
         }),
-        ("Periodo e importo", {
-            "fields": ("periodo_da", "periodo_a", "importo_totale"),
+        ("Periodo, consumo e importo", {
+            "fields": ("periodo_da", "periodo_a", "consumo", "importo_totale"),
         }),
         ("Pagamento", {
             "fields": ("pagata_da_owner", "file_pdf"),
@@ -273,8 +321,12 @@ class UtilityBillAdmin(JumboModelAdmin):
 
 
 @admin.register(AnnualUtilityCost)
-class AnnualUtilityCostAdmin(JumboModelAdmin):
-    list_display = ("voce", "anno", "importo_annuale", "valid_from", "valid_to")
+class AnnualUtilityCostAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 700
+    list_display = (
+        "voce", "anno", "importo_annuale", "valid_from", "valid_to",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     list_filter = ("voce", "anno")
     ordering = ("-anno", "voce")
     fieldsets = (
@@ -298,15 +350,17 @@ class AnnualUtilityCostAdmin(JumboModelAdmin):
 
 
 @admin.register(UtilityChargePeriod)
-class UtilityChargePeriodAdmin(JumboModelAdmin):
+class UtilityChargePeriodAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 900
     list_display = (
         "periodo_da", "periodo_a",
         "criterio_ripartizione", "stato", "data_invio",
+        "get_modal_edit_icon", "get_modal_delete_icon",
     )
     list_filter = ("stato", "criterio_ripartizione")
     search_fields = ("periodo_da", "periodo_a")
     ordering = ("-periodo_da",)
-    inlines = (UtilityChargeInline,)
+    inlines = (ReceivableUtilityInline,)
     fieldsets = (
         ("Periodo", {
             "fields": ("periodo_da", "periodo_a", "criterio_ripartizione", "stato", "data_invio"),
@@ -321,66 +375,51 @@ class UtilityChargePeriodAdmin(JumboModelAdmin):
     readonly_fields = ("created_at", "updated_at")
     tabs = (
         (_("Periodo"), {"items": ["Periodo"]}),
-        (_("Charges per inquilino"), {"items": [UtilityChargeInline]}),
+        (_("Charges per inquilino"), {"items": [ReceivableUtilityInline]}),
         (_("Import storico"), {"items": ["Import storico"]}),
         (_("Note"), {"items": ["Note"]}),
     )
 
 
 # ---------------------------------------------------------------------------
-# UtilityCharge
-# ---------------------------------------------------------------------------
-
-
-@admin.register(UtilityCharge)
-class UtilityChargeAdmin(ModalEditMixin, JumboModelAdmin):
-    modal_edit_width = 900
-    list_display = (
-        "assignment", "period", "importo_totale",
-        "scadenza", "stato", "importo_pagato",
-        "get_modal_edit_icon", "get_modal_delete_icon",
-    )
-    list_filter = ("stato", "period")
-    search_fields = (
-        "assignment__tenant__nominativo",
-        "period__periodo_da",
-    )
-    list_select_related = ("assignment__tenant", "period")
-    autocomplete_fields = ("assignment", "period")
-    ordering = ("-period__periodo_da", "assignment__tenant__nominativo")
-    inlines = (UtilityChargeLineInline,)
-    fieldsets = (
-        ("Conguaglio", {
-            "fields": ("period", "assignment", "importo_totale", "scadenza", "stato"),
-        }),
-        ("Pagamento", {
-            "fields": ("data_pagamento", "importo_pagato", "ricevuta"),
-            "classes": ("collapse",),
-        }),
-        ("Note", {
-            "fields": ("note",),
-            "classes": ("collapse",),
-        }),
-    )
-    readonly_fields = ("created_at", "updated_at")
-
-
-# ---------------------------------------------------------------------------
-# UtilityChargeLine (standalone + inline sopra)
+# UtilityChargeLine (standalone)
 # ---------------------------------------------------------------------------
 
 
 @admin.register(UtilityChargeLine)
-class UtilityChargeLineAdmin(JumboModelAdmin):
-    list_display = ("charge", "voce", "importo")
+class UtilityChargeLineAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 600
+    list_display = (
+        "receivable", "voce", "importo",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     list_filter = ("voce",)
-    list_select_related = ("charge__assignment__tenant", "charge__period")
-    autocomplete_fields = ("charge",)
-    ordering = ("charge__period__periodo_da", "voce")
-    search_fields = ("charge__assignment__tenant__nominativo",)
+    list_select_related = ("receivable__assignment__tenant", "receivable__utility_period")
+    autocomplete_fields = ("receivable",)
+    ordering = ("receivable__utility_period__periodo_da", "voce")
+    search_fields = ("receivable__assignment__tenant__nominativo",)
+    advanced_search_fields = (
+        ("voce", "receivable__assignment__tenant__nominativo__icontains:inquilino"),
+        ("receivable__utility_period:periodo conguaglio",),
+        ("receivable__competenza_da__range", "receivable__competenza_da__gte:competenza ≥",
+         "receivable__competenza_da__lte:competenza ≤"),
+        ("importo__gte:importo ≥", "importo__lte:importo ≤"),
+    )
+
+    def lookup_allowed(self, lookup, value, request):
+        # Whitelist lookup attraverso FK profonde usati in advanced_search_fields.
+        if lookup in {
+            "receivable__assignment__tenant__nominativo__icontains",
+            "receivable__utility_period",
+            "receivable__competenza_da__range",
+            "receivable__competenza_da__gte",
+            "receivable__competenza_da__lte",
+        }:
+            return True
+        return super().lookup_allowed(lookup, value, request)
     fieldsets = (
         ("Riga", {
-            "fields": ("charge", "voce", "importo", "dettaglio"),
+            "fields": ("receivable", "voce", "importo", "dettaglio"),
         }),
     )
 
