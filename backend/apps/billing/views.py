@@ -147,7 +147,7 @@ class RentPaymentViewSet(_ReceivableMixin, ModelViewSet):
 
 
 class UtilityChargeViewSet(_ReceivableMixin, ModelViewSet):
-    """Conguagli utenze (Receivable causale=utenze)."""
+    """Utenze (Receivable causale=utenze)."""
 
     causale = Receivable.Causale.UTENZE
     serializer_class = UtilityChargeSerializer
@@ -171,7 +171,7 @@ class ExtraChargeViewSet(_ReceivableMixin, ModelViewSet):
 
 
 class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
-    """Periodi di conguaglio utenze. Solo proprietari."""
+    """Periodi utenze. Solo proprietari."""
 
     serializer_class = UtilityChargePeriodSerializer
     permission_classes = [IsProprietario]

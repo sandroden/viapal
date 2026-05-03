@@ -31,7 +31,7 @@
         v-if="item.tipo === 'utility_charge'"
         flat
         color="primary"
-        :to="`/i/conguaglio/${item.id}`"
+        :to="`/i/utenze/${item.id}`"
         label="Dettaglio"
       />
     </footer>
@@ -55,7 +55,7 @@ const tipoLabel = computed(() => {
     case 'rent':
       return 'Affitto';
     case 'utility_charge':
-      return 'Conguaglio utenze';
+      return 'Utenze';
     case 'extra':
       return 'Spesa extra';
     default:

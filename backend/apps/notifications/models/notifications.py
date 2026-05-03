@@ -50,7 +50,7 @@ class ReminderRule(TimestampedModel):
 
     class ApplicabileA(models.TextChoices):
         AFFITTO = "affitto", "Affitto"
-        CONGUAGLIO = "conguaglio", "Conguaglio utenze"
+        CONGUAGLIO = "conguaglio", "Utenze"
         EXTRA = "extra", "Addebito extra"
 
     class CanaleSollecito(models.TextChoices):

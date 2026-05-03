@@ -242,7 +242,7 @@ class TestUtilityCharge:
             )
 
     def test_str_period(self, db, period):
-        assert "Conguaglio" in str(period)
+        assert "Utenze" in str(period)
         assert "2024-10-01" in str(period)
 
     def test_charges_via_reverse_relation(self, db, period, assignment):

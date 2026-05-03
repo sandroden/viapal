@@ -110,7 +110,7 @@ class Receivable(TimestampedModel):
         related_name="receivables",
         null=True,
         blank=True,
-        verbose_name="periodo conguaglio",
+        verbose_name="periodo utenze",
         help_text="Valorizzato per causale=utenze.",
     )
 

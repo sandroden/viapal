@@ -70,7 +70,7 @@
                 </q-item-section>
               </q-item>
               <q-item>
-                <q-item-section>Conguagli utenze</q-item-section>
+                <q-item-section>Utenze</q-item-section>
                 <q-item-section side class="vp-mono">
                   {{ formattaEuro(data.incasso_anno_dettaglio.utility) }}
                 </q-item-section>
@@ -383,7 +383,7 @@ const dettaglioBilancioVoci = computed<{ nome: string; importo: number }[]>(() =
   if (dettaglioBilancioTipo.value === 'entrate') {
     return [
       { nome: 'Affitti', importo: owner.entrate_rent },
-      { nome: 'Conguagli utenze', importo: owner.entrate_utility },
+      { nome: 'Utenze', importo: owner.entrate_utility },
       { nome: 'Addebiti extra', importo: owner.entrate_extra },
     ].filter((v) => v.importo !== 0);
   }
@@ -488,7 +488,7 @@ const colonneBreakdown: QTableProps['columns'] = [
   },
   {
     name: 'utility',
-    label: 'Conguagli',
+    label: 'Utenze',
     field: 'utility',
     align: 'right',
     format: (v: number) => formattaEuro(v),

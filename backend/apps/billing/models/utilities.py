@@ -1,5 +1,5 @@
 """
-Modelli per bollette, TARI, periodi di conguaglio e addebiti utenze inquilini.
+Modelli per bollette, TARI, periodi e addebiti utenze inquilini.
 """
 from django.db import models
 
@@ -137,7 +137,7 @@ class AnnualUtilityCost(TimestampedModel):
 
 
 class UtilityChargePeriod(TimestampedModel):
-    """Periodo di conguaglio utenze (mensile o bimestrale)."""
+    """Periodo utenze (mensile o bimestrale)."""
 
     class CriterioRipartizione(models.TextChoices):
         A_TESTA = "a_testa", "A testa (uguale per tutti)"
@@ -183,12 +183,12 @@ class UtilityChargePeriod(TimestampedModel):
     )
 
     class Meta:
-        verbose_name = "periodo conguaglio utenze"
-        verbose_name_plural = "periodi conguaglio utenze"
+        verbose_name = "periodo utenze"
+        verbose_name_plural = "periodi utenze"
         ordering = ["-periodo_da"]
 
     def __str__(self):
-        return f"Conguaglio {self.periodo_da} / {self.periodo_a} ({self.get_stato_display()})"
+        return f"Utenze {self.periodo_da} / {self.periodo_a} ({self.get_stato_display()})"
 
 
 class UtilityChargeLine(TimestampedModel):
@@ -223,8 +223,8 @@ class UtilityChargeLine(TimestampedModel):
     )
 
     class Meta:
-        verbose_name = "riga conguaglio"
-        verbose_name_plural = "righe conguaglio"
+        verbose_name = "riga utenze"
+        verbose_name_plural = "righe utenze"
         ordering = ["voce"]
 
     def __str__(self):

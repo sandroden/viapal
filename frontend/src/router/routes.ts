@@ -73,8 +73,8 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/InquilinoPagamenti.vue'),
       },
       {
-        path: 'conguaglio/:id',
-        name: 'i-conguaglio',
+        path: 'utenze/:id',
+        name: 'i-utenze',
         component: () => import('pages/InquilinoConguaglio.vue'),
       },
       {

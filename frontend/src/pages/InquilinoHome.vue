@@ -41,7 +41,7 @@
         <EmptyState
           icon="check_circle"
           title="Tutto in regola"
-          message="Quando ci sarà un affitto o un conguaglio da saldare, lo vedrai qui."
+          message="Quando ci sarà un affitto o un'utenza da saldare, lo vedrai qui."
         />
       </div>
 

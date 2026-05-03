@@ -61,7 +61,7 @@ def _descrizione_receivable(r: Receivable) -> str:
         return f"Affitto {r.competenza_da.strftime('%B %Y')}"
     if r.causale == Receivable.Causale.UTENZE:
         base = r.utility_period.periodo_da if r.utility_period else r.competenza_da
-        return f"Conguaglio utenze {base.strftime('%B %Y')}"
+        return f"Utenze {base.strftime('%B %Y')}"
     return r.descrizione or "Addebito extra"
 
 
@@ -415,7 +415,7 @@ class BilancioOwnerDettaglioView(APIView):
 
     CAUSALE_LABEL = {
         Receivable.Causale.AFFITTO: "Affitto",
-        Receivable.Causale.UTENZE: "Conguaglio utenze",
+        Receivable.Causale.UTENZE: "Utenze",
         Receivable.Causale.EXTRA: "Addebito extra",
     }
 
@@ -601,7 +601,7 @@ class TenantSituazioneView(APIView):
     GET /api/v1/tenants/<tenant_id>/situazione/?anno=YYYY
 
     Riepilogo completo per un inquilino: anagrafica, assignment storici,
-    affitti, conguagli (con voci dettagliate) e addebiti extra dell'anno.
+    affitti, utenze (con voci dettagliate) e addebiti extra dell'anno.
     Riservato ai proprietari.
     """
 
@@ -678,7 +678,7 @@ class TenantSituazioneView(APIView):
             if r.importo_pagato:
                 rent_pagato += r.importo_pagato
 
-        # Conguagli utenze dell'anno (per utility_period.periodo_da)
+        # Utenze dell'anno (per utility_period.periodo_da)
         utility_qs = (
             Receivable.objects.filter(
                 assignment__tenant=tenant,

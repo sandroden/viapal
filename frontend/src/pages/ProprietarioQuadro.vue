@@ -2,7 +2,7 @@
   <q-page padding class="vp-p-qa">
     <header class="vp-p-qa__head">
       <div>
-        <div class="vp-eyebrow">Conguagli utenze</div>
+        <div class="vp-eyebrow">Utenze</div>
         <h1 class="vp-display vp-p-qa__titolo">Quadro annuale</h1>
       </div>
       <div class="vp-p-qa__azioni">
@@ -35,7 +35,7 @@
       v-else-if="!quadro || quadro.righe.length === 0"
       icon="table_view"
       title="Nessun dato per l'anno selezionato"
-      message="Cambia anno o registra dei conguagli per popolare la tabella."
+      message="Cambia anno o registra delle utenze per popolare la tabella."
     />
 
     <div v-else class="vp-p-qa__table-wrap vp-scroll">

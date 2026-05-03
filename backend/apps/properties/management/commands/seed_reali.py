@@ -537,8 +537,8 @@ class Command(BaseCommand):
              "Ciao {{nominativo}}, risulta non pagato il canone di {{importo}} per {{periodo}}. Tutto bene?"),
             ("sollecito_affitto_duro", "Sollecito di pagamento",
              "Ciao {{nominativo}}, l'affitto di {{importo}} per {{periodo}} risulta scaduto da {{giorni}} giorni."),
-            ("conguaglio_inviato", "Conguaglio utenze",
-             "Ciao {{nominativo}}, il conguaglio utenze di {{periodo}} è {{importo}}, scadenza {{scadenza}}."),
+            ("conguaglio_inviato", "Utenze",
+             "Ciao {{nominativo}}, le utenze di {{periodo}} sono {{importo}}, scadenza {{scadenza}}."),
         ]
         for codice, titolo, corpo in templates:
             MessageTemplate.objects.update_or_create(

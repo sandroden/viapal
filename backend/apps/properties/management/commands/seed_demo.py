@@ -1270,10 +1270,10 @@ class Command(BaseCommand):
             },
             {
                 "codice": "conguaglio_inviato",
-                "titolo": "Conguaglio utenze inviato",
+                "titolo": "Utenze inviate",
                 "corpo": (
                     "Ciao {{nominativo}},\n\n"
-                    "Trovi in allegato il conguaglio utenze del periodo {{periodo}} "
+                    "Trovi in allegato le utenze del periodo {{periodo}} "
                     "per un totale di {{importo}}€, con scadenza {{scadenza}}.\n\n"
                     "Per qualsiasi chiarimento siamo a disposizione.\n"
                     "I proprietari"

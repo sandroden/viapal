@@ -55,7 +55,7 @@ class ViapalPagamentiInRitardoModule(modules.LinkList):
 class ViapalConguagliDaInviareModule(modules.LinkList):
     """UtilityChargePeriod in stato BOZZA / senza data_invio."""
 
-    title = "Conguagli da inviare"
+    title = "Utenze da inviare"
     template = "admin_tools/dashboard/modules/link_list.html"
     layout = "stacked"
 
@@ -81,7 +81,7 @@ class ViapalConguagliDaInviareModule(modules.LinkList):
                 )
             )
         if not self.children:
-            self.pre_content = "Tutti i conguagli sono stati inviati."
+            self.pre_content = "Tutte le utenze sono state inviate."
         super().init_with_context(context)
 
 
@@ -206,7 +206,7 @@ class ViapalIndexDashboard(Dashboard):
                     _link(
                         "Quadro annuale (frontend)",
                         "/p/quadro-annuale/",
-                        "Vista riepilogo conguagli annuale",
+                        "Vista riepilogo utenze annuale",
                     ),
                     _link(
                         "Ritardi (frontend)",

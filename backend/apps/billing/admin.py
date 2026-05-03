@@ -1,7 +1,7 @@
 """
 Admin Django per l'app billing.
 Gestisce: addebiti inquilini (Receivable, con filtro per causale: affitto/utenze/extra),
-fornitori, categorie spese, spese, bollette, conguagli utenze e transazioni bancarie.
+fornitori, categorie spese, spese, bollette, utenze e transazioni bancarie.
 """
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
@@ -146,7 +146,7 @@ class ReceivableAdmin(ModalEditMixin, JumboModelAdmin):
         ("scadenza__range", "scadenza__gte:scadenza ≥", "scadenza__lte:scadenza ≤"),
         ("competenza_da__range", "competenza_da__gte:competenza ≥", "competenza_da__lte:competenza ≤"),
         ("importo_dovuto__gte:dovuto ≥", "importo_dovuto__lte:dovuto ≤"),
-        ("data_pagamento__range", "incassato_da_owner:incassato da", "utility_period:periodo conguaglio"),
+        ("data_pagamento__range", "incassato_da_owner:incassato da", "utility_period:periodo utenze"),
     )
 
     def lookup_allowed(self, lookup, value, request):
@@ -400,7 +400,7 @@ class UtilityChargeLineAdmin(ModalEditMixin, JumboModelAdmin):
     search_fields = ("receivable__assignment__tenant__nominativo",)
     advanced_search_fields = (
         ("voce", "receivable__assignment__tenant__nominativo__icontains:inquilino"),
-        ("receivable__utility_period:periodo conguaglio",),
+        ("receivable__utility_period:periodo utenze",),
         ("receivable__competenza_da__range", "receivable__competenza_da__gte:competenza ≥",
          "receivable__competenza_da__lte:competenza ≤"),
         ("importo__gte:importo ≥", "importo__lte:importo ≤"),

@@ -80,7 +80,7 @@
                         </q-item-section>
                       </q-item>
                       <q-item>
-                        <q-item-section>Conguagli utenze</q-item-section>
+                        <q-item-section>Utenze</q-item-section>
                         <q-item-section side>
                           <span class="vp-mono">{{ formattaEuro(situazione.utility.dovuto_anno) }}</span>
                         </q-item-section>
@@ -100,7 +100,7 @@
                       </q-item>
                     </q-list>
                     <div class="vp-p-id__popup-nota">
-                      Comprende affitti, conguagli utenze (luce, gas, TARI) e addebiti extra
+                      Comprende affitti, utenze (luce, gas, TARI) e addebiti extra
                       (es. conguaglio condominiale).
                     </div>
                   </q-card-section>
@@ -206,7 +206,7 @@
           />
 
           <div v-if="situazione.utility.righe.length" class="vp-p-id__sotto-sezione">
-            <div class="vp-eyebrow">Dettaglio voci conguagli</div>
+            <div class="vp-eyebrow">Dettaglio voci utenze</div>
             <q-list bordered separator class="vp-p-id__lista">
               <q-expansion-item
                 v-for="r in situazione.utility.righe"
@@ -292,7 +292,7 @@
                   </q-item>
                   <q-item v-if="situazione.tenant.frequenza_conguagli_display">
                     <q-item-section>
-                      <q-item-label caption>Frequenza conguagli</q-item-label>
+                      <q-item-label caption>Frequenza utenze</q-item-label>
                       <q-item-label>{{ situazione.tenant.frequenza_conguagli_display }}</q-item-label>
                     </q-item-section>
                   </q-item>
@@ -481,7 +481,7 @@ const righePagamenti = computed<RigaPagamento[]>(() => {
     out.push({
       rowKey: `utility-${c.id}`,
       tipo: 'utility',
-      descrizione: `Conguaglio ${formattaData(c.period_da)} → ${formattaData(c.period_a)}`,
+      descrizione: `Utenze ${formattaData(c.period_da)} → ${formattaData(c.period_a)}`,
       importo_dovuto: c.importo_totale,
       importo_pagato: c.importo_pagato,
       scadenza: c.scadenza,
@@ -563,7 +563,7 @@ function etichettaVoce(v: string): string {
 
 const ETICHETTE_TIPO: Record<TipoPagamento, string> = {
   rent: 'Affitto',
-  utility: 'Conguaglio',
+  utility: 'Utenze',
   extra: 'Extra',
 };
 const ICONE_TIPO: Record<TipoPagamento, string> = {

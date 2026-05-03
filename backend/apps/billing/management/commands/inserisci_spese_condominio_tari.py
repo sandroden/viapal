@@ -1,7 +1,7 @@
 """
 Inserisce le spese condominiali (rate MAV/bonifici) e la TARI annuale come
 Expense anticipate da Bruna. Aggiorna anche AnnualUtilityCost con gli importi
-TARI reali (per il calcolo conguagli utenze).
+TARI reali (per il calcolo utenze).
 
 Dati forniti da Sandro 2026-05-02.
 

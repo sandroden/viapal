@@ -2,7 +2,7 @@
   "name": "frontend",
   "version": "0.0.1",
   "description": "Viapal — la casa, in tasca",
-  "productName": "frontend",
+  "productName": "Viapal",
   "author": "Alessandro Dentella <sandro.dentella@gmail.com>",
   "type": "module",
   "private": true,

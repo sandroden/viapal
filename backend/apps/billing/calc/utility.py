@@ -1,5 +1,5 @@
 """
-Calcolo conguaglio utenze per UtilityChargePeriod.
+Calcolo utenze per UtilityChargePeriod.
 
 Criterio: pro_rata_giorni (l'unico usato in pratica secondo PLAN.md).
 Algoritmo descritto nella docstring di calcola_conguaglio_periodo.

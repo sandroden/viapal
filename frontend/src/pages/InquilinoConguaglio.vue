@@ -2,8 +2,8 @@
   <q-page padding class="vp-i-cong">
     <q-btn flat icon="arrow_back" label="Indietro" no-caps color="primary" @click="indietro" />
 
-    <div class="vp-eyebrow q-mt-md">Conguaglio utenze</div>
-    <h1 class="vp-display vp-i-cong__titolo">Dettaglio conguaglio</h1>
+    <div class="vp-eyebrow q-mt-md">Utenze</div>
+    <h1 class="vp-display vp-i-cong__titolo">Dettaglio utenze</h1>
 
     <div v-if="loading" class="vp-i-cong__loader">
       <q-spinner color="primary" size="32px" />
@@ -57,7 +57,7 @@
     <EmptyState
       v-else
       icon="error_outline"
-      title="Conguaglio non trovato"
+      title="Utenze non trovate"
       message="Il dettaglio richiesto non è disponibile."
     />
   </q-page>
