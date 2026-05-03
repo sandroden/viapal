@@ -1,0 +1,12 @@
+/* CSS theming Viapal per django-admin-tools.
+   Caricato via ADMIN_TOOLS_THEMING_CSS in tutte le pagine admin. */
+
+.dashboard-module h2 {
+  margin: 0;
+  padding: 7px 5px 8px 8px;
+  text-align: left;
+  font-weight: normal;
+  background: #d1ddca;
+  height: 20px;
+  color: #4a4a4a;
+}

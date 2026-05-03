@@ -5,6 +5,10 @@ Settings comuni a tutti gli ambienti.
 SECRET_KEY e DEBUG vanno definiti in dev.py/staging.py/production.py o local.py
 """
 
+# Shim per django-admin-tools: reintroduce django.utils.itercompat (rimosso
+# in Django 5.0). Va eseguito PRIMA che apps.populate() carichi admin_tools.
+import core._dat_compat  # noqa: F401
+
 import os
 
 SETTINGS_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -15,6 +19,15 @@ BASE_DIR = os.path.dirname(PROJECT_DIR)
 # Application definition
 
 INSTALLED_APPS = [
+    # django-admin-tools PRIMA di tutti gli admin (override admin/index.html etc).
+    # NB: NON installare 'admin_tools.menu' e NON chiamare mai
+    # admin_tools.dashboard.autodiscover() — quella funzione fa `import imp`
+    # che non esiste piu' in Python 3.12+. Le classi dashboard sono dichiarate
+    # esplicitamente via ADMIN_TOOLS_INDEX_DASHBOARD / ADMIN_TOOLS_APP_INDEX_DASHBOARD.
+    'admin_tools',
+    'admin_tools.theming',
+    'admin_tools.dashboard',
+
     # jmb.filters PRIMA di contrib.admin (template loader)
     'jmb.filters',
     'jmb.jadmin',
@@ -74,6 +87,8 @@ TEMPLATES = [
             'loaders': [
                 # Risolve 'filters:...' e 'admin:...' usati da jmb.jadmin/jmb.filters
                 'jmb.filters.admin.templateloader.Loader',
+                # Loader di django-admin-tools (per template di moduli dashboard customizzati)
+                'admin_tools.template_loaders.Loader',
                 'django.template.loaders.filesystem.Loader',
                 'django.template.loaders.app_directories.Loader',
             ],
@@ -112,6 +127,10 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, "static")
+STATICFILES_DIRS = [
+    # core non e' un'app Django: lo aggiungiamo qui per servire CSS custom (es. theming admin-tools)
+    os.path.join(PROJECT_DIR, "static"),
+]
 MEDIA_URL = 'media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
@@ -148,3 +167,10 @@ REST_AUTH = {
 # Ruoli applicativi (gruppi Django)
 ROLE_PROPRIETARI = 'proprietari'
 ROLE_INQUILINI = 'inquilini'
+
+
+# django-admin-tools: classi dashboard dichiarate esplicitamente per evitare
+# l'autodiscover() che usa il modulo `imp` (rimosso in Python 3.12+).
+ADMIN_TOOLS_INDEX_DASHBOARD = 'core.dashboard.ViapalIndexDashboard'
+ADMIN_TOOLS_APP_INDEX_DASHBOARD = 'core.dashboard.ViapalAppIndexDashboard'
+ADMIN_TOOLS_THEMING_CSS = 'viapal/admin/dashboard.css'

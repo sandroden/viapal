@@ -12,6 +12,7 @@ api_v1_patterns = [
 ]
 
 urlpatterns = [
+    path('admin_tools/', include('admin_tools.urls')),
     path('admin/', admin.site.urls),
     path('api/auth/', include('accounts.urls')),
     path('api/v1/', include(api_v1_patterns)),

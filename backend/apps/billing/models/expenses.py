@@ -168,8 +168,8 @@ class TenantCondominioRate(TimestampedModel):
     note = models.TextField(blank=True, verbose_name="note")
 
     class Meta:
-        verbose_name = "quota condominiale inquilini"
-        verbose_name_plural = "quote condominiali inquilini"
+        verbose_name = "quota spese condominiali"
+        verbose_name_plural = "quote spese condominiali"
         ordering = ["-valid_from"]
 
     def __str__(self):

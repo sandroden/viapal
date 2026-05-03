@@ -271,4 +271,4 @@ class UtilityChargeLine(TimestampedModel):
         ordering = ["voce"]
 
     def __str__(self):
-        return f"{self.charge} — {self.get_voce_display()} {self.importo}€"
+        return f"{self.receivable} — {self.get_voce_display()} {self.importo}€"
