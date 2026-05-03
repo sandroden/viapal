@@ -62,13 +62,12 @@ class Command(BaseCommand):
         from accounting.models import InterOwnerEntry, InterOwnerLoan, OwnerLedgerEntry, OwnerSettlement, WithholdingRule
         from billing.models import (
             AnnualUtilityCost,
+            BankTransactionAllocation,
             Expense,
             ExpenseCategory,
-            ExtraCharge,
-            RentPayment,
+            Receivable,
             Supplier,
             UtilityBill,
-            UtilityCharge,
             UtilityChargeLine,
             UtilityChargePeriod,
         )
@@ -84,13 +83,12 @@ class Command(BaseCommand):
         WithholdingRule.objects.all().delete()
         OwnerLedgerEntry.objects.all().delete()
         OwnerSettlement.objects.all().delete()
+        BankTransactionAllocation.objects.all().delete()
         UtilityChargeLine.objects.all().delete()
-        UtilityCharge.objects.all().delete()
+        Receivable.objects.all().delete()
         UtilityChargePeriod.objects.all().delete()
         UtilityBill.objects.all().delete()
         AnnualUtilityCost.objects.all().delete()
-        RentPayment.objects.all().delete()
-        ExtraCharge.objects.all().delete()
         Expense.objects.all().delete()
         ExpenseCategory.objects.all().delete()
         Supplier.objects.all().delete()
@@ -851,7 +849,7 @@ class Command(BaseCommand):
           gen, feb, mar 2026 -> 'pagato' con data_pagamento entro scadenza+3
           apr 2026 -> 'atteso' (scadenza futura)
         """
-        from billing.models import UtilityCharge, UtilityChargeLine
+        from billing.models import Receivable, UtilityChargeLine
 
         # Inquilini attivi con la loro assegnazione
         active_tenants = [
@@ -915,11 +913,14 @@ class Command(BaseCommand):
                 assignment = room_assignments[assignment_key]
                 scadenza = data_invio + timedelta(days=5)
 
-                charge, charge_created = UtilityCharge.objects.get_or_create(
-                    period=period,
+                charge, charge_created = Receivable.objects.get_or_create(
+                    utility_period=period,
                     assignment=assignment,
+                    causale=Receivable.Causale.UTENZE,
                     defaults={
-                        "importo_totale": amounts["totale"],
+                        "competenza_da": period.periodo_da,
+                        "competenza_a": period.periodo_a,
+                        "importo_dovuto": amounts["totale"],
                         "scadenza": scadenza,
                         "stato": "pagato" if is_paid else "atteso",
                         "data_pagamento": scadenza + timedelta(days=3) if is_paid else None,
@@ -929,7 +930,6 @@ class Command(BaseCommand):
 
                 if charge_created:
                     created_charges += 1
-                    # Crea le 3 righe di dettaglio
                     lines_data = [
                         ("luce", amounts["luce"], f"Quota luce pro-rata {period_key}"),
                         ("gas", amounts["gas"], f"Quota gas pro-rata {period_key}"),
@@ -937,7 +937,7 @@ class Command(BaseCommand):
                     ]
                     for voce, importo, dettaglio in lines_data:
                         UtilityChargeLine.objects.create(
-                            charge=charge,
+                            receivable=charge,
                             voce=voce,
                             importo=importo,
                             dettaglio=dettaglio,
@@ -946,7 +946,7 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"   [charges] UtilityCharge create: {created_charges} (su 20), "
+                f"   [charges] Receivable utenze create: {created_charges} (su 20), "
                 f"UtilityChargeLine create: {created_lines} (su 60)"
             )
         )
@@ -968,7 +968,7 @@ class Command(BaseCommand):
           eshani                     -> 'dichiarato'
           arun                       -> 'atteso'
         """
-        from billing.models import RentPayment
+        from billing.models import Receivable
 
         bruna_profile = owner_profiles["bruna"]
         sandro_profile = owner_profiles["sandro"]
@@ -1050,11 +1050,12 @@ class Command(BaseCommand):
                     incassato = None
                     iban_dest = None
 
-                _, is_new = RentPayment.objects.get_or_create(
+                _, is_new = Receivable.objects.get_or_create(
                     assignment=assignment,
+                    causale=Receivable.Causale.AFFITTO,
                     competenza_da=comp_da,
+                    competenza_a=comp_a,
                     defaults={
-                        "competenza_a": comp_a,
                         "importo_dovuto": canone,
                         "importo_pagato": importo_pagato,
                         "data_pagamento": data_pagamento,
@@ -1068,7 +1069,7 @@ class Command(BaseCommand):
                     created += 1
 
         self.stdout.write(
-            self.style.SUCCESS(f"   [rent] RentPayment create: {created} (~40 attesi)")
+            self.style.SUCCESS(f"   [rent] Receivable affitto create: {created} (~40 attesi)")
         )
 
     # -----------------------------------------------------------------------
@@ -1076,24 +1077,25 @@ class Command(BaseCommand):
     # -----------------------------------------------------------------------
 
     def _seed_extra_charges(self, room_assignments):
-        """Crea 1 ExtraCharge di esempio: conguaglio condominiale per Diana."""
-        from billing.models import ExtraCharge
+        """Crea 1 Receivable extra di esempio: conguaglio condominiale per Diana."""
+        from billing.models import Receivable
 
         diana_assignment = room_assignments["diana"]
 
-        _, created = ExtraCharge.objects.get_or_create(
+        _, created = Receivable.objects.get_or_create(
             assignment=diana_assignment,
+            causale=Receivable.Causale.EXTRA,
             descrizione="Conguaglio condominiale annuale 2025",
             defaults={
-                "data": date(2025, 12, 1),
-                "importo": Decimal("85.00"),
+                "competenza_da": date(2025, 12, 1),
+                "importo_dovuto": Decimal("85.00"),
                 "scadenza": date(2025, 12, 31),
                 "stato": "pagato",
                 "note": "Riparto spese condominiali straordinarie 2025",
             },
         )
         self.stdout.write(
-            self.style.SUCCESS(f"   [extra] ExtraCharge {'creato' if created else 'gia esistente'} (1)")
+            self.style.SUCCESS(f"   [extra] Receivable extra {'creato' if created else 'gia esistente'} (1)")
         )
 
     # -----------------------------------------------------------------------

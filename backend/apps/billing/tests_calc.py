@@ -19,9 +19,9 @@ from django.contrib.auth.models import User
 
 from billing.models import (
     AnnualUtilityCost,
+    Receivable,
     Supplier,
     UtilityBill,
-    UtilityCharge,
     UtilityChargeLine,
     UtilityChargePeriod,
 )
@@ -510,8 +510,10 @@ class TestPersist:
         period, assignments = setup_persist
         calcola_conguaglio_periodo(period.pk, persist=True)
 
-        charges = UtilityCharge.objects.filter(period=period)
-        assert charges.count() == 2
+        receivables = Receivable.objects.filter(
+            utility_period=period, causale=Receivable.Causale.UTENZE
+        )
+        assert receivables.count() == 2
 
     def test_crea_charge_lines(self, setup_persist):
         from billing.calc.utility import calcola_conguaglio_periodo
@@ -519,8 +521,10 @@ class TestPersist:
         period, assignments = setup_persist
         calcola_conguaglio_periodo(period.pk, persist=True)
 
-        # 2 charge * 1 voce (luce) = 2 lines
-        lines_count = UtilityChargeLine.objects.filter(charge__period=period).count()
+        # 2 receivable * 1 voce (luce) = 2 lines
+        lines_count = UtilityChargeLine.objects.filter(
+            receivable__utility_period=period
+        ).count()
         assert lines_count == 2
 
     def test_importo_charge_uguale_quota(self, setup_persist):
@@ -530,8 +534,12 @@ class TestPersist:
         risultato = calcola_conguaglio_periodo(period.pk, persist=True)
 
         for q in risultato["quote"]:
-            charge = UtilityCharge.objects.get(period=period, assignment_id=q["assignment_id"])
-            assert charge.importo_totale == q["quota"]
+            r = Receivable.objects.get(
+                utility_period=period,
+                assignment_id=q["assignment_id"],
+                causale=Receivable.Causale.UTENZE,
+            )
+            assert r.importo_dovuto == q["quota"]
 
 
 # ---------------------------------------------------------------------------
@@ -569,11 +577,15 @@ class TestIdempotenza:
 
         # Prima chiamata
         calcola_conguaglio_periodo(period.pk, persist=True)
-        count_after_first = UtilityCharge.objects.filter(period=period).count()
+        count_after_first = Receivable.objects.filter(
+            utility_period=period, causale=Receivable.Causale.UTENZE
+        ).count()
 
         # Seconda chiamata: non deve duplicare
         calcola_conguaglio_periodo(period.pk, persist=True)
-        count_after_second = UtilityCharge.objects.filter(period=period).count()
+        count_after_second = Receivable.objects.filter(
+            utility_period=period, causale=Receivable.Causale.UTENZE
+        ).count()
 
         assert count_after_first == count_after_second == 2
 
@@ -583,9 +595,13 @@ class TestIdempotenza:
         period, assignments = setup_idempotenza
 
         calcola_conguaglio_periodo(period.pk, persist=True)
-        lines_after_first = UtilityChargeLine.objects.filter(charge__period=period).count()
+        lines_after_first = UtilityChargeLine.objects.filter(
+            receivable__utility_period=period
+        ).count()
 
         calcola_conguaglio_periodo(period.pk, persist=True)
-        lines_after_second = UtilityChargeLine.objects.filter(charge__period=period).count()
+        lines_after_second = UtilityChargeLine.objects.filter(
+            receivable__utility_period=period
+        ).count()
 
         assert lines_after_first == lines_after_second

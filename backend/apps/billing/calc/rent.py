@@ -52,7 +52,7 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
         "payments": [list di id]
     }
     """
-    from billing.models import RentPayment, StatoPagamento
+    from billing.models import Receivable, StatoPagamento
     from properties.models import RoomAssignment
 
     primo_del_mese = date(anno, mese, 1)
@@ -109,8 +109,9 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
         }
 
         if force:
-            payment, created = RentPayment.objects.update_or_create(
+            payment, created = Receivable.objects.update_or_create(
                 assignment=assignment,
+                causale=Receivable.Causale.AFFITTO,
                 competenza_da=competenza_da,
                 competenza_a=competenza_a,
                 defaults=defaults,
@@ -120,24 +121,26 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
             else:
                 aggiornati += 1
         else:
-            # Controlla se esiste un payment per questo assignment in questo mese
-            # La chiave e' (assignment, competenza_da, competenza_a)
-            exists = RentPayment.objects.filter(
+            # Chiave: (assignment, causale=affitto, competenza_da, competenza_a)
+            exists = Receivable.objects.filter(
                 assignment=assignment,
+                causale=Receivable.Causale.AFFITTO,
                 competenza_da=competenza_da,
                 competenza_a=competenza_a,
             ).exists()
 
             if exists:
                 skippati += 1
-                payment = RentPayment.objects.get(
+                payment = Receivable.objects.get(
                     assignment=assignment,
+                    causale=Receivable.Causale.AFFITTO,
                     competenza_da=competenza_da,
                     competenza_a=competenza_a,
                 )
             else:
-                payment = RentPayment.objects.create(
+                payment = Receivable.objects.create(
                     assignment=assignment,
+                    causale=Receivable.Causale.AFFITTO,
                     competenza_da=competenza_da,
                     **defaults,
                 )
@@ -167,7 +170,7 @@ def aggiustamento_uscita(assignment_id: int, data_uscita: date) -> dict:
 
     Ritorna dict con ExtraCharge creato e dettagli del calcolo.
     """
-    from billing.models import ExtraCharge, RentPayment, StatoPagamento
+    from billing.models import Receivable, StatoPagamento
     from properties.models import RoomAssignment
 
     assignment = RoomAssignment.objects.select_related("tenant").get(pk=assignment_id)
@@ -200,14 +203,16 @@ def aggiustamento_uscita(assignment_id: int, data_uscita: date) -> dict:
     # Scadenza: giorno di uscita (rimborso immediato)
     scadenza = data_uscita
 
-    extra = ExtraCharge.objects.create(
+    extra = Receivable.objects.create(
         assignment=assignment,
-        data=data_uscita,
+        causale=Receivable.Causale.EXTRA,
         descrizione=(
             f"Rimborso pro-rata uscita anticipata {data_uscita.strftime('%d/%m/%Y')}: "
             f"{giorni_non_goduti} giorni su {n_giorni_mese}"
         ),
-        importo=importo_negativo,
+        competenza_da=data_uscita,
+        competenza_a=None,
+        importo_dovuto=importo_negativo,
         scadenza=scadenza,
         stato=StatoPagamento.ATTESO,
         note=(

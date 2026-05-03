@@ -3,20 +3,36 @@ Modelli per bollette, TARI, periodi di conguaglio e addebiti utenze inquilini.
 """
 from django.db import models
 
-from properties.models import OwnerProfile, RoomAssignment, TimestampedModel
+from properties.models import OwnerProfile, TimestampedModel
 
 from .expenses import Supplier
-from .payments import StatoPagamento
 
 
 class UtilityBill(TimestampedModel):
     """Bolletta di un fornitore (luce, gas, acqua)."""
+
+    class Prodotto(models.TextChoices):
+        LUCE = "luce", "Luce (kWh)"
+        GAS = "gas", "Gas (m³)"
+        ACQUA = "acqua", "Acqua (m³)"
+
+    UNITA_MISURA = {
+        Prodotto.LUCE: "kWh",
+        Prodotto.GAS: "m³",
+        Prodotto.ACQUA: "m³",
+    }
 
     supplier = models.ForeignKey(
         Supplier,
         on_delete=models.PROTECT,
         related_name="utility_bills",
         verbose_name="fornitore",
+    )
+    prodotto = models.CharField(
+        max_length=10,
+        choices=Prodotto.choices,
+        default=Prodotto.LUCE,
+        verbose_name="prodotto",
     )
     numero_fattura = models.CharField(
         max_length=100,
@@ -36,6 +52,14 @@ class UtilityBill(TimestampedModel):
         max_digits=10,
         decimal_places=2,
         verbose_name="importo totale",
+    )
+    consumo = models.DecimalField(
+        max_digits=10,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        verbose_name="consumo",
+        help_text="kWh per la luce, m³ per gas e acqua.",
     )
     file_pdf = models.FileField(
         upload_to="bollette/",
@@ -63,6 +87,10 @@ class UtilityBill(TimestampedModel):
 
     def __str__(self):
         return f"{self.supplier} — {self.periodo_da} / {self.periodo_a} ({self.importo_totale}€)"
+
+    @property
+    def unita_misura(self) -> str:
+        return self.UNITA_MISURA.get(self.prodotto, "")
 
 
 class AnnualUtilityCost(TimestampedModel):
@@ -163,77 +191,6 @@ class UtilityChargePeriod(TimestampedModel):
         return f"Conguaglio {self.periodo_da} / {self.periodo_a} ({self.get_stato_display()})"
 
 
-class UtilityCharge(TimestampedModel):
-    """Addebito utenze per UN inquilino in UN periodo di conguaglio."""
-
-    period = models.ForeignKey(
-        UtilityChargePeriod,
-        on_delete=models.PROTECT,
-        related_name="charges",
-        verbose_name="periodo",
-    )
-    assignment = models.ForeignKey(
-        RoomAssignment,
-        on_delete=models.PROTECT,
-        related_name="utility_charges",
-        verbose_name="assegnazione",
-    )
-    importo_totale = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        verbose_name="importo totale",
-    )
-    scadenza = models.DateField(
-        verbose_name="scadenza",
-    )
-    stato = models.CharField(
-        max_length=20,
-        choices=StatoPagamento.choices,
-        default=StatoPagamento.ATTESO,
-        verbose_name="stato",
-    )
-    data_pagamento = models.DateField(
-        null=True,
-        blank=True,
-        verbose_name="data pagamento",
-    )
-    importo_pagato = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        verbose_name="importo pagato",
-    )
-    ricevuta = models.FileField(
-        upload_to="ricevute/conguagli/",
-        null=True,
-        blank=True,
-        verbose_name="ricevuta",
-    )
-    note = models.TextField(
-        blank=True,
-        verbose_name="note",
-    )
-
-    class Meta:
-        verbose_name = "conguaglio utenze inquilino"
-        verbose_name_plural = "conguagli utenze inquilini"
-        ordering = ["-period__periodo_da", "assignment__tenant__nominativo"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["period", "assignment"],
-                name="utility_charge_unique_period_assignment",
-            )
-        ]
-
-    def __str__(self):
-        return (
-            f"{self.assignment.tenant} — "
-            f"{self.period.periodo_da.strftime('%Y/%m')} "
-            f"({self.importo_totale}€)"
-        )
-
-
 class UtilityChargeLine(TimestampedModel):
     """Riga di dettaglio di un addebito utenze (luce, gas, TARI, altro)."""
 
@@ -243,11 +200,11 @@ class UtilityChargeLine(TimestampedModel):
         TARI = "tari", "TARI"
         ALTRO = "altro", "Altro"
 
-    charge = models.ForeignKey(
-        UtilityCharge,
+    receivable = models.ForeignKey(
+        "billing.Receivable",
         on_delete=models.CASCADE,
-        related_name="lines",
-        verbose_name="conguaglio",
+        related_name="utility_lines",
+        verbose_name="addebito",
     )
     voce = models.CharField(
         max_length=20,

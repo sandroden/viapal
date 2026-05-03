@@ -10,8 +10,13 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand
 
 from billing.calc.rent import genera_pagamenti_mese
-from billing.models import BankTransaction, RentPayment, StatoPagamento
-from properties.models import RoomAssignment
+from billing.models import (
+    BankTransaction,
+    BankTransactionAllocation,
+    Receivable,
+    StatoPagamento,
+)
+from properties.models import RoomAssignment  # noqa: F401
 
 
 # Mappa nominativi inquilini -> stringa di match nelle descrizioni bonifici
@@ -68,7 +73,7 @@ class Command(BaseCommand):
                 anno += 1
 
         self.stdout.write(self.style.SUCCESS(
-            f"\nGenerati {totale_creati} RentPayment ({totale_aggiornati} aggiornati)"
+            f"\nGenerati {totale_creati} Receivable affitto ({totale_aggiornati} aggiornati)"
         ))
 
         # 2) Matching con BankTransaction
@@ -76,40 +81,44 @@ class Command(BaseCommand):
             return
 
         n_match = 0
-        for rp in RentPayment.objects.filter(stato=StatoPagamento.ATTESO):
+        rent_qs = Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO, stato=StatoPagamento.ATTESO
+        ).select_related("assignment__tenant")
+        for rp in rent_qs:
             tenant = rp.assignment.tenant
             keywords = MATCH_INQUILINO.get(tenant.nominativo, [])
             if not keywords:
                 continue
-            # Cerco un BankTransaction con:
-            # - importo positivo (entrata)
-            # - data tra (competenza_da - 10gg) e (competenza_a + 35gg)
-            # - descrizione contenente uno dei keyword
-            # - non gia' riconciliato
             candidate = BankTransaction.objects.filter(
                 importo__gt=0,
                 data__gte=rp.competenza_da - timedelta(days=10),
-                data__lte=rp.competenza_a + timedelta(days=40),
-                riconciliato_con_payment__isnull=True,
+                data__lte=(rp.competenza_a or rp.competenza_da) + timedelta(days=40),
+                allocations__isnull=True,
             )
             for kw in keywords:
                 bt = candidate.filter(descrizione__icontains=kw).order_by("data").first()
                 if bt:
                     rp.stato = StatoPagamento.PAGATO
                     rp.data_pagamento = bt.data
-                    rp.importo_pagato = rp.importo_dovuto  # o bt.importo (vedi caveat)
+                    rp.importo_pagato = rp.importo_dovuto
                     rp.save(update_fields=["stato", "data_pagamento", "importo_pagato", "updated_at"])
-                    bt.riconciliato_con_payment = rp
-                    bt.save(update_fields=["riconciliato_con_payment", "updated_at"])
+                    BankTransactionAllocation.objects.create(
+                        bank_transaction=bt,
+                        receivable=rp,
+                        importo=bt.importo,
+                    )
                     n_match += 1
                     break
 
         self.stdout.write(self.style.SUCCESS(
-            f"Matching: {n_match} RentPayment riconciliati con BankTransaction"
+            f"Matching: {n_match} Receivable affitto riconciliati con BankTransaction"
         ))
 
-        # 3) Statistiche finali
-        tot = RentPayment.objects.count()
-        pagati = RentPayment.objects.filter(stato=StatoPagamento.PAGATO).count()
-        attesi = RentPayment.objects.filter(stato=StatoPagamento.ATTESO).count()
-        self.stdout.write(f"\nTotale RentPayment: {tot} (pagati: {pagati}, in attesa: {attesi})")
+        tot = Receivable.objects.filter(causale=Receivable.Causale.AFFITTO).count()
+        pagati = Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO, stato=StatoPagamento.PAGATO
+        ).count()
+        attesi = Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO, stato=StatoPagamento.ATTESO
+        ).count()
+        self.stdout.write(f"\nTotale Receivable affitto: {tot} (pagati: {pagati}, in attesa: {attesi})")

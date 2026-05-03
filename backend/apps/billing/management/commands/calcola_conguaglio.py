@@ -24,7 +24,7 @@ class Command(BaseCommand):
             "--persist",
             action="store_true",
             default=False,
-            help="Crea/aggiorna UtilityCharge e UtilityChargeLine nel database.",
+            help="Crea/aggiorna Receivable(causale=utenze) e righe nel database.",
         )
 
     def handle(self, *args, **options):
@@ -80,7 +80,7 @@ class Command(BaseCommand):
         if persist:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"\nConguaglio persistito: {len(risultato['quote'])} UtilityCharge creati/aggiornati."
+                    f"\nConguaglio persistito: {len(risultato['quote'])} addebiti utenze creati/aggiornati."
                 )
             )
         else:

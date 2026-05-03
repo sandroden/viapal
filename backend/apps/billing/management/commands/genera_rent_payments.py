@@ -1,5 +1,5 @@
 """
-Management command per generare i RentPayment mensili.
+Management command per generare i Receivable affitto mensili.
 
 Uso:
     uv run manage.py genera_rent_payments --anno 2026 --mese 6
@@ -30,7 +30,7 @@ class Command(BaseCommand):
             "--force",
             action="store_true",
             default=False,
-            help="Sovrascrive i RentPayment esistenti (update_or_create invece di skip).",
+            help="Sovrascrive i Receivable affitto esistenti (update_or_create invece di skip).",
         )
 
     def handle(self, *args, **options):
@@ -44,7 +44,7 @@ class Command(BaseCommand):
             raise CommandError(f"Anno non plausibile: {anno}.")
 
         self.stdout.write(
-            f"Generazione RentPayment per {anno}/{mese:02d}"
+            f"Generazione Receivable affitto per {anno}/{mese:02d}"
             + (" [FORCE]" if force else "")
         )
 
@@ -65,13 +65,13 @@ class Command(BaseCommand):
         if totale > 0:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"\nCompletato: {totale} RentPayment generati per {anno}/{mese:02d}."
+                    f"\nCompletato: {totale} Receivable affitto generati per {anno}/{mese:02d}."
                 )
             )
         else:
             self.stdout.write(
                 self.style.WARNING(
-                    f"\nNessun RentPayment generato per {anno}/{mese:02d} "
+                    f"\nNessun Receivable affitto generato per {anno}/{mese:02d} "
                     f"(nessun assignment attivo o tutti gia' esistenti)."
                 )
             )

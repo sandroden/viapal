@@ -1,23 +1,36 @@
 """
 Serializer per l'app billing.
+
+I tre serializer storici (Rent/Utility/Extra) ora si appoggiano al modello
+unificato Receivable, esponendo verso il frontend gli stessi nomi di campo
+di prima (importo_dovuto / importo_totale / importo) tramite `source=`.
 """
 from rest_framework import serializers
 
 from billing.models import (
     BankTransaction,
+    BankTransactionAllocation,
     Expense,
     ExpenseCategory,
-    ExtraCharge,
-    RentPayment,
+    Receivable,
     Supplier,
     UtilityBill,
-    UtilityCharge,
     UtilityChargeLine,
     UtilityChargePeriod,
 )
 
 
+class UtilityChargeLineSerializer(serializers.ModelSerializer):
+    voce_display = serializers.CharField(source="get_voce_display", read_only=True)
+
+    class Meta:
+        model = UtilityChargeLine
+        fields = ["id", "voce", "voce_display", "importo", "dettaglio"]
+
+
 class RentPaymentSerializer(serializers.ModelSerializer):
+    """Serializer compat per receivable causale=affitto."""
+
     tenant_nominativo = serializers.CharField(
         source="assignment.tenant.nominativo", read_only=True
     )
@@ -25,7 +38,7 @@ class RentPaymentSerializer(serializers.ModelSerializer):
     stato_display = serializers.CharField(source="get_stato_display", read_only=True)
 
     class Meta:
-        model = RentPayment
+        model = Receivable
         fields = [
             "id",
             "assignment",
@@ -46,27 +59,32 @@ class RentPaymentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["stato_display"]
 
-
-class UtilityChargeLineSerializer(serializers.ModelSerializer):
-    voce_display = serializers.CharField(source="get_voce_display", read_only=True)
-
-    class Meta:
-        model = UtilityChargeLine
-        fields = ["id", "voce", "voce_display", "importo", "dettaglio"]
+    def create(self, validated_data):
+        validated_data["causale"] = Receivable.Causale.AFFITTO
+        return super().create(validated_data)
 
 
 class UtilityChargeSerializer(serializers.ModelSerializer):
+    """Serializer compat per receivable causale=utenze."""
+
     tenant_nominativo = serializers.CharField(
         source="assignment.tenant.nominativo", read_only=True
     )
     room_nome = serializers.CharField(source="assignment.room.nome", read_only=True)
     stato_display = serializers.CharField(source="get_stato_display", read_only=True)
-    periodo_da = serializers.DateField(source="period.periodo_da", read_only=True)
-    periodo_a = serializers.DateField(source="period.periodo_a", read_only=True)
-    lines = UtilityChargeLineSerializer(many=True, read_only=True)
+    period = serializers.PrimaryKeyRelatedField(
+        source="utility_period",
+        queryset=UtilityChargePeriod.objects.all(),
+    )
+    periodo_da = serializers.DateField(source="utility_period.periodo_da", read_only=True)
+    periodo_a = serializers.DateField(source="utility_period.periodo_a", read_only=True)
+    importo_totale = serializers.DecimalField(
+        source="importo_dovuto", max_digits=10, decimal_places=2
+    )
+    lines = UtilityChargeLineSerializer(source="utility_lines", many=True, read_only=True)
 
     class Meta:
-        model = UtilityCharge
+        model = Receivable
         fields = [
             "id",
             "period",
@@ -85,6 +103,10 @@ class UtilityChargeSerializer(serializers.ModelSerializer):
             "lines",
         ]
         read_only_fields = ["stato_display", "periodo_da", "periodo_a", "lines"]
+
+    def create(self, validated_data):
+        validated_data["causale"] = Receivable.Causale.UTENZE
+        return super().create(validated_data)
 
 
 class UtilityChargePeriodSerializer(serializers.ModelSerializer):
@@ -128,6 +150,8 @@ class UtilityBillSerializer(serializers.ModelSerializer):
             "id",
             "supplier",
             "supplier_nome",
+            "prodotto",
+            "consumo",
             "numero_fattura",
             "data_emissione",
             "periodo_da",
@@ -172,13 +196,19 @@ class ExpenseSerializer(serializers.ModelSerializer):
 
 
 class ExtraChargeSerializer(serializers.ModelSerializer):
+    """Serializer compat per receivable causale=extra."""
+
     tenant_nominativo = serializers.CharField(
         source="assignment.tenant.nominativo", read_only=True
     )
     stato_display = serializers.CharField(source="get_stato_display", read_only=True)
+    data = serializers.DateField(source="competenza_da")
+    importo = serializers.DecimalField(
+        source="importo_dovuto", max_digits=10, decimal_places=2
+    )
 
     class Meta:
-        model = ExtraCharge
+        model = Receivable
         fields = [
             "id",
             "assignment",
@@ -195,9 +225,32 @@ class ExtraChargeSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["stato_display"]
 
+    def create(self, validated_data):
+        validated_data["causale"] = Receivable.Causale.EXTRA
+        return super().create(validated_data)
+
+
+class BankTransactionAllocationSerializer(serializers.ModelSerializer):
+    receivable_descrizione = serializers.SerializerMethodField()
+    causale = serializers.CharField(source="receivable.causale", read_only=True)
+
+    class Meta:
+        model = BankTransactionAllocation
+        fields = ["id", "receivable", "causale", "receivable_descrizione", "importo"]
+
+    def get_receivable_descrizione(self, obj):
+        r = obj.receivable
+        if r.causale == Receivable.Causale.AFFITTO:
+            return f"Affitto {r.competenza_da:%B %Y} — {r.assignment.tenant.nominativo}"
+        if r.causale == Receivable.Causale.UTENZE:
+            base = r.utility_period.periodo_da if r.utility_period else r.competenza_da
+            return f"Utenze {base:%B %Y} — {r.assignment.tenant.nominativo}"
+        return f"{r.descrizione or 'Extra'} — {r.assignment.tenant.nominativo}"
+
 
 class BankTransactionSerializer(serializers.ModelSerializer):
     conto_banca = serializers.CharField(source="owner_account.banca", read_only=True)
+    allocations = BankTransactionAllocationSerializer(many=True, read_only=True)
 
     class Meta:
         model = BankTransaction
@@ -208,7 +261,6 @@ class BankTransactionSerializer(serializers.ModelSerializer):
             "importo",
             "owner_account",
             "conto_banca",
-            "riconciliato_con_payment",
-            "riconciliato_con_charge",
+            "allocations",
             "note",
         ]

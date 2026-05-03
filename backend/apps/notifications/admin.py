@@ -6,6 +6,8 @@ iscrizioni push e log notifiche.
 """
 from django.contrib import admin
 
+from jmb.jadmin import JumboModelAdmin, ModalEditMixin
+
 from .models import MessageTemplate, Notification, PushSubscription, ReminderRule
 
 
@@ -15,8 +17,12 @@ from .models import MessageTemplate, Notification, PushSubscription, ReminderRul
 
 
 @admin.register(MessageTemplate)
-class MessageTemplateAdmin(admin.ModelAdmin):
-    list_display = ("codice", "titolo", "canale")
+class MessageTemplateAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 800
+    list_display = (
+        "codice", "titolo", "canale",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     list_filter = ("canale",)
     search_fields = ("codice", "titolo")
     ordering = ("codice",)
@@ -37,10 +43,12 @@ class MessageTemplateAdmin(admin.ModelAdmin):
 
 
 @admin.register(ReminderRule)
-class ReminderRuleAdmin(admin.ModelAdmin):
+class ReminderRuleAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 800
     list_display = (
         "applicabile_a", "giorni_offset", "canale",
         "destinatario", "attiva", "template",
+        "get_modal_edit_icon", "get_modal_delete_icon",
     )
     list_filter = ("applicabile_a", "canale", "attiva", "destinatario")
     search_fields = ("template__codice",)
@@ -64,8 +72,12 @@ class ReminderRuleAdmin(admin.ModelAdmin):
 
 
 @admin.register(PushSubscription)
-class PushSubscriptionAdmin(admin.ModelAdmin):
-    list_display = ("user", "device_label", "ultima_attivita", "created_at")
+class PushSubscriptionAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 800
+    list_display = (
+        "user", "device_label", "ultima_attivita", "created_at",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     list_filter = ("created_at",)
     search_fields = ("user__username", "device_label")
     list_select_related = ("user",)
@@ -88,10 +100,12 @@ class PushSubscriptionAdmin(admin.ModelAdmin):
 
 
 @admin.register(Notification)
-class NotificationAdmin(admin.ModelAdmin):
+class NotificationAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 800
     list_display = (
         "user", "oggetto", "canale",
         "inviata_at", "letta_at",
+        "get_modal_edit_icon", "get_modal_delete_icon",
     )
     list_filter = ("canale", "inviata_at")
     search_fields = ("user__username", "oggetto")

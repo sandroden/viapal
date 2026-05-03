@@ -6,6 +6,8 @@ prestiti bilaterali e regole di trattenuta.
 """
 from django.contrib import admin
 
+from jmb.jadmin import JumboModelAdmin, ModalEditMixin
+
 from .models import (
     InterOwnerEntry,
     InterOwnerLoan,
@@ -36,12 +38,16 @@ class InterOwnerEntryInline(admin.TabularInline):
 
 
 @admin.register(OwnerLedgerEntry)
-class OwnerLedgerEntryAdmin(admin.ModelAdmin):
-    list_display = ("data", "owner", "tipo", "importo", "descrizione")
+class OwnerLedgerEntryAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 800
+    list_display = (
+        "data", "owner", "tipo", "importo", "descrizione",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     list_filter = ("owner", "tipo")
     search_fields = ("descrizione", "owner__nominativo")
     list_select_related = ("owner",)
-    autocomplete_fields = ("owner", "riferimento_payment", "riferimento_charge", "riferimento_expense")
+    autocomplete_fields = ("owner", "riferimento_receivable", "riferimento_expense")
     date_hierarchy = "data"
     ordering = ("-data", "owner__nominativo")
     fieldsets = (
@@ -49,7 +55,7 @@ class OwnerLedgerEntryAdmin(admin.ModelAdmin):
             "fields": ("data", "owner", "tipo", "importo", "descrizione"),
         }),
         ("Riferimenti", {
-            "fields": ("riferimento_payment", "riferimento_charge", "riferimento_expense"),
+            "fields": ("riferimento_receivable", "riferimento_expense"),
             "classes": ("collapse",),
         }),
         ("Note", {
@@ -66,8 +72,12 @@ class OwnerLedgerEntryAdmin(admin.ModelAdmin):
 
 
 @admin.register(OwnerSettlement)
-class OwnerSettlementAdmin(admin.ModelAdmin):
-    list_display = ("data", "periodo_da", "periodo_a", "descrizione")
+class OwnerSettlementAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 800
+    list_display = (
+        "data", "periodo_da", "periodo_a", "descrizione",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     ordering = ("-data",)
     fieldsets = (
         ("Periodo", {
@@ -90,8 +100,12 @@ class OwnerSettlementAdmin(admin.ModelAdmin):
 
 
 @admin.register(InterOwnerLoan)
-class InterOwnerLoanAdmin(admin.ModelAdmin):
-    list_display = ("owner_da", "owner_a", "data_apertura", "importo_originale", "chiuso")
+class InterOwnerLoanAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 900
+    list_display = (
+        "owner_da", "owner_a", "data_apertura", "importo_originale", "chiuso",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     list_filter = ("chiuso",)
     search_fields = ("descrizione", "owner_da__nominativo", "owner_a__nominativo")
     list_select_related = ("owner_da", "owner_a")
@@ -119,8 +133,12 @@ class InterOwnerLoanAdmin(admin.ModelAdmin):
 
 
 @admin.register(InterOwnerEntry)
-class InterOwnerEntryAdmin(admin.ModelAdmin):
-    list_display = ("data", "owner_da", "owner_a", "importo", "descrizione")
+class InterOwnerEntryAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 800
+    list_display = (
+        "data", "owner_da", "owner_a", "importo", "descrizione",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     list_filter = ("owner_da", "owner_a")
     search_fields = ("descrizione", "owner_da__nominativo", "owner_a__nominativo")
     list_select_related = ("owner_da", "owner_a", "riferimento_loan")
@@ -149,8 +167,12 @@ class InterOwnerEntryAdmin(admin.ModelAdmin):
 
 
 @admin.register(WithholdingRule)
-class WithholdingRuleAdmin(admin.ModelAdmin):
-    list_display = ("owner_da", "owner_a", "importo_mensile", "attiva", "valid_from", "valid_to")
+class WithholdingRuleAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 800
+    list_display = (
+        "owner_da", "owner_a", "importo_mensile", "attiva", "valid_from", "valid_to",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     list_filter = ("attiva",)
     search_fields = ("descrizione", "owner_da__nominativo", "owner_a__nominativo")
     list_select_related = ("owner_da", "owner_a")

@@ -21,8 +21,7 @@ class OwnerLedgerEntrySerializer(serializers.ModelSerializer):
             "importo",
             "tipo",
             "tipo_display",
-            "riferimento_payment",
-            "riferimento_charge",
+            "riferimento_receivable",
             "riferimento_expense",
             "note",
         ]

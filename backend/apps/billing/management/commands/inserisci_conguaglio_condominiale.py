@@ -14,8 +14,8 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from billing.models import ExtraCharge, StatoPagamento
-from properties.models import RoomAssignment, TenantProfile
+from billing.models import Receivable, StatoPagamento
+from properties.models import RoomAssignment, TenantProfile  # noqa: F401
 
 
 def _parse_date(s: str) -> datetime.date:
@@ -120,8 +120,10 @@ class Command(BaseCommand):
                 stato = StatoPagamento.ATTESO
                 importo_pagato = None
 
-            existing = ExtraCharge.objects.filter(
-                assignment=a, descrizione=descrizione
+            existing = Receivable.objects.filter(
+                assignment=a,
+                causale=Receivable.Causale.EXTRA,
+                descrizione=descrizione,
             ).first()
 
             if existing:
@@ -129,9 +131,9 @@ class Command(BaseCommand):
                     f"  - {nominativo}: gia' presente (id={existing.id}), aggiorno stato={stato}"
                 )
                 if not dry:
-                    existing.importo = importo
+                    existing.importo_dovuto = importo
                     existing.scadenza = scadenza
-                    existing.data = data_invio
+                    existing.competenza_da = data_invio
                     existing.stato = stato
                     if data_pagamento:
                         existing.data_pagamento = data_pagamento
@@ -145,11 +147,12 @@ class Command(BaseCommand):
                 + (f" pagato il {data_pagamento}" if data_pagamento else "")
             )
             if not dry:
-                ExtraCharge.objects.create(
+                Receivable.objects.create(
                     assignment=a,
-                    data=data_invio,
+                    causale=Receivable.Causale.EXTRA,
+                    competenza_da=data_invio,
                     descrizione=descrizione,
-                    importo=importo,
+                    importo_dovuto=importo,
                     scadenza=scadenza,
                     stato=stato,
                     importo_pagato=importo_pagato,

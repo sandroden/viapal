@@ -40,21 +40,13 @@ class OwnerLedgerEntry(TimestampedModel):
         choices=TipoVoce.choices,
         verbose_name="tipo voce",
     )
-    riferimento_payment = models.ForeignKey(
-        "billing.RentPayment",
+    riferimento_receivable = models.ForeignKey(
+        "billing.Receivable",
         on_delete=models.SET_NULL,
         related_name="ledger_entries",
         null=True,
         blank=True,
-        verbose_name="pagamento affitto collegato",
-    )
-    riferimento_charge = models.ForeignKey(
-        "billing.UtilityCharge",
-        on_delete=models.SET_NULL,
-        related_name="ledger_entries",
-        null=True,
-        blank=True,
-        verbose_name="conguaglio collegato",
+        verbose_name="addebito collegato",
     )
     riferimento_expense = models.ForeignKey(
         "billing.Expense",

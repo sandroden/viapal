@@ -15,8 +15,7 @@ class OwnerLedgerEntryViewSet(ReadOnlyModelViewSet):
     permission_classes = [IsProprietario]
     queryset = OwnerLedgerEntry.objects.select_related(
         "owner",
-        "riferimento_payment",
-        "riferimento_charge",
+        "riferimento_receivable",
         "riferimento_expense",
     ).order_by("-data")
 

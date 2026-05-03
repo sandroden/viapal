@@ -1,5 +1,8 @@
 """
 ViewSet per l'app billing.
+
+I tre endpoint storici (rent-payments, utility-charges, extra-charges)
+ora si appoggiano al modello unico Receivable filtrando per causale.
 """
 import datetime
 
@@ -9,15 +12,13 @@ from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
-from accounts.permissions import IsInquilinoSelf, IsProprietario, IsProprietarioOrReadOnly
+from accounts.permissions import IsInquilinoSelf, IsProprietario  # noqa: F401
 from billing.models import (
     BankTransaction,
     Expense,
-    ExtraCharge,
-    RentPayment,
+    Receivable,
     StatoPagamento,
     UtilityBill,
-    UtilityCharge,
     UtilityChargePeriod,
 )
 from billing.serializers import (
@@ -26,8 +27,8 @@ from billing.serializers import (
     ExtraChargeSerializer,
     RentPaymentSerializer,
     UtilityBillSerializer,
-    UtilityChargeSerializer,
     UtilityChargePeriodSerializer,
+    UtilityChargeSerializer,
 )
 
 
@@ -44,16 +45,13 @@ def _is_inquilino(user) -> bool:
     return user.groups.filter(name="inquilini").exists()
 
 
-class RentPaymentViewSet(ModelViewSet):
-    """
-    Pagamenti affitto.
-    - GET: proprietari = tutti; inquilini = solo i propri.
-    - POST/PATCH: solo proprietari.
-    - action dichiara_pagato: inquilino marca come dichiarato.
-    - action conferma_pagato: proprietario conferma come pagato.
+class _ReceivableMixin:
+    """Comportamenti comuni dei tre ViewSet su Receivable.
+
+    Le sottoclassi specificano `causale` e `serializer_class`.
     """
 
-    serializer_class = RentPaymentSerializer
+    causale: str
     pagination_class = BillingPagination
 
     def get_permissions(self):
@@ -64,172 +62,112 @@ class RentPaymentViewSet(ModelViewSet):
             return [IsProprietario()]
         return [IsInquilinoSelf()]
 
-    def get_queryset(self):
-        user = self.request.user
-        qs = RentPayment.objects.select_related(
+    def _base_queryset(self):
+        return Receivable.objects.filter(causale=self.causale).select_related(
             "assignment__tenant__user",
             "assignment__room",
             "incassato_da_owner",
             "bank_account_destinazione",
-        ).order_by("-scadenza")
-        if _is_proprietario(user):
+            "utility_period",
+        )
+
+    def get_queryset(self):
+        qs = self._base_queryset().order_by("-scadenza")
+        if _is_proprietario(self.request.user):
             return qs
-        return qs.filter(assignment__tenant__user=user)
+        return qs.filter(assignment__tenant__user=self.request.user)
 
     @action(detail=True, methods=["post"], url_path="dichiara_pagato")
     def dichiara_pagato(self, request, pk=None):
-        """
-        Inquilino dichiara di aver pagato.
-        Imposta stato='dichiarato', data_pagamento=oggi, importo_pagato=importo_dovuto.
-        Solo l'inquilino associato al pagamento può eseguire questa azione.
-        """
-        payment = self.get_object()
+        """Inquilino marca come dichiarato. Solo l'inquilino del receivable."""
+        receivable = self.get_object()
 
-        # Verifica che sia l'inquilino del pagamento
         if not _is_proprietario(request.user):
-            if payment.assignment.tenant.user != request.user:
+            if receivable.assignment.tenant.user != request.user:
                 return Response(
-                    {"detail": "Puoi dichiarare solo i tuoi pagamenti."},
+                    {"detail": "Puoi dichiarare solo i tuoi addebiti."},
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-        if payment.stato == StatoPagamento.PAGATO:
+        if receivable.stato == StatoPagamento.PAGATO:
             return Response(
-                {"detail": "Pagamento gia' confermato dai proprietari."},
+                {"detail": "Addebito gia' confermato dai proprietari."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        payment.stato = StatoPagamento.DICHIARATO
-        payment.data_pagamento = datetime.date.today()
-        payment.importo_pagato = payment.importo_dovuto
-        payment.save(update_fields=["stato", "data_pagamento", "importo_pagato"])
+        receivable.stato = StatoPagamento.DICHIARATO
+        receivable.data_pagamento = datetime.date.today()
+        receivable.importo_pagato = receivable.importo_dovuto
+        receivable.save(update_fields=["stato", "data_pagamento", "importo_pagato"])
 
         return Response(
-            RentPaymentSerializer(payment).data,
+            self.get_serializer(receivable).data,
             status=status.HTTP_200_OK,
         )
 
     @action(detail=True, methods=["post"], url_path="conferma_pagato")
     def conferma_pagato(self, request, pk=None):
-        """
-        Proprietario conferma il pagamento dichiarato dall'inquilino.
-        Imposta stato='pagato'.
-        """
+        """Proprietario conferma il pagamento dichiarato."""
         if not _is_proprietario(request.user):
             return Response(
                 {"detail": "Solo i proprietari possono confermare un pagamento."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        payment = self.get_object()
+        receivable = self.get_object()
 
-        if payment.stato not in (StatoPagamento.DICHIARATO, StatoPagamento.ATTESO,
-                                  StatoPagamento.IN_RITARDO):
+        if receivable.stato not in (
+            StatoPagamento.DICHIARATO,
+            StatoPagamento.ATTESO,
+            StatoPagamento.IN_RITARDO,
+        ):
             return Response(
-                {"detail": f"Impossibile confermare un pagamento in stato '{payment.stato}'."},
+                {"detail": f"Impossibile confermare un addebito in stato '{receivable.stato}'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        payment.stato = StatoPagamento.PAGATO
-        if not payment.importo_pagato:
-            payment.importo_pagato = payment.importo_dovuto
-        if not payment.data_pagamento:
-            payment.data_pagamento = datetime.date.today()
-        payment.save(update_fields=["stato", "importo_pagato", "data_pagamento"])
+        receivable.stato = StatoPagamento.PAGATO
+        if not receivable.importo_pagato:
+            receivable.importo_pagato = receivable.importo_dovuto
+        if not receivable.data_pagamento:
+            receivable.data_pagamento = datetime.date.today()
+        receivable.save(update_fields=["stato", "importo_pagato", "data_pagamento"])
 
         return Response(
-            RentPaymentSerializer(payment).data,
+            self.get_serializer(receivable).data,
             status=status.HTTP_200_OK,
         )
 
 
-class UtilityChargeViewSet(ModelViewSet):
-    """
-    Conguagli utenze per inquilino.
-    - GET: proprietari = tutti; inquilini = solo i propri.
-    - POST/PATCH: solo proprietari.
-    - action dichiara_pagato / conferma_pagato analogue a RentPayment.
-    """
+class RentPaymentViewSet(_ReceivableMixin, ModelViewSet):
+    """Pagamenti affitto (Receivable causale=affitto)."""
 
+    causale = Receivable.Causale.AFFITTO
+    serializer_class = RentPaymentSerializer
+
+
+class UtilityChargeViewSet(_ReceivableMixin, ModelViewSet):
+    """Conguagli utenze (Receivable causale=utenze)."""
+
+    causale = Receivable.Causale.UTENZE
     serializer_class = UtilityChargeSerializer
-    pagination_class = BillingPagination
 
-    def get_permissions(self):
-        if self.action in ("dichiara_pagato", "conferma_pagato"):
-            from rest_framework.permissions import IsAuthenticated
-            return [IsAuthenticated()]
-        if self.action in ("create", "update", "partial_update", "destroy"):
-            return [IsProprietario()]
-        return [IsInquilinoSelf()]
+    def _base_queryset(self):
+        return super()._base_queryset().prefetch_related("utility_lines")
 
     def get_queryset(self):
-        user = self.request.user
-        qs = UtilityCharge.objects.select_related(
-            "period",
-            "assignment__tenant__user",
-            "assignment__room",
-        ).prefetch_related("lines").order_by("-period__periodo_da")
-        if _is_proprietario(user):
+        qs = self._base_queryset().order_by("-utility_period__periodo_da")
+        if _is_proprietario(self.request.user):
             return qs
-        return qs.filter(assignment__tenant__user=user)
+        return qs.filter(assignment__tenant__user=self.request.user)
 
-    @action(detail=True, methods=["post"], url_path="dichiara_pagato")
-    def dichiara_pagato(self, request, pk=None):
-        """Inquilino dichiara di aver pagato il conguaglio."""
-        charge = self.get_object()
 
-        if not _is_proprietario(request.user):
-            if charge.assignment.tenant.user != request.user:
-                return Response(
-                    {"detail": "Puoi dichiarare solo i tuoi conguagli."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+class ExtraChargeViewSet(_ReceivableMixin, ModelViewSet):
+    """Addebiti extra (Receivable causale=extra)."""
 
-        if charge.stato == StatoPagamento.PAGATO:
-            return Response(
-                {"detail": "Conguaglio gia' confermato dai proprietari."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        charge.stato = StatoPagamento.DICHIARATO
-        charge.data_pagamento = datetime.date.today()
-        charge.importo_pagato = charge.importo_totale
-        charge.save(update_fields=["stato", "data_pagamento", "importo_pagato"])
-
-        return Response(
-            UtilityChargeSerializer(charge).data,
-            status=status.HTTP_200_OK,
-        )
-
-    @action(detail=True, methods=["post"], url_path="conferma_pagato")
-    def conferma_pagato(self, request, pk=None):
-        """Proprietario conferma il conguaglio dichiarato."""
-        if not _is_proprietario(request.user):
-            return Response(
-                {"detail": "Solo i proprietari possono confermare un conguaglio."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        charge = self.get_object()
-
-        if charge.stato not in (StatoPagamento.DICHIARATO, StatoPagamento.ATTESO,
-                                 StatoPagamento.IN_RITARDO):
-            return Response(
-                {"detail": f"Impossibile confermare un conguaglio in stato '{charge.stato}'."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        charge.stato = StatoPagamento.PAGATO
-        if not charge.importo_pagato:
-            charge.importo_pagato = charge.importo_totale
-        if not charge.data_pagamento:
-            charge.data_pagamento = datetime.date.today()
-        charge.save(update_fields=["stato", "importo_pagato", "data_pagamento"])
-
-        return Response(
-            UtilityChargeSerializer(charge).data,
-            status=status.HTTP_200_OK,
-        )
+    causale = Receivable.Causale.EXTRA
+    serializer_class = ExtraChargeSerializer
+    pagination_class = None  # comportamento legacy: lista plain
 
 
 class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
@@ -260,89 +198,15 @@ class ExpenseViewSet(ModelViewSet):
     ).order_by("-data")
 
 
-class ExtraChargeViewSet(ModelViewSet):
-    """
-    Addebiti extra.
-    - GET: proprietari = tutti; inquilini = solo i propri.
-    - POST/PATCH/DELETE: solo proprietari.
-    - action dichiara_pagato / conferma_pagato analoghe a RentPayment.
-    """
-
-    serializer_class = ExtraChargeSerializer
-
-    def get_permissions(self):
-        if self.action in ("dichiara_pagato", "conferma_pagato"):
-            from rest_framework.permissions import IsAuthenticated
-            return [IsAuthenticated()]
-        if self.action in ("create", "update", "partial_update", "destroy"):
-            return [IsProprietario()]
-        return [IsInquilinoSelf()]
-
-    def get_queryset(self):
-        user = self.request.user
-        qs = ExtraCharge.objects.select_related(
-            "assignment__tenant__user", "assignment__room"
-        ).order_by("-scadenza")
-        if _is_proprietario(user):
-            return qs
-        return qs.filter(assignment__tenant__user=user)
-
-    @action(detail=True, methods=["post"], url_path="dichiara_pagato")
-    def dichiara_pagato(self, request, pk=None):
-        charge = self.get_object()
-
-        if not _is_proprietario(request.user):
-            if charge.assignment.tenant.user != request.user:
-                return Response(
-                    {"detail": "Puoi dichiarare solo i tuoi addebiti."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-
-        if charge.stato == StatoPagamento.PAGATO:
-            return Response(
-                {"detail": "Addebito gia' confermato dai proprietari."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        charge.stato = StatoPagamento.DICHIARATO
-        charge.data_pagamento = datetime.date.today()
-        charge.importo_pagato = charge.importo
-        charge.save(update_fields=["stato", "data_pagamento", "importo_pagato"])
-        return Response(ExtraChargeSerializer(charge).data, status=status.HTTP_200_OK)
-
-    @action(detail=True, methods=["post"], url_path="conferma_pagato")
-    def conferma_pagato(self, request, pk=None):
-        if not _is_proprietario(request.user):
-            return Response(
-                {"detail": "Solo i proprietari possono confermare un pagamento."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        charge = self.get_object()
-
-        if charge.stato not in (
-            StatoPagamento.DICHIARATO,
-            StatoPagamento.ATTESO,
-            StatoPagamento.IN_RITARDO,
-        ):
-            return Response(
-                {"detail": f"Impossibile confermare un addebito in stato '{charge.stato}'."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        charge.stato = StatoPagamento.PAGATO
-        if not charge.importo_pagato:
-            charge.importo_pagato = charge.importo
-        if not charge.data_pagamento:
-            charge.data_pagamento = datetime.date.today()
-        charge.save(update_fields=["stato", "importo_pagato", "data_pagamento"])
-        return Response(ExtraChargeSerializer(charge).data, status=status.HTTP_200_OK)
-
-
 class BankTransactionViewSet(ReadOnlyModelViewSet):
     """Transazioni bancarie. Solo proprietari."""
 
     serializer_class = BankTransactionSerializer
     permission_classes = [IsProprietario]
     pagination_class = BillingPagination
-    queryset = BankTransaction.objects.select_related("owner_account").order_by("-data")
+    queryset = (
+        BankTransaction.objects
+        .select_related("owner_account")
+        .prefetch_related("allocations__receivable__assignment__tenant", "allocations__receivable__utility_period")
+        .order_by("-data")
+    )

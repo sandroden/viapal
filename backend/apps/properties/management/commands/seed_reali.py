@@ -261,16 +261,17 @@ class Command(BaseCommand):
     # --- helpers ---
     def reset_db(self):
         from billing.models import (
-            UtilityChargeLine, UtilityCharge, UtilityChargePeriod,
-            RentPayment, ExtraCharge, Expense, ExpenseCategory,
+            BankTransactionAllocation, UtilityChargeLine, UtilityChargePeriod,
+            Receivable, Expense, ExpenseCategory,
         )
         from accounting.models import (
             OwnerLedgerEntry, OwnerSettlement, InterOwnerLoan,
             InterOwnerEntry, WithholdingRule,
         )
         ordine = [
-            BankTransaction, UtilityChargeLine, UtilityCharge, UtilityChargePeriod,
-            UtilityBill, AnnualUtilityCost, RentPayment, ExtraCharge, Expense,
+            BankTransactionAllocation, BankTransaction, UtilityChargeLine,
+            Receivable, UtilityChargePeriod,
+            UtilityBill, AnnualUtilityCost, Expense,
             ExpenseCategory, Supplier, RoomAssignment, OwnerBankAccount,
             OwnershipShare, Contract, Room, TenantProfile, OwnerProfile,
             InterOwnerEntry, InterOwnerLoan, WithholdingRule, OwnerLedgerEntry,

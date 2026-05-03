@@ -162,8 +162,8 @@ def calcola_conguaglio_periodo(period_id: int, persist: bool = False) -> dict:
         # prossimo conguaglio con bollette (oggi e' "persa"). Implementare quando
         # avremo dati piu' completi.
         if not bollette:
-            if persist and period.charges.exists():
-                period.charges.all().delete()
+            if persist and period.receivables.exists():
+                period.receivables.all().delete()
             return {
                 "period_id": period_id,
                 "periodo_da": periodo_da,
@@ -240,7 +240,7 @@ def calcola_conguaglio_periodo(period_id: int, persist: bool = False) -> dict:
 
     # --- Passo 6: persist (se richiesto) ---
     if persist:
-        _persist_charges(period, quote, totali_per_voce, periodo_da)
+        _persist_receivables(period, quote, totali_per_voce, periodo_da)
 
     return {
         "period_id": period_id,
@@ -254,24 +254,21 @@ def calcola_conguaglio_periodo(period_id: int, persist: bool = False) -> dict:
     }
 
 
-def _persist_charges(period, quote: list[QuotaInquilino], totali_per_voce: dict, periodo_da: date) -> None:
+def _persist_receivables(period, quote: list[QuotaInquilino], totali_per_voce: dict, periodo_da: date) -> None:
     """
-    Crea o aggiorna UtilityCharge + UtilityChargeLine per ogni assignment.
-    Idempotente tramite update_or_create sulla coppia (period, assignment).
+    Crea o aggiorna Receivable(causale=utenze) + UtilityChargeLine per ogni
+    assignment del periodo. Idempotente sulla coppia (utility_period, assignment).
 
     Scadenza: data_invio + 5gg se presente, altrimenti primo del mese successivo + 5gg.
     """
     from datetime import timedelta
-    import calendar
 
-    from billing.models import UtilityCharge, UtilityChargeLine
+    from billing.models import Receivable, UtilityChargeLine
     from properties.models import RoomAssignment
 
-    # Calcola scadenza
     if period.data_invio:
         scadenza = period.data_invio + timedelta(days=5)
     else:
-        # Primo del mese successivo + 5gg
         anno = periodo_da.year
         mese = periodo_da.month
         if mese == 12:
@@ -284,20 +281,22 @@ def _persist_charges(period, quote: list[QuotaInquilino], totali_per_voce: dict,
     for q in quote:
         assignment = RoomAssignment.objects.get(pk=q["assignment_id"])
 
-        charge, _ = UtilityCharge.objects.update_or_create(
-            period=period,
+        receivable, _ = Receivable.objects.update_or_create(
+            utility_period=period,
             assignment=assignment,
+            causale=Receivable.Causale.UTENZE,
             defaults={
-                "importo_totale": q["quota"],
+                "competenza_da": period.periodo_da,
+                "competenza_a": period.periodo_a,
+                "importo_dovuto": q["quota"],
                 "scadenza": scadenza,
             },
         )
 
-        # Ricrea le righe: cancella le esistenti e reinserisce
-        charge.lines.all().delete()
+        receivable.utility_lines.all().delete()
         for voce, importo in q["dettaglio"].items():
             UtilityChargeLine.objects.create(
-                charge=charge,
+                receivable=receivable,
                 voce=voce,
                 importo=importo,
                 dettaglio=(

@@ -16,10 +16,8 @@ from django.contrib.auth.models import Group, User
 from rest_framework.test import APIClient
 
 from billing.models import (
-    ExtraCharge,
-    RentPayment,
+    Receivable,
     StatoPagamento,
-    UtilityCharge,
     UtilityChargeLine,
     UtilityChargePeriod,
 )
@@ -117,8 +115,9 @@ def assignment_2(db, room_2, tenant_2):
 
 @pytest.fixture
 def rent_payment_1(db, assignment_1):
-    return RentPayment.objects.create(
+    return Receivable.objects.create(
         assignment=assignment_1,
+        causale=Receivable.Causale.AFFITTO,
         competenza_da=datetime.date(2026, 5, 1),
         competenza_a=datetime.date(2026, 5, 31),
         importo_dovuto=Decimal("400"),
@@ -129,8 +128,9 @@ def rent_payment_1(db, assignment_1):
 
 @pytest.fixture
 def rent_payment_2(db, assignment_2):
-    return RentPayment.objects.create(
+    return Receivable.objects.create(
         assignment=assignment_2,
+        causale=Receivable.Causale.AFFITTO,
         competenza_da=datetime.date(2026, 5, 1),
         competenza_a=datetime.date(2026, 5, 31),
         importo_dovuto=Decimal("380"),
@@ -150,25 +150,31 @@ def period(db):
 
 @pytest.fixture
 def charge_1(db, period, assignment_1):
-    charge = UtilityCharge.objects.create(
-        period=period,
+    charge = Receivable.objects.create(
+        utility_period=period,
         assignment=assignment_1,
-        importo_totale=Decimal("45.00"),
+        causale=Receivable.Causale.UTENZE,
+        competenza_da=period.periodo_da,
+        competenza_a=period.periodo_a,
+        importo_dovuto=Decimal("45.00"),
         scadenza=datetime.date(2026, 5, 5),
         stato=StatoPagamento.ATTESO,
     )
-    UtilityChargeLine.objects.create(charge=charge, voce="luce", importo=Decimal("25.00"))
-    UtilityChargeLine.objects.create(charge=charge, voce="gas", importo=Decimal("11.00"))
-    UtilityChargeLine.objects.create(charge=charge, voce="tari", importo=Decimal("9.00"))
+    UtilityChargeLine.objects.create(receivable=charge, voce="luce", importo=Decimal("25.00"))
+    UtilityChargeLine.objects.create(receivable=charge, voce="gas", importo=Decimal("11.00"))
+    UtilityChargeLine.objects.create(receivable=charge, voce="tari", importo=Decimal("9.00"))
     return charge
 
 
 @pytest.fixture
 def charge_2(db, period, assignment_2):
-    return UtilityCharge.objects.create(
-        period=period,
+    return Receivable.objects.create(
+        utility_period=period,
         assignment=assignment_2,
-        importo_totale=Decimal("43.00"),
+        causale=Receivable.Causale.UTENZE,
+        competenza_da=period.periodo_da,
+        competenza_a=period.periodo_a,
+        importo_dovuto=Decimal("43.00"),
         scadenza=datetime.date(2026, 5, 5),
         stato=StatoPagamento.ATTESO,
     )
@@ -176,22 +182,24 @@ def charge_2(db, period, assignment_2):
 
 @pytest.fixture
 def extra_charge_1(db, assignment_1):
-    return ExtraCharge.objects.create(
+    return Receivable.objects.create(
         assignment=assignment_1,
-        data=datetime.date(2026, 4, 1),
+        causale=Receivable.Causale.EXTRA,
+        competenza_da=datetime.date(2026, 4, 1),
         descrizione="Test extra",
-        importo=Decimal("50.00"),
+        importo_dovuto=Decimal("50.00"),
         scadenza=datetime.date(2026, 5, 15),
     )
 
 
 @pytest.fixture
 def extra_charge_2(db, assignment_2):
-    return ExtraCharge.objects.create(
+    return Receivable.objects.create(
         assignment=assignment_2,
-        data=datetime.date(2026, 4, 1),
+        causale=Receivable.Causale.EXTRA,
+        competenza_da=datetime.date(2026, 4, 1),
         descrizione="Extra per inquilino 2",
-        importo=Decimal("30.00"),
+        importo_dovuto=Decimal("30.00"),
         scadenza=datetime.date(2026, 5, 15),
     )
 
@@ -482,8 +490,9 @@ class TestDashboardProprietario:
     ):
         # Crea un pagamento storico nell'anno scorso
         anno_scorso = datetime.date.today().year - 1
-        RentPayment.objects.create(
+        Receivable.objects.create(
             assignment=assignment_1,
+            causale=Receivable.Causale.AFFITTO,
             competenza_da=datetime.date(anno_scorso, 6, 1),
             competenza_a=datetime.date(anno_scorso, 6, 30),
             importo_dovuto=Decimal("400"),
@@ -506,8 +515,9 @@ class TestDashboardProprietario:
     ):
         # 2 pagamenti diversi mesi nello stesso anno
         anno_scorso = datetime.date.today().year - 1
-        RentPayment.objects.create(
+        Receivable.objects.create(
             assignment=assignment_1,
+            causale=Receivable.Causale.AFFITTO,
             competenza_da=datetime.date(anno_scorso, 3, 1),
             competenza_a=datetime.date(anno_scorso, 3, 31),
             importo_dovuto=Decimal("400"),
@@ -516,8 +526,9 @@ class TestDashboardProprietario:
             data_pagamento=datetime.date(anno_scorso, 3, 5),
             stato=StatoPagamento.PAGATO,
         )
-        RentPayment.objects.create(
+        Receivable.objects.create(
             assignment=assignment_1,
+            causale=Receivable.Causale.AFFITTO,
             competenza_da=datetime.date(anno_scorso, 11, 1),
             competenza_a=datetime.date(anno_scorso, 11, 30),
             importo_dovuto=Decimal("400"),
@@ -541,6 +552,130 @@ class TestDashboardProprietario:
     def test_dashboard_proprietario_mese_fuori_range_400(self, client_prop):
         resp = client_prop.get("/api/v1/dashboard/proprietario/?mese=13")
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Test Dettaglio bilancio owner (voci singole entrate/uscite)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def owner_alessandro(db, user_prop):
+    return OwnerProfile.objects.create(user=user_prop, nominativo="Alessandro Test")
+
+
+class TestBilancioOwnerDettaglio:
+    """Test per /api/v1/dashboard/proprietario/<owner_id>/dettaglio-bilancio/."""
+
+    def _url(self, owner_id, anno, tipo):
+        return (
+            f"/api/v1/dashboard/proprietario/{owner_id}/dettaglio-bilancio/"
+            f"?anno={anno}&tipo={tipo}"
+        )
+
+    def test_entrate_righe_e_totale_quadrano(
+        self, client_prop, assignment_1, owner_alessandro
+    ):
+        anno = datetime.date.today().year
+        Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.AFFITTO,
+            competenza_da=datetime.date(anno, 3, 1),
+            competenza_a=datetime.date(anno, 3, 31),
+            importo_dovuto=Decimal("400"),
+            importo_pagato=Decimal("400"),
+            scadenza=datetime.date(anno, 3, 1),
+            data_pagamento=datetime.date(anno, 3, 5),
+            stato=StatoPagamento.PAGATO,
+            incassato_da_owner=owner_alessandro,
+        )
+        Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.EXTRA,
+            competenza_da=datetime.date(anno, 4, 1),
+            descrizione="Extra X",
+            importo_dovuto=Decimal("75"),
+            importo_pagato=Decimal("75"),
+            scadenza=datetime.date(anno, 4, 10),
+            data_pagamento=datetime.date(anno, 4, 12),
+            stato=StatoPagamento.PAGATO,
+            incassato_da_owner=owner_alessandro,
+        )
+        # Voce non deve apparire (stato != PAGATO)
+        Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.AFFITTO,
+            competenza_da=datetime.date(anno, 5, 1),
+            competenza_a=datetime.date(anno, 5, 31),
+            importo_dovuto=Decimal("400"),
+            scadenza=datetime.date(anno, 5, 1),
+            stato=StatoPagamento.ATTESO,
+            incassato_da_owner=owner_alessandro,
+        )
+
+        resp = client_prop.get(self._url(owner_alessandro.id, anno, "entrate"))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["owner_id"] == owner_alessandro.id
+        assert data["tipo"] == "entrate"
+        assert data["totale"] == 475.0
+        assert len(data["righe"]) == 2
+        # Ordering: data_pagamento desc → extra (12 aprile) prima dell'affitto (5 marzo)
+        assert data["righe"][0]["causale"] == "extra"
+        assert data["righe"][1]["causale"] == "affitto"
+        # Campi richiesti dalla pagina FE
+        for k in (
+            "id", "tipo", "causale", "causale_label", "tenant", "descrizione",
+            "importo_dovuto", "importo_pagato", "scadenza", "data_pagamento", "stato",
+        ):
+            assert k in data["righe"][0]
+
+    def test_uscite_solo_owner_richiesto(
+        self, client_prop, owner_alessandro, user_inq_2
+    ):
+        from billing.models import Expense, ExpenseCategory
+        anno = datetime.date.today().year
+        cat = ExpenseCategory.objects.create(nome="Spese condominiali")
+        altro = OwnerProfile.objects.create(user=user_inq_2, nominativo="Altro")
+        Expense.objects.create(
+            data=datetime.date(anno, 3, 23),
+            category=cat,
+            importo=Decimal("1000"),
+            descrizione="Rata 3",
+            anticipata_da_owner=owner_alessandro,
+        )
+        Expense.objects.create(
+            data=datetime.date(anno, 4, 1),
+            category=cat,
+            importo=Decimal("500"),
+            descrizione="Rata 4",
+            anticipata_da_owner=altro,
+        )
+        resp = client_prop.get(self._url(owner_alessandro.id, anno, "uscite"))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["totale"] == 1000.0
+        assert len(data["righe"]) == 1
+        assert data["righe"][0]["categoria"] == "Spese condominiali"
+        assert data["righe"][0]["importo"] == 1000.0
+
+    def test_inquilino_non_accede(self, client_inq_1, owner_alessandro):
+        resp = client_inq_1.get(self._url(owner_alessandro.id, 2026, "entrate"))
+        assert resp.status_code == 403
+
+    def test_anno_mancante_400(self, client_prop, owner_alessandro):
+        resp = client_prop.get(
+            f"/api/v1/dashboard/proprietario/{owner_alessandro.id}/dettaglio-bilancio/?tipo=entrate"
+        )
+        assert resp.status_code == 400
+
+    def test_tipo_invalido_400(self, client_prop, owner_alessandro):
+        resp = client_prop.get(self._url(owner_alessandro.id, 2026, "foo"))
+        assert resp.status_code == 400
+
+    def test_owner_inesistente_404(self, client_prop):
+        resp = client_prop.get(self._url(99999, 2026, "entrate"))
+        assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
