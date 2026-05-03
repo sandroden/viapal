@@ -1,30 +1,25 @@
 # Stack di produzione Viapal sul server Docker di Sandro.
-# Reverse proxy esterno: Traefik (configurato sul server).
-# Dominio: viapal.e-den.it.
+# Reverse proxy esterno: Traefik (rete `web` external).
+# Routing per path: Traefik smista /admin, /static, /media, /api, /accounts
+# al container `django`; il resto va a `quasar`.
 #
-# Build context = . (repo root). Immagini taggate dal CI come ghcr.io/sandroden/viapal-{backend,frontend}:<tag>.
-# Per deploy locale di test: `docker compose up --build`.
+# Postgres gira sull'HOST (non in Docker): il container raggiunge l'host
+# via `host.docker.internal` grazie a `extra_hosts: host-gateway`.
+# Settings di produzione iniettate via volume `./local.py` (vedi
+# local.py.example).
+# Volumi: bind-mount da ./data e ./logs.
+#
+# Build context = . (repo root). Immagini taggate dal CI come
+# ghcr.io/sandroden/viapal-{backend,frontend}:<tag>.
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-viapal}
-      POSTGRES_USER: ${POSTGRES_USER:-viapal}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
-    volumes:
-      - viapal_postgres_data:/var/lib/postgresql/data
-    networks:
-      - viapal_internal
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     networks:
-      - viapal_internal
+      - db
 
-  viapal-backend:
+  django:
     image: ${BACKEND_IMAGE:-viapal-backend:local}
     build:
       context: .
@@ -32,48 +27,48 @@ services:
     restart: unless-stopped
     environment:
       ENV: production
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-viapal.e-den.it}
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-viapal}
-      POSTGRES_USER: ${POSTGRES_USER:-viapal}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: '5432'
-      REDIS_URL: redis://redis:6379/0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      - postgres
       - redis
     volumes:
-      - viapal_media:/code/media
+      - ./local.py:/code/core/settings/local.py
+      - ./data/media:/code/media
+      - ./logs/uwsgi:/var/log/uwsgi
     networks:
-      - viapal_internal
+      - db
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.viapal-django.rule=Host(`${HOST:-viapal.e-den.it}`) && PathPrefix(`/admin`, `/static`, `/media`, `/api`, `/accounts`)"
+      - "traefik.http.routers.viapal-django.entrypoints=web-secured"
+      - "traefik.http.routers.viapal-django.tls=true"
+      - "traefik.http.routers.viapal-django.tls.certresolver=leresolver"
+      - "traefik.http.routers.viapal-django.service=viapal-django"
+      - "traefik.http.services.viapal-django.loadbalancer.server.port=8000"
 
-  viapal-frontend:
+  quasar:
     image: ${FRONTEND_IMAGE:-viapal-frontend:local}
     build:
       context: .
       dockerfile: frontend/Dockerfile
     restart: unless-stopped
-    depends_on:
-      - viapal-backend
+    volumes:
+      - ./logs/nginx:/var/log/nginx
     networks:
-      - viapal_internal
-      - traefik
+      - web
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
-      - "traefik.http.routers.viapal.rule=Host(`viapal.e-den.it`)"
-      - "traefik.http.routers.viapal.entrypoints=websecure"
-      - "traefik.http.routers.viapal.tls=true"
-      - "traefik.http.routers.viapal.tls.certresolver=letsencrypt"
-      - "traefik.http.services.viapal.loadbalancer.server.port=80"
-
-volumes:
-  viapal_postgres_data:
-  viapal_media:
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.viapal-quasar.rule=Host(`${HOST:-viapal.e-den.it}`)"
+      - "traefik.http.routers.viapal-quasar.entrypoints=web-secured"
+      - "traefik.http.routers.viapal-quasar.tls=true"
+      - "traefik.http.routers.viapal-quasar.tls.certresolver=leresolver"
+      - "traefik.http.routers.viapal-quasar.service=viapal-quasar"
+      - "traefik.http.services.viapal-quasar.loadbalancer.server.port=80"
 
 networks:
-  viapal_internal:
-    driver: bridge
-  traefik:
+  db:
+  web:
     external: true
