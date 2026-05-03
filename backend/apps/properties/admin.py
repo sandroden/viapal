@@ -7,7 +7,7 @@ stanze, contratto e assegnazioni stanze.
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
-from jmb.jadmin import JumboModelAdmin
+from jmb.jadmin import JumboModelAdmin, ModalEditMixin
 
 from .models import (
     Contract,
@@ -77,8 +77,12 @@ class RoomAssignmentInlineForRoom(admin.TabularInline):
 
 
 @admin.register(OwnerProfile)
-class OwnerProfileAdmin(admin.ModelAdmin):
-    list_display = ("nominativo", "codice_fiscale", "telefono", "user")
+class OwnerProfileAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 900
+    list_display = (
+        "nominativo", "codice_fiscale", "telefono", "user",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     search_fields = ("nominativo", "codice_fiscale", "user__username", "user__email")
     list_select_related = ("user",)
     inlines = (OwnershipShareInline, OwnerBankAccountInline)
@@ -100,8 +104,12 @@ class OwnerProfileAdmin(admin.ModelAdmin):
 
 
 @admin.register(OwnershipShare)
-class OwnershipShareAdmin(admin.ModelAdmin):
-    list_display = ("owner", "valid_from", "valid_to", "quota")
+class OwnershipShareAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 700
+    list_display = (
+        "owner", "valid_from", "valid_to", "quota",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     list_filter = ("owner",)
     list_select_related = ("owner",)
     search_fields = ("owner__nominativo",)
@@ -115,8 +123,12 @@ class OwnershipShareAdmin(admin.ModelAdmin):
 
 
 @admin.register(OwnerBankAccount)
-class OwnerBankAccountAdmin(admin.ModelAdmin):
-    list_display = ("owner", "banca", "iban", "attivo", "ordinamento")
+class OwnerBankAccountAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 800
+    list_display = (
+        "owner", "banca", "iban", "attivo", "ordinamento",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     list_filter = ("attivo", "owner")
     list_select_related = ("owner",)
     search_fields = ("owner__nominativo", "banca", "iban", "intestatario")
@@ -130,10 +142,12 @@ class OwnerBankAccountAdmin(admin.ModelAdmin):
 
 
 @admin.register(TenantProfile)
-class TenantProfileAdmin(admin.ModelAdmin):
+class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 900
     list_display = (
         "nominativo", "codice_fiscale", "telefono",
         "giorno_pagamento_affitto", "frequenza_conguagli",
+        "get_modal_edit_icon", "get_modal_delete_icon",
     )
     search_fields = ("nominativo", "codice_fiscale", "user__username", "user__email")
     list_filter = ("frequenza_conguagli",)
@@ -156,8 +170,12 @@ class TenantProfileAdmin(admin.ModelAdmin):
 
 
 @admin.register(Room)
-class RoomAdmin(admin.ModelAdmin):
-    list_display = ("nome", "superficie_mq", "ordinamento")
+class RoomAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 700
+    list_display = (
+        "nome", "superficie_mq", "ordinamento",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     search_fields = ("nome",)
     ordering = ("ordinamento", "nome")
     inlines = (RoomAssignmentInlineForRoom,)
@@ -174,17 +192,22 @@ class RoomAdmin(admin.ModelAdmin):
 
 
 @admin.register(Contract)
-class ContractAdmin(JumboModelAdmin):
+class ContractAdmin(ModalEditMixin, JumboModelAdmin):
     # AjaxInline definita in billing per le quote condominiali storicizzate.
     from billing.admin_inlines import TenantCondominioRateAjaxInline  # noqa: PLC0415
 
-    list_display = ("data_stipula", "data_decorrenza", "regime_fiscale", "asseverato", "durata_anni")
-    list_display_links = ("data_stipula", "data_decorrenza")
+    modal_edit_width = 900
+    list_display = (
+        "nome", "data_decorrenza", "termine",
+        "regime_fiscale", "asseverato", "durata_anni",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
     list_filter = ("regime_fiscale", "asseverato")
+    search_fields = ("nome",)
     ordering = ("-data_decorrenza",)
     fieldsets = (
         ("Anagrafica", {
-            "fields": ("data_stipula", "data_decorrenza", "durata_anni"),
+            "fields": ("nome", "data_stipula", "data_decorrenza", "durata_anni", "termine"),
         }),
         ("Fiscale", {
             "fields": ("regime_fiscale", "asseverato"),
@@ -212,10 +235,12 @@ class ContractAdmin(JumboModelAdmin):
 
 
 @admin.register(RoomAssignment)
-class RoomAssignmentAdmin(admin.ModelAdmin):
+class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 900
     list_display = (
         "tenant", "room", "valid_from", "valid_to",
         "canone_mensile", "deposito_versato",
+        "get_modal_edit_icon", "get_modal_delete_icon",
     )
     list_filter = (
         ("valid_to", admin.EmptyFieldListFilter),

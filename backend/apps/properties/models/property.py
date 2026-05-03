@@ -51,11 +51,26 @@ class Contract(TimestampedModel):
         CEDOLARE_21 = "cedolare_21", "Cedolare secca 21%"
         IRPEF = "irpef", "IRPEF ordinario"
 
+    nome = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="nome",
+        help_text="Nome identificativo (es. 'Contratto 2023', 'Contratto 2025').",
+    )
     data_stipula = models.DateField(
         verbose_name="data stipula",
     )
     data_decorrenza = models.DateField(
         verbose_name="data decorrenza",
+    )
+    termine = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="termine",
+        help_text=(
+            "Data effettiva di chiusura del contratto (uscita anticipata). "
+            "Diversa dalla scadenza naturale = data_decorrenza + durata_anni."
+        ),
     )
     durata_anni = models.PositiveSmallIntegerField(
         verbose_name="durata (anni)",
@@ -93,6 +108,8 @@ class Contract(TimestampedModel):
         ordering = ["-data_decorrenza"]
 
     def __str__(self):
+        if self.nome:
+            return self.nome
         return f"Contratto dal {self.data_decorrenza} ({self.get_regime_fiscale_display()})"
 
 
