@@ -1,3 +1,4 @@
+# utf-8
 import re
 import os
 import sys
@@ -29,11 +30,11 @@ if 'ENV' in os.environ and os.environ['ENV'] == 'dev' and not os.path.exists(loc
 # così non è necessario importare dentro local 'from .base *'
 # tutto viene già passato nei 'globals()'
 if os.path.exists(settings_env_file):
-    exec(compile(open(settings_env_file).read(),
+    exec(compile(open(settings_env_file, encoding='utf-8').read(),
                  settings_env_file, 'exec'), globals())
 
 if os.path.exists(local_settings):
-    exec(compile(open(local_settings).read(),
+    exec(compile(open(local_settings, encoding='utf-8').read(),
                  local_settings, 'exec'), globals())
 
 
