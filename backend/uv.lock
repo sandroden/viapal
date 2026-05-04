@@ -175,7 +175,7 @@ requires-dist = [
     { name = "django-cors-headers", specifier = ">=4.9.0" },
     { name = "django-environ", specifier = ">=0.13.0" },
     { name = "djangorestframework", specifier = ">=3.17.1" },
-    { name = "jmb-jadmin", specifier = ">=2.1.7" },
+    { name = "jmb-jadmin", specifier = ">=2.1.8" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4" },
 ]
@@ -445,16 +445,16 @@ wheels = [
 
 [[package]]
 name = "jmb-jadmin"
-version = "2.1.7"
+version = "2.1.8"
 source = { registry = "https://pypi.thux.dev/" }
 dependencies = [
     { name = "django" },
     { name = "jmb-filters" },
     { name = "setuptools" },
 ]
-sdist = { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.7.tar.gz", hash = "sha256:562b50a1b8efbb98267fc1373989a24eb2de13f97dc2ddaa41151f9d2d35c273" }
+sdist = { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.8.tar.gz", hash = "sha256:8e89a0729eb52750a2ea281048ed7bdd9f88d7f8639e1a8f91c33c6b483a69fe" }
 wheels = [
-    { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.7-py3-none-any.whl", hash = "sha256:be8576e07cb2e8aa9fd3ea000e67cfbf80284497d61403d977d955c91327e7cc" },
+    { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.8-py3-none-any.whl", hash = "sha256:cf8c677054f9ffb027701845f226bdbe264f52b43d03383db011f92433699930" },
 ]
 
 [[package]]

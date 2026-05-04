@@ -126,6 +126,7 @@ class ReceivableAdmin(ModalEditMixin, JumboModelAdmin):
         "descrizione",
         "assignment__tenant__nominativo",
         "assignment__room__nome",
+        "causale",
     )
     list_select_related = (
         "assignment__tenant", "assignment__room",
@@ -158,6 +159,59 @@ class ReceivableAdmin(ModalEditMixin, JumboModelAdmin):
         }:
             return True
         return super().lookup_allowed(lookup, value, request)
+
+    _MESI_PREFIX = {
+        "gen": 1, "gennaio": 1,
+        "feb": 2, "febbraio": 2,
+        "mar": 3, "marzo": 3,
+        "apr": 4, "aprile": 4,
+        "mag": 5, "maggio": 5,
+        "giu": 6, "giugno": 6,
+        "lug": 7, "luglio": 7,
+        "ago": 8, "agosto": 8,
+        "set": 9, "settembre": 9,
+        "ott": 10, "ottobre": 10,
+        "nov": 11, "novembre": 11,
+        "dic": 12, "dicembre": 12,
+    }
+
+    def get_search_results(self, request, queryset, search_term):
+        """Filtra l'autocomplete a seconda del campo che lo richiama.
+
+        Estensioni rispetto al search Django standard:
+
+        - le parole che corrispondono a mesi italiani (``gen``, ``feb``,
+          ``gennaio``...) vengono interpretate come filtro
+          ``competenza_da__month=N`` invece che come testo: scrivere
+          "eshani gen" trova gli addebiti di Eshani con competenza in
+          gennaio (la repr è "...Utenze Gen 2026" ma "Gen" non è in
+          nessun campo testuale del DB).
+        - quando l'autocomplete arriva dall'inline
+          ``BankTransactionAllocation.receivable`` (riconciliazione
+          manuale di un bonifico), restringiamo ai Receivable in stato
+          ATTESO: gli addebiti già pagati non vanno (ri)abbinati.
+        """
+        bits = search_term.split()
+        text_bits = []
+        for bit in bits:
+            month = self._MESI_PREFIX.get(bit.lower())
+            if month is not None:
+                queryset = queryset.filter(competenza_da__month=month)
+            else:
+                text_bits.append(bit)
+        text_search = " ".join(text_bits)
+
+        queryset, may_have_duplicates = super().get_search_results(
+            request, queryset, text_search
+        )
+        if (
+            request.GET.get("model_name") == "banktransactionallocation"
+            and request.GET.get("field_name") == "receivable"
+        ):
+            from billing.models.payments import StatoPagamento
+
+            queryset = queryset.filter(stato=StatoPagamento.ATTESO)
+        return queryset, may_have_duplicates
     fieldsets = (
         ("Addebito", {
             "fields": (

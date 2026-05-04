@@ -12,7 +12,7 @@ dependencies = [
     "django-cors-headers>=4.9.0",
     "django-environ>=0.13.0",
     "djangorestframework>=3.17.1",
-    "jmb-jadmin>=2.1.7",
+    "jmb-jadmin>=2.1.8",
     "pillow>=12.2.0",
     "psycopg[binary]>=3.3.4",
 ]
