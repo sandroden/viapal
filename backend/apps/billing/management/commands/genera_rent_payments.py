@@ -61,6 +61,28 @@ class Command(BaseCommand):
         self.stdout.write(f"  Skippati:  {risultato['skippati']}")
         self.stdout.write(f"  ID creati: {risultato['payments']}")
 
+        skippati_alloc = risultato.get("skippati_per_allocation", [])
+        if skippati_alloc:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"\n[!] {len(skippati_alloc)} Receivable NON sovrascritti perché già allocati a transazioni bancarie:"
+                )
+            )
+            for s in skippati_alloc:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"    - {s['tenant_nominativo']}: "
+                        f"esistente {s['importo_esistente']}€, calcolato {s['importo_calcolato']}€ "
+                        f"(receivable_id={s['receivable_id']})"
+                    )
+                )
+            self.stdout.write(
+                self.style.WARNING(
+                    "    Per correggere usa una rettifica manuale (Receivable extra) "
+                    "anziché rilanciare il calcolo."
+                )
+            )
+
         totale = risultato["creati"] + risultato["aggiornati"]
         if totale > 0:
             self.stdout.write(

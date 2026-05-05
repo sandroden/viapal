@@ -239,8 +239,11 @@ def calcola_conguaglio_periodo(period_id: int, persist: bool = False) -> dict:
     diff_arrotondamento = _arrotonda(totale_periodo - somma_quote)
 
     # --- Passo 6: persist (se richiesto) ---
+    skippati_per_allocation: list[dict] = []
     if persist:
-        _persist_receivables(period, quote, totali_per_voce, periodo_da)
+        skippati_per_allocation = _persist_receivables(
+            period, quote, totali_per_voce, periodo_da
+        )
 
     return {
         "period_id": period_id,
@@ -251,15 +254,25 @@ def calcola_conguaglio_periodo(period_id: int, persist: bool = False) -> dict:
         "sum_giorni_presenza": sum_giorni,
         "quote": quote,
         "diff_arrotondamento": diff_arrotondamento,
+        "skippati_per_allocation": skippati_per_allocation,
     }
 
 
-def _persist_receivables(period, quote: list[QuotaInquilino], totali_per_voce: dict, periodo_da: date) -> None:
+def _persist_receivables(
+    period, quote: list[QuotaInquilino], totali_per_voce: dict, periodo_da: date
+) -> list[dict]:
     """
     Crea o aggiorna Receivable(causale=utenze) + UtilityChargeLine per ogni
     assignment del periodo. Idempotente sulla coppia (utility_period, assignment).
 
     Scadenza: data_invio + 5gg se presente, altrimenti primo del mese successivo + 5gg.
+
+    Guardia integrità: se un Receivable già esistente ha BankTransactionAllocation
+    associate, NON viene aggiornato (importo e righe restano invariati). Il record
+    viene aggiunto alla lista di ritorno per segnalazione al chiamante.
+    Razionale: una volta che un addebito è stato imputato a una transazione bancaria,
+    sovrascriverlo silenziosamente romperebbe la tracciabilità contabile. Una
+    eventuale correzione va fatta tramite rettifica manuale o nota di conguaglio.
     """
     from datetime import timedelta
 
@@ -278,8 +291,28 @@ def _persist_receivables(period, quote: list[QuotaInquilino], totali_per_voce: d
             mese += 1
         scadenza = date(anno, mese, 1) + timedelta(days=5)
 
+    skippati: list[dict] = []
+
     for q in quote:
         assignment = RoomAssignment.objects.get(pk=q["assignment_id"])
+
+        existing = Receivable.objects.filter(
+            utility_period=period,
+            assignment=assignment,
+            causale=Receivable.Causale.UTENZE,
+        ).first()
+
+        if existing and existing.allocations.exists():
+            skippati.append(
+                {
+                    "receivable_id": existing.pk,
+                    "assignment_id": assignment.pk,
+                    "tenant_nominativo": q["tenant_nominativo"],
+                    "importo_esistente": existing.importo_dovuto,
+                    "importo_calcolato": q["quota"],
+                }
+            )
+            continue
 
         receivable, _ = Receivable.objects.update_or_create(
             utility_period=period,
@@ -304,3 +337,5 @@ def _persist_receivables(period, quote: list[QuotaInquilino], totali_per_voce: d
                     f"{(period.periodo_a - period.periodo_da).days + 1}"
                 ),
             )
+
+    return skippati

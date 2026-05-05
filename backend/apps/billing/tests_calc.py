@@ -19,13 +19,15 @@ from django.contrib.auth.models import User
 
 from billing.models import (
     AnnualUtilityCost,
+    BankTransaction,
+    BankTransactionAllocation,
     Receivable,
     Supplier,
     UtilityBill,
     UtilityChargeLine,
     UtilityChargePeriod,
 )
-from properties.models import OwnerProfile, Room, RoomAssignment, TenantProfile
+from properties.models import OwnerBankAccount, OwnerProfile, Room, RoomAssignment, TenantProfile
 
 
 # ---------------------------------------------------------------------------
@@ -605,3 +607,120 @@ class TestIdempotenza:
         ).count()
 
         assert lines_after_first == lines_after_second
+
+
+# ---------------------------------------------------------------------------
+# Guardia integrità: receivable già allocati a transazioni bancarie
+# ---------------------------------------------------------------------------
+
+
+class TestGuardiaAllocation:
+    """Se un Receivable utenze ha già BankTransactionAllocation, il rilancio di
+    calcola_conguaglio_periodo NON deve sovrascriverne importo/righe."""
+
+    @pytest.fixture
+    def setup_allocato(self, db, make_assignment, supplier_luce, owner):
+        period = UtilityChargePeriod.objects.create(
+            periodo_da=datetime.date(2026, 5, 1),
+            periodo_a=datetime.date(2026, 5, 31),
+            data_invio=datetime.date(2026, 6, 1),
+        )
+        UtilityBill.objects.create(
+            supplier=supplier_luce,
+            numero_fattura="ENEL-GUARD-1",
+            data_emissione=datetime.date(2026, 5, 15),
+            periodo_da=datetime.date(2026, 5, 1),
+            periodo_a=datetime.date(2026, 5, 31),
+            importo_totale=Decimal("100.00"),
+            pagata_da_owner=owner,
+        )
+        a1 = make_assignment(valid_from=datetime.date(2026, 5, 1))
+        a2 = make_assignment(valid_from=datetime.date(2026, 5, 1))
+
+        owner_account = OwnerBankAccount.objects.create(
+            owner=owner,
+            banca="Banca Test",
+            intestatario="Owner Calc",
+            iban="IT00X0000000000000000000001",
+        )
+        return period, [a1, a2], owner_account
+
+    def test_skip_se_allocato(self, setup_allocato):
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        period, assignments, owner_account = setup_allocato
+
+        calcola_conguaglio_periodo(period.pk, persist=True)
+        r1 = Receivable.objects.get(
+            utility_period=period,
+            assignment=assignments[0],
+            causale=Receivable.Causale.UTENZE,
+        )
+        importo_originale = r1.importo_dovuto
+
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 6, 5),
+            descrizione="Bonifico utenze",
+            importo=importo_originale,
+            owner_account=owner_account,
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=r1, importo=importo_originale
+        )
+
+        r1.importo_dovuto = importo_originale - Decimal("10.00")
+        r1.save(update_fields=["importo_dovuto"])
+        importo_manuale = r1.importo_dovuto
+
+        # Modifico la bolletta per forzare un calcolo diverso
+        bill = UtilityBill.objects.get(numero_fattura="ENEL-GUARD-1")
+        bill.importo_totale = Decimal("250.00")
+        bill.save(update_fields=["importo_totale"])
+
+        risultato = calcola_conguaglio_periodo(period.pk, persist=True)
+
+        r1.refresh_from_db()
+        assert r1.importo_dovuto == importo_manuale, (
+            "Receivable allocato non deve essere sovrascritto"
+        )
+
+        skippati = risultato["skippati_per_allocation"]
+        assert len(skippati) == 1
+        assert skippati[0]["receivable_id"] == r1.pk
+        assert skippati[0]["importo_esistente"] == importo_manuale
+
+    def test_non_allocato_viene_aggiornato(self, setup_allocato):
+        """Sanity check: l'altro receivable (senza allocation) viene comunque ricalcolato."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        period, assignments, owner_account = setup_allocato
+
+        calcola_conguaglio_periodo(period.pk, persist=True)
+        r1 = Receivable.objects.get(
+            utility_period=period,
+            assignment=assignments[0],
+            causale=Receivable.Causale.UTENZE,
+        )
+
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 6, 5),
+            descrizione="Bonifico",
+            importo=r1.importo_dovuto,
+            owner_account=owner_account,
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=r1, importo=r1.importo_dovuto
+        )
+
+        bill = UtilityBill.objects.get(numero_fattura="ENEL-GUARD-1")
+        bill.importo_totale = Decimal("300.00")
+        bill.save(update_fields=["importo_totale"])
+
+        calcola_conguaglio_periodo(period.pk, persist=True)
+
+        r2 = Receivable.objects.get(
+            utility_period=period,
+            assignment=assignments[1],
+            causale=Receivable.Causale.UTENZE,
+        )
+        assert r2.importo_dovuto == Decimal("150.00")

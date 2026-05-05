@@ -97,6 +97,7 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
     creati = 0
     aggiornati = 0
     skippati = 0
+    skippati_per_allocation: list[dict] = []
     payment_ids: list[int] = []
 
     for assignment in assignments_qs:
@@ -127,22 +128,54 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
         data_scadenza_base = date(anno, mese, giorno_eff)
         scadenza = data_scadenza_base + timedelta(days=5)
 
-        defaults = {
+        defaults_base = {
             "competenza_a": competenza_a,
             "importo_dovuto": importo_dovuto,
             "scadenza": scadenza,
-            "stato": StatoPagamento.ATTESO,
             "is_aggiustamento": is_aggiustamento,
         }
+        defaults_create = {**defaults_base, "stato": StatoPagamento.ATTESO}
 
         if force:
-            payment, created = Receivable.objects.update_or_create(
+            # In rigenerazione preserviamo `stato`/`data_pagamento`/
+            # `importo_pagato`/`incassato_da_owner` se il record esiste già.
+            # Guardia integrità: se il Receivable ha allocations bancarie,
+            # NON viene sovrascritto (vedi razionale in _persist_receivables di calc/utility.py).
+            esistente = Receivable.objects.filter(
                 assignment=assignment,
                 causale=Receivable.Causale.AFFITTO,
                 competenza_da=competenza_da,
                 competenza_a=competenza_a,
-                defaults=defaults,
-            )
+            ).first()
+            if esistente and esistente.allocations.exists():
+                skippati_per_allocation.append(
+                    {
+                        "receivable_id": esistente.pk,
+                        "assignment_id": assignment.pk,
+                        "tenant_nominativo": assignment.tenant.nominativo,
+                        "importo_esistente": esistente.importo_dovuto,
+                        "importo_calcolato": importo_dovuto,
+                    }
+                )
+                payment = esistente
+                payment_ids.append(payment.pk)
+                continue
+            if esistente:
+                payment = esistente
+                created = False
+                for k, v in defaults_base.items():
+                    setattr(payment, k, v)
+                payment.save(
+                    update_fields=[*defaults_base.keys(), "updated_at"]
+                )
+            else:
+                payment = Receivable.objects.create(
+                    assignment=assignment,
+                    causale=Receivable.Causale.AFFITTO,
+                    competenza_da=competenza_da,
+                    **defaults_create,
+                )
+                created = True
             if created:
                 creati += 1
             else:
@@ -155,6 +188,7 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
                 competenza_da=competenza_da,
                 competenza_a=competenza_a,
             ).exists()
+
             if exists:
                 skippati += 1
                 payment = Receivable.objects.get(
@@ -168,7 +202,7 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
                     assignment=assignment,
                     causale=Receivable.Causale.AFFITTO,
                     competenza_da=competenza_da,
-                    **defaults,
+                    **defaults_create,
                 )
                 creati += 1
 
@@ -180,6 +214,7 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
         "creati": creati,
         "aggiornati": aggiornati,
         "skippati": skippati,
+        "skippati_per_allocation": skippati_per_allocation,
         "payments": payment_ids,
     }
 

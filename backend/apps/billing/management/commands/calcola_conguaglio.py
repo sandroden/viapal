@@ -78,11 +78,33 @@ class Command(BaseCommand):
             self.stdout.write("Diff arrotondamento: 0.00€ (perfetto)")
 
         if persist:
+            skippati = risultato.get("skippati_per_allocation", [])
+            n_persistiti = len(risultato["quote"]) - len(skippati)
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"\nConguaglio persistito: {len(risultato['quote'])} addebiti utenze creati/aggiornati."
+                    f"\nConguaglio persistito: {n_persistiti} addebiti utenze creati/aggiornati."
                 )
             )
+            if skippati:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"\n[!] {len(skippati)} addebiti NON aggiornati perché già allocati a transazioni bancarie:"
+                    )
+                )
+                for s in skippati:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"    - {s['tenant_nominativo']}: "
+                            f"esistente {s['importo_esistente']}€, calcolato {s['importo_calcolato']}€ "
+                            f"(receivable_id={s['receivable_id']})"
+                        )
+                    )
+                self.stdout.write(
+                    self.style.WARNING(
+                        "    Per correggere usa una rettifica manuale (Receivable extra) "
+                        "anziché rilanciare il calcolo."
+                    )
+                )
         else:
             self.stdout.write(
                 "\n[Usare --persist per salvare nel database]"

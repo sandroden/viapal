@@ -15,8 +15,19 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth.models import User
 
-from billing.models import Receivable, StatoPagamento
-from properties.models import Room, RoomAssignment, TenantProfile
+from billing.models import (
+    BankTransaction,
+    BankTransactionAllocation,
+    Receivable,
+    StatoPagamento,
+)
+from properties.models import (
+    OwnerBankAccount,
+    OwnerProfile,
+    Room,
+    RoomAssignment,
+    TenantProfile,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +196,74 @@ class TestIdempotenzaRent:
 
         assert r2["aggiornati"] == 3
         assert r2["creati"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Guardia integrità: force non sovrascrive Receivable già allocati
+# ---------------------------------------------------------------------------
+
+
+class TestGuardiaAllocationForce:
+    """Se un Receivable affitto ha BankTransactionAllocation, force NON deve
+    sovrascrivere importo/competenza_a/scadenza."""
+
+    @pytest.fixture
+    def setup_allocato(self, db, make_assignment):
+        a1 = make_assignment(valid_from=datetime.date(2026, 5, 1))
+        a2 = make_assignment(valid_from=datetime.date(2026, 5, 1))
+
+        owner_user = User.objects.create_user(
+            "owner_guard", email="owner_guard@v.it", password="pwd"
+        )
+        owner = OwnerProfile.objects.create(user=owner_user, nominativo="Owner Guard")
+        owner_account = OwnerBankAccount.objects.create(
+            owner=owner,
+            banca="Banca Test",
+            intestatario="Owner Guard",
+            iban="IT00X0000000000000000000002",
+        )
+        return [a1, a2], owner_account
+
+    def test_force_skip_se_allocato(self, setup_allocato):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        assignments, owner_account = setup_allocato
+
+        genera_pagamenti_mese(2026, 5)
+        r1 = Receivable.objects.get(
+            assignment=assignments[0], causale=Receivable.Causale.AFFITTO
+        )
+        importo_originale = r1.importo_dovuto
+
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 5, 3),
+            descrizione="Bonifico affitto",
+            importo=importo_originale,
+            owner_account=owner_account,
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=r1, importo=importo_originale
+        )
+
+        # Cambio il canone dell'assignment per forzare un calcolo diverso
+        assignments[0].canone_mensile = Decimal("999.99")
+        assignments[0].save(update_fields=["canone_mensile"])
+
+        risultato = genera_pagamenti_mese(2026, 5, force=True)
+
+        r1.refresh_from_db()
+        assert r1.importo_dovuto == importo_originale, (
+            "Receivable allocato non deve essere sovrascritto"
+        )
+
+        skippati = risultato["skippati_per_allocation"]
+        assert len(skippati) == 1
+        assert skippati[0]["receivable_id"] == r1.pk
+        assert skippati[0]["importo_esistente"] == importo_originale
+        assert skippati[0]["importo_calcolato"] == Decimal("999.99")
+
+        # L'altro receivable senza allocation viene comunque aggiornato
+        assert risultato["aggiornati"] == 1
 
 
 # ---------------------------------------------------------------------------
