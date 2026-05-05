@@ -109,14 +109,14 @@ def _keywords_per_tenant(tenant: TenantProfile) -> list[str]:
 def finestra_match(receivable: Receivable) -> tuple[datetime.date, datetime.date]:
     """Finestra ``[start, end]`` in cui cercare il bonifico per il Receivable.
 
-    L'**ancora** è la data dovuta del Receivable (giorno 1 del mese per
-    l'affitto, scadenza per utenze ed extra). Le tolleranze pre/post sono
-    differenziate per causale e calibrate sui pagamenti reali storici:
+    L'**ancora** è la scadenza del Receivable (giorno 1 del mese per l'affitto,
+    scadenza per utenze ed extra). Le tolleranze pre/post sono differenziate
+    per causale e calibrate sui pagamenti reali storici:
 
-      - **affitto** ``[competenza_da − 10, competenza_a + 30]``: tolleranza
-        di 10gg per pagamenti anticipati (rari ma documentati: alcuni
-        inquilini bonificano l'affitto del mese successivo a fine mese
-        corrente) e 30gg dopo la fine del mese di competenza per i ritardi.
+      - **affitto** ``[scadenza − 3, scadenza + 20]``: l'affitto è quasi
+        sempre pagato nel mese di riferimento, con piccolo anticipo o ritardo
+        contenuto. Finestra stretta per evitare che importi alti finiscano
+        attribuiti a periodi sbagliati.
       - **utenze** ``[scadenza − 7, scadenza + 40]``: l'inquilino paga di
         norma dopo l'avviso, ma può anticipare di una settimana.
       - **extra** ``[scadenza − 90, scadenza + 60]``: i consuntivi annuali
@@ -125,9 +125,8 @@ def finestra_match(receivable: Receivable) -> tuple[datetime.date, datetime.date
     """
     causale = receivable.causale
     if causale == Receivable.Causale.AFFITTO:
-        start = receivable.competenza_da - datetime.timedelta(days=10)
-        fine_periodo = receivable.competenza_a or receivable.competenza_da
-        end = fine_periodo + datetime.timedelta(days=30)
+        start = receivable.scadenza - datetime.timedelta(days=3)
+        end = receivable.scadenza + datetime.timedelta(days=20)
     elif causale == Receivable.Causale.UTENZE:
         start = receivable.scadenza - datetime.timedelta(days=7)
         end = receivable.scadenza + datetime.timedelta(days=40)
