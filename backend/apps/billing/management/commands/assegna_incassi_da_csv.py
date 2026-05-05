@@ -22,40 +22,26 @@ Uso:
         --csv dati/movimenti-sandro-anno-in.csv --owner alessandro --formato banca
 
 Idempotente: rilanciato sovrascrive lo stesso campo.
+
+Il matching tenant ↔ Receivable e la classificazione causale sono delegati al
+modulo condiviso `billing.calc.matching` (riusato anche da `genera_storico`).
 """
 import csv
 import datetime
-import re
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from billing.calc.matching import (
+    classifica_descrizione,
+    finestra_match,
+    riconosci_tenant,
+)
 from billing.models import Receivable
 from billing.models.payments import StatoPagamento
 from properties.models import OwnerProfile, TenantProfile
-
-# Mappa keyword (uppercase) → last_name del TenantProfile
-TENANT_KEYWORDS = {
-    "DI MAIO": "Di Maio",
-    "DAVIDE": "Di Maio",
-    "MARIASEVERA": "Armas",
-    "MARIA SEVERA": "Armas",
-    "SEVERA": "Armas",
-    "ARMAS": "Armas",
-    "POLKOTU": "Polkotu Hetti Arachchilage",
-    "ESHANI": "Polkotu Hetti Arachchilage",
-    "SINGARAYAR": "Singarayar",
-    "ARUN": "Singarayar",
-    "PORRAS": "Porras Rodriguez",
-    "DIANA": "Porras Rodriguez",
-    "LINDY": "Nyathi",
-    "NYATHI": "Nyathi",
-    "ELISA": "Chiappini",
-    "CHIAPPINI": "Chiappini",
-}
 
 OWNER_KEYWORDS = {
     "bruna": "Bruna Laura",
@@ -63,20 +49,6 @@ OWNER_KEYWORDS = {
     "sandro": "Alessandro",
     "fabio": "Fabio Francesco",
 }
-
-# Pattern di riconoscimento tipo movimento (priorità: extra > utenza > affitto)
-RE_EXTRA = re.compile(
-    r"CONSUNTIVO|CONGUAGLIO|SPESE\s+CONDOMINIALI\s+ANNO|CONS(\.|\s)+COND",
-    re.IGNORECASE,
-)
-RE_UTILITY = re.compile(
-    r"UTENZE|BILLS|BOLLETTE|CONSUMI|UTILITIES|BOLLETTA",
-    re.IGNORECASE,
-)
-RE_AFFITTO = re.compile(
-    r"AFFITTO|CANONE|RENT(\b|\s)",
-    re.IGNORECASE,
-)
 
 
 @dataclass
@@ -133,83 +105,16 @@ def parse_formato_banca(path: str) -> list[Movimento]:
     return out
 
 
-def riconosci_tenant(descrizione: str) -> Optional[TenantProfile]:
-    upper = descrizione.upper()
-    for kw, last_name in TENANT_KEYWORDS.items():
-        if kw in upper:
-            return TenantProfile.objects.filter(user__last_name=last_name).first()
-    return None
-
-
-def classifica(descrizione: str) -> str:
-    """Ritorna 'extra' | 'utility' | 'rent' | 'unknown'."""
-    if RE_EXTRA.search(descrizione):
-        return "extra"
-    if RE_UTILITY.search(descrizione):
-        return "utility"
-    if RE_AFFITTO.search(descrizione):
-        return "rent"
-    return "unknown"
-
-
-def match_rent(tenant: TenantProfile, mov: Movimento) -> list[Receivable]:
-    """Cerca Receivable affitto del tenant nel mese del bonifico (±1 mese)."""
-    y, m = mov.data.year, mov.data.month
-    candidati: list[Receivable] = []
-    for delta in (0, -1, 1):
-        target_m = m + delta
-        target_y = y
-        if target_m == 0:
-            target_m, target_y = 12, y - 1
-        elif target_m == 13:
-            target_m, target_y = 1, y + 1
-        candidati = list(
-            Receivable.objects.filter(
-                causale=Receivable.Causale.AFFITTO,
-                assignment__tenant=tenant,
-                competenza_da__year=target_y,
-                competenza_da__month=target_m,
-            )
-        )
-        if candidati:
-            break
-    return candidati
-
-
-def match_utility(tenant: TenantProfile, mov: Movimento) -> list[Receivable]:
-    """Receivable utenze del tenant: il bonifico paga il PERIODO PRECEDENTE
-    (es. utenze gennaio pagate a febbraio). Cerco periodo nei 3 mesi prima.
-    """
-    y, m = mov.data.year, mov.data.month
-    candidati: list[Receivable] = []
-    for delta in (-1, -2, 0, -3):
-        target_m = m + delta
-        target_y = y
-        while target_m <= 0:
-            target_m += 12
-            target_y -= 1
-        candidati = list(
-            Receivable.objects.filter(
-                causale=Receivable.Causale.UTENZE,
-                assignment__tenant=tenant,
-                utility_period__periodo_da__year=target_y,
-                utility_period__periodo_da__month=target_m,
-            )
-        )
-        if candidati:
-            break
-    return candidati
-
-
-def match_extra(tenant: TenantProfile, mov: Movimento) -> list[Receivable]:
-    """Receivable extra del tenant nell'anno del bonifico (anno solare cassa)."""
-    return list(
-        Receivable.objects.filter(
-            causale=Receivable.Causale.EXTRA,
-            assignment__tenant=tenant,
-            scadenza__year=mov.data.year,
-        )
-    )
+def candidati_per_movimento(
+    tenant: TenantProfile, mov: Movimento, causale: str
+) -> list[Receivable]:
+    """Ritorna i Receivable del tenant compatibili con il bonifico:
+    stessa causale, e ``mov.data`` cade dentro la finestra del Receivable
+    (vedi `billing.calc.matching.finestra_match`)."""
+    qs = Receivable.objects.filter(
+        causale=causale, assignment__tenant=tenant
+    ).select_related("assignment__tenant")
+    return [r for r in qs if finestra_match(r)[0] <= mov.data <= finestra_match(r)[1]]
 
 
 class Command(BaseCommand):
@@ -259,10 +164,9 @@ class Command(BaseCommand):
             mov_list = parse_formato_banca(csv_path)
 
         ok_count = 0
-        skip_no_tenant = []
-        skip_no_tipo = []
-        ambiguo = []
-        no_match = []
+        skip_no_tenant: list[Movimento] = []
+        ambiguo: list[tuple] = []
+        no_match: list[tuple] = []
 
         with transaction.atomic():
             for mov in mov_list:
@@ -271,40 +175,38 @@ class Command(BaseCommand):
                     skip_no_tenant.append(mov)
                     continue
 
-                tipo = classifica(mov.descrizione)
-                if tipo == "rent":
-                    candidati = match_rent(tenant, mov)
-                elif tipo == "utility":
-                    candidati = match_utility(tenant, mov)
-                elif tipo == "extra":
-                    candidati = match_extra(tenant, mov)
-                else:
-                    # fallback: importo grande → rent, piccolo → utility
-                    if mov.importo >= Decimal("400"):
-                        tipo = "rent"
-                        candidati = match_rent(tenant, mov)
-                    else:
-                        tipo = "utility"
-                        candidati = match_utility(tenant, mov)
+                causale = classifica_descrizione(mov.descrizione)
+                if causale == "unknown":
+                    # fallback: importo grande → affitto, piccolo → utenze
+                    causale = (
+                        Receivable.Causale.AFFITTO
+                        if mov.importo >= Decimal("400")
+                        else Receivable.Causale.UTENZE
+                    )
 
+                candidati = candidati_per_movimento(tenant, mov, causale)
                 if not candidati:
-                    no_match.append((mov, tenant.nominativo, tipo))
+                    no_match.append((mov, tenant.nominativo, causale))
                     continue
 
-                # Se più candidati: preferisco match sull'importo, poi PAGATO, poi primo
                 if len(candidati) > 1:
                     by_importo = [
-                        c for c in candidati
+                        c
+                        for c in candidati
                         if abs((c.importo_dovuto or Decimal("0")) - mov.importo) < 1
                     ]
                     if len(by_importo) == 1:
                         target = by_importo[0]
                     else:
-                        pagati = [c for c in candidati if c.stato == StatoPagamento.PAGATO]
+                        pagati = [
+                            c for c in candidati if c.stato == StatoPagamento.PAGATO
+                        ]
                         if len(pagati) == 1:
                             target = pagati[0]
                         else:
-                            ambiguo.append((mov, tenant.nominativo, tipo, len(candidati)))
+                            ambiguo.append(
+                                (mov, tenant.nominativo, causale, len(candidati))
+                            )
                             continue
                 else:
                     target = candidati[0]
@@ -312,8 +214,6 @@ class Command(BaseCommand):
                 if not dry_run:
                     target.incassato_da_owner_id = owner.id
                     update_fields = ["incassato_da_owner"]
-                    # Il bonifico È la prova del pagamento: se ancora pendente
-                    # promuoviamo a PAGATO con la data/importo del bonifico.
                     if target.stato in (
                         StatoPagamento.ATTESO,
                         StatoPagamento.DICHIARATO,

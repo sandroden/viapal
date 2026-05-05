@@ -1,53 +1,35 @@
-"""Genera RentPayment storici per tutti i mesi dei contratti
-e tenta matching automatico con BankTransaction esistenti.
+"""Genera Receivable storici (causale=affitto) per tutti i mesi dei contratti.
 
 Uso:
   ENV=dev uv run manage.py genera_storico --dal 2024-01 --al 2026-05
+
+La riconciliazione con i bonifici (BankTransaction → BankTransactionAllocation
+→ Receivable) è ora un comando separato e idempotente:
+
+  ENV=dev uv run manage.py riconcilia_bonifici
+
+Lanciato dopo `genera_storico`, processa solo le BT non ancora riconciliate.
 """
-from datetime import date, timedelta
-from decimal import Decimal
+from datetime import date
 
 from django.core.management.base import BaseCommand
 
 from billing.calc.rent import genera_pagamenti_mese
-from billing.models import (
-    BankTransaction,
-    BankTransactionAllocation,
-    Receivable,
-    StatoPagamento,
-)
-from properties.models import RoomAssignment  # noqa: F401
-
-
-# Mappa nominativi inquilini -> stringa di match nelle descrizioni bonifici
-# (case-insensitive, OR su keywords)
-MATCH_INQUILINO = {
-    # Le keyword sono testate in ordine, prima match vince.
-    # Coprono sia descrizioni Webank ("BON.DA <NOMINATIVO>") sia
-    # foglio sintetico Bruna ("ARUN", "ESHANI", "DIANA", ecc.)
-    "Davide Di Maio": ["DI MAIO DAVIDE", "DI MAIO  DAVIDE", "DAVIDE"],
-    "Maria Severa Armas": [
-        "MARIA SEVERA ARMAS", "ARMAS MARIA SEVERA", "ARMAS MARIA  SEVERA",
-        "MARIASEVERA", "SEVERA",
-    ],
-    "Salvatore D'Angella": ["D'ANGELLA SALVATORE", "DANGELLA SALVATORE", "SALVATORE"],
-    "Eugenia Blundetto": ["BLUNDETTO EUGENIA", "EUGENIA"],
-    "Marianna Di Marino": ["DI MARINO MARIANNA", "MARIANNA"],
-    "Eshani Nimansha Polkotu Hetti Arachchilage": ["POLKOTU", "ESHANI"],
-    "Arun Singarayar": ["SINGARAYAR ARUN", "SINGARAYAR  ARUN", "ARUN"],
-    "Elisa Chiappini": ["CHIAPPINI ELISA", "CHIAPPINI  ELISA", "ELISA"],
-    "Diana Carolina Porras Rodriguez": ["PORRAS DIANA", "PORRAS  DIANA", "DIANA"],
-    "Lindy Jo-Anne Nyathi": ["NYATHI", "LINDY"],
-}
+from billing.models import Receivable, StatoPagamento
 
 
 class Command(BaseCommand):
-    help = "Genera RentPayment storici e fa matching con BankTransaction."
+    help = "Genera Receivable storici causale=affitto per ogni mese dei contratti."
 
     def add_arguments(self, parser):
         parser.add_argument("--dal", default="2024-01", help="YYYY-MM inizio")
         parser.add_argument("--al", default=None, help="YYYY-MM fine (default: oggi)")
-        parser.add_argument("--no-match", action="store_true", help="Non fare matching bancario")
+        parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Sovrascrive importo_dovuto/scadenza/competenza_a anche su "
+            "Receivable già esistenti (rigenerazione storica).",
+        )
 
     def handle(self, *args, **opts):
         dal_y, dal_m = map(int, opts["dal"].split("-"))
@@ -57,62 +39,29 @@ class Command(BaseCommand):
             today = date.today()
             al_y, al_m = today.year, today.month
 
-        # 1) Genera RentPayment per ogni mese
         totale_creati = 0
         totale_aggiornati = 0
         anno, mese = dal_y, dal_m
         while (anno, mese) <= (al_y, al_m):
-            res = genera_pagamenti_mese(anno, mese)
+            res = genera_pagamenti_mese(anno, mese, force=opts["force"])
             totale_creati += res["creati"]
             totale_aggiornati += res["aggiornati"]
             if res["creati"] or res["aggiornati"]:
-                self.stdout.write(f"  {anno}-{mese:02d}: +{res['creati']} creati, {res['aggiornati']} aggiornati")
+                self.stdout.write(
+                    f"  {anno}-{mese:02d}: +{res['creati']} creati, "
+                    f"{res['aggiornati']} aggiornati"
+                )
             mese += 1
             if mese > 12:
                 mese = 1
                 anno += 1
 
-        self.stdout.write(self.style.SUCCESS(
-            f"\nGenerati {totale_creati} Receivable affitto ({totale_aggiornati} aggiornati)"
-        ))
-
-        # 2) Matching con BankTransaction
-        if opts["no_match"]:
-            return
-
-        n_match = 0
-        rent_qs = Receivable.objects.filter(
-            causale=Receivable.Causale.AFFITTO, stato=StatoPagamento.ATTESO
-        ).select_related("assignment__tenant")
-        for rp in rent_qs:
-            tenant = rp.assignment.tenant
-            keywords = MATCH_INQUILINO.get(tenant.nominativo, [])
-            if not keywords:
-                continue
-            candidate = BankTransaction.objects.filter(
-                importo__gt=0,
-                data__gte=rp.competenza_da - timedelta(days=10),
-                data__lte=(rp.competenza_a or rp.competenza_da) + timedelta(days=40),
-                allocations__isnull=True,
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"\nGenerati {totale_creati} Receivable affitto "
+                f"({totale_aggiornati} aggiornati)"
             )
-            for kw in keywords:
-                bt = candidate.filter(descrizione__icontains=kw).order_by("data").first()
-                if bt:
-                    rp.stato = StatoPagamento.PAGATO
-                    rp.data_pagamento = bt.data
-                    rp.importo_pagato = rp.importo_dovuto
-                    rp.save(update_fields=["stato", "data_pagamento", "importo_pagato", "updated_at"])
-                    BankTransactionAllocation.objects.create(
-                        bank_transaction=bt,
-                        receivable=rp,
-                        importo=bt.importo,
-                    )
-                    n_match += 1
-                    break
-
-        self.stdout.write(self.style.SUCCESS(
-            f"Matching: {n_match} Receivable affitto riconciliati con BankTransaction"
-        ))
+        )
 
         tot = Receivable.objects.filter(causale=Receivable.Causale.AFFITTO).count()
         pagati = Receivable.objects.filter(
@@ -121,4 +70,13 @@ class Command(BaseCommand):
         attesi = Receivable.objects.filter(
             causale=Receivable.Causale.AFFITTO, stato=StatoPagamento.ATTESO
         ).count()
-        self.stdout.write(f"\nTotale Receivable affitto: {tot} (pagati: {pagati}, in attesa: {attesi})")
+        self.stdout.write(
+            f"\nTotale Receivable affitto: {tot} "
+            f"(pagati: {pagati}, in attesa: {attesi})"
+        )
+        self.stdout.write(
+            self.style.NOTICE(
+                "\nPer riconciliare con i bonifici esistenti:\n"
+                "  uv run manage.py riconcilia_bonifici"
+            )
+        )
