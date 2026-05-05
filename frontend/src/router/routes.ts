@@ -51,6 +51,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/ProprietarioBilancioDettaglio.vue'),
       },
       {
+        path: 'riconciliazione',
+        name: 'p-riconciliazione',
+        component: () => import('pages/ProprietarioRiconciliazione.vue'),
+      },
+      {
         path: ':catchAll(.*)*',
         component: () => import('pages/ErrorNotFound.vue'),
       },
