@@ -115,9 +115,30 @@
       <!-- Colonna sinistra: BankTransaction -->
       <q-card flat bordered class="vp-p-rec__col">
         <q-card-section class="vp-p-rec__col-head">
-          <div class="vp-eyebrow">Transazioni bancarie</div>
+          <div class="vp-p-rec__col-head-left">
+            <div class="vp-eyebrow">Transazioni bancarie</div>
+            <q-btn-toggle
+              v-model="filtroImportoBt"
+              size="xs"
+              dense
+              no-caps
+              unelevated
+              toggle-color="primary"
+              class="vp-p-rec__filtro-importo"
+              :options="[
+                { label: 'Tutti', value: 'tutti' },
+                { label: '≥ 200€', value: 'alti' },
+                { label: '< 200€', value: 'bassi' },
+              ]"
+            />
+          </div>
           <div class="vp-p-rec__col-meta">
-            {{ store.bts.length }} risultati
+            <template v-if="filtroImportoBt === 'tutti'">
+              {{ store.bts.length }} risultati
+            </template>
+            <template v-else>
+              {{ btOrdinate.length }} di {{ store.bts.length }}
+            </template>
             <span v-if="btSelezionate.size > 0" class="vp-p-rec__badge">
               {{ btSelezionate.size }} selezionate
             </span>
@@ -489,6 +510,7 @@ function onFrecciaAvanti(e: Event) {
 }
 function mostraTutteBt() {
   filtroRiconciliato.value = 'all';
+  filtroImportoBt.value = 'tutti';
 }
 
 const tenantsOpzioni = computed(() =>
@@ -504,9 +526,20 @@ const btEsplicite = reactive<Set<number>>(new Set());
 const receivableSelezionati = reactive<Set<number>>(new Set());
 const allocazioni = ref<Allocazione[]>([]);
 
-const btOrdinate = computed<BankTransactionFE[]>(() =>
-  [...store.bts].sort((a, b) => (a.data < b.data ? 1 : -1)),
-);
+// Filtro client-side per importo BT: 'tutti' (default) | 'alti' (≥200€) |
+// 'bassi' (<200€). Affianca i filtri server (stato/causale/periodo/tenant)
+// per separare visivamente bonifici-affitto (alti) da bonifici-utenze (bassi)
+// senza richiedere un nuovo round-trip.
+const filtroImportoBt = ref<'tutti' | 'alti' | 'bassi'>('tutti');
+
+const btOrdinate = computed<BankTransactionFE[]>(() => {
+  const filtrate = store.bts.filter((bt) => {
+    if (filtroImportoBt.value === 'tutti') return true;
+    const imp = Math.abs(Number(bt.importo));
+    return filtroImportoBt.value === 'alti' ? imp >= 200 : imp < 200;
+  });
+  return filtrate.sort((a, b) => (a.data < b.data ? 1 : -1));
+});
 
 // Inquilino dedotto: priorità (1) allocations esistenti, (2) match
 // testuale sul nominativo nella descrizione del bonifico (es. "Bon. da Rossi").
@@ -571,7 +604,9 @@ const receivablesVisibili = computed<ReceivableFE[]>(() => {
 });
 
 const btFuoriFiltro = computed(() =>
-  Array.from(btSelezionate).filter((id) => !store.bts.some((b) => b.id === id)),
+  Array.from(btSelezionate).filter(
+    (id) => !btOrdinate.value.some((b) => b.id === id),
+  ),
 );
 
 const riepilogoBt = computed(() =>
@@ -937,6 +972,15 @@ watch([filtroRiconciliato, filtroDataDa, filtroDataA, filtroTenant], () => {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--vp-gap-2);
+}
+.vp-p-rec__col-head-left {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-gap-2);
+  flex-wrap: wrap;
+}
+.vp-p-rec__filtro-importo {
+  font-size: 0.7rem;
 }
 .vp-p-rec__col-meta {
   color: var(--vp-ink-2);
