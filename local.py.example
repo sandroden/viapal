@@ -1,0 +1,29 @@
+# Settings di produzione iniettate nel container `django` via volume:
+#   - ./local.py:/code/core/settings/local.py
+#
+# Caricato da core/settings/__init__.py DOPO production.py, quindi sovrascrive.
+# In dev locale non serve: copia questo file a ./local.py sul server prod.
+
+import os
+
+SECRET_KEY = "GENERA-UNA-CHIAVE-LUNGA-E-RANDOM"
+
+ALLOWED_HOSTS = ["viapal.e-den.it"]
+
+CSRF_TRUSTED_ORIGINS = [f"https://{h}" for h in ALLOWED_HOSTS]
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "viapal",
+        "USER": "viapal",
+        "PASSWORD": "CHANGEME",
+        # Postgres su HOST: host.docker.internal e' aggiunto via extra_hosts
+        "HOST": "host.docker.internal",
+        "PORT": "5432",
+    }
+}
+
+# Email, Sentry, etc.
+# SENTRY_DSN_KEY = "https://..."
+# DEFAULT_FROM_EMAIL = "noreply@viapal.e-den.it"
