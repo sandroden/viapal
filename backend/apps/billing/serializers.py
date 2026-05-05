@@ -7,6 +7,7 @@ di prima (importo_dovuto / importo_totale / importo) tramite `source=`.
 """
 from rest_framework import serializers
 
+from billing._dates import format_mese_anno
 from billing.models import (
     BankTransaction,
     BankTransactionAllocation,
@@ -241,10 +242,10 @@ class BankTransactionAllocationSerializer(serializers.ModelSerializer):
     def get_receivable_descrizione(self, obj):
         r = obj.receivable
         if r.causale == Receivable.Causale.AFFITTO:
-            return f"Affitto {r.competenza_da:%B %Y} — {r.assignment.tenant.nominativo}"
+            return f"Affitto {format_mese_anno(r.competenza_da)} — {r.assignment.tenant.nominativo}"
         if r.causale == Receivable.Causale.UTENZE:
             base = r.utility_period.periodo_da if r.utility_period else r.competenza_da
-            return f"Utenze {base:%B %Y} — {r.assignment.tenant.nominativo}"
+            return f"Utenze {format_mese_anno(base)} — {r.assignment.tenant.nominativo}"
         return f"{r.descrizione or 'Extra'} — {r.assignment.tenant.nominativo}"
 
 

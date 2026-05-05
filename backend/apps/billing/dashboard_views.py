@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsInquilino, IsProprietario
+from billing._dates import format_mese, format_mese_anno
 from billing.models import Receivable, StatoPagamento, TenantCondominioRate, UtilityChargePeriod
 from properties.models import Contract, OwnerProfile, RoomAssignment, TenantProfile
 from properties.serializers import TenantProfileSerializer  # noqa: F401
@@ -58,10 +59,10 @@ def _giorni_ritardo(scadenza: datetime.date, oggi: datetime.date) -> int:
 
 def _descrizione_receivable(r: Receivable) -> str:
     if r.causale == Receivable.Causale.AFFITTO:
-        return f"Affitto {r.competenza_da.strftime('%B %Y')}"
+        return f"Affitto {format_mese_anno(r.competenza_da)}"
     if r.causale == Receivable.Causale.UTENZE:
         base = r.utility_period.periodo_da if r.utility_period else r.competenza_da
-        return f"Utenze {base.strftime('%B %Y')}"
+        return f"Utenze {format_mese_anno(base)}"
     return r.descrizione or "Addebito extra"
 
 
@@ -543,11 +544,11 @@ class QuadroAnnualeView(APIView):
 
         for period in periods:
             if period.periodo_da.month == period.periodo_a.month:
-                label = period.periodo_da.strftime("%B %Y")
+                label = format_mese_anno(period.periodo_da)
             else:
                 label = (
-                    f"{period.periodo_da.strftime('%B')} - "
-                    f"{period.periodo_a.strftime('%B %Y')}"
+                    f"{format_mese(period.periodo_da)} - "
+                    f"{format_mese_anno(period.periodo_a)}"
                 )
 
             totale_periodo = Decimal("0")
