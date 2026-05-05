@@ -140,9 +140,25 @@ class Receivable(TimestampedModel):
             models.Index(fields=["assignment", "causale"]),
         ]
 
+    _MESI_ABBR = (
+        "", "Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
+        "Lug", "Ago", "Set", "Ott", "Nov", "Dic",
+    )
+
     def __str__(self):
-        etichetta = self.descrizione or self.get_causale_display()
-        return f"{self.assignment.tenant} — {etichetta} ({self.importo_dovuto}€)"
+        if self.descrizione:
+            etichetta = self.descrizione
+        else:
+            etichetta = self.get_causale_display()
+            # Per affitto/utenze, aggiungi il periodo di competenza
+            if self.competenza_da:
+                m = self._MESI_ABBR[self.competenza_da.month]
+                y = self.competenza_da.year
+                etichetta = f"{etichetta} {m} {y}"
+        return (
+            f"{self.assignment.tenant} — {etichetta} "
+            f"({self.importo_dovuto}€) [{self.stato}]"
+        )
 
 
 class BankTransactionAllocation(TimestampedModel):
