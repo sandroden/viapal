@@ -1,12 +1,15 @@
 """
 URL router per le API dell'app billing.
 """
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from billing.views import (
     BankTransactionViewSet,
     ExpenseViewSet,
     ExtraChargeViewSet,
+    ReceivableViewSet,
+    ReconciliationBulkView,
     RentPaymentViewSet,
     UtilityBillViewSet,
     UtilityChargeViewSet,
@@ -21,5 +24,12 @@ router.register(r"utility-bills", UtilityBillViewSet, basename="utility-bill")
 router.register(r"expenses", ExpenseViewSet, basename="expense")
 router.register(r"extra-charges", ExtraChargeViewSet, basename="extra-charge")
 router.register(r"bank-transactions", BankTransactionViewSet, basename="bank-transaction")
+router.register(r"receivables", ReceivableViewSet, basename="receivable")
 
-urlpatterns = router.urls
+urlpatterns = router.urls + [
+    path(
+        "reconciliations/",
+        ReconciliationBulkView.as_view(),
+        name="reconciliations-bulk",
+    ),
+]

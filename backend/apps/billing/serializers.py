@@ -252,6 +252,13 @@ class BankTransactionAllocationSerializer(serializers.ModelSerializer):
 class BankTransactionSerializer(serializers.ModelSerializer):
     conto_banca = serializers.CharField(source="owner_account.banca", read_only=True)
     allocations = BankTransactionAllocationSerializer(many=True, read_only=True)
+    importo_allocato = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True
+    )
+    residuo = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True
+    )
+    stato_riconciliazione = serializers.CharField(read_only=True)
 
     class Meta:
         model = BankTransaction
@@ -263,5 +270,83 @@ class BankTransactionSerializer(serializers.ModelSerializer):
             "owner_account",
             "conto_banca",
             "allocations",
+            "importo_allocato",
+            "residuo",
+            "stato_riconciliazione",
             "note",
         ]
+
+
+class ReceivableForReconcileSerializer(serializers.ModelSerializer):
+    """Serializer compatto per la pagina di riconciliazione frontend.
+
+    Espone i campi minimi per identificare il Receivable nella colonna a destra
+    e calcolare residuo da abbinare. Non sostituisce i serializer per causale.
+    """
+
+    descrizione_estesa = serializers.SerializerMethodField()
+    tenant_id = serializers.IntegerField(
+        source="assignment.tenant.id", read_only=True
+    )
+    tenant_nominativo = serializers.CharField(
+        source="assignment.tenant.nominativo", read_only=True
+    )
+    importo_allocato = serializers.SerializerMethodField()
+    residuo = serializers.SerializerMethodField()
+    stato_display = serializers.CharField(source="get_stato_display", read_only=True)
+    allocations = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Receivable
+        fields = [
+            "id",
+            "causale",
+            "descrizione_estesa",
+            "assignment",
+            "tenant_id",
+            "tenant_nominativo",
+            "scadenza",
+            "competenza_da",
+            "competenza_a",
+            "importo_dovuto",
+            "importo_allocato",
+            "residuo",
+            "stato",
+            "stato_display",
+            "allocations",
+        ]
+
+    def get_allocations(self, r: Receivable) -> list[dict]:
+        return [
+            {
+                "id": a.pk,
+                "bank_transaction": a.bank_transaction_id,
+                "bt_data": a.bank_transaction.data,
+                "bt_descrizione": (a.bank_transaction.descrizione or "")[:200],
+                "bt_importo": a.bank_transaction.importo,
+                "importo": a.importo,
+            }
+            for a in r.allocations.all()
+        ]
+
+    def get_descrizione_estesa(self, r: Receivable) -> str:
+        # Mantiene allineata l'etichetta con dashboard_views._descrizione_receivable.
+        if r.causale == Receivable.Causale.AFFITTO:
+            return f"Affitto {format_mese_anno(r.competenza_da)}"
+        if r.causale == Receivable.Causale.UTENZE:
+            base = r.utility_period.periodo_da if r.utility_period else r.competenza_da
+            return f"Utenze {format_mese_anno(base)}"
+        return r.descrizione or "Addebito extra"
+
+    def get_importo_allocato(self, r: Receivable):
+        # Se la queryset è già annotata con _alloc, riusala per non rifare la SUM.
+        cached = getattr(r, "_alloc", None)
+        if cached is not None:
+            return cached
+        from django.db.models import Sum
+        agg = r.allocations.aggregate(tot=Sum("importo"))["tot"]
+        return agg or 0
+
+    def get_residuo(self, r: Receivable):
+        allocato = self.get_importo_allocato(r) or 0
+        return r.importo_dovuto - allocato

@@ -778,3 +778,276 @@ class TestTenantSituazione:
     def test_situazione_anno_invalido_400(self, client_prop, tenant_1):
         resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/situazione/?anno=abc")
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Test riconciliazione bulk (POST /api/v1/reconciliations/)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def owner_prop(db, user_prop):
+    return OwnerProfile.objects.create(user=user_prop, nominativo="Owner Test Recon")
+
+
+@pytest.fixture
+def owner_account(db, owner_prop):
+    from properties.models import OwnerBankAccount
+    return OwnerBankAccount.objects.create(
+        owner=owner_prop,
+        banca="Banca Test",
+        intestatario="Owner Test Recon",
+        iban="IT00X0000000000000000000000",
+    )
+
+
+@pytest.fixture
+def bank_tx_400(db, owner_account):
+    from billing.models import BankTransaction
+    return BankTransaction.objects.create(
+        data=datetime.date(2026, 5, 3),
+        descrizione="Bonifico Inquilino 1",
+        importo=Decimal("400.00"),
+        owner_account=owner_account,
+    )
+
+
+@pytest.fixture
+def bank_tx_300(db, owner_account):
+    from billing.models import BankTransaction
+    return BankTransaction.objects.create(
+        data=datetime.date(2026, 5, 4),
+        descrizione="Acconto",
+        importo=Decimal("300.00"),
+        owner_account=owner_account,
+    )
+
+
+@pytest.fixture
+def bank_tx_100(db, owner_account):
+    from billing.models import BankTransaction
+    return BankTransaction.objects.create(
+        data=datetime.date(2026, 5, 6),
+        descrizione="Saldo",
+        importo=Decimal("100.00"),
+        owner_account=owner_account,
+    )
+
+
+class TestReconciliationBulk:
+    URL = "/api/v1/reconciliations/"
+
+    def test_caso_semplice(self, client_prop, bank_tx_400, rent_payment_1):
+        resp = client_prop.post(
+            self.URL,
+            {
+                "replace_for_transactions": [bank_tx_400.id],
+                "items": [
+                    {
+                        "bank_transaction": bank_tx_400.id,
+                        "receivable": rent_payment_1.id,
+                        "importo": "400.00",
+                    },
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        rent_payment_1.refresh_from_db()
+        assert rent_payment_1.stato == StatoPagamento.PAGATO
+        assert rent_payment_1.importo_pagato == Decimal("400.00")
+        assert rent_payment_1.data_pagamento == datetime.date(2026, 5, 3)
+
+    def test_pagamento_spezzato_due_BT(
+        self, client_prop, bank_tx_300, bank_tx_100, rent_payment_1
+    ):
+        resp = client_prop.post(
+            self.URL,
+            {
+                "replace_for_transactions": [bank_tx_300.id, bank_tx_100.id],
+                "items": [
+                    {
+                        "bank_transaction": bank_tx_300.id,
+                        "receivable": rent_payment_1.id,
+                        "importo": "300.00",
+                    },
+                    {
+                        "bank_transaction": bank_tx_100.id,
+                        "receivable": rent_payment_1.id,
+                        "importo": "100.00",
+                    },
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        rent_payment_1.refresh_from_db()
+        assert rent_payment_1.stato == StatoPagamento.PAGATO
+        # data_pagamento = max delle BT (2026-05-06)
+        assert rent_payment_1.data_pagamento == datetime.date(2026, 5, 6)
+        assert rent_payment_1.importo_pagato == Decimal("400.00")
+
+    def test_somma_supera_BT_400(self, client_prop, bank_tx_300, rent_payment_1):
+        resp = client_prop.post(
+            self.URL,
+            {
+                "replace_for_transactions": [bank_tx_300.id],
+                "items": [
+                    {
+                        "bank_transaction": bank_tx_300.id,
+                        "receivable": rent_payment_1.id,
+                        "importo": "500.00",
+                    },
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_replace_rimuove_vecchie_allocations(
+        self, client_prop, bank_tx_400, rent_payment_1, rent_payment_2
+    ):
+        # 1° call: alloca su rent_payment_1
+        resp1 = client_prop.post(
+            self.URL,
+            {
+                "replace_for_transactions": [bank_tx_400.id],
+                "items": [
+                    {
+                        "bank_transaction": bank_tx_400.id,
+                        "receivable": rent_payment_1.id,
+                        "importo": "400.00",
+                    },
+                ],
+            },
+            format="json",
+        )
+        assert resp1.status_code == 200
+        rent_payment_1.refresh_from_db()
+        assert rent_payment_1.stato == StatoPagamento.PAGATO
+
+        # 2° call: sostituisce, alloca tutto su rent_payment_2 (380€, residuo 20)
+        resp2 = client_prop.post(
+            self.URL,
+            {
+                "replace_for_transactions": [bank_tx_400.id],
+                "items": [
+                    {
+                        "bank_transaction": bank_tx_400.id,
+                        "receivable": rent_payment_2.id,
+                        "importo": "380.00",
+                    },
+                ],
+            },
+            format="json",
+        )
+        assert resp2.status_code == 200, resp2.content
+
+        # rent_payment_1 deve essere tornato non pagato
+        rent_payment_1.refresh_from_db()
+        assert rent_payment_1.stato == StatoPagamento.ATTESO
+        assert rent_payment_1.importo_pagato is None
+
+        # rent_payment_2 ora pagato
+        rent_payment_2.refresh_from_db()
+        assert rent_payment_2.stato == StatoPagamento.PAGATO
+        assert rent_payment_2.importo_pagato == Decimal("380.00")
+
+    def test_inquilino_403(self, client_inq_1, bank_tx_400, rent_payment_1):
+        resp = client_inq_1.post(
+            self.URL,
+            {
+                "replace_for_transactions": [bank_tx_400.id],
+                "items": [
+                    {
+                        "bank_transaction": bank_tx_400.id,
+                        "receivable": rent_payment_1.id,
+                        "importo": "400.00",
+                    },
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 403
+
+    def test_BT_non_in_replace(self, client_prop, bank_tx_400, rent_payment_1):
+        resp = client_prop.post(
+            self.URL,
+            {
+                "replace_for_transactions": [],
+                "items": [
+                    {
+                        "bank_transaction": bank_tx_400.id,
+                        "receivable": rent_payment_1.id,
+                        "importo": "100.00",
+                    },
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+
+
+class TestBankTransactionFiltri:
+    def test_filtro_tenant_match_descrizione(
+        self, client_prop, owner_account, tenant_1
+    ):
+        """Una BT senza allocations ma con cognome dell'inquilino nel testo
+        deve comparire quando filtro per ``tenant=<id>``."""
+        from billing.models import BankTransaction
+        # tenant_1.nominativo = "Inquilino Billing 1" → token "Billing" e "Inquilino"
+        match = BankTransaction.objects.create(
+            data=datetime.date(2026, 5, 3),
+            descrizione="Bon. da BILLING per affitto",
+            importo=Decimal("400.00"),
+            owner_account=owner_account,
+        )
+        non_match = BankTransaction.objects.create(
+            data=datetime.date(2026, 5, 3),
+            descrizione="Bon. da Bianchi",
+            importo=Decimal("400.00"),
+            owner_account=owner_account,
+        )
+        resp = client_prop.get(f"/api/v1/bank-transactions/?tenant={tenant_1.id}")
+        assert resp.status_code == 200
+        ids = [b["id"] for b in resp.json()["results"]]
+        assert match.id in ids
+        assert non_match.id not in ids
+
+
+class TestReceivableViewSet:
+    def test_list_filtra_per_tenant(
+        self, client_prop, rent_payment_1, rent_payment_2, tenant_1
+    ):
+        resp = client_prop.get(f"/api/v1/receivables/?tenant={tenant_1.id}")
+        assert resp.status_code == 200
+        ids = [r["id"] for r in resp.json()["results"]]
+        assert rent_payment_1.id in ids
+        assert rent_payment_2.id not in ids
+
+    def test_list_riconciliato_false(
+        self, client_prop, bank_tx_400, rent_payment_1, rent_payment_2
+    ):
+        client_prop.post(
+            "/api/v1/reconciliations/",
+            {
+                "replace_for_transactions": [bank_tx_400.id],
+                "items": [
+                    {
+                        "bank_transaction": bank_tx_400.id,
+                        "receivable": rent_payment_1.id,
+                        "importo": "400.00",
+                    },
+                ],
+            },
+            format="json",
+        )
+        resp = client_prop.get("/api/v1/receivables/?riconciliato=false")
+        assert resp.status_code == 200
+        ids = [r["id"] for r in resp.json()["results"]]
+        assert rent_payment_1.id not in ids  # ora coperto
+        assert rent_payment_2.id in ids
+
+    def test_inquilino_403(self, client_inq_1):
+        resp = client_inq_1.get("/api/v1/receivables/")
+        assert resp.status_code == 403
