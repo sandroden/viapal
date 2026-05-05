@@ -249,7 +249,7 @@
                   coperto {{ formattaEuro(r.importo_allocato) }} /
                   {{ formattaEuro(r.importo_dovuto) }}
                 </span>
-                <span v-if="Number(r.residuo) > 0.005" class="vp-mono text-grey-7">
+                <span v-if="Number(r.residuo) > 0.005" class="vp-mono text-negative">
                   · residuo {{ formattaEuro(r.residuo) }}
                 </span>
               </q-item-label>
