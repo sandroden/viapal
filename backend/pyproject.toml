@@ -12,7 +12,8 @@ dependencies = [
     "django-cors-headers>=4.9.0",
     "django-environ>=0.13.0",
     "djangorestframework>=3.17.1",
-    "jmb-jadmin>=2.1.8",
+    "jmb-filters>=2.0.2",
+    "jmb-jadmin>=2.1.9",
     "pillow>=12.2.0",
     "psycopg[binary]>=3.3.4",
 ]
@@ -24,5 +25,9 @@ dev = [
     "pytest-django>=4.12.0",
 ]
 
+[tool.uv]
+index-strategy = "unsafe-best-match"
+
 [[tool.uv.index]]
+name = "thux"
 url = "https://pypi.thux.dev/"

@@ -1,3 +1,4 @@
+# utf-8
 """Production settings — usato quando ENV=production.
 
 Valori sensibili da env vars (DJANGO_*) o da local.py iniettato dal container.

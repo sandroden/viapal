@@ -153,6 +153,7 @@ dependencies = [
     { name = "django-cors-headers" },
     { name = "django-environ" },
     { name = "djangorestframework" },
+    { name = "jmb-filters" },
     { name = "jmb-jadmin" },
     { name = "pillow" },
     { name = "psycopg", extra = ["binary"] },
@@ -175,7 +176,8 @@ requires-dist = [
     { name = "django-cors-headers", specifier = ">=4.9.0" },
     { name = "django-environ", specifier = ">=0.13.0" },
     { name = "djangorestframework", specifier = ">=3.17.1" },
-    { name = "jmb-jadmin", specifier = ">=2.1.8" },
+    { name = "jmb-filters", specifier = ">=2.0.2" },
+    { name = "jmb-jadmin", specifier = ">=2.1.9" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4" },
 ]
@@ -432,29 +434,28 @@ wheels = [
 
 [[package]]
 name = "jmb-filters"
-version = "2.0.1"
+version = "2.0.2"
 source = { registry = "https://pypi.thux.dev/" }
 dependencies = [
     { name = "django" },
     { name = "django-filter" },
 ]
-sdist = { url = "https://pypi.thux.dev/packages/jmb_filters-2.0.1.tar.gz", hash = "sha256:74557d6ebb617cca7d158ed7a7aad5e30ba36c7ed74b7e8411e4418a6333367b" }
+sdist = { url = "https://pypi.thux.dev/packages/jmb_filters-2.0.2.tar.gz", hash = "sha256:777c1849277622d8cb65e95df05a9d2aa415905b6ea50add3c30b0edcde4286b" }
 wheels = [
-    { url = "https://pypi.thux.dev/packages/jmb_filters-2.0.1-py3-none-any.whl", hash = "sha256:7f0ecb3f754ea3b0a2178495daf2c75ca5f83f69e33210fcf56580e3aac361ab" },
+    { url = "https://pypi.thux.dev/packages/jmb_filters-2.0.2-py3-none-any.whl", hash = "sha256:d3a73e84c71278932cac41375e2dfa35cd69e6302e0ba79dc7385d26507e7ac0" },
 ]
 
 [[package]]
 name = "jmb-jadmin"
-version = "2.1.8"
+version = "2.1.9"
 source = { registry = "https://pypi.thux.dev/" }
 dependencies = [
     { name = "django" },
     { name = "jmb-filters" },
-    { name = "setuptools" },
 ]
-sdist = { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.8.tar.gz", hash = "sha256:8e89a0729eb52750a2ea281048ed7bdd9f88d7f8639e1a8f91c33c6b483a69fe" }
+sdist = { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.9.tar.gz", hash = "sha256:b380aa243d347ee65ab7a9592884b13460aaf156788ec77b250f77a74df190e7" }
 wheels = [
-    { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.8-py3-none-any.whl", hash = "sha256:cf8c677054f9ffb027701845f226bdbe264f52b43d03383db011f92433699930" },
+    { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.9-py3-none-any.whl", hash = "sha256:44bd8d39bfcf278e5f83f2fe3a874aac8413ea85939416a02f4babba06e063a0" },
 ]
 
 [[package]]
@@ -752,15 +753,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5f/a4/98b9c7c6428a668bf7e42ebb7c79d576a1c3c1e3ae2d47e674b468388871/requests-2.33.1.tar.gz", hash = "sha256:18817f8c57c6263968bc123d237e3b8b08ac046f5456bd1e307ee8f4250d3517", size = 134120, upload-time = "2026-03-30T16:09:15.531Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d7/8e/7540e8a2036f79a125c1d2ebadf69ed7901608859186c856fa0388ef4197/requests-2.33.1-py3-none-any.whl", hash = "sha256:4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a", size = 64947, upload-time = "2026-03-30T16:09:13.83Z" },
-]
-
-[[package]]
-name = "setuptools"
-version = "80.10.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/76/95/faf61eb8363f26aa7e1d762267a8d602a1b26d4f3a1e758e92cb3cb8b054/setuptools-80.10.2.tar.gz", hash = "sha256:8b0e9d10c784bf7d262c4e5ec5d4ec94127ce206e8738f29a437945fbc219b70", size = 1200343, upload-time = "2026-01-25T22:38:17.252Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/94/b8/f1f62a5e3c0ad2ff1d189590bfa4c46b4f3b6e49cef6f26c6ee4e575394d/setuptools-80.10.2-py3-none-any.whl", hash = "sha256:95b30ddfb717250edb492926c92b5221f7ef3fbcc2b07579bcd4a27da21d0173", size = 1064234, upload-time = "2026-01-25T22:38:15.216Z" },
 ]
 
 [[package]]
