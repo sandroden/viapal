@@ -16,6 +16,7 @@ dependencies = [
     "jmb-jadmin>=2.1.9",
     "pillow>=12.2.0",
     "psycopg[binary]>=3.3.4",
+    "unicodecsv>=0.14.1",
 ]
 
 [dependency-groups]
