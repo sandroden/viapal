@@ -8,6 +8,8 @@ import calendar
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
+from django.db.models import Q
+
 
 def _ultimo_del_mese(anno: int, mese: int) -> date:
     """Ritorna l'ultimo giorno del mese."""
@@ -24,10 +26,30 @@ def _arrotonda(valore: Decimal) -> Decimal:
     return valore.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def _quota_condominio_per(competenza_da: date) -> Decimal:
+    """Ritorna la quota mensile di spese condominio a carico dell'inquilino
+    (``TenantCondominioRate``) valida per la data di competenza, o 0 se non
+    è configurata.
+
+    Se più record sono validi (es. contratti diversi che si sovrappongono),
+    sommiamo: deve esserci una sola quota per inquilino-mese in pratica.
+    """
+    from billing.models import TenantCondominioRate
+
+    qs = TenantCondominioRate.objects.filter(valid_from__lte=competenza_da).filter(
+        Q(valid_to__isnull=True) | Q(valid_to__gte=competenza_da)
+    )
+    tot = Decimal("0")
+    for r in qs:
+        tot += r.importo_mensile
+    return tot
+
+
 def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
     """
-    Per ogni RoomAssignment attivo (anche parzialmente) nel mese, crea
-    un RentPayment se non esiste gia' (o lo sovrascrive se force=True).
+    Per ogni RoomAssignment attivo (anche parzialmente) nel mese, crea un
+    Receivable causale=affitto se non esiste gia' (o lo sovrascrive se
+    ``force=True``).
 
     Algoritmo:
     1. Determina giorno_pagamento di ogni inquilino (TenantProfile.giorno_pagamento_affitto)
@@ -37,9 +59,11 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
     3. Importo:
        - giorni_mese = giorni effettivi del mese (28-31)
        - giorni_competenza = (competenza_a - competenza_da).days + 1
+       - canone_dovuto = canone_mensile + quota_condominio_per(competenza_da)
+         dove quota_condominio = ``TenantCondominioRate`` valido nel periodo
        - se giorni_competenza < giorni_mese: is_aggiustamento=True,
-         importo_dovuto = round(canone_mensile * giorni_competenza / giorni_mese, 2)
-       - altrimenti: is_aggiustamento=False, importo_dovuto = canone_mensile
+         importo_dovuto = round(canone_dovuto * giorni_competenza / giorni_mese, 2)
+       - altrimenti: is_aggiustamento=False, importo_dovuto = canone_dovuto
     4. Scadenza = data(anno, mese, min(giorno_pagamento, ultimo_del_mese)) + 5gg
     5. Stato iniziale: 'atteso'
     6. Inserisci con get_or_create chiave (assignment, competenza_da, competenza_a)
@@ -83,15 +107,18 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
 
         giorni_competenza = (competenza_a - competenza_da).days + 1
 
+        # Canone + quota condominio mensile (TenantCondominioRate del periodo)
+        canone_pieno = assignment.canone_mensile + _quota_condominio_per(competenza_da)
+
         # Importo pro-rata
         if giorni_competenza < n_giorni_mese:
             is_aggiustamento = True
             importo_dovuto = _arrotonda(
-                assignment.canone_mensile * Decimal(giorni_competenza) / Decimal(n_giorni_mese)
+                canone_pieno * Decimal(giorni_competenza) / Decimal(n_giorni_mese)
             )
         else:
             is_aggiustamento = False
-            importo_dovuto = assignment.canone_mensile
+            importo_dovuto = canone_pieno
 
         # Scadenza
         giorno_pagamento = assignment.tenant.giorno_pagamento_affitto
@@ -128,7 +155,6 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
                 competenza_da=competenza_da,
                 competenza_a=competenza_a,
             ).exists()
-
             if exists:
                 skippati += 1
                 payment = Receivable.objects.get(
