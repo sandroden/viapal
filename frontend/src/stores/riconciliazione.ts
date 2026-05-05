@@ -58,6 +58,7 @@ export interface BTFiltri {
   riconciliato?: 'all' | 'true' | 'false';
   tenant?: number | null;
   owner_account?: number | null;
+  limit?: number;
 }
 
 export interface ReceivableFiltri {
@@ -68,6 +69,7 @@ export interface ReceivableFiltri {
   data_da?: string | null;
   data_a?: string | null;
   assignment?: number | null;
+  limit?: number;
 }
 
 export interface ReconcileItem {

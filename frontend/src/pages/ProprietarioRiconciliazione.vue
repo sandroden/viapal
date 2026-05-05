@@ -1,14 +1,24 @@
 <template>
   <q-page padding class="vp-p-rec">
     <header class="vp-p-rec__head">
-      <div>
-        <div class="vp-eyebrow">Bonifici ↔ addebiti</div>
-        <h1 class="vp-display vp-p-rec__titolo">Riconciliazione</h1>
-        <p class="vp-p-rec__sub">
-          Seleziona una transazione (Ctrl-click per aggiungerne altre, ad es.
-          per pagamenti spezzati), poi gli addebiti che essa copre. Salva
-          quando il residuo è a zero (o accetta sopra/sotto-allocazione).
-        </p>
+      <div class="vp-p-rec__head-titolo">
+        <div>
+          <div class="vp-eyebrow">Bonifici ↔ addebiti</div>
+          <h1 class="vp-display vp-p-rec__titolo">Riconciliazione</h1>
+        </div>
+        <q-btn round dense flat size="sm" icon="info_outline" color="grey-7">
+          <q-tooltip>Come funziona</q-tooltip>
+          <q-popup-proxy>
+            <q-card class="vp-p-rec__popup-info">
+              <q-card-section>
+                Seleziona una transazione (Ctrl-click per aggiungerne altre,
+                ad es. per pagamenti spezzati), poi gli addebiti che essa
+                copre. Salva quando il residuo è a zero (o accetta
+                sopra/sotto-allocazione).
+              </q-card-section>
+            </q-card>
+          </q-popup-proxy>
+        </q-btn>
       </div>
       <q-btn
         flat
@@ -22,36 +32,6 @@
     </header>
 
     <section class="vp-p-rec__filtri">
-      <div class="vp-p-rec__filtro-gruppo">
-        <span class="vp-eyebrow">Stato BT</span>
-        <q-btn-toggle
-          v-model="filtroRiconciliato"
-          no-caps
-          unelevated
-          dense
-          :options="opzioniRiconciliato"
-          color="paper-3"
-          text-color="ink"
-          toggle-color="primary"
-          toggle-text-color="white"
-          class="vp-p-rec__toggle"
-        />
-      </div>
-      <div class="vp-p-rec__filtro-gruppo">
-        <span class="vp-eyebrow">Causale</span>
-        <q-btn-toggle
-          v-model="filtroCausale"
-          no-caps
-          unelevated
-          dense
-          :options="opzioniCausale"
-          color="paper-3"
-          text-color="ink"
-          toggle-color="primary"
-          toggle-text-color="white"
-          class="vp-p-rec__toggle"
-        />
-      </div>
       <q-input
         v-model="filtroDataDa"
         dense
@@ -67,17 +47,6 @@
         type="date"
         label="A"
         class="vp-p-rec__date"
-      />
-      <q-select
-        v-model="filtroTenant"
-        dense
-        outlined
-        clearable
-        emit-value
-        map-options
-        :options="tenantsOpzioni"
-        label="Inquilino"
-        class="vp-p-rec__tenant-select"
       />
     </section>
     <section class="vp-p-rec__preset">
@@ -117,6 +86,30 @@
         <q-card-section class="vp-p-rec__col-head">
           <div class="vp-p-rec__col-head-left">
             <div class="vp-eyebrow">Transazioni bancarie</div>
+            <q-btn
+              round
+              dense
+              flat
+              size="sm"
+              :icon="iconaStatoBt"
+              :color="filtroRiconciliato === 'false' ? 'grey-7' : 'primary'"
+            >
+              <q-tooltip>Stato BT: {{ etichettaStatoBt }}</q-tooltip>
+              <q-menu>
+                <q-list dense>
+                  <q-item
+                    v-for="o in opzioniRiconciliato"
+                    :key="o.value"
+                    v-close-popup
+                    clickable
+                    :active="filtroRiconciliato === o.value"
+                    @click="filtroRiconciliato = o.value"
+                  >
+                    <q-item-section>{{ o.label }}</q-item-section>
+                  </q-item>
+                </q-list>
+              </q-menu>
+            </q-btn>
             <q-btn-toggle
               v-model="filtroImportoBt"
               size="xs"
@@ -203,26 +196,124 @@
       <!-- Colonna destra: Receivable -->
       <q-card flat bordered class="vp-p-rec__col">
         <q-card-section class="vp-p-rec__col-head">
-          <div>
+          <div class="vp-p-rec__col-head-left">
             <div class="vp-eyebrow">Addebiti</div>
-            <div class="vp-p-rec__col-meta">
-              <template v-if="tenantInferito">
-                Inquilino: <strong>{{ tenantInferito.nominativo }}</strong>
-              </template>
-              <template v-else-if="btSelezionate.size > 0">
-                Nessun inquilino dedotto — seleziona dal filtro o forza tutti
-              </template>
-              <template v-else>
-                Clicca un addebito per vedere chi lo paga, oppure seleziona prima una transazione
-              </template>
-            </div>
+            <q-btn round dense flat size="sm" icon="info_outline" color="grey-7">
+              <q-tooltip>Cosa vedi qui</q-tooltip>
+              <q-popup-proxy>
+                <q-card class="vp-p-rec__popup-info">
+                  <q-card-section>
+                    Selezionando una transazione bancaria a sinistra vedi gli
+                    addebiti del suo inquilino. Le icone qui accanto mostrano
+                    tutti gli inquilini o anche gli addebiti già completi.
+                  </q-card-section>
+                </q-card>
+              </q-popup-proxy>
+            </q-btn>
+            <q-btn
+              round
+              dense
+              flat
+              size="sm"
+              :icon="iconaCausale"
+              :color="filtroCausale === 'all' ? 'grey-7' : 'primary'"
+            >
+              <q-tooltip>Causale: {{ etichettaCausaleFiltro }}</q-tooltip>
+              <q-menu>
+                <q-list dense>
+                  <q-item
+                    v-for="o in opzioniCausale"
+                    :key="o.value"
+                    v-close-popup
+                    clickable
+                    :active="filtroCausale === o.value"
+                    @click="filtroCausale = o.value"
+                  >
+                    <q-item-section avatar>
+                      <q-icon
+                        :name="
+                          o.value === 'all' ? 'category' : iconaCausalePer(o.value)
+                        "
+                        :class="
+                          o.value === 'all'
+                            ? ''
+                            : `vp-p-rec__causale-icon vp-p-rec__chip--c-${o.value}`
+                        "
+                      />
+                    </q-item-section>
+                    <q-item-section>{{ o.label }}</q-item-section>
+                  </q-item>
+                </q-list>
+              </q-menu>
+            </q-btn>
           </div>
-          <q-toggle
-            v-model="mostraTuttiInquilini"
-            label="Mostra tutti"
-            dense
-            color="primary"
-          />
+          <div class="vp-p-rec__col-meta vp-p-rec__col-meta--rec">
+            <template v-if="tenantInferito">
+              Inquilino: <strong>{{ tenantInferito.nominativo }}</strong>
+            </template>
+            <template v-else-if="btSelezionate.size > 0">
+              Nessun inquilino dedotto — usa l'icona "gruppi" qui sopra
+            </template>
+          </div>
+          <div class="vp-p-rec__col-actions">
+            <q-btn
+              round
+              dense
+              flat
+              icon="person"
+              size="sm"
+              :color="filtroTenant ? 'primary' : 'grey-7'"
+            >
+              <q-tooltip>
+                {{ etichettaFiltroTenant }}
+              </q-tooltip>
+              <q-menu>
+                <q-list dense>
+                  <q-item
+                    v-close-popup
+                    clickable
+                    :active="filtroTenant === null"
+                    @click="filtroTenant = null"
+                  >
+                    <q-item-section>Tutti gli inquilini</q-item-section>
+                  </q-item>
+                  <q-separator />
+                  <q-item
+                    v-for="t in tenantsStore.tenants"
+                    :key="t.id"
+                    v-close-popup
+                    clickable
+                    :active="filtroTenant === t.id"
+                    @click="filtroTenant = t.id"
+                  >
+                    <q-item-section>{{ t.nominativo }}</q-item-section>
+                  </q-item>
+                </q-list>
+              </q-menu>
+            </q-btn>
+            <q-btn
+              round
+              dense
+              flat
+              icon="groups"
+              size="sm"
+              :color="mostraTuttiInquilini ? 'primary' : 'grey-7'"
+              @click="mostraTuttiInquilini = !mostraTuttiInquilini"
+            >
+              <q-tooltip>Mostra tutti gli inquilini</q-tooltip>
+            </q-btn>
+            <q-btn
+              round
+              dense
+              flat
+              icon="check_circle"
+              size="sm"
+              :color="mostraReceivableCompleti ? 'primary' : 'grey-7'"
+              @click="mostraReceivableCompleti = !mostraReceivableCompleti"
+            >
+              <q-tooltip>Mostra anche gli addebiti già completi</q-tooltip>
+            </q-btn>
+          </div>
         </q-card-section>
         <q-separator />
         <q-list separator class="vp-p-rec__lista">
@@ -246,12 +337,14 @@
             <q-item-section>
               <q-item-label class="vp-p-rec__bt-row">
                 <span class="vp-p-rec__rec-titolo">
-                  <span
-                    class="vp-p-rec__chip vp-p-rec__chip--causale"
+                  <q-icon
+                    :name="iconaCausalePer(r.causale)"
+                    size="18px"
+                    class="vp-p-rec__causale-icon"
                     :class="`vp-p-rec__chip--c-${r.causale}`"
                   >
-                    {{ etichettaCausale(r.causale) }}
-                  </span>
+                    <q-tooltip>{{ etichettaCausale(r.causale) }}</q-tooltip>
+                  </q-icon>
                   {{ r.descrizione_estesa }}
                 </span>
                 <span class="vp-mono vp-p-rec__bt-importo">
@@ -428,22 +521,50 @@ const { formattaData } = useFormatoData();
 const filtroRiconciliato = ref<'all' | 'true' | 'false'>('false');
 const filtroDataDa = ref<string | null>(null);
 const filtroDataA = ref<string | null>(null);
-const filtroTenant = ref<number | null>(null);
 const filtroCausale = ref<'all' | 'affitto' | 'utenze' | 'extra'>('all');
+// Filtro inquilino client-side: usato quando si parte dai Receivable
+// (nessuna BT selezionata che inferisca il tenant). Il flusso "click BT"
+// inferisce comunque il tenant via tenantInferito, che ha priorità.
+const filtroTenant = ref<number | null>(null);
 const mostraTuttiInquilini = ref(false);
+// Per default i Receivable già coperti al 100% sono nascosti dalla colonna
+// destra (non servono al matching corrente). L'icona "check_circle" li
+// riporta in vista per consultazione/correzione.
+const mostraReceivableCompleti = ref(false);
 
 const opzioniRiconciliato = [
   { label: 'Da abbinare', value: 'false' },
   { label: 'Tutti', value: 'all' },
   { label: 'Abbinati', value: 'true' },
-];
+] as const;
 
 const opzioniCausale = [
   { label: 'Tutte', value: 'all' },
   { label: 'Affitto', value: 'affitto' },
   { label: 'Utenze', value: 'utenze' },
   { label: 'Extra', value: 'extra' },
-];
+] as const;
+
+const iconaStatoBt = computed(() => {
+  if (filtroRiconciliato.value === 'all') return 'all_inclusive';
+  if (filtroRiconciliato.value === 'true') return 'done_all';
+  return 'inbox'; // 'false' = da abbinare (default)
+});
+const etichettaStatoBt = computed(
+  () =>
+    opzioniRiconciliato.find((o) => o.value === filtroRiconciliato.value)
+      ?.label ?? '',
+);
+const iconaCausale = computed(() => iconaCausalePer(filtroCausale.value));
+const etichettaFiltroTenant = computed(() => {
+  if (!filtroTenant.value) return 'Filtra per inquilino';
+  const t = tenantsStore.tenants.find((x) => x.id === filtroTenant.value);
+  return t ? `Inquilino: ${t.nominativo}` : 'Filtra per inquilino';
+});
+const etichettaCausaleFiltro = computed(
+  () =>
+    opzioniCausale.find((o) => o.value === filtroCausale.value)?.label ?? '',
+);
 
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
@@ -513,10 +634,6 @@ function mostraTutteBt() {
   filtroImportoBt.value = 'tutti';
 }
 
-const tenantsOpzioni = computed(() =>
-  tenantsStore.tenants.map((t) => ({ label: t.nominativo, value: t.id })),
-);
-
 // Selezione: una o più BT, e per ognuna gli addebiti abbinati.
 // btSelezionate = unione di btEsplicite (cliccate dall'utente a sinistra)
 //                 + le BT auto-caricate dal click su un Receivable (flusso simmetrico).
@@ -558,8 +675,11 @@ function inquilinoDaDescrizione(descr: string) {
 
 const tenantInferito = computed(() => {
   if (mostraTuttiInquilini.value) return null;
+  // Il filtro manuale ha priorità sul testo della BT.
   if (filtroTenant.value) {
-    return tenantsStore.tenants.find((t) => t.id === filtroTenant.value) ?? null;
+    return (
+      tenantsStore.tenants.find((t) => t.id === filtroTenant.value) ?? null
+    );
   }
   for (const id of btSelezionate) {
     const bt = store.bts.find((b) => b.id === id);
@@ -588,20 +708,26 @@ const receivablesVisibili = computed<ReceivableFE[]>(() => {
   }
 
   let lista = store.receivables;
-  // Filtro tenant
-  if (!mostraTuttiInquilini.value) {
-    if (tenantInferito.value) {
-      lista = lista.filter((r) => bypass(r) || r.tenant_id === tenantInferito.value!.id);
-    } else if (filtroTenant.value) {
-      lista = lista.filter((r) => bypass(r) || r.tenant_id === filtroTenant.value);
-    }
+  // Filtro tenant: solo se inferito da una BT selezionata.
+  if (!mostraTuttiInquilini.value && tenantInferito.value) {
+    lista = lista.filter(
+      (r) => bypass(r) || r.tenant_id === tenantInferito.value!.id,
+    );
   }
   // Filtro causale
   if (filtroCausale.value !== 'all') {
     lista = lista.filter((r) => bypass(r) || r.causale === filtroCausale.value);
   }
+  // Filtro completamente coperti (default: nascosti)
+  if (!mostraReceivableCompleti.value) {
+    lista = lista.filter((r) => bypass(r) || !receivableCompleto(r));
+  }
   return lista;
 });
+
+function receivableCompleto(r: ReceivableFE): boolean {
+  return Number(r.importo_allocato) + 0.01 >= Number(r.importo_dovuto);
+}
 
 const btFuoriFiltro = computed(() =>
   Array.from(btSelezionate).filter(
@@ -873,6 +999,13 @@ function etichettaCausale(c: string): string {
   return c;
 }
 
+function iconaCausalePer(c: string): string {
+  if (c === 'affitto') return 'home';
+  if (c === 'utenze') return 'bolt';
+  if (c === 'extra') return 'more_horiz';
+  return 'category';
+}
+
 function coperturaClass(r: ReceivableFE): string {
   const allocato = Number(r.importo_allocato) || 0;
   const dovuto = Number(r.importo_dovuto);
@@ -882,18 +1015,24 @@ function coperturaClass(r: ReceivableFE): string {
 }
 
 async function ricarica() {
+  // Limite alto: la pagination DRF default 50 taglierebbe i Receivable più
+  // vecchi nel periodo, lasciandoli "invisibili" nella lista. Su un anno
+  // tipico (5 inquilini × 12 mesi × 3 causali) i record stanno entro 200.
+  const PAGE_LIMIT = 200;
   await Promise.all([
     store.fetchBankTransactions({
       data_da: filtroDataDa.value,
       data_a: filtroDataA.value,
       riconciliato: filtroRiconciliato.value,
-      tenant: filtroTenant.value,
+      tenant: null,
+      limit: PAGE_LIMIT,
     }),
     store.fetchReceivables({
-      tenant: filtroTenant.value,
+      tenant: null,
       riconciliato: 'all',
       data_da: filtroDataDa.value,
       data_a: filtroDataA.value,
+      limit: PAGE_LIMIT,
     }),
   ]);
 }
@@ -903,7 +1042,7 @@ onMounted(async () => {
   await ricarica();
 });
 
-watch([filtroRiconciliato, filtroDataDa, filtroDataA, filtroTenant], () => {
+watch([filtroRiconciliato, filtroDataDa, filtroDataA], () => {
   void ricarica();
 });
 </script>
@@ -921,10 +1060,15 @@ watch([filtroRiconciliato, filtroDataDa, filtroDataA, filtroTenant], () => {
   font-size: var(--vp-text-2xl);
   margin: var(--vp-gap-1) 0 0;
 }
-.vp-p-rec__sub {
-  margin: var(--vp-gap-2) 0 0;
+.vp-p-rec__head-titolo {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-gap-2);
+}
+.vp-p-rec__popup-info {
+  max-width: 480px;
+  padding: var(--vp-gap-1);
   color: var(--vp-ink-2);
-  max-width: 60ch;
 }
 .vp-p-rec__filtri {
   display: flex;
@@ -933,21 +1077,11 @@ watch([filtroRiconciliato, filtroDataDa, filtroDataA, filtroTenant], () => {
   align-items: flex-end;
   margin-bottom: var(--vp-gap-4);
 }
-.vp-p-rec__filtro-gruppo {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-gap-2);
-}
-.vp-p-rec__toggle {
-  border: 1px solid var(--vp-paper-3);
-  border-radius: var(--vp-r-md);
-  background: var(--vp-cream);
-}
 .vp-p-rec__date {
   width: 160px;
 }
-.vp-p-rec__tenant-select {
-  min-width: 220px;
+.vp-p-rec__col-meta--rec {
+  flex: 1 1 auto;
 }
 .vp-p-rec__grid {
   display: grid;
@@ -981,6 +1115,11 @@ watch([filtroRiconciliato, filtroDataDa, filtroDataA, filtroTenant], () => {
 }
 .vp-p-rec__filtro-importo {
   font-size: 0.7rem;
+}
+.vp-p-rec__col-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 .vp-p-rec__col-meta {
   color: var(--vp-ink-2);
@@ -1058,6 +1197,22 @@ watch([filtroRiconciliato, filtroDataDa, filtroDataA, filtroTenant], () => {
 .vp-p-rec__chip--c-extra {
   background: var(--vp-terra-soft, #ead0bd);
   color: var(--vp-terra-deep, #6c3a18);
+}
+.vp-p-rec__causale-icon {
+  flex-shrink: 0;
+  background: transparent;
+}
+.vp-p-rec__causale-icon.vp-p-rec__chip--c-affitto {
+  background: transparent;
+  color: var(--vp-salvia, #4f6e3f);
+}
+.vp-p-rec__causale-icon.vp-p-rec__chip--c-utenze {
+  background: transparent;
+  color: var(--vp-miele, #b08a1f);
+}
+.vp-p-rec__causale-icon.vp-p-rec__chip--c-extra {
+  background: transparent;
+  color: var(--vp-terra, #b56a3b);
 }
 .vp-p-rec__rec-titolo {
   display: inline-flex;
