@@ -3,8 +3,14 @@ Admin Django per l'app billing.
 Gestisce: addebiti inquilini (Receivable, con filtro per causale: affitto/utenze/extra),
 fornitori, categorie spese, spese, bollette, utenze e transazioni bancarie.
 """
-from django.contrib import admin
+from decimal import Decimal
+
+from django.contrib import admin, messages
+from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
+
+_ALLOC_SOGLIA = Decimal("1.00")
 
 from jmb.jadmin import JumboModelAdmin, ModalEditMixin
 
@@ -56,13 +62,87 @@ class UtilityChargeLineInline(admin.TabularInline):
     fields = ("voce", "importo", "dettaglio")
 
 
-class BankTransactionAllocationInline(admin.TabularInline):
-    """Allocazioni inline su BankTransaction (bonifico → addebiti)."""
+class ReceivableAllocationsInline(admin.TabularInline):
+    """Allocazioni inline (read-only) sul Receivable: quali BankTransaction
+    lo coprono, con data, descrizione e importo allocato.
+
+    La modifica/eliminazione si fa dal lato BankTransaction (per coerenza con
+    il modello mentale "il bonifico copre N addebiti"). Qui mostriamo solo
+    la vista a specchio.
+    """
 
     model = BankTransactionAllocation
+    fk_name = "receivable"
     extra = 0
-    fields = ("receivable", "importo")
+    fields = ("bt_data", "bt_descrizione", "importo")
+    readonly_fields = ("bt_data", "bt_descrizione", "importo")
+    can_delete = False
+    verbose_name = "transazione che paga"
+    verbose_name_plural = "transazioni che pagano"
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("bank_transaction__owner_account")
+
+    @admin.display(description="data BT")
+    def bt_data(self, obj):
+        return obj.bank_transaction.data if obj.bank_transaction_id else "—"
+
+    @admin.display(description="descrizione BT")
+    def bt_descrizione(self, obj):
+        if not obj.bank_transaction_id:
+            return "—"
+        bt = obj.bank_transaction
+        descr = (bt.descrizione or "")[:120]
+        return f"{descr} — {bt.importo}€ ({bt.owner_account.banca})"
+
+
+class BankTransactionAllocationInline(admin.TabularInline):
+    """Allocazioni inline su BankTransaction (bonifico → addebiti).
+
+    Aggiungere una riga qui collega il bonifico a un Receivable **esistente**
+    (per questo i pulsanti +/edit/delete/view accanto all'autocomplete sono
+    nascosti: in questo contesto non si crea un nuovo addebito).
+
+    Il signal `_on_alloc_saved` aggiorna automaticamente
+    `Receivable.stato`/`data_pagamento`/`importo_pagato`:
+
+      - `importo` allocato ≥ `importo_dovuto` ⇒ `stato=pagato`
+      - `importo` allocato > 0 ma < dovuto ⇒ resta `atteso` (parziale)
+    """
+
+    model = BankTransactionAllocation
+    extra = 1
+    fields = ("receivable", "importo", "info_alloc")
+    readonly_fields = ("info_alloc",)
     autocomplete_fields = ("receivable",)
+
+    def get_formset(self, request, obj=None, **kwargs):
+        formset = super().get_formset(request, obj, **kwargs)
+        field = formset.form.base_fields.get("receivable")
+        if field is not None:
+            widget = field.widget
+            for flag in (
+                "can_add_related",
+                "can_change_related",
+                "can_delete_related",
+                "can_view_related",
+            ):
+                if hasattr(widget, flag):
+                    setattr(widget, flag, False)
+        return formset
+
+    @admin.display(description="Stato")
+    def info_alloc(self, obj):
+        if not obj or not obj.pk or not obj.receivable_id:
+            return "—"
+        r = obj.receivable
+        dovuto = r.importo_dovuto
+        if obj.importo + _ALLOC_SOGLIA >= dovuto:
+            return f"completo ({obj.importo}/{dovuto}€)"
+        return f"parziale ({obj.importo}/{dovuto}€, mancano {dovuto - obj.importo}€)"
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +218,7 @@ class ReceivableAdmin(ModalEditMixin, JumboModelAdmin):
     )
     date_hierarchy = "scadenza"
     ordering = ("-scadenza", "assignment__tenant__nominativo")
-    inlines = (UtilityChargeLineInline,)
+    inlines = (UtilityChargeLineInline, ReceivableAllocationsInline)
     advanced_search_fields = (
         ("assignment__tenant__nominativo__icontains:inquilino",
          "assignment__room__nome__icontains:stanza",
@@ -242,12 +322,19 @@ class ReceivableAdmin(ModalEditMixin, JumboModelAdmin):
 
 @admin.register(BankTransaction)
 class BankTransactionAdmin(ModalEditMixin, JumboModelAdmin):
-    modal_edit_width = 900
+    modal_edit_width = 1000
+
     list_display = (
         "data", "descrizione_breve", "importo",
-        "owner_account", "n_allocations",
-        "get_modal_edit_icon", "get_modal_delete_icon",
+        "owner_account", "n_allocations", "residuo_display",
+        "stato_riconciliazione_icon",
+        "get_edit_icon", "get_modal_edit_icon", "get_modal_delete_icon",
     )
+
+    def get_list_display_links(self, request, list_display):
+        # Override il default di JumboModelAdmin (solo `get_edit_icon`):
+        # rendiamo cliccabili sia la data sia l'icona matita full-page.
+        return ("data", "get_edit_icon")
     list_filter = ("owner_account",)
     search_fields = ("descrizione",)
     list_select_related = ("owner_account__owner",)
@@ -279,6 +366,33 @@ class BankTransactionAdmin(ModalEditMixin, JumboModelAdmin):
     @admin.display(description="Allocazioni")
     def n_allocations(self, obj):
         return obj.allocations.count()
+
+    @admin.display(description="Residuo")
+    def residuo_display(self, obj):
+        r = obj.residuo
+        if r <= 0:
+            return ""
+        return format_html(
+            '<span style="color:#b35900;">{} €</span>', f"{float(r):.2f}"
+        )
+
+    @admin.display(description="Riconciliata")
+    def stato_riconciliazione_icon(self, obj):
+        stato = obj.stato_riconciliazione
+        if stato == "pieno":
+            return mark_safe(
+                '<span title="Riconciliata pienamente" '
+                'style="color:#2e7d32;font-size:1.1em;">✓</span>'
+            )
+        if stato == "parziale":
+            return mark_safe(
+                '<span title="Allocazione parziale (residuo non assegnato)" '
+                'style="color:#ed6c02;font-size:1.1em;">⚠</span>'
+            )
+        return mark_safe(
+            '<span title="Nessuna allocazione" '
+            'style="color:#c62828;font-size:1.1em;">✗</span>'
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -403,6 +517,53 @@ class AnnualUtilityCostAdmin(ModalEditMixin, JumboModelAdmin):
 # ---------------------------------------------------------------------------
 
 
+@admin.action(description="Ricalcola conguaglio (persist)")
+def ricalcola_conguaglio_periodi(modeladmin, request, queryset):
+    from billing.calc.utility import calcola_conguaglio_periodo
+
+    tot_persistiti = 0
+    tot_skippati = 0
+    skippati_dettaglio: list[str] = []
+    errori: list[str] = []
+
+    for period in queryset:
+        label = f"{period.periodo_da} → {period.periodo_a} (id={period.pk})"
+        try:
+            risultato = calcola_conguaglio_periodo(period.pk, persist=True)
+        except Exception as e:
+            errori.append(f"{label}: {e}")
+            continue
+
+        skippati = risultato.get("skippati_per_allocation", [])
+        n_persistiti = len(risultato["quote"]) - len(skippati)
+        tot_persistiti += n_persistiti
+        tot_skippati += len(skippati)
+        for s in skippati:
+            skippati_dettaglio.append(
+                f"{label} — {s['tenant_nominativo']}: "
+                f"esistente {s['importo_esistente']}€, calcolato {s['importo_calcolato']}€"
+            )
+
+    if errori:
+        for msg in errori:
+            messages.error(request, msg)
+
+    if tot_persistiti or tot_skippati:
+        messages.success(
+            request,
+            f"Ricalcolo completato: {tot_persistiti} addebiti persistiti su "
+            f"{queryset.count()} periodi.",
+        )
+    if skippati_dettaglio:
+        messages.warning(
+            request,
+            f"{tot_skippati} addebiti NON aggiornati perché già allocati a "
+            "transazioni bancarie (correggere via rettifica manuale):",
+        )
+        for d in skippati_dettaglio:
+            messages.warning(request, f"    {d}")
+
+
 @admin.register(UtilityChargePeriod)
 class UtilityChargePeriodAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 900
@@ -415,6 +576,7 @@ class UtilityChargePeriodAdmin(ModalEditMixin, JumboModelAdmin):
     search_fields = ("periodo_da", "periodo_a")
     ordering = ("-periodo_da",)
     inlines = (ReceivableUtilityInline,)
+    actions = (ricalcola_conguaglio_periodi,)
     fieldsets = (
         ("Periodo", {
             "fields": ("periodo_da", "periodo_a", "criterio_ripartizione", "stato", "data_invio"),
@@ -422,16 +584,16 @@ class UtilityChargePeriodAdmin(ModalEditMixin, JumboModelAdmin):
         ("Import storico", {
             "fields": ("manual_totals",),
         }),
-        ("Note", {
+        ("Note interne", {
             "fields": ("note",),
         }),
     )
     readonly_fields = ("created_at", "updated_at")
     tabs = (
-        (_("Periodo"), {"items": ["Periodo"]}),
-        (_("Charges per inquilino"), {"items": [ReceivableUtilityInline]}),
-        (_("Import storico"), {"items": ["Import storico"]}),
-        (_("Note"), {"items": ["Note"]}),
+        ("Periodo", {"items": ["Periodo"]}),
+        ("Charges per inquilino", {"items": [ReceivableUtilityInline]}),
+        ("Import storico", {"items": ["Import storico"]}),
+        ("Note interne", {"items": ["Note interne"]}),
     )
 
 
