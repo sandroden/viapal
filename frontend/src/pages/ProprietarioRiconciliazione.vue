@@ -82,6 +82,28 @@
     </section>
     <section class="vp-p-rec__preset">
       <span class="vp-eyebrow">Periodo rapido</span>
+      <q-btn
+        flat
+        dense
+        round
+        size="sm"
+        icon="chevron_left"
+        :disable="!filtroDataDa || !filtroDataA"
+        @click="onFrecciaIndietro"
+      >
+        <q-tooltip>Periodo precedente · Ctrl-click: allarga indietro</q-tooltip>
+      </q-btn>
+      <q-btn
+        flat
+        dense
+        round
+        size="sm"
+        icon="chevron_right"
+        :disable="!filtroDataDa || !filtroDataA"
+        @click="onFrecciaAvanti"
+      >
+        <q-tooltip>Periodo successivo · Ctrl-click: allarga avanti</q-tooltip>
+      </q-btn>
       <q-btn flat dense no-caps size="sm" label="Quest'anno" @click="presetQuestAnno" />
       <q-btn flat dense no-caps size="sm" label="Anno scorso" @click="presetAnnoScorso" />
       <q-btn flat dense no-caps size="sm" label="Ultimo trimestre" @click="presetUltimoTrimestre" />
@@ -435,6 +457,35 @@ function presetUltimi12Mesi() {
 function presetReset() {
   filtroDataDa.value = null;
   filtroDataA.value = null;
+}
+function aggiungiGiorni(iso: string, giorni: number): string {
+  const d = new Date(iso);
+  d.setDate(d.getDate() + giorni);
+  return isoDate(d);
+}
+function navigaPeriodo(direzione: -1 | 1, allarga: boolean) {
+  if (!filtroDataDa.value || !filtroDataA.value) return;
+  const da = new Date(filtroDataDa.value);
+  const a = new Date(filtroDataA.value);
+  const span = Math.round((a.getTime() - da.getTime()) / 86400000) + 1;
+  if (allarga) {
+    if (direzione === -1) {
+      filtroDataDa.value = aggiungiGiorni(filtroDataDa.value, -span);
+    } else {
+      filtroDataA.value = aggiungiGiorni(filtroDataA.value, span);
+    }
+  } else {
+    filtroDataDa.value = aggiungiGiorni(filtroDataDa.value, span * direzione);
+    filtroDataA.value = aggiungiGiorni(filtroDataA.value, span * direzione);
+  }
+}
+function onFrecciaIndietro(e: Event) {
+  const m = e as MouseEvent;
+  navigaPeriodo(-1, m.ctrlKey || m.metaKey);
+}
+function onFrecciaAvanti(e: Event) {
+  const m = e as MouseEvent;
+  navigaPeriodo(1, m.ctrlKey || m.metaKey);
 }
 function mostraTutteBt() {
   filtroRiconciliato.value = 'all';
