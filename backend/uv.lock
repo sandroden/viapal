@@ -176,7 +176,7 @@ requires-dist = [
     { name = "django-cors-headers", specifier = ">=4.9.0" },
     { name = "django-environ", specifier = ">=0.13.0" },
     { name = "djangorestframework", specifier = ">=3.17.1" },
-    { name = "jmb-filters", specifier = ">=2.0.2" },
+    { name = "jmb-filters", specifier = ">=2.0.3" },
     { name = "jmb-jadmin", specifier = ">=2.1.9" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4" },
@@ -434,15 +434,15 @@ wheels = [
 
 [[package]]
 name = "jmb-filters"
-version = "2.0.2"
+version = "2.0.3"
 source = { registry = "https://pypi.thux.dev/" }
 dependencies = [
     { name = "django" },
     { name = "django-filter" },
 ]
-sdist = { url = "https://pypi.thux.dev/packages/jmb_filters-2.0.2.tar.gz", hash = "sha256:777c1849277622d8cb65e95df05a9d2aa415905b6ea50add3c30b0edcde4286b" }
+sdist = { url = "https://pypi.thux.dev/packages/jmb_filters-2.0.3.tar.gz", hash = "sha256:fa3e28bcbd526dcb34fb22e611020b384ecf6b55838ac47be8a7ac6ffaa2a7ad" }
 wheels = [
-    { url = "https://pypi.thux.dev/packages/jmb_filters-2.0.2-py3-none-any.whl", hash = "sha256:d3a73e84c71278932cac41375e2dfa35cd69e6302e0ba79dc7385d26507e7ac0" },
+    { url = "https://pypi.thux.dev/packages/jmb_filters-2.0.3-py3-none-any.whl", hash = "sha256:bd431d9fcc8703f50357727803f19897d3281efdd690e51070b1207a18f16ae3" },
 ]
 
 [[package]]
