@@ -308,3 +308,110 @@ class TestExpense:
             riferimento_quota_owner=fabio,
         )
         assert expense.riferimento_quota_owner == fabio
+
+
+# ---------------------------------------------------------------------------
+# Test signal UtilityBill -> Expense
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def supplier_luce(db):
+    return Supplier.objects.create(nome="Enel", tipo=Supplier.TipoFornitore.ENERGIA)
+
+
+def _crea_bolletta(supplier, owner=None, importo="120.00", numero="F-001"):
+    return UtilityBill.objects.create(
+        supplier=supplier,
+        prodotto=UtilityBill.Prodotto.LUCE,
+        numero_fattura=numero,
+        data_emissione=datetime.date(2025, 3, 10),
+        periodo_da=datetime.date(2025, 1, 1),
+        periodo_a=datetime.date(2025, 2, 28),
+        importo_totale=Decimal(importo),
+        pagata_da_owner=owner,
+    )
+
+
+class TestUtilityBillExpenseSync:
+    def test_crea_expense_su_save_con_owner(self, db, owner, supplier_luce):
+        bill = _crea_bolletta(supplier_luce, owner=owner, importo="120.00")
+        bill.refresh_from_db()
+        assert bill.expense_id is not None
+        exp = bill.expense
+        assert exp.anticipata_da_owner == owner
+        assert exp.importo == Decimal("120.00")
+        assert exp.supplier == supplier_luce
+        assert exp.category.codice == "utenze"
+        assert exp.data == datetime.date(2025, 3, 10)
+        assert "Enel" in exp.descrizione
+
+    def test_no_expense_senza_owner(self, db, supplier_luce):
+        bill = _crea_bolletta(supplier_luce, owner=None)
+        bill.refresh_from_db()
+        assert bill.expense_id is None
+        assert Expense.objects.count() == 0
+
+    def test_aggiornamento_importo_aggiorna_expense(self, db, owner, supplier_luce):
+        bill = _crea_bolletta(supplier_luce, owner=owner, importo="100.00")
+        bill.refresh_from_db()
+        exp_id = bill.expense_id
+        bill.importo_totale = Decimal("150.00")
+        bill.save()
+        bill.refresh_from_db()
+        assert bill.expense_id == exp_id  # stesso record, aggiornato
+        assert Expense.objects.get(pk=exp_id).importo == Decimal("150.00")
+
+    def test_rimuovere_owner_cancella_expense(self, db, owner, supplier_luce):
+        bill = _crea_bolletta(supplier_luce, owner=owner)
+        bill.refresh_from_db()
+        exp_id = bill.expense_id
+        assert exp_id is not None
+        bill.pagata_da_owner = None
+        bill.save()
+        bill.refresh_from_db()
+        assert bill.expense_id is None
+        assert not Expense.objects.filter(pk=exp_id).exists()
+
+    def test_aggiungere_owner_crea_expense(self, db, owner, supplier_luce):
+        bill = _crea_bolletta(supplier_luce, owner=None)
+        bill.refresh_from_db()
+        assert bill.expense_id is None
+        bill.pagata_da_owner = owner
+        bill.save()
+        bill.refresh_from_db()
+        assert bill.expense_id is not None
+        assert bill.expense.anticipata_da_owner == owner
+
+    def test_delete_bolletta_cancella_expense(self, db, owner, supplier_luce):
+        bill = _crea_bolletta(supplier_luce, owner=owner)
+        bill.refresh_from_db()
+        exp_id = bill.expense_id
+        bill.delete()
+        assert not Expense.objects.filter(pk=exp_id).exists()
+
+    def test_action_admin_sincronizza_passato(self, db, owner, supplier_luce):
+        """Bolletta creata via .objects.create() prima del signal: l'action
+        ricostruisce l'Expense mancante."""
+        from billing.admin import sincronizza_expense_da_bollette
+
+        bill = _crea_bolletta(supplier_luce, owner=owner)
+        # Simulo lo stato pre-feature: Expense rimosso, FK azzerato.
+        Expense.objects.filter(pk=bill.expense_id).delete()
+        UtilityBill.objects.filter(pk=bill.pk).update(expense=None)
+        bill.refresh_from_db()
+        assert bill.expense_id is None
+
+        class _Req:
+            def __init__(self):
+                self._messages = []
+
+        req = _Req()
+        # `messages.success` richiede un middleware: usiamo un mock minimale.
+        from django.contrib.messages.storage.fallback import FallbackStorage
+
+        req._messages = FallbackStorage(type("F", (), {"session": {}, "COOKIES": {}})())
+        sincronizza_expense_da_bollette(None, req, UtilityBill.objects.filter(pk=bill.pk))
+        bill.refresh_from_db()
+        assert bill.expense_id is not None
+        assert bill.expense.importo == bill.importo_totale

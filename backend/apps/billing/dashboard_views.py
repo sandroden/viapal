@@ -471,20 +471,28 @@ class BilancioOwnerDettaglioView(APIView):
             from billing.models import Expense
             spese_qs = (
                 Expense.objects.filter(data__year=anno, anticipata_da_owner_id=owner_id)
-                .select_related("category", "supplier")
+                .select_related("category", "supplier", "utility_bill")
                 .order_by("-data", "-id")
             )
-            righe = [
-                {
+            righe = []
+            for sp in spese_qs:
+                bolletta = getattr(sp, "utility_bill", None)
+                file_pdf_url = None
+                if bolletta and bolletta.file_pdf:
+                    pdf = bolletta.file_pdf
+                    file_pdf_url = (
+                        request.build_absolute_uri(pdf.url) if hasattr(pdf, "url") else None
+                    )
+                righe.append({
                     "id": sp.id,
                     "data": sp.data.isoformat(),
                     "categoria": sp.category.nome if sp.category else "—",
                     "supplier": sp.supplier.nome if sp.supplier else None,
                     "descrizione": sp.descrizione,
                     "importo": float(sp.importo),
-                }
-                for sp in spese_qs
-            ]
+                    "bolletta_id": bolletta.id if bolletta else None,
+                    "file_pdf": file_pdf_url,
+                })
             totale = sum((r["importo"] for r in righe), 0.0)
 
         return Response({

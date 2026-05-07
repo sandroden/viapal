@@ -134,6 +134,8 @@ export interface BilancioDettaglioUscita {
   supplier: string | null;
   descrizione: string;
   importo: number;
+  bolletta_id?: number | null;
+  file_pdf?: string | null;
 }
 
 export interface BilancioDettaglioResponse {

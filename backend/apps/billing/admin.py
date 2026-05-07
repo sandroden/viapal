@@ -5,6 +5,7 @@ fornitori, categorie spese, spese, bollette, utenze e transazioni bancarie.
 """
 from decimal import Decimal
 
+from django import forms
 from django.contrib import admin, messages
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
@@ -12,7 +13,9 @@ from django.utils.translation import gettext_lazy as _
 
 _ALLOC_SOGLIA = Decimal("1.00")
 
-from jmb.jadmin import JumboModelAdmin, ModalEditMixin
+from jmb.jadmin import JumboActionForm, JumboModelAdmin, ModalEditMixin
+
+from properties.models import OwnerProfile
 
 from .models import (
     AnnualUtilityCost,
@@ -482,11 +485,14 @@ class ExpenseAdmin(ModalEditMixin, JumboModelAdmin):
     list_display = (
         "data", "category", "supplier", "importo",
         "anticipata_da_owner", "ripartibile_su_inquilini",
+        "bolletta_pdf_link",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
     list_filter = ("category", "anticipata_da_owner", "ripartibile_su_inquilini")
     search_fields = ("descrizione", "category__nome", "supplier__nome")
-    list_select_related = ("category", "supplier", "anticipata_da_owner")
+    list_select_related = (
+        "category", "supplier", "anticipata_da_owner", "utility_bill",
+    )
     autocomplete_fields = ("category", "supplier", "anticipata_da_owner", "riferimento_quota_owner")
     date_hierarchy = "data"
     ordering = ("-data",)
@@ -498,7 +504,10 @@ class ExpenseAdmin(ModalEditMixin, JumboModelAdmin):
     )
     fieldsets = (
         ("Spesa", {
-            "fields": ("data", "descrizione", "category", "supplier", "importo", "ripartibile_su_inquilini"),
+            "fields": (
+                "data", "descrizione", "category", "supplier", "importo",
+                "ripartibile_su_inquilini", "bolletta_pdf_link",
+            ),
         }),
         ("Anticipo", {
             "fields": ("anticipata_da_owner", "riferimento_quota_owner"),
@@ -512,7 +521,18 @@ class ExpenseAdmin(ModalEditMixin, JumboModelAdmin):
             "classes": ("collapse",),
         }),
     )
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("bolletta_pdf_link", "created_at", "updated_at")
+
+    @admin.display(description="PDF bolletta")
+    def bolletta_pdf_link(self, obj):
+        bolletta = getattr(obj, "utility_bill", None)
+        if not bolletta or not bolletta.file_pdf:
+            return "—"
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener">📄 {}</a>',
+            bolletta.file_pdf.url,
+            bolletta.numero_fattura or "apri PDF",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -520,20 +540,90 @@ class ExpenseAdmin(ModalEditMixin, JumboModelAdmin):
 # ---------------------------------------------------------------------------
 
 
+@admin.action(description="Sincronizza Expense dalle bollette selezionate")
+def sincronizza_expense_da_bollette(modeladmin, request, queryset):
+    from billing.signals import sincronizza_expense_da_bolletta
+
+    creati = aggiornati = rimossi = 0
+    for bill in queryset.select_related("supplier", "pagata_da_owner", "expense"):
+        prima = bill.expense_id
+        sincronizza_expense_da_bolletta(bill)
+        bill.refresh_from_db(fields=["expense"])
+        dopo = bill.expense_id
+        if prima is None and dopo is not None:
+            creati += 1
+        elif prima is not None and dopo is None:
+            rimossi += 1
+        elif prima is not None and dopo is not None:
+            aggiornati += 1
+
+    messages.success(
+        request,
+        f"Sincronizzazione completata: {creati} create, "
+        f"{aggiornati} aggiornate, {rimossi} rimosse.",
+    )
+
+
+class UtilityBillActionForm(JumboActionForm):
+    pagata_da = forms.ModelChoiceField(
+        queryset=OwnerProfile.objects.all(),
+        required=False,
+        label="Pagata da proprietario",
+    )
+    fields_map = {
+        "imposta_pagata_da_owner": ["pagata_da:required"],
+    }
+
+
+@admin.action(description="Imposta 'pagata da' e crea le Expense")
+def imposta_pagata_da_owner(modeladmin, request, queryset):
+    form = modeladmin.get_action_form_instance(request)
+    if not form.is_valid():
+        messages.error(request, "Selezionare un proprietario.")
+        return
+    owner = form.cleaned_data["pagata_da"]
+    aggiornate = queryset.update(pagata_da_owner=owner)
+    # `update()` non triggera post_save: forziamo la sincronizzazione.
+    from billing.signals import sincronizza_expense_da_bolletta
+
+    creati = 0
+    for bill in queryset.select_related("supplier", "pagata_da_owner", "expense"):
+        prima = bill.expense_id
+        sincronizza_expense_da_bolletta(bill)
+        bill.refresh_from_db(fields=["expense"])
+        if prima is None and bill.expense_id is not None:
+            creati += 1
+    messages.success(
+        request,
+        f"{aggiornate} bollette assegnate a {owner.nominativo}; {creati} Expense create.",
+    )
+
+
 @admin.register(UtilityBill)
 class UtilityBillAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 900
     list_display = (
-        "supplier", "prodotto", "numero_fattura", "periodo_da",
-        "periodo_a", "consumo", "importo_totale", "pagata_da_owner",
+        "supplier", "prodotto", "periodo_da", "periodo_a",
+        "importo_totale", "pagata_da_owner", "pdf_link",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
-    list_filter = ("prodotto", "supplier")
+    list_filter = ("prodotto", "supplier", "pagata_da_owner")
     search_fields = ("numero_fattura", "supplier__nome")
-    list_select_related = ("supplier", "pagata_da_owner")
+    list_select_related = ("supplier", "pagata_da_owner", "expense")
+
+    @admin.display(description="PDF")
+    def pdf_link(self, obj):
+        if obj.file_pdf:
+            return format_html(
+                '<a href="{}" target="_blank" rel="noopener">📄</a>',
+                obj.file_pdf.url,
+            )
+        return "—"
     autocomplete_fields = ("supplier", "pagata_da_owner")
     date_hierarchy = "periodo_da"
     ordering = ("-data_emissione",)
+    action_form = UtilityBillActionForm
+    actions = (imposta_pagata_da_owner, sincronizza_expense_da_bollette)
     advanced_search_fields = (
         ("supplier", "prodotto", "numero_fattura__icontains:numero fattura"),
         ("periodo_da__range", "periodo_da__gte:periodo dal ≥", "periodo_a__lte:periodo al ≤"),
@@ -548,7 +638,7 @@ class UtilityBillAdmin(ModalEditMixin, JumboModelAdmin):
             "fields": ("periodo_da", "periodo_a", "consumo", "importo_totale"),
         }),
         ("Pagamento", {
-            "fields": ("pagata_da_owner", "file_pdf"),
+            "fields": ("pagata_da_owner", "expense", "file_pdf"),
             "classes": ("collapse",),
         }),
         ("Note", {
@@ -556,7 +646,7 @@ class UtilityBillAdmin(ModalEditMixin, JumboModelAdmin):
             "classes": ("collapse",),
         }),
     )
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("expense", "created_at", "updated_at")
 
 
 # ---------------------------------------------------------------------------

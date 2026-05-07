@@ -5,7 +5,7 @@ from django.db import models
 
 from properties.models import OwnerProfile, TimestampedModel
 
-from .expenses import Supplier
+from .expenses import Expense, Supplier
 
 
 class UtilityBill(TimestampedModel):
@@ -74,6 +74,16 @@ class UtilityBill(TimestampedModel):
         null=True,
         blank=True,
         verbose_name="pagata da proprietario",
+    )
+    expense = models.OneToOneField(
+        Expense,
+        on_delete=models.SET_NULL,
+        related_name="utility_bill",
+        null=True,
+        blank=True,
+        editable=False,
+        verbose_name="spesa collegata",
+        help_text="Expense generata automaticamente quando la bolletta ha 'pagata da proprietario' valorizzato.",
     )
     note = models.TextField(
         blank=True,

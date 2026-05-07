@@ -167,7 +167,18 @@
             <q-td key="data" :props="props">{{ formattaData(props.row.data) }}</q-td>
             <q-td key="categoria" :props="props">{{ props.row.categoria }}</q-td>
             <q-td key="supplier" :props="props">{{ props.row.supplier ?? '—' }}</q-td>
-            <q-td key="descrizione" :props="props">{{ props.row.descrizione }}</q-td>
+            <q-td key="descrizione" :props="props">
+              <a
+                v-if="props.row.file_pdf"
+                :href="props.row.file_pdf"
+                target="_blank"
+                rel="noopener"
+                class="vp-p-bd__pdf-link"
+              >
+                <q-icon name="picture_as_pdf" size="18px" class="q-mr-xs" />{{ props.row.descrizione }}
+              </a>
+              <span v-else>{{ props.row.descrizione }}</span>
+            </q-td>
             <q-td key="importo" :props="props" class="text-right vp-mono">
               {{ formattaEuro(props.row.importo) }}
             </q-td>
