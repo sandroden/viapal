@@ -160,7 +160,15 @@ class SupplierSerializer(serializers.ModelSerializer):
 
 
 class UtilityBillSerializer(serializers.ModelSerializer):
-    supplier_nome = serializers.CharField(source="supplier.nome", read_only=True)
+    """Serializer di lettura/scrittura per UtilityBill.
+
+    Lato write il fornitore può essere passato come ``supplier`` (id) oppure
+    via ``supplier_nome`` (stringa): in quest'ultimo caso viene applicato
+    ``Supplier.objects.get_or_create(nome=...)`` con tipo ricavato dal
+    ``prodotto`` (luce→energia, gas→gas, acqua→acqua).
+    """
+
+    supplier_nome = serializers.CharField(required=False, allow_blank=True)
     pagata_da_nominativo = serializers.CharField(
         source="pagata_da_owner.nominativo", read_only=True
     )
@@ -183,6 +191,32 @@ class UtilityBillSerializer(serializers.ModelSerializer):
             "pagata_da_nominativo",
             "note",
         ]
+        extra_kwargs = {"supplier": {"required": False}}
+
+    PRODOTTO_TIPO_FORNITORE = {
+        UtilityBill.Prodotto.LUCE: Supplier.TipoFornitore.ENERGIA,
+        UtilityBill.Prodotto.GAS: Supplier.TipoFornitore.GAS,
+        UtilityBill.Prodotto.ACQUA: Supplier.TipoFornitore.ACQUA,
+    }
+
+    def validate(self, attrs):
+        supplier = attrs.get("supplier")
+        nome = attrs.pop("supplier_nome", "") or ""
+        nome = nome.strip()
+        if supplier is None:
+            if not nome:
+                raise serializers.ValidationError(
+                    {"supplier": "Indicare 'supplier' (id) oppure 'supplier_nome'."}
+                )
+            tipo = self.PRODOTTO_TIPO_FORNITORE.get(
+                attrs.get("prodotto") or UtilityBill.Prodotto.LUCE,
+                Supplier.TipoFornitore.ALTRO,
+            )
+            existing = Supplier.objects.filter(nome__iexact=nome).first()
+            attrs["supplier"] = existing or Supplier.objects.create(
+                nome=nome, tipo=tipo
+            )
+        return attrs
 
 
 class ExpenseCategorySerializer(serializers.ModelSerializer):

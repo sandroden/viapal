@@ -10,8 +10,10 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import F, Q, Sum
 from rest_framework import status
+from rest_framework.authentication import BasicAuthentication, SessionAuthentication
 from rest_framework.decorators import action
 from rest_framework.pagination import LimitOffsetPagination
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -186,11 +188,17 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
     queryset = UtilityChargePeriod.objects.all().order_by("-periodo_da")
 
 
-class UtilityBillViewSet(ReadOnlyModelViewSet):
-    """Bollette utenze. Solo proprietari."""
+class UtilityBillViewSet(ModelViewSet):
+    """Bollette utenze. Solo proprietari.
+
+    Supporta upload del PDF via multipart/form-data. Per gli script CLI
+    accetta anche autenticazione HTTP Basic in aggiunta alla session.
+    """
 
     serializer_class = UtilityBillSerializer
     permission_classes = [IsProprietario]
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     queryset = UtilityBill.objects.select_related("supplier", "pagata_da_owner").order_by(
         "-data_emissione"
     )
