@@ -604,7 +604,7 @@ class UtilityBillAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 900
     list_display = (
         "supplier", "prodotto", "periodo_da", "periodo_a",
-        "importo_totale", "pagata_da_owner", "pdf_link",
+        "importo_totale", "pagata_da_owner", "consumo", "pdf_link",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
     list_filter = ("prodotto", "supplier", "pagata_da_owner")
