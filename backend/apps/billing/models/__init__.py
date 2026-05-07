@@ -4,7 +4,6 @@ from .receivables import BankTransactionAllocation, Receivable
 from .utilities import (
     AnnualUtilityCost,
     UtilityBill,
-    UtilityChargeLine,
     UtilityChargePeriod,
 )
 
@@ -20,5 +19,4 @@ __all__ = [
     "UtilityBill",
     "AnnualUtilityCost",
     "UtilityChargePeriod",
-    "UtilityChargeLine",
 ]

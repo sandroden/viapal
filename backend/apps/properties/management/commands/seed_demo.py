@@ -68,7 +68,6 @@ class Command(BaseCommand):
             Receivable,
             Supplier,
             UtilityBill,
-            UtilityChargeLine,
             UtilityChargePeriod,
         )
         from notifications.models import MessageTemplate, Notification, PushSubscription, ReminderRule
@@ -84,7 +83,6 @@ class Command(BaseCommand):
         OwnerLedgerEntry.objects.all().delete()
         OwnerSettlement.objects.all().delete()
         BankTransactionAllocation.objects.all().delete()
-        UtilityChargeLine.objects.all().delete()
         Receivable.objects.all().delete()
         UtilityChargePeriod.objects.all().delete()
         UtilityBill.objects.all().delete()
@@ -830,28 +828,23 @@ class Command(BaseCommand):
         return periods
 
     # -----------------------------------------------------------------------
-    # UTILITY CHARGES + LINES (5 inquilini x 4 periodi = 20 record)
+    # UTILITY CHARGES (5 inquilini x 4 periodi = 20 record) — modello trasparente
     # -----------------------------------------------------------------------
 
     def _seed_utility_charges(self, periods, room_assignments, tenant_profiles):
         """
-        Crea UtilityCharge (5 x 4 = 20) e UtilityChargeLine (luce + gas + tari = 3 per charge).
-
-        Importi per periodo (approssimati, somma delle lines == importo_totale):
-          Luce quota mensile: ~27-36€ per inquilino (1/5 del bimestrale diviso 2)
-          Gas quota mensile:  ~17-39€ per inquilino
-          TARI quota mensile: ~8.67€ per inquilino (520/5/12)
-
-        Arrotondamento: le righe sommano esattamente all'importo_totale tramite
-        assegnazione esplicita delle frazioni.
+        Popola i totali (luce/gas/tari) e giorni_totali su ogni
+        UtilityChargePeriod, e crea 5 Receivable utenze per periodo con
+        giorni_presenza e importo_dovuto = totale × giorni_presenza / giorni_totali.
 
         Stato:
           gen, feb, mar 2026 -> 'pagato' con data_pagamento entro scadenza+3
           apr 2026 -> 'atteso' (scadenza futura)
         """
-        from billing.models import Receivable, UtilityChargeLine
+        from decimal import ROUND_HALF_UP
 
-        # Inquilini attivi con la loro assegnazione
+        from billing.models import Receivable
+
         active_tenants = [
             ("mariasevera", "mariasevera"),
             ("davide", "davide"),
@@ -860,94 +853,67 @@ class Command(BaseCommand):
             ("eshani", "eshani"),
         ]
 
-        # Importi per mese per voce (luce, gas, tari) per inquilino
-        # Nota: TARI 520€/anno / 5 inquilini / 12 mesi = 8.67€
-        # Luce e gas: quota proporzionale bimestrale / 2 mesi / 5 inquilini
-        charge_amounts = {
-            "2026-01": {
-                "luce": Decimal("17.85"),   # 178.50 / 2 bimestri / 5
-                "gas":  Decimal("19.52"),   # 195.20 / 2 bimestri / 5
-                "tari": Decimal("8.67"),
-                "totale": Decimal("46.04"),
-            },
-            "2026-02": {
-                "luce": Decimal("16.28"),   # 162.80 / 2 / 5
-                "gas":  Decimal("18.27"),   # 182.70 / 2 / 5
-                "tari": Decimal("8.67"),
-                "totale": Decimal("43.22"),
-            },
-            "2026-03": {
-                "luce": Decimal("12.46"),   # 124.60 / 2 / 5
-                "gas":  Decimal("8.73"),    # 87.30 / 2 / 5
-                "tari": Decimal("8.67"),
-                "totale": Decimal("29.86"),
-            },
-            "2026-04": {
-                "luce": Decimal("12.46"),
-                "gas":  Decimal("8.73"),
-                "tari": Decimal("8.67"),
-                "totale": Decimal("29.86"),
-            },
+        # Totali per periodo: luce + gas + tari per tutto il periodo (5 inquilini)
+        period_totals = {
+            "2026-01": {"luce": Decimal("89.25"), "gas": Decimal("97.60"), "tari": Decimal("43.35")},
+            "2026-02": {"luce": Decimal("81.40"), "gas": Decimal("91.35"), "tari": Decimal("43.35")},
+            "2026-03": {"luce": Decimal("62.30"), "gas": Decimal("43.65"), "tari": Decimal("43.35")},
+            "2026-04": {"luce": Decimal("62.30"), "gas": Decimal("43.65"), "tari": Decimal("43.35")},
         }
 
-        # Verifica somme (luce + gas + tari == totale per ogni mese)
-        for mese, vals in charge_amounts.items():
-            somma = vals["luce"] + vals["gas"] + vals["tari"]
-            # Aggiusta il totale alla somma effettiva per consistenza
-            charge_amounts[mese]["totale"] = somma
-
         period_order = ["2026-01", "2026-02", "2026-03", "2026-04"]
-        # I primi 3 periodi sono pagati, il 4o e' atteso
         paid_periods = {"2026-01", "2026-02", "2026-03"}
 
         created_charges = 0
-        created_lines = 0
 
         for period_key in period_order:
             period = periods[period_key]
-            amounts = charge_amounts[period_key]
+            totals = period_totals[period_key]
             is_paid = period_key in paid_periods
-            data_invio = period.data_invio  # es. 2026-02-01
+            data_invio = period.data_invio
+
+            giorni_periodo = (period.periodo_a - period.periodo_da).days + 1
+            giorni_totali = giorni_periodo * len(active_tenants)
+            tot_periodo = totals["luce"] + totals["gas"] + totals["tari"]
+
+            period.tot_luce = totals["luce"]
+            period.tot_gas = totals["gas"]
+            period.tot_tari = totals["tari"]
+            period.tot_altro = Decimal("0.00")
+            period.giorni_totali = giorni_totali
+            period.save(update_fields=[
+                "tot_luce", "tot_gas", "tot_tari", "tot_altro", "giorni_totali",
+            ])
+
+            quota = (tot_periodo * Decimal(giorni_periodo) / Decimal(giorni_totali)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
 
             for tenant_key, assignment_key in active_tenants:
                 assignment = room_assignments[assignment_key]
                 scadenza = data_invio + timedelta(days=5)
 
-                charge, charge_created = Receivable.objects.get_or_create(
+                _, charge_created = Receivable.objects.get_or_create(
                     utility_period=period,
                     assignment=assignment,
                     causale=Receivable.Causale.UTENZE,
                     defaults={
                         "competenza_da": period.periodo_da,
                         "competenza_a": period.periodo_a,
-                        "importo_dovuto": amounts["totale"],
+                        "importo_dovuto": quota,
+                        "giorni_presenza": giorni_periodo,
                         "scadenza": scadenza,
                         "stato": "pagato" if is_paid else "atteso",
                         "data_pagamento": scadenza + timedelta(days=3) if is_paid else None,
-                        "importo_pagato": amounts["totale"] if is_paid else None,
+                        "importo_pagato": quota if is_paid else None,
                     },
                 )
-
                 if charge_created:
                     created_charges += 1
-                    lines_data = [
-                        ("luce", amounts["luce"], f"Quota luce pro-rata {period_key}"),
-                        ("gas", amounts["gas"], f"Quota gas pro-rata {period_key}"),
-                        ("tari", amounts["tari"], f"Quota TARI annuale {period_key}"),
-                    ]
-                    for voce, importo, dettaglio in lines_data:
-                        UtilityChargeLine.objects.create(
-                            receivable=charge,
-                            voce=voce,
-                            importo=importo,
-                            dettaglio=dettaglio,
-                        )
-                        created_lines += 1
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"   [charges] Receivable utenze create: {created_charges} (su 20), "
-                f"UtilityChargeLine create: {created_lines} (su 60)"
+                f"   [charges] Receivable utenze create: {created_charges} (su 20)"
             )
         )
 

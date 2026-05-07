@@ -166,11 +166,52 @@ class UtilityChargePeriod(TimestampedModel):
         default=StatoPeriodo.BOZZA,
         verbose_name="stato",
     )
-    manual_totals = models.JSONField(
-        null=True,
+    tot_luce = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        verbose_name="totale luce",
+    )
+    tot_gas = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        verbose_name="totale gas",
+    )
+    tot_tari = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        verbose_name="totale TARI",
+    )
+    tot_altro = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        verbose_name="totale altro",
+    )
+    giorni_totali = models.PositiveIntegerField(
+        default=0,
+        verbose_name="giorni-persona totali",
+        help_text="Somma dei giorni di presenza di tutti gli inquilini (denominatore della ripartizione).",
+    )
+    nota_calcolo = models.TextField(
         blank=True,
-        verbose_name="totali manuali",
-        help_text="JSON per import storico: {inquilino_id: importo_totale}",
+        verbose_name="nota calcolo",
+    )
+    utility_bills = models.ManyToManyField(
+        UtilityBill,
+        blank=True,
+        related_name="periods",
+        verbose_name="bollette agganciate",
+        help_text="Bollette fornitore che concorrono ai totali luce/gas. Popolato a mano.",
+    )
+    annual_utility_costs = models.ManyToManyField(
+        AnnualUtilityCost,
+        blank=True,
+        related_name="periods",
+        verbose_name="costi annuali agganciati",
+        help_text="Costi annuali (TARI) che concorrono al totale TARI. Popolato a mano.",
     )
     data_invio = models.DateField(
         null=True,
@@ -190,42 +231,6 @@ class UtilityChargePeriod(TimestampedModel):
     def __str__(self):
         return f"Utenze {self.periodo_da} / {self.periodo_a} ({self.get_stato_display()})"
 
-
-class UtilityChargeLine(TimestampedModel):
-    """Riga di dettaglio di un addebito utenze (luce, gas, TARI, altro)."""
-
-    class VoceConguaglio(models.TextChoices):
-        LUCE = "luce", "Luce"
-        GAS = "gas", "Gas"
-        TARI = "tari", "TARI"
-        ALTRO = "altro", "Altro"
-
-    receivable = models.ForeignKey(
-        "billing.Receivable",
-        on_delete=models.CASCADE,
-        related_name="utility_lines",
-        verbose_name="addebito",
-    )
-    voce = models.CharField(
-        max_length=20,
-        choices=VoceConguaglio.choices,
-        verbose_name="voce",
-    )
-    importo = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        verbose_name="importo",
-    )
-    dettaglio = models.TextField(
-        blank=True,
-        verbose_name="dettaglio",
-        help_text="Testo esplicativo per la PWA inquilino (es. 'quota pro-rata 15 giorni su 30').",
-    )
-
-    class Meta:
-        verbose_name = "riga utenze"
-        verbose_name_plural = "righe utenze"
-        ordering = ["voce"]
-
-    def __str__(self):
-        return f"{self.receivable} — {self.get_voce_display()} {self.importo}€"
+    @property
+    def totale_periodo(self):
+        return self.tot_luce + self.tot_gas + self.tot_tari + self.tot_altro

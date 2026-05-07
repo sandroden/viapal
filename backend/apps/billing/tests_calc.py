@@ -6,9 +6,8 @@ Coprono:
 - Inquilino entrato a meta' mese: pagamento proporzionale
 - Stanza vuota per parte del periodo (sum_giorni < 5*giorni_mese)
 - TARI pro-rata 30 giorni
-- manual_totals (bypass bollette)
 - Conservazione: somma quote + diff == totale
-- persist=True crea UtilityCharge
+- persist=True crea Receivable + popola totali sul Period
 - Idempotenza: ricalcolo non duplica
 """
 import datetime
@@ -24,7 +23,6 @@ from billing.models import (
     Receivable,
     Supplier,
     UtilityBill,
-    UtilityChargeLine,
     UtilityChargePeriod,
 )
 from properties.models import OwnerBankAccount, OwnerProfile, Room, RoomAssignment, TenantProfile
@@ -370,60 +368,6 @@ class TestTARIProRata:
 
 
 # ---------------------------------------------------------------------------
-# manual_totals (bypass bollette)
-# ---------------------------------------------------------------------------
-
-
-class TestManualTotals:
-    """Se manual_totals e' presente, bypass delle bollette e AnnualUtilityCost."""
-
-    @pytest.fixture
-    def setup_manual(self, db, make_assignment, supplier_luce, owner):
-        # Bolletta presente ma deve essere ignorata
-        UtilityBill.objects.create(
-            supplier=supplier_luce,
-            numero_fattura="ENEL-TEST-MANUAL",
-            data_emissione=datetime.date(2026, 5, 15),
-            periodo_da=datetime.date(2026, 5, 1),
-            periodo_a=datetime.date(2026, 5, 31),
-            importo_totale=Decimal("999.00"),  # valore irrealistico -> deve essere ignorato
-            pagata_da_owner=owner,
-        )
-        # Period con manual_totals espliciti
-        period = UtilityChargePeriod.objects.create(
-            periodo_da=datetime.date(2026, 5, 1),
-            periodo_a=datetime.date(2026, 5, 31),
-            criterio_ripartizione="pro_rata_giorni",
-            manual_totals={"luce": "100.00", "gas": "60.00"},
-        )
-        # 2 inquilini per tutto il mese
-        a1 = make_assignment(valid_from=datetime.date(2026, 5, 1))
-        a2 = make_assignment(valid_from=datetime.date(2026, 5, 1))
-        return period, a1, a2
-
-    def test_usa_manual_totals(self, setup_manual):
-        from billing.calc.utility import calcola_conguaglio_periodo
-
-        period, a1, a2 = setup_manual
-        risultato = calcola_conguaglio_periodo(period.pk)
-
-        # Totale deve essere 100+60=160, non 999
-        assert risultato["totale_periodo"] == Decimal("160.00")
-        assert risultato["totali_per_voce"]["luce"] == Decimal("100.00")
-        assert risultato["totali_per_voce"]["gas"] == Decimal("60.00")
-
-    def test_quota_dimezzata_tra_due(self, setup_manual):
-        from billing.calc.utility import calcola_conguaglio_periodo
-
-        period, a1, a2 = setup_manual
-        risultato = calcola_conguaglio_periodo(period.pk)
-
-        # 160€ / 2 = 80€ ciascuno
-        for q in risultato["quote"]:
-            assert q["quota"] == Decimal("80.00")
-
-
-# ---------------------------------------------------------------------------
 # Conservazione: somma quote + diff == totale (entro 0.05€)
 # ---------------------------------------------------------------------------
 
@@ -484,7 +428,7 @@ class TestConservazione:
 
 
 class TestPersist:
-    """persist=True deve creare UtilityCharge e UtilityChargeLine."""
+    """persist=True deve creare Receivable utenze e popolare i totali sul Period."""
 
     @pytest.fixture
     def setup_persist(self, db, make_assignment, supplier_luce, owner):
@@ -517,17 +461,27 @@ class TestPersist:
         )
         assert receivables.count() == 2
 
-    def test_crea_charge_lines(self, setup_persist):
+    def test_persist_popola_campi_period(self, setup_persist):
         from billing.calc.utility import calcola_conguaglio_periodo
 
         period, assignments = setup_persist
         calcola_conguaglio_periodo(period.pk, persist=True)
 
-        # 2 receivable * 1 voce (luce) = 2 lines
-        lines_count = UtilityChargeLine.objects.filter(
-            receivable__utility_period=period
-        ).count()
-        assert lines_count == 2
+        period.refresh_from_db()
+        assert period.tot_luce == Decimal("100.00")
+        assert period.tot_gas == Decimal("0.00")
+        assert period.giorni_totali == 62  # 2 inquilini × 31 giorni
+
+    def test_persist_popola_giorni_presenza_su_receivable(self, setup_persist):
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        period, assignments = setup_persist
+        calcola_conguaglio_periodo(period.pk, persist=True)
+
+        for r in Receivable.objects.filter(
+            utility_period=period, causale=Receivable.Causale.UTENZE
+        ):
+            assert r.giorni_presenza == 31
 
     def test_importo_charge_uguale_quota(self, setup_persist):
         from billing.calc.utility import calcola_conguaglio_periodo
@@ -550,7 +504,7 @@ class TestPersist:
 
 
 class TestIdempotenza:
-    """Ricalcolo con persist=True non duplica UtilityCharge o UtilityChargeLine."""
+    """Ricalcolo con persist=True non duplica Receivable utenze."""
 
     @pytest.fixture
     def setup_idempotenza(self, db, make_assignment, supplier_luce, owner):
@@ -591,22 +545,19 @@ class TestIdempotenza:
 
         assert count_after_first == count_after_second == 2
 
-    def test_lines_non_duplicate(self, setup_idempotenza):
+    def test_persist_aggiorna_totali_period(self, setup_idempotenza):
         from billing.calc.utility import calcola_conguaglio_periodo
 
         period, assignments = setup_idempotenza
 
         calcola_conguaglio_periodo(period.pk, persist=True)
-        lines_after_first = UtilityChargeLine.objects.filter(
-            receivable__utility_period=period
-        ).count()
+        period.refresh_from_db()
+        assert period.tot_luce == Decimal("200.00")
+        assert period.giorni_totali > 0
 
         calcola_conguaglio_periodo(period.pk, persist=True)
-        lines_after_second = UtilityChargeLine.objects.filter(
-            receivable__utility_period=period
-        ).count()
-
-        assert lines_after_first == lines_after_second
+        period.refresh_from_db()
+        assert period.tot_luce == Decimal("200.00")
 
 
 # ---------------------------------------------------------------------------

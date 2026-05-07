@@ -113,8 +113,6 @@ def calcola_conguaglio_periodo(period_id: int, persist: bool = False) -> dict:
     1. Determina periodo_da/periodo_a dal UtilityChargePeriod
     2. Trova UtilityBill collegate (supplier in [energia, gas]) il cui
        periodo principale (= data_emissione per default) cade nel periodo.
-       Se manual_totals sono presenti nel period, usa quelli invece di
-       bollette e AnnualUtilityCost.
     3. Calcola quota TARI: per ogni AnnualUtilityCost attivo nel periodo,
        quota = importo_annuale * giorni_intersezione / 365
     4. Per ogni RoomAssignment overlap col periodo, calcola
@@ -124,8 +122,8 @@ def calcola_conguaglio_periodo(period_id: int, persist: bool = False) -> dict:
     7. quota_inquilino_per_voce = costo_per_giorno_persona * giorni_presenza
     8. importo_totale_inquilino = somma quote per voce, ROUND_HALF_UP
 
-    Se persist=True: crea/aggiorna i UtilityCharge + UtilityChargeLine
-    (un record per assignment, con line per voce).
+    Se persist=True: popola i totali per voce + giorni_totali sul Period e
+    crea/aggiorna i Receivable utenze (uno per assignment) con giorni_presenza.
     Idempotente: update_or_create sulla coppia (period, assignment).
 
     Ritorna:
@@ -146,40 +144,30 @@ def calcola_conguaglio_periodo(period_id: int, persist: bool = False) -> dict:
     periodo_a: date = period.periodo_a
 
     # --- Passo 1: raccolta voci ---
-    if period.manual_totals:
-        # Import storico: manual_totals e' un dict {"luce": "100.00", "gas": "80.00", ...}
-        totali_per_voce: dict[str, Decimal] = {
-            voce: Decimal(str(importo))
-            for voce, importo in period.manual_totals.items()
+    # Bollette fornitori (luce, gas)
+    bollette = _raccoglie_voci_bollette(periodo_da, periodo_a)
+    # Regola Sandro 2026-05-02: non emettere conguagli "solo TARI". I conguagli
+    # vanno emessi solo quando c'e' almeno una bolletta luce/gas. Se manca,
+    # il periodo viene saltato del tutto.
+    if not bollette:
+        if persist and period.receivables.exists():
+            period.receivables.all().delete()
+        return {
+            "period_id": period_id,
+            "periodo_da": periodo_da,
+            "periodo_a": periodo_a,
+            "totale_periodo": Decimal("0.00"),
+            "totali_per_voce": {},
+            "sum_giorni_presenza": 0,
+            "quote": [],
+            "diff_arrotondamento": Decimal("0.00"),
+            "skipped": "no_bollette_luce_gas",
         }
-    else:
-        # Bollette fornitori (luce, gas)
-        bollette = _raccoglie_voci_bollette(periodo_da, periodo_a)
-        # Regola Sandro 2026-05-02: non emettere conguagli "solo TARI". I conguagli
-        # vanno emessi solo quando c'e' almeno una bolletta luce/gas. Se manca,
-        # il periodo viene saltato del tutto.
-        # TODO carry-over TARI: la quota TARI dei mesi saltati va cumulata nel
-        # prossimo conguaglio con bollette (oggi e' "persa"). Implementare quando
-        # avremo dati piu' completi.
-        if not bollette:
-            if persist and period.receivables.exists():
-                period.receivables.all().delete()
-            return {
-                "period_id": period_id,
-                "periodo_da": periodo_da,
-                "periodo_a": periodo_a,
-                "totale_periodo": Decimal("0.00"),
-                "totali_per_voce": {},
-                "sum_giorni_presenza": 0,
-                "quote": [],
-                "diff_arrotondamento": Decimal("0.00"),
-                "skipped": "no_bollette_luce_gas",
-            }
-        totali_per_voce = bollette
-        # TARI e altri costi annuali (aggiunti solo se ci sono bollette)
-        totali_annual = _raccoglie_voci_annual(periodo_da, periodo_a)
-        for voce, importo in totali_annual.items():
-            totali_per_voce[voce] = totali_per_voce.get(voce, Decimal("0.00")) + importo
+    totali_per_voce = bollette
+    # TARI e altri costi annuali (aggiunti solo se ci sono bollette)
+    totali_annual = _raccoglie_voci_annual(periodo_da, periodo_a)
+    for voce, importo in totali_annual.items():
+        totali_per_voce[voce] = totali_per_voce.get(voce, Decimal("0.00")) + importo
 
     totale_periodo = sum(totali_per_voce.values(), Decimal("0.00"))
 
@@ -242,7 +230,7 @@ def calcola_conguaglio_periodo(period_id: int, persist: bool = False) -> dict:
     skippati_per_allocation: list[dict] = []
     if persist:
         skippati_per_allocation = _persist_receivables(
-            period, quote, totali_per_voce, periodo_da
+            period, quote, totali_per_voce, periodo_da, sum_giorni
         )
 
     return {
@@ -259,24 +247,26 @@ def calcola_conguaglio_periodo(period_id: int, persist: bool = False) -> dict:
 
 
 def _persist_receivables(
-    period, quote: list[QuotaInquilino], totali_per_voce: dict, periodo_da: date
+    period,
+    quote: list[QuotaInquilino],
+    totali_per_voce: dict,
+    periodo_da: date,
+    sum_giorni: int,
 ) -> list[dict]:
     """
-    Crea o aggiorna Receivable(causale=utenze) + UtilityChargeLine per ogni
-    assignment del periodo. Idempotente sulla coppia (utility_period, assignment).
+    Crea o aggiorna Receivable(causale=utenze) per ogni assignment del periodo
+    e popola i totali per voce + giorni_totali sul periodo stesso.
+    Idempotente sulla coppia (utility_period, assignment).
 
     Scadenza: data_invio + 5gg se presente, altrimenti primo del mese successivo + 5gg.
 
     Guardia integrità: se un Receivable già esistente ha BankTransactionAllocation
-    associate, NON viene aggiornato (importo e righe restano invariati). Il record
-    viene aggiunto alla lista di ritorno per segnalazione al chiamante.
-    Razionale: una volta che un addebito è stato imputato a una transazione bancaria,
-    sovrascriverlo silenziosamente romperebbe la tracciabilità contabile. Una
-    eventuale correzione va fatta tramite rettifica manuale o nota di conguaglio.
+    associate, NON viene aggiornato. Il record viene aggiunto alla lista di ritorno
+    per segnalazione al chiamante.
     """
     from datetime import timedelta
 
-    from billing.models import Receivable, UtilityChargeLine
+    from billing.models import Receivable
     from properties.models import RoomAssignment
 
     if period.data_invio:
@@ -290,6 +280,18 @@ def _persist_receivables(
         else:
             mese += 1
         scadenza = date(anno, mese, 1) + timedelta(days=5)
+
+    period.tot_luce = _arrotonda(totali_per_voce.get("luce", Decimal("0.00")))
+    period.tot_gas = _arrotonda(totali_per_voce.get("gas", Decimal("0.00")))
+    period.tot_tari = _arrotonda(totali_per_voce.get("tari", Decimal("0.00")))
+    period.tot_altro = _arrotonda(
+        sum(
+            (v for k, v in totali_per_voce.items() if k not in ("luce", "gas", "tari")),
+            Decimal("0.00"),
+        )
+    )
+    period.giorni_totali = sum_giorni
+    period.save(update_fields=["tot_luce", "tot_gas", "tot_tari", "tot_altro", "giorni_totali"])
 
     skippati: list[dict] = []
 
@@ -314,7 +316,7 @@ def _persist_receivables(
             )
             continue
 
-        receivable, _ = Receivable.objects.update_or_create(
+        Receivable.objects.update_or_create(
             utility_period=period,
             assignment=assignment,
             causale=Receivable.Causale.UTENZE,
@@ -322,20 +324,9 @@ def _persist_receivables(
                 "competenza_da": period.periodo_da,
                 "competenza_a": period.periodo_a,
                 "importo_dovuto": q["quota"],
+                "giorni_presenza": q["giorni_presenza"],
                 "scadenza": scadenza,
             },
         )
-
-        receivable.utility_lines.all().delete()
-        for voce, importo in q["dettaglio"].items():
-            UtilityChargeLine.objects.create(
-                receivable=receivable,
-                voce=voce,
-                importo=importo,
-                dettaglio=(
-                    f"Quota pro-rata {q['giorni_presenza']} giorni su "
-                    f"{(period.periodo_a - period.periodo_da).days + 1}"
-                ),
-            )
 
     return skippati

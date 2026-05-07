@@ -687,17 +687,27 @@ class TenantSituazioneView(APIView):
                 utility_period__periodo_da__year=anno,
             )
             .select_related("utility_period")
-            .prefetch_related("utility_lines")
             .order_by("utility_period__periodo_da")
         )
         utility_righe = []
         utility_dovuto = Decimal("0")
         utility_pagato = Decimal("0")
         for r in utility_qs:
-            lines = [
-                {"voce": ln.voce, "importo": float(ln.importo)}
-                for ln in r.utility_lines.all()
-            ]
+            # Breakdown per voce: ripartizione proporzionale dei totali del periodo
+            # sulla quota dell'inquilino (giorni_presenza / giorni_totali).
+            lines = []
+            p = r.utility_period
+            if p and r.giorni_presenza and p.giorni_totali:
+                frazione = Decimal(r.giorni_presenza) / Decimal(p.giorni_totali)
+                for voce, tot in (
+                    ("luce", p.tot_luce), ("gas", p.tot_gas),
+                    ("tari", p.tot_tari), ("altro", p.tot_altro),
+                ):
+                    if tot and tot > 0:
+                        lines.append({
+                            "voce": voce,
+                            "importo": float((tot * frazione).quantize(Decimal("0.01"))),
+                        })
             period = r.utility_period
             utility_righe.append({
                 "id": r.id,

@@ -161,7 +161,7 @@ class UtilityChargeViewSet(_ReceivableMixin, ModelViewSet):
     serializer_class = UtilityChargeSerializer
 
     def _base_queryset(self):
-        return super()._base_queryset().prefetch_related("utility_lines")
+        return super()._base_queryset().select_related("utility_period")
 
     def get_queryset(self):
         qs = self._base_queryset().order_by("-utility_period__periodo_da")

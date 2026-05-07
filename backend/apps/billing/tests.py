@@ -3,7 +3,7 @@ Test per l'app billing.
 
 Coprono:
 - Receivable causale=affitto: smoke test creazione e transizione di stato
-- Receivable causale=utenze: relazione con UtilityChargePeriod e UtilityChargeLine
+- Receivable causale=utenze: relazione con UtilityChargePeriod e campi calcolo
 - Receivable causale=extra: importo negativo (accredito) valido
 - Supplier + ExpenseCategory + Expense: creazione
 """
@@ -21,7 +21,6 @@ from billing.models import (
     StatoPagamento,
     Supplier,
     UtilityBill,  # noqa: F401
-    UtilityChargeLine,
     UtilityChargePeriod,
 )
 from properties.models import OwnerProfile, Room, RoomAssignment, TenantProfile
@@ -157,18 +156,22 @@ class TestRentPayment:
 
 
 # ---------------------------------------------------------------------------
-# Test Receivable causale=utenze + UtilityChargeLine
+# Test Receivable causale=utenze
 # ---------------------------------------------------------------------------
 
 
 class TestUtilityCharge:
-    """Verifica la relazione UtilityChargePeriod -> Receivable utenze -> UtilityChargeLine."""
+    """Verifica UtilityChargePeriod (totali per voce + giorni_totali) e Receivable utenze (giorni_presenza)."""
 
     @pytest.fixture
     def period(self, db):
         return UtilityChargePeriod.objects.create(
             periodo_da=datetime.date(2024, 10, 1),
             periodo_a=datetime.date(2024, 10, 31),
+            tot_luce=Decimal("100.00"),
+            tot_gas=Decimal("50.00"),
+            tot_tari=Decimal("30.00"),
+            giorni_totali=150,
         )
 
     def test_creazione_charge(self, db, period, assignment):
@@ -178,43 +181,16 @@ class TestUtilityCharge:
             causale=Receivable.Causale.UTENZE,
             competenza_da=period.periodo_da,
             competenza_a=period.periodo_a,
-            importo_dovuto=Decimal("58.50"),
+            importo_dovuto=Decimal("36.00"),
+            giorni_presenza=30,
             scadenza=datetime.date(2024, 11, 5),
         )
         assert charge.pk is not None
         assert charge.utility_period == period
+        assert charge.giorni_presenza == 30
 
-    def test_creazione_lines(self, db, period, assignment):
-        charge = Receivable.objects.create(
-            utility_period=period,
-            assignment=assignment,
-            causale=Receivable.Causale.UTENZE,
-            competenza_da=period.periodo_da,
-            competenza_a=period.periodo_a,
-            importo_dovuto=Decimal("58.50"),
-            scadenza=datetime.date(2024, 11, 5),
-        )
-
-        UtilityChargeLine.objects.create(
-            receivable=charge,
-            voce="luce",
-            importo=Decimal("27.00"),
-            dettaglio="Quota pro-rata 30 giorni",
-        )
-        UtilityChargeLine.objects.create(
-            receivable=charge,
-            voce="gas",
-            importo=Decimal("22.00"),
-        )
-        UtilityChargeLine.objects.create(
-            receivable=charge,
-            voce="tari",
-            importo=Decimal("9.50"),
-            dettaglio="TARI 510€/anno × 30/365",
-        )
-
-        assert charge.utility_lines.count() == 3
-        assert sum(l.importo for l in charge.utility_lines.all()) == Decimal("58.50")
+    def test_period_totale(self, db, period):
+        assert period.totale_periodo == Decimal("180.00")
 
     def test_unique_constraint_period_assignment(self, db, period, assignment):
         """Vincolo: due Receivable utenze sullo stesso (period, assignment) non ammesso."""

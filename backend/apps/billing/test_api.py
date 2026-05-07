@@ -18,7 +18,6 @@ from rest_framework.test import APIClient
 from billing.models import (
     Receivable,
     StatoPagamento,
-    UtilityChargeLine,
     UtilityChargePeriod,
 )
 from properties.models import OwnerProfile, Room, RoomAssignment, TenantProfile
@@ -145,25 +144,26 @@ def period(db):
         periodo_da=datetime.date(2026, 4, 1),
         periodo_a=datetime.date(2026, 4, 30),
         stato="inviato",
+        tot_luce=Decimal("50.00"),
+        tot_gas=Decimal("22.00"),
+        tot_tari=Decimal("18.00"),
+        giorni_totali=60,
     )
 
 
 @pytest.fixture
 def charge_1(db, period, assignment_1):
-    charge = Receivable.objects.create(
+    return Receivable.objects.create(
         utility_period=period,
         assignment=assignment_1,
         causale=Receivable.Causale.UTENZE,
         competenza_da=period.periodo_da,
         competenza_a=period.periodo_a,
         importo_dovuto=Decimal("45.00"),
+        giorni_presenza=30,
         scadenza=datetime.date(2026, 5, 5),
         stato=StatoPagamento.ATTESO,
     )
-    UtilityChargeLine.objects.create(receivable=charge, voce="luce", importo=Decimal("25.00"))
-    UtilityChargeLine.objects.create(receivable=charge, voce="gas", importo=Decimal("11.00"))
-    UtilityChargeLine.objects.create(receivable=charge, voce="tari", importo=Decimal("9.00"))
-    return charge
 
 
 @pytest.fixture
@@ -351,12 +351,16 @@ class TestUtilityChargeViewSet:
         assert charge_1.id in ids
         assert charge_2.id not in ids
 
-    def test_lines_nidificate(self, client_prop, charge_1):
+    def test_period_totali_esposti(self, client_prop, charge_1):
+        """Il serializer espone i totali di periodo + giorni_presenza per il drill-down."""
         resp = client_prop.get(f"/api/v1/utility-charges/{charge_1.id}/")
         assert resp.status_code == 200
         data = resp.json()
-        assert "lines" in data
-        assert len(data["lines"]) == 3
+        assert data["period_tot_luce"] == "50.00"
+        assert data["period_tot_gas"] == "22.00"
+        assert data["period_tot_tari"] == "18.00"
+        assert data["period_giorni_totali"] == 60
+        assert data["giorni_presenza"] == 30
 
     def test_inquilino_dichiara_conguaglio(self, client_inq_1, charge_1):
         resp = client_inq_1.post(

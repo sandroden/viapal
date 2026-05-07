@@ -24,7 +24,6 @@ from .models import (
     Supplier,
     TenantCondominioRate,
     UtilityBill,
-    UtilityChargeLine,
     UtilityChargePeriod,
 )
 
@@ -51,15 +50,6 @@ class ReceivableUtilityInline(admin.TabularInline):
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(causale=Receivable.Causale.UTENZE)
-
-
-class UtilityChargeLineInline(admin.TabularInline):
-    """Righe di dettaglio (luce/gas/TARI) inline su Receivable utenze."""
-
-    model = UtilityChargeLine
-    fk_name = "receivable"
-    extra = 0
-    fields = ("voce", "importo", "dettaglio")
 
 
 class ReceivableAllocationsInline(admin.TabularInline):
@@ -218,7 +208,7 @@ class ReceivableAdmin(ModalEditMixin, JumboModelAdmin):
     )
     date_hierarchy = "scadenza"
     ordering = ("-scadenza", "assignment__tenant__nominativo")
-    inlines = (UtilityChargeLineInline, ReceivableAllocationsInline)
+    inlines = (ReceivableAllocationsInline,)
     advanced_search_fields = (
         ("assignment__tenant__nominativo__icontains:inquilino",
          "assignment__room__nome__icontains:stanza",
@@ -297,11 +287,15 @@ class ReceivableAdmin(ModalEditMixin, JumboModelAdmin):
             "fields": (
                 "assignment", "causale", "descrizione",
                 "competenza_da", "competenza_a", "scadenza",
-                "is_aggiustamento", "utility_period",
+                "is_aggiustamento", "utility_period", "giorni_presenza",
             ),
         }),
         ("Importi e stato", {
             "fields": ("importo_dovuto", "importo_pagato", "stato", "data_pagamento"),
+        }),
+        ("Calcolo utenze", {
+            "fields": ("dettaglio_calcolo",),
+            "classes": ("collapse",),
         }),
         ("Riconciliazione bancaria", {
             "fields": ("incassato_da_owner", "bank_account_destinazione", "ricevuta"),
@@ -312,7 +306,89 @@ class ReceivableAdmin(ModalEditMixin, JumboModelAdmin):
             "classes": ("collapse",),
         }),
     )
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at", "dettaglio_calcolo")
+
+    @admin.display(description="Dettaglio calcolo")
+    def dettaglio_calcolo(self, obj):
+        from decimal import ROUND_HALF_UP, Decimal
+
+        from django.urls import reverse
+        from django.utils.html import format_html, format_html_join
+
+        if not obj or not obj.pk:
+            return "—"
+        if obj.causale != Receivable.Causale.UTENZE or not obj.utility_period_id:
+            return "—"
+
+        period = obj.utility_period
+        tot = period.totale_periodo
+        giorni_tot = period.giorni_totali or 0
+        giorni_pers = obj.giorni_presenza or 0
+
+        if giorni_tot > 0:
+            quota_calc = (tot * Decimal(giorni_pers) / Decimal(giorni_tot)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        else:
+            quota_calc = Decimal("0.00")
+        diff = (obj.importo_dovuto - quota_calc) if obj.importo_dovuto is not None else None
+
+        bills_html = ""
+        bills = list(period.utility_bills.select_related("supplier").all())
+        if bills:
+            bill_url = lambda b: reverse("admin:billing_utilitybill_change", args=[b.pk])
+            bills_html = format_html(
+                "<div style='margin-top:8px'><b>Bollette agganciate:</b><ul style='margin:4px 0'>{}</ul></div>",
+                format_html_join(
+                    "",
+                    "<li>{} — em. {} — {}€ ({})  <a href='{}'>↗</a></li>",
+                    (
+                        (b.supplier, b.data_emissione, b.importo_totale, b.get_prodotto_display(), bill_url(b))
+                        for b in bills
+                    ),
+                ),
+            )
+
+        annual_html = ""
+        annual = list(period.annual_utility_costs.all())
+        if annual:
+            annual_url = lambda a: reverse("admin:billing_annualutilitycost_change", args=[a.pk])
+            annual_html = format_html(
+                "<div style='margin-top:8px'><b>Costi annuali agganciati:</b><ul style='margin:4px 0'>{}</ul></div>",
+                format_html_join(
+                    "",
+                    "<li>{} {} — annuale {}€  <a href='{}'>↗</a></li>",
+                    (
+                        (a.get_voce_display(), a.anno, a.importo_annuale, annual_url(a))
+                        for a in annual
+                    ),
+                ),
+            )
+
+        diff_html = (
+            format_html("<div>Diff arrotondamento: <b>{}€</b></div>", diff)
+            if diff is not None and abs(diff) > Decimal("0.005")
+            else ""
+        )
+
+        return format_html(
+            "<div style='font-family:monospace;line-height:1.6'>"
+            "<div><b>Periodo:</b> {} → {}</div>"
+            "<div>&nbsp;&nbsp;Luce&nbsp;{}€&nbsp;&nbsp;&nbsp;Gas&nbsp;{}€&nbsp;&nbsp;&nbsp;TARI&nbsp;{}€&nbsp;&nbsp;&nbsp;Altro&nbsp;{}€</div>"
+            "<div>&nbsp;&nbsp;<b>Tot&nbsp;&nbsp;{}€</b></div>"
+            "<div style='margin-top:8px'>Quota: {} / {} giorni × {}€ = <b>{}€</b></div>"
+            "<div>Pubblicato (foglio): <b>{}€</b></div>"
+            "{}"
+            "{}{}"
+            "</div>",
+            period.periodo_da, period.periodo_a,
+            period.tot_luce, period.tot_gas, period.tot_tari, period.tot_altro,
+            tot,
+            giorni_pers, giorni_tot, tot, quota_calc,
+            obj.importo_dovuto if obj.importo_dovuto is not None else "—",
+            diff_html,
+            bills_html, annual_html,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -577,12 +653,20 @@ class UtilityChargePeriodAdmin(ModalEditMixin, JumboModelAdmin):
     ordering = ("-periodo_da",)
     inlines = (ReceivableUtilityInline,)
     actions = (ricalcola_conguaglio_periodi,)
+    filter_horizontal = ("utility_bills", "annual_utility_costs")
     fieldsets = (
         ("Periodo", {
             "fields": ("periodo_da", "periodo_a", "criterio_ripartizione", "stato", "data_invio"),
         }),
-        ("Import storico", {
-            "fields": ("manual_totals",),
+        ("Totali (verità contabile)", {
+            "fields": (
+                "tot_luce", "tot_gas", "tot_tari", "tot_altro",
+                "giorni_totali", "nota_calcolo",
+            ),
+        }),
+        ("Bollette agganciate", {
+            "fields": ("utility_bills", "annual_utility_costs"),
+            "classes": ("collapse",),
         }),
         ("Note interne", {
             "fields": ("note",),
@@ -591,52 +675,10 @@ class UtilityChargePeriodAdmin(ModalEditMixin, JumboModelAdmin):
     readonly_fields = ("created_at", "updated_at")
     tabs = (
         ("Periodo", {"items": ["Periodo"]}),
+        ("Totali", {"items": ["Totali (verità contabile)"]}),
         ("Charges per inquilino", {"items": [ReceivableUtilityInline]}),
-        ("Import storico", {"items": ["Import storico"]}),
+        ("Bollette agganciate", {"items": ["Bollette agganciate"]}),
         ("Note interne", {"items": ["Note interne"]}),
-    )
-
-
-# ---------------------------------------------------------------------------
-# UtilityChargeLine (standalone)
-# ---------------------------------------------------------------------------
-
-
-@admin.register(UtilityChargeLine)
-class UtilityChargeLineAdmin(ModalEditMixin, JumboModelAdmin):
-    modal_edit_width = 600
-    list_display = (
-        "receivable", "voce", "importo",
-        "get_modal_edit_icon", "get_modal_delete_icon",
-    )
-    list_filter = ("voce",)
-    list_select_related = ("receivable__assignment__tenant", "receivable__utility_period")
-    autocomplete_fields = ("receivable",)
-    ordering = ("receivable__utility_period__periodo_da", "voce")
-    search_fields = ("receivable__assignment__tenant__nominativo",)
-    advanced_search_fields = (
-        ("voce", "receivable__assignment__tenant__nominativo__icontains:inquilino"),
-        ("receivable__utility_period:periodo utenze",),
-        ("receivable__competenza_da__range", "receivable__competenza_da__gte:competenza ≥",
-         "receivable__competenza_da__lte:competenza ≤"),
-        ("importo__gte:importo ≥", "importo__lte:importo ≤"),
-    )
-
-    def lookup_allowed(self, lookup, value, request):
-        # Whitelist lookup attraverso FK profonde usati in advanced_search_fields.
-        if lookup in {
-            "receivable__assignment__tenant__nominativo__icontains",
-            "receivable__utility_period",
-            "receivable__competenza_da__range",
-            "receivable__competenza_da__gte",
-            "receivable__competenza_da__lte",
-        }:
-            return True
-        return super().lookup_allowed(lookup, value, request)
-    fieldsets = (
-        ("Riga", {
-            "fields": ("receivable", "voce", "importo", "dettaglio"),
-        }),
     )
 
 

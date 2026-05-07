@@ -113,6 +113,12 @@ class Receivable(TimestampedModel):
         verbose_name="periodo utenze",
         help_text="Valorizzato per causale=utenze.",
     )
+    giorni_presenza = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="giorni di presenza",
+        help_text="Numeratore della ripartizione utenze (giorni nel periodo).",
+    )
 
     note = models.TextField(
         blank=True,

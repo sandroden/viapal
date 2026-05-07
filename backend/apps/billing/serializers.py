@@ -16,17 +16,8 @@ from billing.models import (
     Receivable,
     Supplier,
     UtilityBill,
-    UtilityChargeLine,
     UtilityChargePeriod,
 )
-
-
-class UtilityChargeLineSerializer(serializers.ModelSerializer):
-    voce_display = serializers.CharField(source="get_voce_display", read_only=True)
-
-    class Meta:
-        model = UtilityChargeLine
-        fields = ["id", "voce", "voce_display", "importo", "dettaglio"]
 
 
 class RentPaymentSerializer(serializers.ModelSerializer):
@@ -82,7 +73,21 @@ class UtilityChargeSerializer(serializers.ModelSerializer):
     importo_totale = serializers.DecimalField(
         source="importo_dovuto", max_digits=10, decimal_places=2
     )
-    lines = UtilityChargeLineSerializer(source="utility_lines", many=True, read_only=True)
+    period_tot_luce = serializers.DecimalField(
+        source="utility_period.tot_luce", max_digits=10, decimal_places=2, read_only=True
+    )
+    period_tot_gas = serializers.DecimalField(
+        source="utility_period.tot_gas", max_digits=10, decimal_places=2, read_only=True
+    )
+    period_tot_tari = serializers.DecimalField(
+        source="utility_period.tot_tari", max_digits=10, decimal_places=2, read_only=True
+    )
+    period_tot_altro = serializers.DecimalField(
+        source="utility_period.tot_altro", max_digits=10, decimal_places=2, read_only=True
+    )
+    period_giorni_totali = serializers.IntegerField(
+        source="utility_period.giorni_totali", read_only=True
+    )
 
     class Meta:
         model = Receivable
@@ -101,9 +106,18 @@ class UtilityChargeSerializer(serializers.ModelSerializer):
             "data_pagamento",
             "importo_pagato",
             "note",
-            "lines",
+            "giorni_presenza",
+            "period_tot_luce",
+            "period_tot_gas",
+            "period_tot_tari",
+            "period_tot_altro",
+            "period_giorni_totali",
         ]
-        read_only_fields = ["stato_display", "periodo_da", "periodo_a", "lines"]
+        read_only_fields = [
+            "stato_display", "periodo_da", "periodo_a",
+            "period_tot_luce", "period_tot_gas", "period_tot_tari",
+            "period_tot_altro", "period_giorni_totali",
+        ]
 
     def create(self, validated_data):
         validated_data["causale"] = Receivable.Causale.UTENZE
@@ -128,6 +142,12 @@ class UtilityChargePeriodSerializer(serializers.ModelSerializer):
             "stato_display",
             "data_invio",
             "note",
+            "tot_luce",
+            "tot_gas",
+            "tot_tari",
+            "tot_altro",
+            "giorni_totali",
+            "nota_calcolo",
         ]
 
 
