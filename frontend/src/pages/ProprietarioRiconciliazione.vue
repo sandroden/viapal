@@ -144,9 +144,24 @@
                 (sotto/sopra-pagamenti trascurabili)
               </q-tooltip>
             </q-btn-toggle>
+            <q-btn
+              round
+              dense
+              flat
+              size="sm"
+              icon="swap_horiz"
+              :color="nascondiInterOwner ? 'primary' : 'grey-7'"
+              @click="nascondiInterOwner = !nascondiInterOwner"
+            >
+              <q-tooltip>
+                {{ nascondiInterOwner ? 'Mostra anche le BT inter-owner' : 'Nascondi BT inter-owner' }}
+              </q-tooltip>
+            </q-btn>
           </div>
           <div class="vp-p-rec__col-meta">
-            <template v-if="filtroImportoBt === 'tutti' && sogliaMicroResidui === 0">
+            <template
+              v-if="filtroImportoBt === 'tutti' && sogliaMicroResidui === 0 && !nascondiInterOwner"
+            >
               {{ store.bts.length }} risultati
             </template>
             <template v-else>
@@ -199,9 +214,26 @@
                 >
                   {{ etichettaStato(bt.stato_riconciliazione) }}
                 </span>
+                <span v-if="bt.is_inter_owner" class="vp-p-rec__chip vp-p-rec__chip--inter-owner">
+                  inter-owner
+                </span>
                 <span v-if="Number(bt.residuo) > 0" class="vp-mono">
                   residuo: {{ formattaEuro(bt.residuo) }}
                 </span>
+                <q-btn
+                  flat
+                  dense
+                  round
+                  size="xs"
+                  icon="swap_horiz"
+                  class="vp-p-rec__bt-azione"
+                  :color="bt.is_inter_owner ? 'primary' : 'grey-7'"
+                  @click.stop="apriDialogInterOwner(bt)"
+                >
+                  <q-tooltip>
+                    {{ bt.is_inter_owner ? 'Modifica/disfa marcatura inter-owner' : 'Marca come inter-owner' }}
+                  </q-tooltip>
+                </q-btn>
               </q-item-label>
             </q-item-section>
           </q-item>
@@ -511,6 +543,13 @@
         </tfoot>
       </q-markup-table>
     </q-card>
+
+    <BankTransactionLedgerDialog
+      v-if="btDialogTarget"
+      v-model="dialogInterOwnerAperto"
+      :bt="btDialogTarget"
+      @changed="ricarica"
+    />
   </q-page>
 </template>
 
@@ -521,6 +560,7 @@ import { useRiconciliazioneStore, type BankTransactionFE, type ReceivableFE } fr
 import { useTenantsStore } from 'stores/tenants';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
+import BankTransactionLedgerDialog from 'src/components/BankTransactionLedgerDialog.vue';
 
 interface Allocazione {
   bt_id: number;
@@ -653,6 +693,7 @@ function mostraTutteBt() {
   filtroRiconciliato.value = 'all';
   filtroImportoBt.value = 'tutti';
   sogliaMicroResidui.value = 0;
+  nascondiInterOwner.value = false;
 }
 
 // Selezione: una o più BT, e per ognuna gli addebiti abbinati.
@@ -674,8 +715,22 @@ const filtroImportoBt = ref<'tutti' | 'alti' | 'bassi'>('tutti');
 // di pochi centesimi). 0 = mostra tutto.
 const sogliaMicroResidui = ref<0 | 1 | 5>(1);
 
+// Filtro client-side: nasconde le BT marcate come transazioni inter-owner
+// (giroconti tra fratelli). Default attivo: nella riconciliazione le BT
+// inter-owner sono rumore — non sono pagamenti inquilino.
+const nascondiInterOwner = ref(true);
+
+// Stato del dialog "marca BT come inter-owner".
+const dialogInterOwnerAperto = ref(false);
+const btDialogTarget = ref<BankTransactionFE | null>(null);
+function apriDialogInterOwner(bt: BankTransactionFE) {
+  btDialogTarget.value = bt;
+  dialogInterOwnerAperto.value = true;
+}
+
 const btOrdinate = computed<BankTransactionFE[]>(() => {
   const filtrate = store.bts.filter((bt) => {
+    if (nascondiInterOwner.value && bt.is_inter_owner) return false;
     if (filtroImportoBt.value !== 'tutti') {
       const imp = Math.abs(Number(bt.importo));
       const passaImporto =
@@ -1223,6 +1278,14 @@ watch([filtroRiconciliato, filtroDataDa, filtroDataA], () => {
 .vp-p-rec__chip--pieno {
   background: var(--vp-salvia, #c6d6c6);
   color: var(--vp-ink);
+}
+.vp-p-rec__chip--inter-owner {
+  background: var(--vp-terra-soft, #ead0bd);
+  color: var(--vp-terra-deep, #6c3a18);
+  font-weight: 500;
+}
+.vp-p-rec__bt-azione {
+  margin-left: auto;
 }
 .vp-p-rec__chip--causale {
   margin-right: var(--vp-gap-1);

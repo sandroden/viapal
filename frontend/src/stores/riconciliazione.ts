@@ -22,7 +22,23 @@ export interface BankTransactionFE {
   importo_allocato: string | number;
   residuo: string | number;
   stato_riconciliazione: StatoRiconciliazione;
+  is_inter_owner?: boolean;
   note?: string | null;
+}
+
+export type TipoInterOwner =
+  | 'distribuzione'
+  | 'incasso_conguaglio'
+  | 'bilaterale'
+  | 'aggiustamento';
+
+export interface MarcaInterOwnerPayload {
+  bank_transaction: number;
+  tipo: TipoInterOwner;
+  controparte_owner?: number | null;
+  settlement?: number | null;
+  descrizione?: string;
+  note?: string;
 }
 
 export interface ReceivableAllocFE {
@@ -155,6 +171,17 @@ export const useRiconciliazioneStore = defineStore('riconciliazione', {
       } finally {
         this.loadingReceivables = false;
       }
+    },
+    async marcaInterOwner(payload: MarcaInterOwnerPayload): Promise<void> {
+      await api.post('/api/v1/owner-ledger/bt-inter-owner/', payload);
+      // Aggiorna in-place il flag is_inter_owner della BT toccata.
+      const bt = this.bts.find((b) => b.id === payload.bank_transaction);
+      if (bt) bt.is_inter_owner = true;
+    },
+    async disfaInterOwner(btId: number): Promise<void> {
+      await api.delete(`/api/v1/owner-ledger/bt-inter-owner/${btId}/`);
+      const bt = this.bts.find((b) => b.id === btId);
+      if (bt) bt.is_inter_owner = false;
     },
     async saveBulk(payload: ReconcileBulkPayload): Promise<ReconcileBulkResult> {
       this.saving = true;
