@@ -25,3 +25,8 @@ uv run manage.py migrate         # Applica le migrazioni
 uv run manage.py createsuperuser # Crea un superuser
 uv run manage.py shell           # Shell interattiva (ipython)
 ```
+
+## Repository
+* ogni feature deve essere salvata separatamente
+* se comincio una feature con file non committati, o procedi a committare o chiedi
+* se correggi una feature precedentemente chiusa, possibilmemte cerca di andare in amend 
