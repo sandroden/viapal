@@ -30,21 +30,25 @@
       </div>
     </header>
 
-    <!-- Andamento storico -->
+    <!-- Andamento storico: grafico + tabella sintesi affiancati -->
     <section class="vp-p-spese__storico" v-if="anniDisponibili.length">
-      <div class="vp-eyebrow">Andamento per anno</div>
-      <BarChartAnni :righe="datiGrafico" />
-      <q-table
-        flat
-        dense
-        bordered
-        :rows="storicoRows"
-        :columns="storicoColumns"
-        row-key="categoria"
-        :pagination="{ rowsPerPage: 0 }"
-        hide-bottom
-        class="vp-p-spese__storico-table"
-      />
+      <div class="vp-eyebrow vp-p-spese__storico-title">Andamento per anno</div>
+      <div class="vp-p-spese__storico-grid">
+        <div class="vp-p-spese__storico-chart">
+          <BarChartAnni :righe="datiGrafico" :height="200" />
+        </div>
+        <q-table
+          flat
+          dense
+          bordered
+          :rows="storicoRows"
+          :columns="storicoColumns"
+          row-key="categoria"
+          :pagination="{ rowsPerPage: 0 }"
+          hide-bottom
+          class="vp-p-spese__storico-table"
+        />
+      </div>
     </section>
 
     <!-- Tab per anno con frecce -->
@@ -81,13 +85,25 @@
     <q-tab-panels v-model="annoSelezionato" animated class="vp-p-spese__panels">
       <q-tab-panel v-for="a in anniDisponibili" :key="a" :name="a" class="q-pa-none">
         <div class="vp-p-spese__filtri">
-          <q-btn-toggle
-            v-model="filtroCategoria"
-            :options="filtroOptions"
-            no-caps
-            unelevated
-            toggle-color="primary"
-          />
+          <div class="vp-p-spese__filtri-gruppi">
+            <q-btn-toggle
+              v-model="filtroCategoria"
+              :options="filtroOptions"
+              no-caps
+              unelevated
+              toggle-color="primary"
+            />
+            <q-btn-toggle
+              v-if="filtroCategoria === 'Utenze'"
+              v-model="filtroProdotto"
+              :options="filtroProdottoOptions"
+              no-caps
+              unelevated
+              dense
+              toggle-color="secondary"
+              class="vp-p-spese__filtro-prodotto"
+            />
+          </div>
           <div class="vp-p-spese__totali">
             <span class="vp-mono">{{ formattaEuro(totaleAnnoFiltrato(a)) }}</span>
             <span class="vp-p-spese__totali-label">
@@ -110,6 +126,15 @@
           <template #body-cell-data="props">
             <q-td :props="props">{{ formattaData(props.row.data) }}</q-td>
           </template>
+          <template #body-cell-pdf="props">
+            <q-td :props="props" class="text-center">
+              <PdfIconButton
+                v-if="props.row.file_pdf"
+                :title="props.row.bolletta_numero || props.row.descrizione"
+                @click="apriPdf(props.row)"
+              />
+            </q-td>
+          </template>
           <template #body-cell-importo="props">
             <q-td :props="props" class="text-right">
               <span class="vp-mono">{{ formattaEuro(toNumber(props.row.importo)) }}</span>
@@ -118,6 +143,12 @@
         </q-table>
       </q-tab-panel>
     </q-tab-panels>
+
+    <PdfDialog
+      v-model="pdfDialogOpen"
+      :url="pdfCorrente?.url ?? null"
+      :title="pdfCorrente?.title ?? null"
+    />
 
     <!-- Dialog aggiungi spesa -->
     <q-dialog v-model="dialogAperto" persistent>
@@ -167,6 +198,8 @@ import { useExpensesStore, type Expense, type NuovaSpesa } from 'stores/expenses
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 import BarChartAnni from 'src/components/BarChartAnni.vue';
+import PdfDialog from 'src/components/PdfDialog.vue';
+import PdfIconButton from 'src/components/PdfIconButton.vue';
 
 const store = useExpensesStore();
 const { formattaEuro } = useFormatoEuro();
@@ -189,9 +222,31 @@ const colonne: QTableProps['columns'] = [
   { name: 'data', label: 'Data', field: 'data', align: 'left', sortable: true },
   { name: 'descrizione', label: 'Descrizione', field: 'descrizione', align: 'left', sortable: true },
   { name: 'category', label: 'Categoria', field: 'category_nome', align: 'left', sortable: true },
+  { name: 'prodotto', label: 'Tipo', field: 'bolletta_prodotto', align: 'left' },
   { name: 'anticipata_da', label: 'Anticipata da', field: 'anticipata_da_nominativo', align: 'left' },
+  { name: 'pdf', label: 'PDF', field: 'file_pdf', align: 'center' },
   { name: 'importo', label: 'Importo', field: 'importo', align: 'right', sortable: true },
 ];
+
+type FiltroProdotto = 'tutti' | 'gas' | 'luce' | 'acqua';
+const filtroProdotto = ref<FiltroProdotto>('tutti');
+const filtroProdottoOptions = [
+  { label: 'Tutti', value: 'tutti' as FiltroProdotto },
+  { label: 'Gas', value: 'gas' as FiltroProdotto },
+  { label: 'Luce', value: 'luce' as FiltroProdotto },
+  { label: 'Acqua', value: 'acqua' as FiltroProdotto },
+];
+
+const pdfDialogOpen = ref(false);
+const pdfCorrente = ref<{ url: string; title: string } | null>(null);
+function apriPdf(row: Expense) {
+  if (!row.file_pdf) return;
+  pdfCorrente.value = {
+    url: row.file_pdf,
+    title: row.bolletta_numero || row.descrizione || 'Bolletta',
+  };
+  pdfDialogOpen.value = true;
+}
 
 const paginazione = { rowsPerPage: 25, sortBy: 'data', descending: true };
 
@@ -260,9 +315,14 @@ function righeAnno(a: number): Expense[] {
 }
 
 function righeFiltrate(a: number): Expense[] {
-  const righe = righeAnno(a);
-  if (filtroCategoria.value === 'Tutte') return righe;
-  return righe.filter((e) => categoriaOf(e) === filtroCategoria.value);
+  let righe = righeAnno(a);
+  if (filtroCategoria.value !== 'Tutte') {
+    righe = righe.filter((e) => categoriaOf(e) === filtroCategoria.value);
+  }
+  if (filtroCategoria.value === 'Utenze' && filtroProdotto.value !== 'tutti') {
+    righe = righe.filter((e) => e.bolletta_prodotto === filtroProdotto.value);
+  }
+  return righe;
 }
 
 function totaleAnnoFiltrato(a: number): number {
@@ -429,8 +489,41 @@ async function salva() {
   padding: var(--vp-gap-4);
   margin-bottom: var(--vp-gap-5);
 }
+.vp-p-spese__storico-title {
+  margin-bottom: var(--vp-gap-2);
+}
+.vp-p-spese__storico-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: var(--vp-gap-4);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .vp-p-spese__storico-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.vp-p-spese__storico-chart {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+.vp-p-spese__storico-chart > * {
+  flex: 1;
+  min-width: 0;
+}
 .vp-p-spese__storico-table {
-  margin-top: var(--vp-gap-2);
+  margin-top: 0;
+}
+.vp-p-spese__filtri-gruppi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-gap-2);
+  align-items: center;
+}
+.vp-p-spese__filtro-prodotto {
+  border-left: 1px solid var(--vp-paper-3);
+  padding-left: var(--vp-gap-2);
 }
 .vp-p-spese__tabs-wrapper {
   display: flex;

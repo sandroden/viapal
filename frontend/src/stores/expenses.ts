@@ -12,6 +12,12 @@ export interface Expense {
   anticipata_da_nominativo?: string | null;
   ripartibile_su_inquilini?: boolean;
   note?: string | null;
+  // bolletta collegata (read-only, derivata da OneToOne UtilityBill)
+  bolletta_id?: number | null;
+  bolletta_numero?: string | null;
+  bolletta_prodotto?: 'gas' | 'luce' | 'acqua' | null;
+  bolletta_consumo?: string | number | null;
+  file_pdf?: string | null;
   // legacy / form fields
   categoria?: string | null;
   fornitore?: string | null;

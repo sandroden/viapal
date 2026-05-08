@@ -167,17 +167,13 @@
             <q-td key="data" :props="props">{{ formattaData(props.row.data) }}</q-td>
             <q-td key="categoria" :props="props">{{ props.row.categoria }}</q-td>
             <q-td key="supplier" :props="props">{{ props.row.supplier ?? '—' }}</q-td>
-            <q-td key="descrizione" :props="props">
-              <a
+            <q-td key="descrizione" :props="props">{{ props.row.descrizione }}</q-td>
+            <q-td key="pdf" :props="props" class="text-center">
+              <PdfIconButton
                 v-if="props.row.file_pdf"
-                :href="props.row.file_pdf"
-                target="_blank"
-                rel="noopener"
-                class="vp-p-bd__pdf-link"
-              >
-                <q-icon name="picture_as_pdf" size="18px" class="q-mr-xs" />{{ props.row.descrizione }}
-              </a>
-              <span v-else>{{ props.row.descrizione }}</span>
+                :title="props.row.bolletta_numero || props.row.descrizione"
+                @click="apriPdf(props.row)"
+              />
             </q-td>
             <q-td key="importo" :props="props" class="text-right vp-mono">
               {{ formattaEuro(props.row.importo) }}
@@ -186,7 +182,7 @@
         </template>
         <template #bottom-row>
           <q-tr class="vp-p-bd__totale">
-            <q-td colspan="4" class="text-right text-bold">Totale</q-td>
+            <q-td colspan="5" class="text-right text-bold">Totale</q-td>
             <q-td class="text-right text-bold vp-mono">
               {{ formattaEuro(totaleFiltrato) }}
             </q-td>
@@ -194,6 +190,12 @@
         </template>
       </q-table>
     </template>
+
+    <PdfDialog
+      v-model="pdfDialogOpen"
+      :url="pdfCorrente?.url ?? null"
+      :title="pdfCorrente?.title ?? null"
+    />
   </q-page>
 </template>
 
@@ -210,6 +212,8 @@ import {
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 import EmptyState from 'src/components/EmptyState.vue';
+import PdfDialog from 'src/components/PdfDialog.vue';
+import PdfIconButton from 'src/components/PdfIconButton.vue';
 
 const route = useRoute();
 const store = useDashboardStore();
@@ -426,8 +430,20 @@ const colonneUscite: QTableProps['columns'] = [
   { name: 'categoria', label: 'Categoria', field: 'categoria', align: 'left', sortable: true },
   { name: 'supplier', label: 'Fornitore', field: 'supplier', align: 'left' },
   { name: 'descrizione', label: 'Descrizione', field: 'descrizione', align: 'left' },
+  { name: 'pdf', label: 'PDF', field: 'file_pdf', align: 'center' },
   { name: 'importo', label: 'Importo', field: 'importo', align: 'right', sortable: true },
 ];
+
+const pdfDialogOpen = ref(false);
+const pdfCorrente = ref<{ url: string; title: string } | null>(null);
+function apriPdf(row: BilancioDettaglioUscita) {
+  if (!row.file_pdf) return;
+  pdfCorrente.value = {
+    url: row.file_pdf,
+    title: row.bolletta_numero || row.descrizione || 'Bolletta',
+  };
+  pdfDialogOpen.value = true;
+}
 
 async function carica() {
   if (!ownerId.value || Number.isNaN(ownerId.value)) return;

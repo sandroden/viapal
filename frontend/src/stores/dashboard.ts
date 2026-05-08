@@ -135,6 +135,8 @@ export interface BilancioDettaglioUscita {
   descrizione: string;
   importo: number;
   bolletta_id?: number | null;
+  bolletta_numero?: string | null;
+  bolletta_prodotto?: 'gas' | 'luce' | 'acqua' | null;
   file_pdf?: string | null;
 }
 
