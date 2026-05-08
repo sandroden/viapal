@@ -7,13 +7,14 @@ from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.viewsets import ModelViewSet
+from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from accounting.models import InterOwnerEntry, OwnerLedgerEntry, OwnerSettlement
 from accounting.serializers import (
     InterOwnerEntrySerializer,
     MarcaBtInterOwnerSerializer,
     OwnerLedgerEntrySerializer,
+    OwnerSettlementSerializer,
     SaldoLiveSerializer,
 )
 from accounting.services.bt_inter_owner import (
@@ -114,6 +115,15 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
             for s in saldi.values()
         ]
         return Response(SaldoLiveSerializer(items, many=True).data)
+
+
+class OwnerSettlementViewSet(ReadOnlyModelViewSet):
+    """Chiusure periodiche dei conti tra fratelli. Read-only: i settlement
+    si creano via management command `genera_settlement`."""
+
+    serializer_class = OwnerSettlementSerializer
+    permission_classes = [IsProprietario]
+    queryset = OwnerSettlement.objects.order_by("-data")
 
 
 class InterOwnerEntryViewSet(ModelViewSet):

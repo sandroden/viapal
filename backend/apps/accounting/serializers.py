@@ -3,7 +3,7 @@ Serializer per l'app accounting.
 """
 from rest_framework import serializers
 
-from accounting.models import InterOwnerEntry, OwnerLedgerEntry
+from accounting.models import InterOwnerEntry, OwnerLedgerEntry, OwnerSettlement
 
 
 class OwnerLedgerEntrySerializer(serializers.ModelSerializer):
@@ -61,6 +61,20 @@ class MarcaBtInterOwnerSerializer(serializers.Serializer):
     settlement = serializers.IntegerField(required=False, allow_null=True)
     descrizione = serializers.CharField(required=False, allow_blank=True, default="")
     note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class OwnerSettlementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OwnerSettlement
+        fields = [
+            "id",
+            "data",
+            "periodo_da",
+            "periodo_a",
+            "descrizione",
+            "snapshot",
+            "note",
+        ]
 
 
 class _OwnerMinimalSerializer(serializers.Serializer):

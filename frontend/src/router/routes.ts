@@ -56,6 +56,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/ProprietarioRiconciliazione.vue'),
       },
       {
+        path: 'saldi-fratelli',
+        name: 'p-saldi-fratelli',
+        component: () => import('pages/ProprietarioSaldiFratelli.vue'),
+      },
+      {
         path: ':catchAll(.*)*',
         component: () => import('pages/ErrorNotFound.vue'),
       },
