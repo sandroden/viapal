@@ -1,5 +1,4 @@
 # utf-8
-import re
 import os
 import sys
 
@@ -55,8 +54,3 @@ if ENABLE_DEBUG_TOOLBAR:
 
     TEMPLATES[0]['OPTIONS']['context_processors'] += ["django.template.context_processors.debug"]  # noqa
     MIDDLEWARE[0:0] = ['debug_toolbar.middleware.DebugToolbarMiddleware']  # noqa
-
-for key in os.environ:
-    if key.startswith("DJANGO_"):
-        var_name = re.sub('DJANGO_', '', key)
-        globals()[var_name] = os.environ[key]

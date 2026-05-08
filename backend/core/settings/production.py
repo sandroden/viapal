@@ -7,6 +7,9 @@ import os
 
 DEBUG = False
 
+if 'DJANGO_SECRET_KEY' in os.environ:
+    SECRET_KEY = os.environ['DJANGO_SECRET_KEY']
+
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'viapal.e-den.it').split(',')
 
 CSRF_TRUSTED_ORIGINS = [
