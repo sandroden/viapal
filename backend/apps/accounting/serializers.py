@@ -23,6 +23,8 @@ class OwnerLedgerEntrySerializer(serializers.ModelSerializer):
             "tipo_display",
             "riferimento_receivable",
             "riferimento_expense",
+            "riferimento_settlement",
+            "bank_transaction",
             "note",
         ]
 
@@ -44,5 +46,39 @@ class InterOwnerEntrySerializer(serializers.ModelSerializer):
             "descrizione",
             "riferimento_loan",
             "riferimento_expense",
+            "bank_transaction",
             "note",
         ]
+
+
+class MarcaBtInterOwnerSerializer(serializers.Serializer):
+    """Payload per POST /api/v1/owner-ledger/bt-inter-owner/."""
+    bank_transaction = serializers.IntegerField()
+    tipo = serializers.ChoiceField(
+        choices=["distribuzione", "incasso_conguaglio", "bilaterale", "aggiustamento"],
+    )
+    controparte_owner = serializers.IntegerField(required=False, allow_null=True)
+    settlement = serializers.IntegerField(required=False, allow_null=True)
+    descrizione = serializers.CharField(required=False, allow_blank=True, default="")
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class _OwnerMinimalSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    nominativo = serializers.CharField()
+
+
+class SaldoLiveSerializer(serializers.Serializer):
+    """Serializer per accounting.services.saldi_live.SaldoLive."""
+    owner = _OwnerMinimalSerializer()
+    quota = serializers.DecimalField(max_digits=8, decimal_places=4)
+    baseline_settlement = serializers.DecimalField(max_digits=12, decimal_places=2)
+    incassi_per_causale = serializers.DictField(
+        child=serializers.DecimalField(max_digits=12, decimal_places=2),
+    )
+    spese_per_categoria = serializers.DictField(
+        child=serializers.DecimalField(max_digits=12, decimal_places=2),
+    )
+    anticipi_pendenti = serializers.DecimalField(max_digits=12, decimal_places=2)
+    bt_inter_owner = serializers.DecimalField(max_digits=12, decimal_places=2)
+    totale = serializers.DecimalField(max_digits=12, decimal_places=2)

@@ -341,6 +341,7 @@ class BankTransactionSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True
     )
     stato_riconciliazione = serializers.CharField(read_only=True)
+    is_inter_owner = serializers.SerializerMethodField()
 
     class Meta:
         model = BankTransaction
@@ -355,8 +356,12 @@ class BankTransactionSerializer(serializers.ModelSerializer):
             "importo_allocato",
             "residuo",
             "stato_riconciliazione",
+            "is_inter_owner",
             "note",
         ]
+
+    def get_is_inter_owner(self, obj) -> bool:
+        return obj.ledger_entries.exists() or obj.inter_owner_entries.exists()
 
 
 class ReceivableForReconcileSerializer(serializers.ModelSerializer):

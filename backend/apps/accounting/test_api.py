@@ -4,6 +4,11 @@ Test API per l'app accounting.
 Coprono:
 - Smoke test viewset ledger e inter-owner
 - Accesso negato agli inquilini
+- Action POST bt-inter-owner: 4 tipi (distribuzione, conguaglio, bilaterale,
+  aggiustamento) + 409 su BT già marcata.
+- Action DELETE bt-inter-owner/<id>.
+- Action GET saldi-live (con e senza ?at=).
+- BankTransactionSerializer.is_inter_owner.
 """
 import datetime
 from decimal import Decimal
@@ -13,7 +18,8 @@ from django.contrib.auth.models import Group, User
 from rest_framework.test import APIClient
 
 from accounting.models import InterOwnerEntry, OwnerLedgerEntry
-from properties.models import OwnerProfile
+from billing.models.payments import BankTransaction
+from properties.models import OwnerBankAccount, OwnerProfile, OwnershipShare
 
 
 # ---------------------------------------------------------------------------
@@ -146,4 +152,172 @@ class TestInterOwnerEntryViewSet:
 
     def test_inquilino_non_accede(self, client_inq):
         resp = client_inq.get("/api/v1/inter-owner-entries/")
+        assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Test action bt-inter-owner + saldi-live
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def conto_owner_1(db, owner_1):
+    return OwnerBankAccount.objects.create(
+        owner=owner_1,
+        banca="Banca 1",
+        intestatario="Owner 1",
+        iban="IT60X0542811101000000000777",
+    )
+
+
+@pytest.fixture
+def bt_owner_1(db, conto_owner_1):
+    return BankTransaction.objects.create(
+        data=datetime.date(2025, 11, 12),
+        descrizione="CONGUAGLIO 2025",
+        importo=Decimal("1707.00"),
+        owner_account=conto_owner_1,
+    )
+
+
+class TestActionBtInterOwner:
+    def test_marca_distribuzione(self, client_prop, bt_owner_1, owner_1, owner_2):
+        resp = client_prop.post(
+            "/api/v1/owner-ledger/bt-inter-owner/",
+            data={
+                "bank_transaction": bt_owner_1.pk,
+                "tipo": "distribuzione",
+                "controparte_owner": owner_2.pk,
+                "descrizione": "Distribuzione utili 2025",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201
+        assert len(resp.json()) == 2
+        # 2 voci ledger A simmetriche
+        assert OwnerLedgerEntry.objects.filter(bank_transaction=bt_owner_1).count() == 2
+        somma = sum(v.importo for v in OwnerLedgerEntry.objects.filter(bank_transaction=bt_owner_1))
+        assert somma == Decimal("0.00")
+
+    def test_marca_incasso_conguaglio(self, client_prop, bt_owner_1, owner_1, owner_2):
+        resp = client_prop.post(
+            "/api/v1/owner-ledger/bt-inter-owner/",
+            data={
+                "bank_transaction": bt_owner_1.pk,
+                "tipo": "incasso_conguaglio",
+                "controparte_owner": owner_2.pk,
+            },
+            format="json",
+        )
+        assert resp.status_code == 201
+        tipi = set(OwnerLedgerEntry.objects.filter(bank_transaction=bt_owner_1).values_list("tipo", flat=True))
+        assert tipi == {"incasso_conguaglio"}
+
+    def test_marca_bilaterale_crea_inter_owner_entry(
+        self, client_prop, bt_owner_1, owner_1, owner_2,
+    ):
+        resp = client_prop.post(
+            "/api/v1/owner-ledger/bt-inter-owner/",
+            data={
+                "bank_transaction": bt_owner_1.pk,
+                "tipo": "bilaterale",
+                "controparte_owner": owner_2.pk,
+                "descrizione": "Restituzione personale",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201
+        # bt.importo > 0: BT entrante in conto di owner_1 → owner_2 paga a owner_1
+        entry = InterOwnerEntry.objects.get(bank_transaction=bt_owner_1)
+        assert entry.owner_da == owner_2
+        assert entry.owner_a == owner_1
+        assert entry.importo == Decimal("1707.00")
+
+    def test_marca_aggiustamento_voce_singola(self, client_prop, bt_owner_1, owner_1):
+        resp = client_prop.post(
+            "/api/v1/owner-ledger/bt-inter-owner/",
+            data={"bank_transaction": bt_owner_1.pk, "tipo": "aggiustamento"},
+            format="json",
+        )
+        assert resp.status_code == 201
+        voci = OwnerLedgerEntry.objects.filter(bank_transaction=bt_owner_1)
+        assert voci.count() == 1
+        assert voci.first().tipo == "aggiustamento"
+        assert voci.first().owner == owner_1
+
+    def test_409_su_bt_gia_marcata(self, client_prop, bt_owner_1, owner_1, owner_2):
+        client_prop.post(
+            "/api/v1/owner-ledger/bt-inter-owner/",
+            data={
+                "bank_transaction": bt_owner_1.pk,
+                "tipo": "distribuzione",
+                "controparte_owner": owner_2.pk,
+            },
+            format="json",
+        )
+        resp = client_prop.post(
+            "/api/v1/owner-ledger/bt-inter-owner/",
+            data={
+                "bank_transaction": bt_owner_1.pk,
+                "tipo": "distribuzione",
+                "controparte_owner": owner_2.pk,
+            },
+            format="json",
+        )
+        assert resp.status_code == 409
+
+    def test_400_se_controparte_mancante_per_bilaterale(self, client_prop, bt_owner_1):
+        resp = client_prop.post(
+            "/api/v1/owner-ledger/bt-inter-owner/",
+            data={"bank_transaction": bt_owner_1.pk, "tipo": "bilaterale"},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_disfa_marcatura(self, client_prop, bt_owner_1, owner_1, owner_2):
+        client_prop.post(
+            "/api/v1/owner-ledger/bt-inter-owner/",
+            data={
+                "bank_transaction": bt_owner_1.pk,
+                "tipo": "distribuzione",
+                "controparte_owner": owner_2.pk,
+            },
+            format="json",
+        )
+        assert OwnerLedgerEntry.objects.filter(bank_transaction=bt_owner_1).count() == 2
+        resp = client_prop.delete(f"/api/v1/owner-ledger/bt-inter-owner/{bt_owner_1.pk}/")
+        assert resp.status_code == 200
+        assert resp.json()["voci_cancellate"] == 2
+        assert OwnerLedgerEntry.objects.filter(bank_transaction=bt_owner_1).count() == 0
+
+    def test_inquilino_non_accede(self, client_inq, bt_owner_1, owner_2):
+        resp = client_inq.post(
+            "/api/v1/owner-ledger/bt-inter-owner/",
+            data={
+                "bank_transaction": bt_owner_1.pk,
+                "tipo": "distribuzione",
+                "controparte_owner": owner_2.pk,
+            },
+            format="json",
+        )
+        assert resp.status_code == 403
+
+
+class TestActionSaldiLive:
+    def test_default_at_oggi(self, client_prop, owner_1):
+        OwnershipShare.objects.create(
+            owner=owner_1, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
+        )
+        resp = client_prop.get("/api/v1/owner-ledger/saldi-live/")
+        assert resp.status_code == 200
+        assert isinstance(resp.json(), list)
+        assert len(resp.json()) == 1
+        assert resp.json()[0]["owner"]["nominativo"] == "Proprietario ACC 1"
+
+    def test_at_invalido_400(self, client_prop):
+        resp = client_prop.get("/api/v1/owner-ledger/saldi-live/?at=non-una-data")
+        assert resp.status_code == 400
+
+    def test_inquilino_non_accede(self, client_inq):
+        resp = client_inq.get("/api/v1/owner-ledger/saldi-live/")
         assert resp.status_code == 403
