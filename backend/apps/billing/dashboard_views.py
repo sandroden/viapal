@@ -479,10 +479,9 @@ class BilancioOwnerDettaglioView(APIView):
                 bolletta = getattr(sp, "utility_bill", None)
                 file_pdf_url = None
                 if bolletta and bolletta.file_pdf:
-                    pdf = bolletta.file_pdf
-                    file_pdf_url = (
-                        request.build_absolute_uri(pdf.url) if hasattr(pdf, "url") else None
-                    )
+                    # URL relativo (/media/...) → il frontend lo carica nella
+                    # sua origine via proxy, stesso-origin per l'iframe.
+                    file_pdf_url = bolletta.file_pdf.url
                 righe.append({
                     "id": sp.id,
                     "data": sp.data.isoformat(),
@@ -491,6 +490,8 @@ class BilancioOwnerDettaglioView(APIView):
                     "descrizione": sp.descrizione,
                     "importo": float(sp.importo),
                     "bolletta_id": bolletta.id if bolletta else None,
+                    "bolletta_numero": bolletta.numero_fattura if bolletta else None,
+                    "bolletta_prodotto": bolletta.prodotto if bolletta else None,
                     "file_pdf": file_pdf_url,
                 })
             totale = sum((r["importo"] for r in righe), 0.0)

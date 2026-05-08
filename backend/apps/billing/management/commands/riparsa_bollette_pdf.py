@@ -63,6 +63,49 @@ RX_FORNITORI = [
     (re.compile(r"BrianzAcque", re.IGNORECASE), "BrianzAcque"),
 ]
 
+# Identificazione prodotto: solo pattern contestuali specifici (la bolletta
+# Enel/Acea menziona spesso anche l'altro servizio in testo informativo, per
+# cui il match generico "GAS NATURALE" produrrebbe falsi positivi).
+RX_PRODOTTO = [
+    # Acea: "BOLLETTA PER LA FORNITURA DI GAS NATURALE" / "DI ENERGIA ELETTRICA"
+    (re.compile(r"FORNITURA\s+DI\s+GAS\s+NATURALE", re.IGNORECASE), "gas"),
+    (re.compile(r"FORNITURA\s+DI\s+ENERGIA\s+ELETTRICA", re.IGNORECASE), "luce"),
+    # Enel: "spesa per il GAS NATURALE" / "spesa per l'ENERGIA ELETTRICA"
+    (re.compile(r"spesa\s+per\s+\S+\s+GAS\s+NATURALE", re.IGNORECASE), "gas"),
+    (re.compile(r"spesa\s+per\s+\S+\s+ENERGIA\s+ELETTRICA", re.IGNORECASE), "luce"),
+    # Generici (acqua / idrico)
+    (re.compile(r"FORNITURA\s+IDRICA", re.IGNORECASE), "acqua"),
+    (re.compile(r"\b(servizio\s+idrico|fornitura\s+di\s+acqua)\b", re.IGNORECASE), "acqua"),
+]
+
+# Template Enel: "Periodo NOV. 2024 - DIC. 2024" (mesi italiani abbreviati).
+MESI_IT_ABBR = {
+    "GEN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAG": 5, "GIU": 6,
+    "LUG": 7, "AGO": 8, "SET": 9, "OTT": 10, "NOV": 11, "DIC": 12,
+}
+RX_PERIODO_ENEL = re.compile(
+    r"Periodo\s+([A-Z]{3})\.\s*(\d{4})\s*-\s*([A-Z]{3})\.\s*(\d{4})",
+    re.IGNORECASE,
+)
+# Enel: "fattura elettronica n. 5203776675 del 11/01/2025"
+RX_EMISSIONE_ENEL = re.compile(
+    r"fattura\s+elettronica\s+n\.\s*\d+\s+del\s+(\d{2}/\d{2}/\d{4})",
+    re.IGNORECASE,
+)
+# Enel: dopo "Totale da pagare ... 284,56 €" arriva (entro ~400 caratteri,
+# attraverso 2-3 righe vuote) il consumo: "844 kWh" / "39 Smc" / "25 mc".
+RX_CONSUMO_ENEL = re.compile(
+    r"Totale\s+da\s+pagare[^\n]+\n.{1,400}?(\d[\d\.]*)\s*(kWh|Smc|m³|mc)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _ultimo_giorno_mese(anno: int, mese: int) -> int:
+    if mese == 12:
+        return 31
+    nxt = datetime.date(anno, mese + 1, 1)
+    return (nxt - datetime.timedelta(days=1)).day
+
 
 def _parse_data(s: str) -> datetime.date | None:
     try:
@@ -101,26 +144,59 @@ def estrai_da_pdf(path: str) -> dict:
         "numero_fattura_reale": None,
         "consumo": None,
         "fornitore": None,
+        "prodotto": None,
     }
     m = RX_TOTALE.search(out) or RX_TOTALE_FALLBACK.search(out)
     if m:
         risultato["importo"] = _parse_importo(m.group(1))
-    m = RX_EMISSIONE.search(out)
-    if m:
-        risultato["data_emissione"] = _parse_data(m.group(1))
+
+    # Periodo: prima Acea (date numeriche), poi Enel (mesi testuali)
     m = RX_PERIODO.search(out)
     if m:
         risultato["periodo_da"] = _parse_data(m.group(1))
         risultato["periodo_a"] = _parse_data(m.group(2))
+    else:
+        m = RX_PERIODO_ENEL.search(out)
+        if m:
+            mese_da = MESI_IT_ABBR.get(m.group(1).upper())
+            anno_da = int(m.group(2))
+            mese_a = MESI_IT_ABBR.get(m.group(3).upper())
+            anno_a = int(m.group(4))
+            if mese_da and mese_a:
+                risultato["periodo_da"] = datetime.date(anno_da, mese_da, 1)
+                risultato["periodo_a"] = datetime.date(
+                    anno_a, mese_a, _ultimo_giorno_mese(anno_a, mese_a)
+                )
+
+    # Data emissione: prima Acea, poi Enel
+    m = RX_EMISSIONE.search(out)
+    if m:
+        risultato["data_emissione"] = _parse_data(m.group(1))
+    else:
+        m = RX_EMISSIONE_ENEL.search(out)
+        if m:
+            risultato["data_emissione"] = _parse_data(m.group(1))
+
     m = RX_NUM_FATTURA.search(out)
     if m:
         risultato["numero_fattura_reale"] = m.group(1)
+
+    # Consumo: prima Acea, poi Enel (numero subito dopo "Totale da pagare X €")
     m = RX_CONSUMO.search(out)
     if m:
         risultato["consumo"] = _parse_importo(m.group(1))
+    else:
+        m = RX_CONSUMO_ENEL.search(out)
+        if m:
+            risultato["consumo"] = _parse_importo(m.group(1))
+
     for rx, nome in RX_FORNITORI:
         if rx.search(out):
             risultato["fornitore"] = nome
+            break
+    for rx, prod in RX_PRODOTTO:
+        if rx.search(out):
+            risultato["prodotto"] = prod
             break
     return risultato
 

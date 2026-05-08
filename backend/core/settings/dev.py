@@ -4,6 +4,9 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
+# Iframe stessa-origine permessi (per l'anteprima PDF nel frontend via proxy)
+X_FRAME_OPTIONS = 'SAMEORIGIN'
+
 # Frontend Quasar dev su :9000
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:9000',

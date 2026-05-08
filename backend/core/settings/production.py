@@ -27,7 +27,7 @@ CSRF_COOKIE_HTTPONLY = False  # frontend deve leggerlo per X-CSRFToken
 # Hardening
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
-X_FRAME_OPTIONS = 'DENY'
+X_FRAME_OPTIONS = 'SAMEORIGIN'  # consente l'anteprima PDF (iframe) nel frontend
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Database via env (DATABASE_URL non parsata: usiamo singoli campi)

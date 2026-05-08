@@ -191,8 +191,13 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
 class UtilityBillViewSet(ModelViewSet):
     """Bollette utenze. Solo proprietari.
 
-    Supporta upload del PDF via multipart/form-data. Per gli script CLI
-    accetta anche autenticazione HTTP Basic in aggiunta alla session.
+    Upload (POST) richiede solo ``file_pdf`` + ``pagata_da_owner``: tutti
+    gli altri campi (prodotto, importo, periodo, data emissione, consumo,
+    fornitore) vengono estratti dal PDF (template Acea/Enel/Wind3
+    riconosciuti). Idempotente per ``numero_fattura`` (= basename del file).
+
+    Per gli script CLI accetta anche autenticazione HTTP Basic in aggiunta
+    alla session.
     """
 
     serializer_class = UtilityBillSerializer
@@ -203,6 +208,88 @@ class UtilityBillViewSet(ModelViewSet):
         "-data_emissione"
     )
 
+    def create(self, request, *args, **kwargs):
+        import os
+        import tempfile
+
+        from billing.management.commands.riparsa_bollette_pdf import estrai_da_pdf
+        from billing.models import Supplier
+
+        file_pdf = request.FILES.get("file_pdf")
+        if not file_pdf:
+            return Response({"file_pdf": "richiesto"}, status=400)
+
+        pagata_da_owner_id = (
+            request.data.get("pagata_da_owner") or request.data.get("pagata_da_owner_id")
+        )
+        if not pagata_da_owner_id:
+            return Response({"pagata_da_owner": "richiesto"}, status=400)
+
+        numero_fattura = (
+            request.data.get("numero_fattura")
+            or os.path.splitext(os.path.basename(file_pdf.name))[0]
+        )
+
+        existing = UtilityBill.objects.filter(numero_fattura=numero_fattura).first()
+        if existing:
+            return Response(
+                {
+                    "detail": "Bolletta già presente.",
+                    "id": existing.id,
+                    "numero_fattura": existing.numero_fattura,
+                },
+                status=409,
+            )
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            for chunk in file_pdf.chunks():
+                tmp.write(chunk)
+            tmp_path = tmp.name
+        try:
+            dati = estrai_da_pdf(tmp_path)
+        finally:
+            os.unlink(tmp_path)
+
+        if not dati or dati.get("importo") is None:
+            return Response(
+                {"detail": "Template PDF non riconosciuto: importo non estraibile."},
+                status=400,
+            )
+        if not dati.get("periodo_da") or not dati.get("periodo_a"):
+            return Response(
+                {"detail": "Template PDF non riconosciuto: periodo non estraibile."},
+                status=400,
+            )
+        prodotto = dati.get("prodotto") or request.data.get("prodotto")
+        if not prodotto:
+            return Response(
+                {"detail": "Prodotto non identificabile dal PDF (passare 'prodotto' nel form)."},
+                status=400,
+            )
+
+        nome_forn = dati.get("fornitore") or request.data.get("supplier_nome") or "Sconosciuto"
+        supplier = Supplier.objects.filter(nome__iexact=nome_forn).first()
+        if not supplier:
+            supplier = Supplier.objects.create(
+                nome=nome_forn, tipo=Supplier.TipoFornitore.ALTRO,
+            )
+
+        file_pdf.seek(0)
+        bill = UtilityBill.objects.create(
+            supplier=supplier,
+            prodotto=prodotto,
+            numero_fattura=numero_fattura,
+            data_emissione=dati.get("data_emissione") or dati["periodo_a"],
+            periodo_da=dati["periodo_da"],
+            periodo_a=dati["periodo_a"],
+            importo_totale=dati["importo"],
+            consumo=dati.get("consumo"),
+            pagata_da_owner_id=pagata_da_owner_id,
+            file_pdf=file_pdf,
+        )
+        serializer = self.get_serializer(bill)
+        return Response(serializer.data, status=201)
+
 
 class ExpenseViewSet(ModelViewSet):
     """Spese immobile. Solo proprietari (full CRUD)."""
@@ -210,7 +297,8 @@ class ExpenseViewSet(ModelViewSet):
     serializer_class = ExpenseSerializer
     permission_classes = [IsProprietario]
     queryset = Expense.objects.select_related(
-        "category", "supplier", "anticipata_da_owner", "riferimento_quota_owner"
+        "category", "supplier", "anticipata_da_owner",
+        "riferimento_quota_owner", "utility_bill",
     ).order_by("-data")
 
 

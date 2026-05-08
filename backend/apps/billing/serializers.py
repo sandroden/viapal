@@ -230,6 +230,21 @@ class ExpenseSerializer(serializers.ModelSerializer):
     anticipata_da_nominativo = serializers.CharField(
         source="anticipata_da_owner.nominativo", read_only=True
     )
+    bolletta_id = serializers.IntegerField(
+        source="utility_bill.id", read_only=True, allow_null=True,
+    )
+    bolletta_numero = serializers.CharField(
+        source="utility_bill.numero_fattura", read_only=True, allow_null=True,
+    )
+    bolletta_prodotto = serializers.CharField(
+        source="utility_bill.prodotto", read_only=True, allow_null=True,
+    )
+    bolletta_consumo = serializers.DecimalField(
+        source="utility_bill.consumo",
+        max_digits=10, decimal_places=3,
+        read_only=True, allow_null=True,
+    )
+    file_pdf = serializers.SerializerMethodField()
 
     class Meta:
         model = Expense
@@ -247,7 +262,20 @@ class ExpenseSerializer(serializers.ModelSerializer):
             "riferimento_quota_owner",
             "allegato",
             "note",
+            "bolletta_id",
+            "bolletta_numero",
+            "bolletta_prodotto",
+            "bolletta_consumo",
+            "file_pdf",
         ]
+
+    def get_file_pdf(self, obj):
+        bolletta = getattr(obj, "utility_bill", None)
+        if not bolletta or not bolletta.file_pdf:
+            return None
+        # URL relativo (/media/...) → il frontend lo carica nella sua origine
+        # via proxy, stesso-origin per l'iframe (no X-Frame-Options issue).
+        return bolletta.file_pdf.url
 
 
 class ExtraChargeSerializer(serializers.ModelSerializer):
