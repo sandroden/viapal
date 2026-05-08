@@ -1,6 +1,7 @@
 """
 Modelli relativi ai proprietari dell'immobile.
 """
+import logging
 from decimal import Decimal
 
 from django.conf import settings
@@ -8,6 +9,33 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from ._base import TimestampedModel
+
+logger = logging.getLogger(__name__)
+
+
+def quote_attive_at(data) -> dict["OwnerProfile", Decimal]:
+    """Ritorna le quote di proprietà valide alla data come dict {owner: quota}.
+
+    Se la somma non è esattamente 1.0 logga un warning e ribilancia
+    proporzionalmente: serve a mantenere coerente il calcolo pro-quota anche
+    quando il versionamento delle quote ha buchi temporali.
+    """
+    qs = OwnershipShare.objects.select_related("owner").filter(
+        valid_from__lte=data,
+    ).filter(
+        models.Q(valid_to__isnull=True) | models.Q(valid_to__gte=data),
+    )
+    quote = {s.owner: s.quota for s in qs}
+    totale = sum(quote.values(), start=Decimal("0"))
+    if totale == Decimal("0"):
+        return {}
+    if abs(totale - Decimal("1")) > Decimal("0.001"):
+        logger.warning(
+            "quote_attive_at(%s): somma quote = %s (atteso 1.0). Riproporziono.",
+            data, totale,
+        )
+        quote = {o: q / totale for o, q in quote.items()}
+    return quote
 
 
 class OwnerProfile(TimestampedModel):

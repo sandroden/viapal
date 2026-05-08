@@ -97,6 +97,14 @@ class InterOwnerEntry(TimestampedModel):
         blank=True,
         verbose_name="spesa collegata",
     )
+    bank_transaction = models.ForeignKey(
+        "billing.BankTransaction",
+        on_delete=models.SET_NULL,
+        related_name="inter_owner_entries",
+        null=True,
+        blank=True,
+        verbose_name="transazione bancaria collegata",
+    )
     note = models.TextField(
         blank=True,
         verbose_name="note",

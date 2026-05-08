@@ -109,6 +109,12 @@ class Expense(TimestampedModel):
         default=False,
         verbose_name="ripartibile su inquilini",
     )
+    is_straordinaria = models.BooleanField(
+        default=False,
+        verbose_name="straordinaria",
+        help_text="Spese straordinarie (es. rifacimento bagno) vengono raggruppate "
+                  "separatamente al settlement annuale.",
+    )
     riferimento_quota_owner = models.ForeignKey(
         OwnerProfile,
         on_delete=models.PROTECT,

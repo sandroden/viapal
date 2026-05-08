@@ -2,8 +2,9 @@
 Partitario ufficiale tra i proprietari (Livello A).
 """
 from django.db import models
+from django.db.models import Q
 
-from properties.models import OwnerProfile, TimestampedModel
+from properties.models import TimestampedModel
 
 
 class OwnerLedgerEntry(TimestampedModel):
@@ -13,11 +14,12 @@ class OwnerLedgerEntry(TimestampedModel):
         INCASSO_AFFITTO = "incasso_affitto", "Incasso affitto"
         INCASSO_CONGUAGLIO = "incasso_conguaglio", "Incasso conguaglio"
         SPESA = "spesa", "Spesa"
+        ANTICIPO = "anticipo", "Anticipo (credito da spese di tasca)"
         DISTRIBUZIONE = "distribuzione", "Distribuzione utili"
         AGGIUSTAMENTO = "aggiustamento", "Aggiustamento"
 
     owner = models.ForeignKey(
-        OwnerProfile,
+        "properties.OwnerProfile",
         on_delete=models.PROTECT,
         related_name="ledger_entries",
         verbose_name="proprietario",
@@ -56,6 +58,22 @@ class OwnerLedgerEntry(TimestampedModel):
         blank=True,
         verbose_name="spesa collegata",
     )
+    riferimento_settlement = models.ForeignKey(
+        "accounting.OwnerSettlement",
+        on_delete=models.SET_NULL,
+        related_name="ledger_entries",
+        null=True,
+        blank=True,
+        verbose_name="settlement collegato",
+    )
+    bank_transaction = models.ForeignKey(
+        "billing.BankTransaction",
+        on_delete=models.SET_NULL,
+        related_name="ledger_entries",
+        null=True,
+        blank=True,
+        verbose_name="transazione bancaria collegata",
+    )
     note = models.TextField(
         blank=True,
         verbose_name="note",
@@ -65,6 +83,18 @@ class OwnerLedgerEntry(TimestampedModel):
         verbose_name = "voce partitario proprietario"
         verbose_name_plural = "voci partitario proprietari"
         ordering = ["-data", "owner__nominativo"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["riferimento_receivable", "owner", "tipo"],
+                condition=Q(riferimento_receivable__isnull=False),
+                name="uq_ledger_per_receivable_owner_tipo",
+            ),
+            models.UniqueConstraint(
+                fields=["riferimento_expense", "owner", "tipo"],
+                condition=Q(riferimento_expense__isnull=False),
+                name="uq_ledger_per_expense_owner_tipo",
+            ),
+        ]
 
     def __str__(self):
         segno = "+" if self.importo >= 0 else ""

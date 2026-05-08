@@ -2,19 +2,34 @@
 Test per l'app accounting.
 
 Coprono:
-- OwnerLedgerEntry: creazione e __str__
+- OwnerLedgerEntry: creazione e __str__, FK BT/settlement, tipo=anticipo,
+  vincoli di idempotenza (receivable+owner+tipo, expense+owner+tipo),
+  comportamento SET_NULL su delete della BT.
 - OwnerSettlement: snapshot JSON
-- InterOwnerLoan + InterOwnerEntry: prestito bilaterale
+- InterOwnerLoan + InterOwnerEntry: prestito bilaterale, FK BT
 - WithholdingRule: trattenuta mensile
+- properties.quote_attive_at: helper quote pro-quota a una data, con
+  fallback proporzionale se la somma non chiude a 1.0.
 """
 import datetime
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth.models import User
+from django.db import IntegrityError, transaction
 
 from accounting.models import InterOwnerEntry, InterOwnerLoan, OwnerLedgerEntry, OwnerSettlement, WithholdingRule
-from properties.models import OwnerProfile
+from billing.models import Expense, ExpenseCategory, Receivable, StatoPagamento
+from billing.models.payments import BankTransaction
+from properties.models import (
+    OwnerBankAccount,
+    OwnerProfile,
+    OwnershipShare,
+    Room,
+    RoomAssignment,
+    TenantProfile,
+    quote_attive_at,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +65,79 @@ def bruna(db, user_bruna):
 @pytest.fixture
 def fabio(db, user_fabio):
     return OwnerProfile.objects.create(user=user_fabio, nominativo="Fabio")
+
+
+@pytest.fixture
+def bank_account_bruna(db, bruna):
+    return OwnerBankAccount.objects.create(
+        owner=bruna,
+        banca="Intesa",
+        intestatario="Bruna Dentella",
+        iban="IT60X0542811101000000123456",
+    )
+
+
+@pytest.fixture
+def bt_inter_owner(db, bank_account_bruna):
+    return BankTransaction.objects.create(
+        data=datetime.date(2025, 12, 30),
+        descrizione="CONGUAGLIO 2025",
+        importo=Decimal("1707.00"),
+        owner_account=bank_account_bruna,
+    )
+
+
+@pytest.fixture
+def assignment(db):
+    user_inq = User.objects.create_user("arun_acc", email="arun_acc@v.it", password="pwd")
+    tenant = TenantProfile.objects.create(user=user_inq, nominativo="Arun", giorno_pagamento_affitto=1)
+    room = Room.objects.create(nome="Camera Acc", ordinamento=99)
+    return RoomAssignment.objects.create(
+        room=room,
+        tenant=tenant,
+        valid_from=datetime.date(2024, 9, 1),
+        canone_mensile=Decimal("420"),
+        deposito_versato=Decimal("840"),
+    )
+
+
+@pytest.fixture
+def receivable_pagato(db, assignment, bruna):
+    return Receivable.objects.create(
+        assignment=assignment,
+        causale=Receivable.Causale.AFFITTO,
+        competenza_da=datetime.date(2025, 4, 1),
+        competenza_a=datetime.date(2025, 4, 30),
+        scadenza=datetime.date(2025, 4, 5),
+        importo_dovuto=Decimal("420.00"),
+        importo_pagato=Decimal("420.00"),
+        data_pagamento=datetime.date(2025, 4, 4),
+        stato=StatoPagamento.PAGATO,
+        incassato_da_owner=bruna,
+    )
+
+
+@pytest.fixture
+def expense_imu(db, sandro):
+    cat = ExpenseCategory.objects.create(nome="IMU", codice="imu")
+    return Expense.objects.create(
+        data=datetime.date(2025, 6, 16),
+        category=cat,
+        importo=Decimal("1200.00"),
+        descrizione="IMU acconto 2025",
+        anticipata_da_owner=sandro,
+    )
+
+
+@pytest.fixture
+def settlement_2024(db):
+    return OwnerSettlement.objects.create(
+        data=datetime.date(2024, 12, 31),
+        periodo_da=datetime.date(2024, 1, 1),
+        periodo_a=datetime.date(2024, 12, 31),
+        descrizione="Chiusura 2024",
+        snapshot={},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -189,3 +277,213 @@ class TestWithholdingRule:
             attiva=False,
         )
         assert "inattiva" in str(rule)
+
+
+# ---------------------------------------------------------------------------
+# Test estensione schema (FK BT/settlement, tipo=anticipo, vincoli)
+# ---------------------------------------------------------------------------
+
+
+class TestOwnerLedgerEntryFKBankTransaction:
+    def test_voce_collegata_a_bt(self, db, bruna, bt_inter_owner):
+        entry = OwnerLedgerEntry.objects.create(
+            owner=bruna,
+            data=bt_inter_owner.data,
+            descrizione="Conguaglio 2025 da Fabio",
+            importo=Decimal("853.50"),
+            tipo=OwnerLedgerEntry.TipoVoce.INCASSO_CONGUAGLIO,
+            bank_transaction=bt_inter_owner,
+        )
+        assert entry.bank_transaction == bt_inter_owner
+        assert bt_inter_owner.ledger_entries.count() == 1
+
+    def test_set_null_su_delete_bt(self, db, bruna, bt_inter_owner):
+        """SET_NULL: cancellare la BT non distrugge la voce ledger."""
+        entry = OwnerLedgerEntry.objects.create(
+            owner=bruna,
+            data=bt_inter_owner.data,
+            descrizione="Conguaglio",
+            importo=Decimal("100"),
+            tipo=OwnerLedgerEntry.TipoVoce.INCASSO_CONGUAGLIO,
+            bank_transaction=bt_inter_owner,
+        )
+        bt_inter_owner.delete()
+        entry.refresh_from_db()
+        assert entry.bank_transaction is None
+
+
+class TestOwnerLedgerEntryFKSettlement:
+    def test_voce_anticipo_collegata_a_settlement(self, db, sandro, settlement_2024):
+        """tipo=anticipo è il credito che Sandro vanta avendo speso di tasca."""
+        entry = OwnerLedgerEntry.objects.create(
+            owner=sandro,
+            data=settlement_2024.data,
+            descrizione="Anticipo IMU 2024",
+            importo=Decimal("800.00"),
+            tipo=OwnerLedgerEntry.TipoVoce.ANTICIPO,
+            riferimento_settlement=settlement_2024,
+        )
+        assert entry.tipo == "anticipo"
+        assert entry.riferimento_settlement == settlement_2024
+        assert settlement_2024.ledger_entries.count() == 1
+
+
+class TestOwnerLedgerEntryConstraints:
+    def test_unique_per_receivable_owner_tipo(self, db, bruna, receivable_pagato):
+        """Un solo incasso_affitto per (Receivable, owner, tipo)."""
+        OwnerLedgerEntry.objects.create(
+            owner=bruna,
+            data=receivable_pagato.data_pagamento,
+            descrizione="Affitto aprile",
+            importo=Decimal("140"),
+            tipo=OwnerLedgerEntry.TipoVoce.INCASSO_AFFITTO,
+            riferimento_receivable=receivable_pagato,
+        )
+        with pytest.raises(IntegrityError), transaction.atomic():
+            OwnerLedgerEntry.objects.create(
+                owner=bruna,
+                data=receivable_pagato.data_pagamento,
+                descrizione="Affitto aprile (duplicato)",
+                importo=Decimal("140"),
+                tipo=OwnerLedgerEntry.TipoVoce.INCASSO_AFFITTO,
+                riferimento_receivable=receivable_pagato,
+            )
+
+    def test_unique_consente_owner_diversi(self, db, sandro, bruna, receivable_pagato):
+        """Lo stesso Receivable può avere incassi pro-quota per fratelli diversi."""
+        OwnerLedgerEntry.objects.create(
+            owner=sandro,
+            data=receivable_pagato.data_pagamento,
+            descrizione="Affitto aprile (Sandro)",
+            importo=Decimal("140"),
+            tipo=OwnerLedgerEntry.TipoVoce.INCASSO_AFFITTO,
+            riferimento_receivable=receivable_pagato,
+        )
+        OwnerLedgerEntry.objects.create(
+            owner=bruna,
+            data=receivable_pagato.data_pagamento,
+            descrizione="Affitto aprile (Bruna)",
+            importo=Decimal("140"),
+            tipo=OwnerLedgerEntry.TipoVoce.INCASSO_AFFITTO,
+            riferimento_receivable=receivable_pagato,
+        )
+        assert receivable_pagato.ledger_entries.count() == 2
+
+    def test_unique_per_expense_owner_tipo(self, db, sandro, expense_imu):
+        """Un solo voce 'spesa' per (Expense, owner, tipo) — back-fill idempotente."""
+        OwnerLedgerEntry.objects.create(
+            owner=sandro,
+            data=expense_imu.data,
+            descrizione="IMU pro-quota Sandro",
+            importo=Decimal("-400"),
+            tipo=OwnerLedgerEntry.TipoVoce.SPESA,
+            riferimento_expense=expense_imu,
+        )
+        with pytest.raises(IntegrityError), transaction.atomic():
+            OwnerLedgerEntry.objects.create(
+                owner=sandro,
+                data=expense_imu.data,
+                descrizione="IMU duplicata",
+                importo=Decimal("-400"),
+                tipo=OwnerLedgerEntry.TipoVoce.SPESA,
+                riferimento_expense=expense_imu,
+            )
+
+    def test_constraint_non_blocca_voci_senza_riferimento(self, db, sandro):
+        """Le voci manuali (senza riferimento_*) non sono soggette al vincolo."""
+        for _ in range(3):
+            OwnerLedgerEntry.objects.create(
+                owner=sandro,
+                data=datetime.date(2025, 1, 1),
+                descrizione="Aggiustamento manuale",
+                importo=Decimal("10"),
+                tipo=OwnerLedgerEntry.TipoVoce.AGGIUSTAMENTO,
+            )
+        assert OwnerLedgerEntry.objects.count() == 3
+
+
+class TestInterOwnerEntryFKBankTransaction:
+    def test_voce_bilaterale_collegata_a_bt(self, db, bruna, fabio, bank_account_bruna):
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2025, 7, 10),
+            descrizione="FABIO RESO",
+            importo=Decimal("300.00"),
+            owner_account=bank_account_bruna,
+        )
+        entry = InterOwnerEntry.objects.create(
+            owner_da=fabio,
+            owner_a=bruna,
+            data=bt.data,
+            importo=Decimal("300.00"),
+            descrizione="Restituzione Fabio→Bruna",
+            bank_transaction=bt,
+        )
+        assert entry.bank_transaction == bt
+        assert bt.inter_owner_entries.count() == 1
+
+
+# ---------------------------------------------------------------------------
+# Test helper quote_attive_at
+# ---------------------------------------------------------------------------
+
+
+class TestQuoteAttiveAt:
+    def test_quote_terzi_uguali(self, db, sandro, bruna, fabio):
+        for owner in (sandro, bruna, fabio):
+            OwnershipShare.objects.create(
+                owner=owner,
+                valid_from=datetime.date(2020, 1, 1),
+                quota=Decimal("0.3333"),
+            )
+        # Compensa il residuo di arrotondamento ribilanciando proporzionalmente.
+        quote = quote_attive_at(datetime.date(2025, 6, 1))
+        assert set(quote.keys()) == {sandro, bruna, fabio}
+        assert sum(quote.values()) == pytest.approx(Decimal("1"), abs=Decimal("0.001"))
+
+    def test_quote_vuote_se_data_anteriore_a_valid_from(self, db, sandro):
+        OwnershipShare.objects.create(
+            owner=sandro,
+            valid_from=datetime.date(2024, 1, 1),
+            quota=Decimal("1.0"),
+        )
+        assert quote_attive_at(datetime.date(2023, 12, 31)) == {}
+
+    def test_quote_escluse_dopo_valid_to(self, db, sandro, bruna):
+        OwnershipShare.objects.create(
+            owner=sandro,
+            valid_from=datetime.date(2020, 1, 1),
+            valid_to=datetime.date(2024, 12, 31),
+            quota=Decimal("0.5"),
+        )
+        OwnershipShare.objects.create(
+            owner=bruna,
+            valid_from=datetime.date(2020, 1, 1),
+            valid_to=datetime.date(2024, 12, 31),
+            quota=Decimal("0.5"),
+        )
+        OwnershipShare.objects.create(
+            owner=sandro,
+            valid_from=datetime.date(2025, 1, 1),
+            quota=Decimal("1.0"),
+        )
+        quote = quote_attive_at(datetime.date(2025, 6, 1))
+        assert quote == {sandro: Decimal("1.0")}
+
+    def test_riproporziona_se_somma_diversa_da_uno(self, db, sandro, bruna):
+        """Se i dati storici hanno somma != 1.0 (buchi/refusi), il helper
+        ribilancia proporzionalmente."""
+        OwnershipShare.objects.create(
+            owner=sandro,
+            valid_from=datetime.date(2020, 1, 1),
+            quota=Decimal("0.6"),
+        )
+        OwnershipShare.objects.create(
+            owner=bruna,
+            valid_from=datetime.date(2020, 1, 1),
+            quota=Decimal("0.2"),
+        )
+        # Somma 0.8 → riproporzionate a 0.75 / 0.25
+        quote = quote_attive_at(datetime.date(2025, 1, 1))
+        assert sum(quote.values()) == pytest.approx(Decimal("1"), abs=Decimal("0.001"))
+        assert quote[sandro] == pytest.approx(Decimal("0.75"), abs=Decimal("0.001"))
+        assert quote[bruna] == pytest.approx(Decimal("0.25"), abs=Decimal("0.001"))
