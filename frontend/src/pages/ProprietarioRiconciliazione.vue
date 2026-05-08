@@ -124,9 +124,29 @@
                 { label: '< 200€', value: 'bassi' },
               ]"
             />
+            <span class="vp-eyebrow vp-p-rec__resti-label">Resti</span>
+            <q-btn-toggle
+              v-model="sogliaMicroResidui"
+              size="xs"
+              dense
+              no-caps
+              unelevated
+              toggle-color="primary"
+              class="vp-p-rec__filtro-importo"
+              :options="[
+                { label: 'Tutti', value: 0 },
+                { label: '< 1€', value: 1 },
+                { label: '< 5€', value: 5 },
+              ]"
+            >
+              <q-tooltip>
+                Nasconde le BT con residuo inferiore alla soglia
+                (sotto/sopra-pagamenti trascurabili)
+              </q-tooltip>
+            </q-btn-toggle>
           </div>
           <div class="vp-p-rec__col-meta">
-            <template v-if="filtroImportoBt === 'tutti'">
+            <template v-if="filtroImportoBt === 'tutti' && sogliaMicroResidui === 0">
               {{ store.bts.length }} risultati
             </template>
             <template v-else>
@@ -632,6 +652,7 @@ function onFrecciaAvanti(e: Event) {
 function mostraTutteBt() {
   filtroRiconciliato.value = 'all';
   filtroImportoBt.value = 'tutti';
+  sogliaMicroResidui.value = 0;
 }
 
 // Selezione: una o più BT, e per ognuna gli addebiti abbinati.
@@ -649,11 +670,29 @@ const allocazioni = ref<Allocazione[]>([]);
 // senza richiedere un nuovo round-trip.
 const filtroImportoBt = ref<'tutti' | 'alti' | 'bassi'>('tutti');
 
+// Soglia per nascondere BT con residuo trascurabile (sotto/sopra-pagamenti
+// di pochi centesimi). 0 = mostra tutto.
+const sogliaMicroResidui = ref<0 | 1 | 5>(1);
+
 const btOrdinate = computed<BankTransactionFE[]>(() => {
   const filtrate = store.bts.filter((bt) => {
-    if (filtroImportoBt.value === 'tutti') return true;
-    const imp = Math.abs(Number(bt.importo));
-    return filtroImportoBt.value === 'alti' ? imp >= 200 : imp < 200;
+    if (filtroImportoBt.value !== 'tutti') {
+      const imp = Math.abs(Number(bt.importo));
+      const passaImporto =
+        filtroImportoBt.value === 'alti' ? imp >= 200 : imp < 200;
+      if (!passaImporto) return false;
+    }
+    if (sogliaMicroResidui.value > 0) {
+      // Esclude solo le BT parzialmente riconciliate con residuo trascurabile.
+      // Le BT "vuote" (residuo == importo) restano sempre visibili, anche
+      // se l'importo è < soglia (es. piccoli bonifici da abbinare).
+      const residuo = Number(bt.residuo);
+      const importo = Number(bt.importo);
+      if (residuo > 0 && residuo < sogliaMicroResidui.value && residuo < importo) {
+        return false;
+      }
+    }
+    return true;
   });
   return filtrate.sort((a, b) => (a.data < b.data ? 1 : -1));
 });
@@ -1115,6 +1154,9 @@ watch([filtroRiconciliato, filtroDataDa, filtroDataA], () => {
 }
 .vp-p-rec__filtro-importo {
   font-size: 0.7rem;
+}
+.vp-p-rec__resti-label {
+  margin-left: var(--vp-gap-1);
 }
 .vp-p-rec__col-actions {
   display: flex;
