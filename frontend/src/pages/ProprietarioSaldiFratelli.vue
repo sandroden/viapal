@@ -200,6 +200,12 @@
               <strong>{{ b.owner_da_nominativo }}</strong>
               <q-icon name="east" size="14px" class="q-mx-xs" />
               <strong>{{ b.owner_a_nominativo }}</strong>
+              <span
+                v-if="b.riferimento_settlement"
+                class="vp-saldi__chip-settlement"
+              >
+                in conto {{ etichettaSettlement(b.riferimento_settlement) }}
+              </span>
             </q-item-label>
             <q-item-label caption>{{ b.descrizione }}</q-item-label>
           </q-item-section>
@@ -300,6 +306,12 @@ const ledgerEntriesAggregate = computed(() => {
 
 function nominativoOwner(id: number): string {
   return ownersStore.byId(id)?.nominativo ?? `Owner ${id}`;
+}
+
+function etichettaSettlement(id: number): string {
+  const s = store.settlements.find((x) => x.id === id);
+  if (!s) return `settlement #${id}`;
+  return s.descrizione || `${s.periodo_da}–${s.periodo_a}`;
 }
 
 function formattaQuota(q: string): string {
@@ -426,6 +438,16 @@ watch(atDate, () => {
 }
 .vp-saldi__snap-chip {
   margin-right: var(--vp-gap-2);
+}
+.vp-saldi__chip-settlement {
+  margin-left: var(--vp-gap-2);
+  padding: 1px 8px;
+  border-radius: var(--vp-r-sm);
+  background: var(--vp-terra-soft, #ead0bd);
+  color: var(--vp-terra-deep, #6c3a18);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 .vp-saldi__pos {
   color: #2e7a39;

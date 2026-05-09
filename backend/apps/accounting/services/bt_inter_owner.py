@@ -97,6 +97,7 @@ def marca_bt_come_ledger(
             importo=abs(importo),
             descrizione=descrizione or f"Movimento {owner_da} → {owner_a}",
             bank_transaction=bt,
+            riferimento_settlement=settlement,
             note=note,
         )
         return [entry]

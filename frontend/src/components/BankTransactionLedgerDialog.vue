@@ -60,6 +60,24 @@
           class="vp-bt-led__select"
         />
 
+        <q-select
+          v-model="form.settlement"
+          :options="opzioniSettlement"
+          option-label="label"
+          option-value="id"
+          emit-value
+          map-options
+          clearable
+          dense
+          outlined
+          :label="etichettaCampoSettlement"
+          class="vp-bt-led__select"
+        >
+          <template #hint>
+            <span class="vp-bt-led__hint">{{ hintSettlement }}</span>
+          </template>
+        </q-select>
+
         <q-input
           v-model="form.descrizione"
           dense
@@ -123,6 +141,7 @@ import {
   type TipoInterOwner,
 } from 'stores/riconciliazione';
 import { useOwnersStore } from 'stores/owners';
+import { useSaldiFratelliStore } from 'stores/saldiFratelli';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
@@ -143,12 +162,14 @@ const aperto = computed({
 
 const ownersStore = useOwnersStore();
 const ricStore = useRiconciliazioneStore();
+const saldiStore = useSaldiFratelliStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
 
 interface FormState {
   tipo: TipoInterOwner;
   controparte_owner: number | null;
+  settlement: number | null;
   descrizione: string;
   note: string;
 }
@@ -156,6 +177,7 @@ interface FormState {
 const form = reactive<FormState>({
   tipo: 'incasso_conguaglio',
   controparte_owner: null,
+  settlement: null,
   descrizione: '',
   note: '',
 });
@@ -194,6 +216,25 @@ const opzioniControparte = computed(() =>
   ownersStore.owners.filter((o) => o.id !== ownerDelConto.value),
 );
 
+const opzioniSettlement = computed(() =>
+  saldiStore.settlements.map((s) => ({
+    id: s.id,
+    label: `${s.descrizione} (${s.periodo_da} → ${s.periodo_a})`,
+  })),
+);
+
+const etichettaCampoSettlement = computed(() =>
+  form.tipo === 'bilaterale'
+    ? 'Settlement di competenza (consigliato per BT cross-anno)'
+    : 'Settlement collegato (opzionale)',
+);
+
+const hintSettlement = computed(() =>
+  form.tipo === 'bilaterale'
+    ? 'Es. BT del 2026 ma di competenza chiusura 2025.'
+    : 'Lascia vuoto a meno che la BT chiuda proprio quel settlement.',
+);
+
 const ownerDelConto = computed<number | null>(() => {
   // owner_account è una FK su OwnerBankAccount, non l'OwnerProfile diretto.
   // L'API expected non espone l'owner del conto dentro la BT, ma nominativo
@@ -211,12 +252,15 @@ watch(
   () => props.modelValue,
   async (v) => {
     if (v) {
-      await ownersStore.fetchOwners();
+      await Promise.all([
+        ownersStore.fetchOwners(),
+        saldiStore.fetchSettlements(),
+      ]);
       errore.value = null;
-      // Se la BT è già marcata non serve resettare il form (non viene mostrato).
       if (!props.bt.is_inter_owner) {
         form.tipo = 'incasso_conguaglio';
         form.controparte_owner = null;
+        form.settlement = null;
         form.descrizione = '';
         form.note = '';
       }
@@ -233,6 +277,7 @@ async function onSalva() {
       bank_transaction: props.bt.id,
       tipo: form.tipo,
       controparte_owner: form.controparte_owner,
+      settlement: form.settlement,
       descrizione: form.descrizione,
       note: form.note,
     });
@@ -324,6 +369,10 @@ function onHide() {
 .vp-bt-led__select,
 .vp-bt-led__input {
   background: var(--vp-paper-2);
+}
+.vp-bt-led__hint {
+  color: var(--vp-ink-2);
+  font-size: 0.75rem;
 }
 .vp-bt-led__avviso {
   color: var(--vp-ink-2);

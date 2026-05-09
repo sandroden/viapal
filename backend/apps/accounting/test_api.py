@@ -233,6 +233,33 @@ class TestActionBtInterOwner:
         assert entry.owner_a == owner_1
         assert entry.importo == Decimal("1707.00")
 
+    def test_marca_bilaterale_associa_a_settlement_di_competenza(
+        self, client_prop, bt_owner_1, owner_1, owner_2,
+    ):
+        """Caso reale: la BT è del 2026 ma di competenza settlement 2025."""
+        from accounting.models import OwnerSettlement
+        sett_2025 = OwnerSettlement.objects.create(
+            data=datetime.date(2025, 12, 31),
+            periodo_da=datetime.date(2025, 1, 1),
+            periodo_a=datetime.date(2025, 12, 31),
+            descrizione="Chiusura 2025",
+            snapshot={},
+        )
+        resp = client_prop.post(
+            "/api/v1/owner-ledger/bt-inter-owner/",
+            data={
+                "bank_transaction": bt_owner_1.pk,
+                "tipo": "bilaterale",
+                "controparte_owner": owner_2.pk,
+                "settlement": sett_2025.pk,
+                "descrizione": "Conguaglio competenza 2025",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201
+        entry = InterOwnerEntry.objects.get(bank_transaction=bt_owner_1)
+        assert entry.riferimento_settlement == sett_2025
+
     def test_marca_aggiustamento_voce_singola(self, client_prop, bt_owner_1, owner_1):
         resp = client_prop.post(
             "/api/v1/owner-ledger/bt-inter-owner/",

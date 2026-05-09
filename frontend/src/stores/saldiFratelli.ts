@@ -55,6 +55,7 @@ export interface InterOwnerEntryFE {
   riferimento_loan?: number | null;
   riferimento_expense?: number | null;
   bank_transaction?: number | null;
+  riferimento_settlement?: number | null;
   note?: string | null;
 }
 

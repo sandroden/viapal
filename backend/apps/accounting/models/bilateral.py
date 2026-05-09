@@ -105,6 +105,18 @@ class InterOwnerEntry(TimestampedModel):
         blank=True,
         verbose_name="transazione bancaria collegata",
     )
+    riferimento_settlement = models.ForeignKey(
+        "accounting.OwnerSettlement",
+        on_delete=models.SET_NULL,
+        related_name="inter_owner_entries",
+        null=True,
+        blank=True,
+        verbose_name="settlement di competenza",
+        help_text=(
+            "Settlement a cui questo movimento bilaterale è logicamente "
+            "associato (utile quando la BT è di un anno successivo)."
+        ),
+    )
     note = models.TextField(
         blank=True,
         verbose_name="note",

@@ -46,6 +46,7 @@ class InterOwnerEntrySerializer(serializers.ModelSerializer):
             "descrizione",
             "riferimento_loan",
             "riferimento_expense",
+            "riferimento_settlement",
             "bank_transaction",
             "note",
         ]
