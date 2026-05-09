@@ -20,6 +20,14 @@
         </div>
       </q-card-section>
 
+      <q-card-section class="vp-bt-led__conto">
+        <q-icon name="account_balance" size="18px" />
+        <span>
+          Conto di <strong>{{ bt.owner_nominativo }}</strong>
+          <span class="vp-bt-led__conto-banca"> — {{ bt.conto_banca }}</span>
+        </span>
+      </q-card-section>
+
       <q-separator />
 
       <q-card-section v-if="bt.is_inter_owner">
@@ -56,7 +64,7 @@
           map-options
           dense
           outlined
-          label="Controparte (l'altro fratello)"
+          :label="etichettaControparte"
           class="vp-bt-led__select"
         />
 
@@ -216,6 +224,13 @@ const opzioniControparte = computed(() =>
   ownersStore.owners.filter((o) => o.id !== ownerDelConto.value),
 );
 
+const etichettaControparte = computed(() => {
+  const owner = props.bt.owner_nominativo;
+  return owner
+    ? `Controparte (l'altro fratello, oltre a ${owner})`
+    : "Controparte (l'altro fratello)";
+});
+
 const opzioniSettlement = computed(() =>
   saldiStore.settlements.map((s) => ({
     id: s.id,
@@ -235,13 +250,7 @@ const hintSettlement = computed(() =>
     : 'Lascia vuoto a meno che la BT chiuda proprio quel settlement.',
 );
 
-const ownerDelConto = computed<number | null>(() => {
-  // owner_account è una FK su OwnerBankAccount, non l'OwnerProfile diretto.
-  // L'API expected non espone l'owner del conto dentro la BT, ma nominativo
-  // è veicolato attraverso ownersStore: se la lista bank_accounts non è
-  // accessibile, lasciamo che l'utente scelga liberamente.
-  return null;
-});
+const ownerDelConto = computed<number | null>(() => props.bt.owner_id ?? null);
 
 const salvabile = computed(() => {
   if (richiedeControparte.value && form.controparte_owner == null) return false;
@@ -352,6 +361,18 @@ function onHide() {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+.vp-bt-led__conto {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-gap-1, 6px);
+  padding-top: 0;
+  padding-bottom: var(--vp-gap-2);
+  color: var(--vp-ink-2);
+  font-size: 0.85rem;
+}
+.vp-bt-led__conto-banca {
+  color: var(--vp-ink-3, var(--vp-ink-2));
 }
 .vp-bt-led__form {
   display: flex;

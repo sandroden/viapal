@@ -18,6 +18,8 @@ export interface BankTransactionFE {
   importo: string | number;
   owner_account: number;
   conto_banca: string;
+  owner_id: number;
+  owner_nominativo: string;
   allocations: BankTransactionAllocFE[];
   importo_allocato: string | number;
   residuo: string | number;

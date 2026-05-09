@@ -333,6 +333,12 @@ class BankTransactionAllocationSerializer(serializers.ModelSerializer):
 
 class BankTransactionSerializer(serializers.ModelSerializer):
     conto_banca = serializers.CharField(source="owner_account.banca", read_only=True)
+    owner_id = serializers.IntegerField(
+        source="owner_account.owner_id", read_only=True
+    )
+    owner_nominativo = serializers.CharField(
+        source="owner_account.owner.nominativo", read_only=True
+    )
     allocations = BankTransactionAllocationSerializer(many=True, read_only=True)
     importo_allocato = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True
@@ -352,6 +358,8 @@ class BankTransactionSerializer(serializers.ModelSerializer):
             "importo",
             "owner_account",
             "conto_banca",
+            "owner_id",
+            "owner_nominativo",
             "allocations",
             "importo_allocato",
             "residuo",

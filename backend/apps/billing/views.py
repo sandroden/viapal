@@ -321,7 +321,7 @@ class BankTransactionViewSet(ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = (
             BankTransaction.objects
-            .select_related("owner_account")
+            .select_related("owner_account__owner")
             .prefetch_related(
                 "allocations__receivable__assignment__tenant",
                 "allocations__receivable__utility_period",
@@ -579,7 +579,7 @@ class ReconciliationBulkView(APIView):
 
         bt_qs = (
             BankTransaction.objects.filter(pk__in=replace_set)
-            .select_related("owner_account")
+            .select_related("owner_account__owner")
             .prefetch_related(
                 "allocations__receivable__assignment__tenant",
                 "allocations__receivable__utility_period",
