@@ -44,31 +44,25 @@ class OwnerBankAccountInline(admin.TabularInline):
 
 
 class RoomAssignmentInlineForTenant(admin.TabularInline):
-    """Assegnazioni stanza in linea nel profilo inquilino (sola lettura)."""
+    """Assegnazioni stanza in linea nel profilo inquilino."""
 
     model = RoomAssignment
     extra = 0
-    fields = ("room", "valid_from", "valid_to", "canone_mensile")
-    readonly_fields = ("room", "valid_from", "valid_to", "canone_mensile")
+    fields = ("room", "valid_from", "valid_to", "canone_mensile", "deposito_versato")
+    autocomplete_fields = ("room",)
     ordering = ("-valid_from",)
     show_change_link = True
-
-    def has_add_permission(self, request, obj=None):
-        return False
 
 
 class RoomAssignmentInlineForRoom(admin.TabularInline):
-    """Assegnazioni stanza in linea nella stanza (sola lettura)."""
+    """Assegnazioni stanza in linea nella stanza."""
 
     model = RoomAssignment
     extra = 0
-    fields = ("tenant", "valid_from", "valid_to", "canone_mensile")
-    readonly_fields = ("tenant", "valid_from", "valid_to", "canone_mensile")
+    fields = ("tenant", "valid_from", "valid_to", "canone_mensile", "deposito_versato")
+    autocomplete_fields = ("tenant",)
     ordering = ("-valid_from",)
     show_change_link = True
-
-    def has_add_permission(self, request, obj=None):
-        return False
 
 
 # ---------------------------------------------------------------------------
