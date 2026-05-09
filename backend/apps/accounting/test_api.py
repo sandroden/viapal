@@ -348,3 +348,56 @@ class TestActionSaldiLive:
     def test_inquilino_non_accede(self, client_inq):
         resp = client_inq.get("/api/v1/owner-ledger/saldi-live/")
         assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Test admin view genera_settlement
+# ---------------------------------------------------------------------------
+
+
+class TestAdminGeneraSettlement:
+    """Smoke test della view admin che chiama il servizio genera_settlement."""
+
+    @pytest.fixture
+    def staff_client(self, db, gruppo_proprietari):
+        u = User.objects.create_user("staff_test", email="s@v.it", password="pwd")
+        u.is_staff = True
+        u.save()
+        c = APIClient(enforce_csrf_checks=False)
+        c.force_login(u)
+        return c
+
+    def test_get_form(self, staff_client):
+        resp = staff_client.get("/admin/accounting/ownersettlement/genera-settlement/")
+        assert resp.status_code == 200
+        assert b"Anno da chiudere" in resp.content
+
+    def test_post_dry_run(self, staff_client, owner_1):
+        OwnershipShare.objects.create(
+            owner=owner_1, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
+        )
+        resp = staff_client.post(
+            "/admin/accounting/ownersettlement/genera-settlement/",
+            data={"anno": "2024", "dry_run": "on"},
+        )
+        # Render della stessa pagina con il messaggio info; nessuna scrittura.
+        assert resp.status_code == 200
+        from accounting.models import OwnerSettlement
+        assert OwnerSettlement.objects.count() == 0
+
+    def test_post_genera_e_redirect(self, staff_client, owner_1):
+        OwnershipShare.objects.create(
+            owner=owner_1, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
+        )
+        resp = staff_client.post(
+            "/admin/accounting/ownersettlement/genera-settlement/",
+            data={"anno": "2024"},
+        )
+        assert resp.status_code == 302  # redirect al change form
+        from accounting.models import OwnerSettlement
+        assert OwnerSettlement.objects.count() == 1
+
+    def test_non_staff_403(self, client_prop):
+        resp = client_prop.get("/admin/accounting/ownersettlement/genera-settlement/")
+        # Per non-staff l'admin redirige a login (302) o ritorna 403 a seconda della configurazione.
+        assert resp.status_code in (302, 403)

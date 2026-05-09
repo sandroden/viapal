@@ -204,6 +204,16 @@ class ViapalIndexDashboard(Dashboard):
                 title="Strumenti rapidi",
                 children=[
                     _link(
+                        "Genera settlement annuale",
+                        reverse("admin:accounting_ownersettlement_genera"),
+                        "Chiusura conti tra fratelli per anno (cassa virtuale)",
+                    ),
+                    _link(
+                        "Saldi fratelli (frontend)",
+                        "/p/saldi-fratelli/",
+                        "Saldi live + storico settlement",
+                    ),
+                    _link(
                         "Quadro annuale (frontend)",
                         "/p/quadro-annuale/",
                         "Vista riepilogo utenze annuale",

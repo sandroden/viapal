@@ -1,0 +1,62 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label='accounting' %}">Contabilità tra fratelli</a>
+    &rsaquo; <a href="{% url 'admin:accounting_ownersettlement_changelist' %}">Chiusure conti</a>
+    &rsaquo; Genera settlement annuale
+  </div>
+{% endblock %}
+
+{% block content %}
+  <h1>{{ title }}</h1>
+
+  <p style="max-width: 720px; color: #555;">
+    Aggrega i <strong>Receivable pagati</strong> e le <strong>Expense</strong>
+    dell'anno scelto in voci ledger pro-quota (cassa virtuale: somma totale = 0).
+    Lo snapshot finale eredita come baseline il settlement immediatamente
+    precedente.
+  </p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <ul class="errorlist">
+        {% for err in form.non_field_errors %}<li>{{ err }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+    <table>
+      <tbody>
+        {% for f in form %}
+          <tr>
+            <th><label for="{{ f.id_for_label }}">{{ f.label }}</label></th>
+            <td>
+              {{ f }}
+              {% if f.help_text %}<p class="help">{{ f.help_text }}</p>{% endif %}
+              {% if f.errors %}
+                <ul class="errorlist">
+                  {% for err in f.errors %}<li>{{ err }}</li>{% endfor %}
+                </ul>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="submit-row">
+      <input type="submit" value="Genera" class="default" />
+      <a href="{% url 'admin:accounting_ownersettlement_changelist' %}" class="button cancel-link">
+        Annulla
+      </a>
+    </div>
+  </form>
+
+  {% if risultato %}
+    <h2 style="margin-top: 2em;">Risultato dry-run anno {{ risultato.anno }}</h2>
+    <pre style="background:#f6f6f6;padding:1em;border-radius:4px;">
+{{ risultato.snapshot }}
+    </pre>
+  {% endif %}
+{% endblock %}

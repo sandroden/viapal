@@ -5,9 +5,11 @@ Gestisce il partitario ufficiale proprietari, chiusure conti,
 prestiti bilaterali e regole di trattenuta.
 """
 from django.contrib import admin
+from django.urls import path
 
 from jmb.jadmin import JumboModelAdmin, ModalEditMixin
 
+from .admin_views import genera_settlement_view
 from .models import (
     InterOwnerEntry,
     InterOwnerLoan,
@@ -79,6 +81,7 @@ class OwnerSettlementAdmin(ModalEditMixin, JumboModelAdmin):
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
     ordering = ("-data",)
+    change_list_template = "admin/accounting/ownersettlement/change_list.html"
     fieldsets = (
         ("Periodo", {
             "fields": ("data", "descrizione", "periodo_da", "periodo_a"),
@@ -92,6 +95,16 @@ class OwnerSettlementAdmin(ModalEditMixin, JumboModelAdmin):
         }),
     )
     readonly_fields = ("created_at", "updated_at")
+
+    def get_urls(self):
+        custom = [
+            path(
+                "genera-settlement/",
+                self.admin_site.admin_view(genera_settlement_view),
+                name="accounting_ownersettlement_genera",
+            ),
+        ]
+        return custom + super().get_urls()
 
 
 # ---------------------------------------------------------------------------
