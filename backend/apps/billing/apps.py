@@ -11,12 +11,17 @@ class BillingConfig(AppConfig):
         # le BankTransactionAllocation vengono create/modificate/eliminate.
         from billing import signals  # noqa: F401
 
-        # Patch JumboModelAdmin.Media perché upstream non include
-        # `jmb/js/jmb.jadmin.js` sulla changelist (lo include solo via
-        # change_form.html). Senza la JS `jmb.extra_action_fields_init()`
-        # non gira sulla lista e i campi del JumboActionForm restano sempre
-        # visibili invece di comparire solo per l'azione selezionata.
-        # Pattern allineato a thx-admin-tools (ActionClassMixin.Media.js).
+        # Estende `JumboModelAdmin.Media` con:
+        #
+        # 1) `jmb/js/jmb.jadmin.js`: necessario alla changelist per il
+        #    toggle dei campi extra del JumboActionForm via
+        #    `jmb.extra_action_fields_init()`. Bug upstream fixato in
+        #    `jmb-jadmin` 2.1.11 — quando viapal sarà aggiornato, il check
+        #    `if target_js not in existing_js` rende questo passo no-op.
+        # 2) `viapal/admin/actions_inline.css`: scelta di stile locale —
+        #    layout inline della action bar (azione + campi extra + Vai
+        #    sulla stessa riga). Resta in viapal: jmb.jadmin upstream non
+        #    impone CSS opinionati.
         from jmb.jadmin import JumboModelAdmin
 
         existing_js = tuple(getattr(JumboModelAdmin.Media, "js", ()) or ())
