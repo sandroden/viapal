@@ -10,6 +10,7 @@ Coprono:
 - persist=True crea Receivable + popola totali sul Period
 - Idempotenza: ricalcolo non duplica
 """
+import calendar
 import datetime
 from decimal import Decimal
 
@@ -318,42 +319,52 @@ class TestStanzaVuota:
 
 
 class TestTARIProRata:
-    """TARI 510€/anno, periodo 30 giorni -> 510/365*30 ≈ 41.92€ totale."""
+    """TARI 510€/anno; un solo periodo attivo nell'anno → tutta la TARI annua
+    viene caricata su quel periodo (denominatore = giorni dei periodi attivi).
+    """
 
     @pytest.fixture
-    def setup_tari(self, db, make_assignment, owner):
+    def setup_tari(self, db, make_assignment, supplier_luce, owner):
         """Periodo di 30 giorni (giugno), TARI 510€/anno, 2 inquilini."""
         period = UtilityChargePeriod.objects.create(
             periodo_da=datetime.date(2026, 6, 1),
             periodo_a=datetime.date(2026, 6, 30),
             criterio_ripartizione="pro_rata_giorni",
         )
-        # TARI valida tutto l'anno
         AnnualUtilityCost.objects.create(
             voce="tari",
             anno=2026,
             importo_annuale=Decimal("510.00"),
             valid_from=datetime.date(2026, 1, 1),
+            valid_to=datetime.date(2026, 12, 31),
         )
-        # 2 assignment attivi tutto giugno
+        # Bolletta luce nel periodo: senza, il calcolo skippa per regola
+        # "no bollette luce/gas → no Receivable" (commit 10554e5).
+        UtilityBill.objects.create(
+            supplier=supplier_luce,
+            numero_fattura="ENEL-TARI-1",
+            data_emissione=datetime.date(2026, 6, 15),
+            periodo_da=datetime.date(2026, 6, 1),
+            periodo_a=datetime.date(2026, 6, 30),
+            importo_totale=Decimal("100.00"),
+            pagata_da_owner=owner,
+        )
         a1 = make_assignment(valid_from=datetime.date(2026, 6, 1))
         a2 = make_assignment(valid_from=datetime.date(2026, 6, 1))
         return period, a1, a2
 
-    def test_totale_tari_30_giorni(self, setup_tari):
+    def test_totale_tari_unico_periodo_attivo(self, setup_tari):
+        """Un solo periodo attivo → la TARI annua va tutta su quel periodo."""
         from billing.calc.utility import calcola_conguaglio_periodo
 
         period, a1, a2 = setup_tari
         risultato = calcola_conguaglio_periodo(period.pk)
 
-        # 510 * 30 / 365 = 41.917... -> arrotondato dalla somma delle quote
         totale_tari = risultato["totali_per_voce"].get("tari", Decimal("0.00"))
-        # Valore atteso: Decimal("510.00") * 30 / 365 = ~41.92
-        from decimal import ROUND_HALF_UP
-        atteso = (Decimal("510.00") * Decimal(30) / Decimal(365)).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
+        # 510 × 30 / 30 = 510 (tutto sul singolo periodo attivo)
+        assert totale_tari == Decimal("510.00"), (
+            f"TARI atteso 510.00, trovato {totale_tari}"
         )
-        assert totale_tari == atteso, f"TARI atteso {atteso}, trovato {totale_tari}"
 
     def test_tari_distribuita_equamente(self, setup_tari):
         from billing.calc.utility import calcola_conguaglio_periodo
@@ -362,9 +373,297 @@ class TestTARIProRata:
         risultato = calcola_conguaglio_periodo(period.pk)
 
         assert len(risultato["quote"]) == 2
-        # Entrambi presenti 30 giorni -> stessa quota
         quote_vals = [q["dettaglio"].get("tari", Decimal("0")) for q in risultato["quote"]]
         assert quote_vals[0] == quote_vals[1]
+
+
+# ---------------------------------------------------------------------------
+# TARI distribuzione su periodi multipli nell'anno
+# ---------------------------------------------------------------------------
+
+
+class TestTARIDistribuzioneAnnua:
+    """La TARI annua si distribuisce sui ``UtilityChargePeriod`` con bollette
+    luce/gas, proporzionalmente ai loro giorni. La cadenza dei periodi
+    (mensile / bimestrale / mix) è gestita automaticamente dal denominatore
+    (= somma giorni periodi attivi)."""
+
+    def _crea_periodo_con_bolletta(self, periodo_da, periodo_a, supplier_luce, owner, n=1):
+        period = UtilityChargePeriod.objects.create(
+            periodo_da=periodo_da,
+            periodo_a=periodo_a,
+            criterio_ripartizione="pro_rata_giorni",
+        )
+        UtilityBill.objects.create(
+            supplier=supplier_luce,
+            numero_fattura=f"ENEL-DISTR-{periodo_da}-{n}",
+            data_emissione=periodo_da + datetime.timedelta(days=10),
+            periodo_da=periodo_da,
+            periodo_a=periodo_a,
+            importo_totale=Decimal("50.00"),
+            pagata_da_owner=owner,
+        )
+        return period
+
+    def test_12_periodi_mensili_un_dodicesimo_ciascuno(
+        self, db, make_assignment, supplier_luce, owner
+    ):
+        """12 periodi mensili → ogni periodo riceve circa 1/12 della TARI annua."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        AnnualUtilityCost.objects.create(
+            voce="tari",
+            anno=2026,
+            importo_annuale=Decimal("1200.00"),
+            valid_from=datetime.date(2026, 1, 1),
+            valid_to=datetime.date(2026, 12, 31),
+        )
+        periodi = []
+        for mese in range(1, 13):
+            ultimo = calendar.monthrange(2026, mese)[1]
+            p = self._crea_periodo_con_bolletta(
+                datetime.date(2026, mese, 1),
+                datetime.date(2026, mese, ultimo),
+                supplier_luce, owner, n=mese,
+            )
+            periodi.append(p)
+        # Almeno un assignment per coprire tutto l'anno
+        make_assignment(valid_from=datetime.date(2026, 1, 1))
+
+        # Verifica giugno (30 gg): TARI = 1200 × 30 / 365 = 98.63
+        ris_giu = calcola_conguaglio_periodo(periodi[5].pk)
+        assert ris_giu["totali_per_voce"]["tari"] == Decimal("98.63")
+        # Verifica luglio (31 gg): TARI = 1200 × 31 / 365 = 101.92
+        ris_lug = calcola_conguaglio_periodo(periodi[6].pk)
+        assert ris_lug["totali_per_voce"]["tari"] == Decimal("101.92")
+
+        # Somma su tutti i 12 periodi ≈ 1200 (entro arrotondamenti)
+        somma = sum(
+            calcola_conguaglio_periodo(p.pk)["totali_per_voce"].get("tari", Decimal("0"))
+            for p in periodi
+        )
+        assert abs(somma - Decimal("1200.00")) <= Decimal("0.05"), (
+            f"Somma TARI sui 12 periodi attesa ~1200, trovata {somma}"
+        )
+
+    def test_6_periodi_bimestrali_un_sesto_ciascuno(
+        self, db, make_assignment, supplier_luce, owner
+    ):
+        """6 periodi bimestrali → ogni periodo riceve circa 1/6 della TARI."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        AnnualUtilityCost.objects.create(
+            voce="tari",
+            anno=2024,
+            importo_annuale=Decimal("450.00"),
+            valid_from=datetime.date(2024, 1, 1),
+            valid_to=datetime.date(2024, 12, 31),
+        )
+        bimestri = [
+            (datetime.date(2024, 1, 1), datetime.date(2024, 2, 29)),  # 60 gg
+            (datetime.date(2024, 3, 1), datetime.date(2024, 4, 30)),  # 61
+            (datetime.date(2024, 5, 1), datetime.date(2024, 6, 30)),  # 61
+            (datetime.date(2024, 7, 1), datetime.date(2024, 8, 31)),  # 62
+            (datetime.date(2024, 9, 1), datetime.date(2024, 10, 31)),  # 61
+            (datetime.date(2024, 11, 1), datetime.date(2024, 12, 31)),  # 61
+        ]
+        periodi = [
+            self._crea_periodo_con_bolletta(da, a, supplier_luce, owner, n=i)
+            for i, (da, a) in enumerate(bimestri)
+        ]
+        make_assignment(valid_from=datetime.date(2024, 1, 1))
+
+        # Ogni bimestre: 450 × giorni / 366 (anno bisestile, sum=366)
+        # Nota: sum_giorni_attivi = 60+61+61+62+61+61 = 366
+        ris_genfeb = calcola_conguaglio_periodo(periodi[0].pk)
+        assert ris_genfeb["totali_per_voce"]["tari"] == Decimal("73.77"), (
+            f"trovato {ris_genfeb['totali_per_voce']['tari']}"
+        )
+
+        # Somma totale ≈ 450 (l'anno è coperto interamente dai 6 bimestri)
+        somma = sum(
+            calcola_conguaglio_periodo(p.pk)["totali_per_voce"].get("tari", Decimal("0"))
+            for p in periodi
+        )
+        assert abs(somma - Decimal("450.00")) <= Decimal("0.05"), (
+            f"Somma TARI sui 6 bimestri attesa ~450, trovata {somma}"
+        )
+
+    def test_mix_bimestrali_e_mensili(
+        self, db, make_assignment, supplier_luce, owner
+    ):
+        """Mix: 2 bimestrali (gen-apr) + 8 mensili (mag-dic). Distribuzione
+        proporzionale ai giorni. Un bimestrale prende ~2× di un mensile."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        AnnualUtilityCost.objects.create(
+            voce="tari",
+            anno=2025,
+            importo_annuale=Decimal("365.00"),
+            valid_from=datetime.date(2025, 1, 1),
+            valid_to=datetime.date(2025, 12, 31),
+        )
+        # 2 bimestrali
+        bim1 = self._crea_periodo_con_bolletta(
+            datetime.date(2025, 1, 1), datetime.date(2025, 2, 28),
+            supplier_luce, owner, n=1,
+        )  # 59gg
+        bim2 = self._crea_periodo_con_bolletta(
+            datetime.date(2025, 3, 1), datetime.date(2025, 4, 30),
+            supplier_luce, owner, n=2,
+        )  # 61gg
+        mensili = []
+        for mese in range(5, 13):  # mag-dic
+            ultimo = calendar.monthrange(2025, mese)[1]
+            p = self._crea_periodo_con_bolletta(
+                datetime.date(2025, mese, 1),
+                datetime.date(2025, mese, ultimo),
+                supplier_luce, owner, n=10 + mese,
+            )
+            mensili.append(p)
+        make_assignment(valid_from=datetime.date(2025, 1, 1))
+
+        # sum_giorni = 59+61 + 31+30+31+31+30+31+30+31 = 365 (esatto!)
+        # Bimestrale gen-feb: 365 × 59 / 365 = 59.00
+        ris_bim1 = calcola_conguaglio_periodo(bim1.pk)
+        assert ris_bim1["totali_per_voce"]["tari"] == Decimal("59.00")
+        # Mensile maggio (31 gg): 365 × 31 / 365 = 31.00
+        ris_mag = calcola_conguaglio_periodo(mensili[0].pk)
+        assert ris_mag["totali_per_voce"]["tari"] == Decimal("31.00")
+
+        # Bimestrale prende ~2× di un mensile
+        assert ris_bim1["totali_per_voce"]["tari"] > Decimal("1.8") * ris_mag["totali_per_voce"]["tari"]
+
+    def test_periodo_senza_bollette_non_riceve_tari(
+        self, db, make_assignment, supplier_luce, owner
+    ):
+        """Un ``UtilityChargePeriod`` senza bollette luce/gas viene saltato:
+        la sua TARI viene redistribuita sugli altri periodi attivi."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        AnnualUtilityCost.objects.create(
+            voce="tari",
+            anno=2026,
+            importo_annuale=Decimal("100.00"),
+            valid_from=datetime.date(2026, 1, 1),
+            valid_to=datetime.date(2026, 12, 31),
+        )
+        # Periodo senza bollette (sarà skippato)
+        UtilityChargePeriod.objects.create(
+            periodo_da=datetime.date(2026, 1, 1),
+            periodo_a=datetime.date(2026, 1, 31),
+            criterio_ripartizione="pro_rata_giorni",
+        )
+        # Periodo CON bollette
+        attivo = self._crea_periodo_con_bolletta(
+            datetime.date(2026, 2, 1), datetime.date(2026, 2, 28),
+            supplier_luce, owner,
+        )
+        make_assignment(valid_from=datetime.date(2026, 1, 1))
+
+        # Solo il periodo attivo conta nel denominatore (28 giorni)
+        # quindi tutta la TARI 100€ va su febbraio: 100 × 28 / 28 = 100
+        ris = calcola_conguaglio_periodo(attivo.pk)
+        assert ris["totali_per_voce"]["tari"] == Decimal("100.00")
+
+    def test_uscita_meta_mese_con_tari(
+        self, db, make_assignment, supplier_luce, owner
+    ):
+        """Mensilità parziale: A presente tutto il mese (31gg), B esce il 15
+        (15gg). TARI totale del periodo = annua (unico periodo attivo);
+        ripartizione fra inquilini proporzionale ai giorni di presenza."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        AnnualUtilityCost.objects.create(
+            voce="tari",
+            anno=2026,
+            importo_annuale=Decimal("460.00"),
+            valid_from=datetime.date(2026, 1, 1),
+            valid_to=datetime.date(2026, 12, 31),
+        )
+        period = self._crea_periodo_con_bolletta(
+            datetime.date(2026, 5, 1), datetime.date(2026, 5, 31),
+            supplier_luce, owner,
+        )
+        # A presente tutto maggio
+        a_full = make_assignment(valid_from=datetime.date(2026, 5, 1))
+        # B esce il 15 maggio (15 giorni: 1-15 inclusi)
+        b_partial = make_assignment(
+            valid_from=datetime.date(2026, 5, 1),
+            valid_to=datetime.date(2026, 5, 15),
+        )
+        ris = calcola_conguaglio_periodo(period.pk)
+
+        # Totale TARI = annuale (unico periodo attivo) = 460
+        assert ris["totali_per_voce"]["tari"] == Decimal("460.00")
+        # sum_giorni = 31 (A) + 15 (B) = 46
+        assert ris["sum_giorni_presenza"] == 46
+
+        quote_by_id = {q["assignment_id"]: q for q in ris["quote"]}
+        # costo_giorno = 460/46 = 10 esatti
+        # A: 10 × 31 = 310.00; B: 10 × 15 = 150.00
+        assert quote_by_id[a_full.pk]["dettaglio"]["tari"] == Decimal("310.00")
+        assert quote_by_id[b_partial.pk]["dettaglio"]["tari"] == Decimal("150.00")
+        # Conservazione: somma quote = totale TARI
+        assert (
+            quote_by_id[a_full.pk]["dettaglio"]["tari"]
+            + quote_by_id[b_partial.pk]["dettaglio"]["tari"]
+            == Decimal("460.00")
+        )
+
+    def test_cambio_stanza_dello_stesso_inquilino(
+        self, db, make_assignment, make_room, make_tenant, supplier_luce, owner
+    ):
+        """Cambio stanza: lo stesso inquilino ha due ``RoomAssignment``
+        consecutivi nel mese (es. cambia camera il 15). I due assignment
+        contribuiscono alla TARI come se fossero due "presenze" separate
+        ma la somma dei loro giorni è quella di un'occupazione continua."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        AnnualUtilityCost.objects.create(
+            voce="tari",
+            anno=2026,
+            importo_annuale=Decimal("310.00"),
+            valid_from=datetime.date(2026, 1, 1),
+            valid_to=datetime.date(2026, 12, 31),
+        )
+        period = self._crea_periodo_con_bolletta(
+            datetime.date(2026, 5, 1), datetime.date(2026, 5, 31),
+            supplier_luce, owner,
+        )
+        tenant = make_tenant(nominativo="MoverInquilino")
+        room1 = make_room(nome="Stanza A")
+        room2 = make_room(nome="Stanza B")
+        # Assignment 1: 1-15 maggio in stanza A (15gg)
+        a1 = make_assignment(
+            tenant=tenant, room=room1,
+            valid_from=datetime.date(2026, 5, 1),
+            valid_to=datetime.date(2026, 5, 15),
+        )
+        # Assignment 2: 16-31 maggio in stanza B (16gg)
+        a2 = make_assignment(
+            tenant=tenant, room=room2,
+            valid_from=datetime.date(2026, 5, 16),
+            valid_to=datetime.date(2026, 5, 31),
+        )
+
+        ris = calcola_conguaglio_periodo(period.pk)
+
+        # Totale TARI = 310 (unico periodo attivo)
+        assert ris["totali_per_voce"]["tari"] == Decimal("310.00")
+        # 2 quote (una per assignment), giorni totali 31
+        assert len(ris["quote"]) == 2
+        assert ris["sum_giorni_presenza"] == 31
+
+        quote_by_id = {q["assignment_id"]: q for q in ris["quote"]}
+        # a1 paga 15/31, a2 paga 16/31; somma = totale TARI
+        somma_tari = (
+            quote_by_id[a1.pk]["dettaglio"]["tari"]
+            + quote_by_id[a2.pk]["dettaglio"]["tari"]
+        )
+        assert abs(somma_tari - Decimal("310.00")) <= Decimal("0.02")
+        # a2 paga di più (16gg vs 15gg)
+        assert quote_by_id[a2.pk]["dettaglio"]["tari"] > quote_by_id[a1.pk]["dettaglio"]["tari"]
 
 
 # ---------------------------------------------------------------------------

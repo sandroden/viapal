@@ -66,39 +66,89 @@ def _raccoglie_voci_bollette(periodo_da: date, periodo_a: date) -> dict[str, Dec
     return totali
 
 
+def _periodi_attivi_in_range(periodo_da: date, periodo_a: date) -> list[tuple[date, date]]:
+    """Ritorna `[(da, a), ...]` per i ``UtilityChargePeriod`` nel range
+    ``[periodo_da, periodo_a]`` che hanno almeno una bolletta luce/gas
+    (cioè quelli che producono effettivamente Receivable).
+
+    Usato come denominatore per la distribuzione di costi annuali (TARI):
+    serve sapere quali periodi ricevono Receivable per ripartire la quota
+    annua solo fra essi (vedi razionale sotto).
+    """
+    from billing.models import UtilityBill, UtilityChargePeriod
+
+    periodi = UtilityChargePeriod.objects.filter(
+        periodo_da__lte=periodo_a,
+        periodo_a__gte=periodo_da,
+    )
+    attivi: list[tuple[date, date]] = []
+    for p in periodi:
+        ha_bollette = UtilityBill.objects.filter(
+            data_emissione__gte=p.periodo_da,
+            data_emissione__lte=p.periodo_a,
+            supplier__tipo__in=("energia", "gas"),
+        ).exists()
+        if ha_bollette:
+            attivi.append((p.periodo_da, p.periodo_a))
+    return attivi
+
+
 def _raccoglie_voci_annual(periodo_da: date, periodo_a: date) -> dict[str, Decimal]:
     """
-    Calcola la quota TARI (AnnualUtilityCost) proporzionale ai giorni del periodo.
+    Calcola la quota TARI (AnnualUtilityCost) per il periodo corrente,
+    distribuita sui ``UtilityChargePeriod`` attivi (= con bollette luce/gas)
+    nello stesso intervallo di validità.
 
-    Formula: importo_annuale * giorni_intersezione / 365
-    Se ci sono piu' record TARI sovrapposti (raro), li somma.
+    Formula:
+        quota = importo_annuale × giorni_periodo_corrente / sum_giorni_periodi_attivi
+
+    Razionale: la TARI annua va ripartita solo fra i periodi che producono
+    Receivable. Se in un anno emetti 6 conguagli bimestrali ognuno prende
+    ~1/6, se ne emetti 12 mensili ognuno prende ~1/12, se mixato la
+    proporzionalità ai giorni distribuisce correttamente. Periodi senza
+    bollette luce/gas (skippati dal calcolo upstream) non concorrono al
+    denominatore: la loro quota viene redistribuita sugli altri.
+
+    Fallback: se nessun periodo attivo è trovato (caso degenere), si torna
+    alla vecchia formula con denominatore 365 per non bloccare il calcolo.
     """
     from billing.models import AnnualUtilityCost
 
     totali: dict[str, Decimal] = {}
-    giorni_periodo = (periodo_a - periodo_da).days + 1
 
     annual_costs = AnnualUtilityCost.objects.filter(
         valid_from__lte=periodo_a,
     ).filter(
-        # valid_to IS NULL oppure valid_to >= periodo_da
         valid_to__isnull=True,
     ) | AnnualUtilityCost.objects.filter(
         valid_from__lte=periodo_a,
         valid_to__gte=periodo_da,
     )
-    # Dedup (union potrebbe creare duplicati in edge case)
     annual_costs = annual_costs.distinct()
 
     for ac in annual_costs:
-        # Intersezione tra [periodo_da, periodo_a] e [ac.valid_from, ac.valid_to o inf]
         ac_to = ac.valid_to if ac.valid_to else date(9999, 12, 31)
-        giorni_intersezione = _giorni_intersezione(periodo_da, periodo_a, ac.valid_from, ac_to)
-        if giorni_intersezione <= 0:
+        giorni_periodo_corrente = _giorni_intersezione(
+            periodo_da, periodo_a, ac.valid_from, ac_to
+        )
+        if giorni_periodo_corrente <= 0:
             continue
 
-        quota = ac.importo_annuale * Decimal(giorni_intersezione) / Decimal(365)
-        voce = ac.voce  # es. 'tari'
+        # Denominatore: somma giorni dei periodi attivi nel range di validità di ac
+        attivi = _periodi_attivi_in_range(ac.valid_from, ac_to)
+        sum_giorni_attivi = sum(
+            _giorni_intersezione(p_da, p_a, ac.valid_from, ac_to)
+            for p_da, p_a in attivi
+        )
+
+        if sum_giorni_attivi > 0:
+            quota = ac.importo_annuale * Decimal(giorni_periodo_corrente) / Decimal(
+                sum_giorni_attivi
+            )
+        else:
+            quota = ac.importo_annuale * Decimal(giorni_periodo_corrente) / Decimal(365)
+
+        voce = ac.voce
         totali[voce] = totali.get(voce, Decimal("0.00")) + quota
 
     return totali

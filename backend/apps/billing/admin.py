@@ -683,8 +683,8 @@ class AnnualUtilityCostAdmin(ModalEditMixin, JumboModelAdmin):
 # ---------------------------------------------------------------------------
 
 
-@admin.action(description="Ricalcola conguaglio (persist)")
-def ricalcola_conguaglio_periodi(modeladmin, request, queryset):
+@admin.action(description="Rigenera Receivable utenze")
+def rigenera_receivables_utenze(modeladmin, request, queryset):
     from billing.calc.utility import calcola_conguaglio_periodo
 
     tot_persistiti = 0
@@ -717,17 +717,101 @@ def ricalcola_conguaglio_periodi(modeladmin, request, queryset):
     if tot_persistiti or tot_skippati:
         messages.success(
             request,
-            f"Ricalcolo completato: {tot_persistiti} addebiti persistiti su "
+            f"Rigenerazione completata: {tot_persistiti} Receivable utenze persistiti su "
             f"{queryset.count()} periodi.",
         )
     if skippati_dettaglio:
         messages.warning(
             request,
-            f"{tot_skippati} addebiti NON aggiornati perché già allocati a "
+            f"{tot_skippati} Receivable NON aggiornati perché già allocati a "
             "transazioni bancarie (correggere via rettifica manuale):",
         )
         for d in skippati_dettaglio:
             messages.warning(request, f"    {d}")
+
+
+def _mesi_in_periodo(periodo_da, periodo_a):
+    """Itera (anno, mese) coperti almeno parzialmente dal periodo."""
+    anno, mese = periodo_da.year, periodo_da.month
+    while (anno, mese) <= (periodo_a.year, periodo_a.month):
+        yield anno, mese
+        if mese == 12:
+            anno, mese = anno + 1, 1
+        else:
+            mese += 1
+
+
+@admin.action(description="Rigenera Receivable affitto")
+def rigenera_receivables_affitto(modeladmin, request, queryset):
+    from billing.calc.rent import genera_pagamenti_mese
+
+    form = modeladmin.get_action_form_instance(request)
+    force = bool(form.cleaned_data.get("force")) if form.is_valid() else False
+
+    tot_creati = 0
+    tot_aggiornati = 0
+    tot_skippati = 0
+    skippati_alloc_dettaglio: list[str] = []
+    errori: list[str] = []
+    mesi_processati: set[tuple[int, int]] = set()
+
+    for period in queryset:
+        for anno, mese in _mesi_in_periodo(period.periodo_da, period.periodo_a):
+            chiave = (anno, mese)
+            if chiave in mesi_processati:
+                continue  # stesso mese può essere coperto da più periodi selezionati
+            mesi_processati.add(chiave)
+            try:
+                ris = genera_pagamenti_mese(anno, mese, force=force)
+            except Exception as e:
+                errori.append(f"{anno}/{mese:02d}: {e}")
+                continue
+            tot_creati += ris["creati"]
+            tot_aggiornati += ris["aggiornati"]
+            tot_skippati += ris["skippati"]
+            for s in ris.get("skippati_per_allocation", []):
+                skippati_alloc_dettaglio.append(
+                    f"{anno}/{mese:02d} — {s['tenant_nominativo']}: "
+                    f"esistente {s['importo_esistente']}€, calcolato {s['importo_calcolato']}€"
+                )
+
+    for msg in errori:
+        messages.error(request, msg)
+    if tot_creati or tot_aggiornati or tot_skippati:
+        messages.success(
+            request,
+            f"Rigenerazione affitti su {len(mesi_processati)} mesi: "
+            f"{tot_creati} creati, {tot_aggiornati} aggiornati, {tot_skippati} skippati."
+            + (" [FORCE]" if force else ""),
+        )
+    if skippati_alloc_dettaglio:
+        messages.warning(
+            request,
+            f"{len(skippati_alloc_dettaglio)} Receivable NON aggiornati perché già allocati "
+            "a transazioni bancarie:",
+        )
+        for d in skippati_alloc_dettaglio:
+            messages.warning(request, f"    {d}")
+
+
+class UtilityChargePeriodActionForm(JumboActionForm):
+    """Action form: campo `force` visibile solo per la rigenerazione affitto.
+
+    Il template ``jmb.jadmin/admin/actions.html`` aggiunge automaticamente
+    classi CSS che la JS ``jmb.extra_action_fields_init`` usa per mostrare/
+    nascondere i campi extra in base all'azione selezionata.
+    """
+
+    force = forms.BooleanField(
+        required=False,
+        label="Sovrascrivi esistenti",
+        help_text="Se attivo, ricalcola anche i Receivable già presenti "
+        "(la guardia allocations protegge comunque quelli riconciliati).",
+    )
+    fields_map = {
+        "rigenera_receivables_utenze": [],
+        "rigenera_receivables_affitto": ["force"],
+    }
 
 
 @admin.register(UtilityChargePeriod)
@@ -742,7 +826,8 @@ class UtilityChargePeriodAdmin(ModalEditMixin, JumboModelAdmin):
     search_fields = ("periodo_da", "periodo_a")
     ordering = ("-periodo_da",)
     inlines = (ReceivableUtilityInline,)
-    actions = (ricalcola_conguaglio_periodi,)
+    action_form = UtilityChargePeriodActionForm
+    actions = (rigenera_receivables_utenze, rigenera_receivables_affitto)
     filter_horizontal = ("utility_bills", "annual_utility_costs")
     fieldsets = (
         ("Periodo", {
