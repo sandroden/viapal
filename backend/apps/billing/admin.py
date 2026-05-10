@@ -831,6 +831,13 @@ class UtilityChargePeriodAdmin(ModalEditMixin, JumboModelAdmin):
     action_form = UtilityChargePeriodActionForm
     actions = (rigenera_receivables_utenze, rigenera_receivables_affitto)
     filter_horizontal = ("utility_bills", "annual_utility_costs")
+    advanced_search_fields = (
+        ("note__icontains:note", "nota_calcolo__icontains:nota calcolo"),
+        ("stato", "criterio_ripartizione"),
+        ("periodo_da__range", "periodo_da__gte:periodo dal ≥", "periodo_a__lte:periodo al ≤"),
+        ("data_invio__range", "data_invio__gte:inviato dal", "data_invio__lte:inviato al"),
+        ("giorni_totali__gte:giorni ≥", "giorni_totali__lte:giorni ≤"),
+    )
     fieldsets = (
         ("Periodo", {
             "fields": ("periodo_da", "periodo_a", "criterio_ripartizione", "stato", "data_invio"),
