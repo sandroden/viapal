@@ -1,0 +1,44 @@
+/* Layout inline per la action bar della changelist (jmb.jadmin).
+ * Allineato al rendering di thx-admin-tools: action select, eventuali
+ * campi extra (label + widget) e bottone "Vai" tutti sulla stessa riga.
+ *
+ * Il template `jmb.jadmin/templates/admin/actions.html` emette ogni campo
+ * come <div class="actionfield ...">, quindi di default vanno a capo. Qui
+ * forziamo display flex sul contenitore .actions e inline sui figli.
+ */
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 4px;
+}
+
+.actions .actionfield {
+    display: inline-flex;
+    align-items: center;
+    column-gap: 6px;
+    margin: 0;
+}
+
+.actions .actionfield > label {
+    display: inline;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.actions .action_field_widget {
+    display: inline-block;
+}
+
+.actions .standard_actions {
+    display: inline-flex;
+    align-items: center;
+    column-gap: 8px;
+}
+
+/* Il blocco "list per page" sta su una riga propria sotto */
+.actions .standard_actions.double {
+    flex-basis: 100%;
+}

@@ -20,8 +20,16 @@ class BillingConfig(AppConfig):
         from jmb.jadmin import JumboModelAdmin
 
         existing_js = tuple(getattr(JumboModelAdmin.Media, "js", ()) or ())
-        target = "jmb/js/jmb.jadmin.js"
-        if target not in existing_js:
+        existing_css = dict(getattr(JumboModelAdmin.Media, "css", {}) or {})
+        target_js = "jmb/js/jmb.jadmin.js"
+        target_css = "viapal/admin/actions_inline.css"
+
+        new_js = existing_js if target_js in existing_js else existing_js + (target_js,)
+        all_css = tuple(existing_css.get("all", ()))
+        if target_css not in all_css:
+            existing_css["all"] = all_css + (target_css,)
+
+        if new_js != existing_js or "all" in existing_css:
             JumboModelAdmin.Media = type(
-                "Media", (), {"js": existing_js + (target,)},
+                "Media", (), {"js": new_js, "css": existing_css},
             )
