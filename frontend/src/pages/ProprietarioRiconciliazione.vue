@@ -1132,7 +1132,7 @@ async function ricarica() {
 }
 
 onMounted(async () => {
-  await tenantsStore.fetchTenants(true);
+  await tenantsStore.fetchTenants(false);
   await ricarica();
 });
 
