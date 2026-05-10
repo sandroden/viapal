@@ -405,9 +405,45 @@
               </q-card-section>
             </q-card>
 
+            <q-card flat bordered class="vp-p-id__card-info">
+              <q-card-section>
+                <div class="vp-eyebrow">Deposito (caparra)</div>
+                <q-list dense>
+                  <q-item>
+                    <q-item-section>
+                      <q-item-label caption>Versato</q-item-label>
+                      <q-item-label class="vp-mono">
+                        {{ formattaEuro(Number(situazione.tenant.deposito_versato || 0)) }}
+                      </q-item-label>
+                      <q-item-label
+                        v-if="situazione.tenant.data_versamento_deposito"
+                        caption
+                      >
+                        il {{ formattaData(situazione.tenant.data_versamento_deposito) }}
+                      </q-item-label>
+                    </q-item-section>
+                  </q-item>
+                  <q-item v-if="situazione.tenant.deposito_restituito">
+                    <q-item-section>
+                      <q-item-label caption>Restituito</q-item-label>
+                      <q-item-label class="vp-mono">
+                        {{ formattaEuro(Number(situazione.tenant.deposito_restituito)) }}
+                      </q-item-label>
+                      <q-item-label
+                        v-if="situazione.tenant.data_restituzione_deposito"
+                        caption
+                      >
+                        il {{ formattaData(situazione.tenant.data_restituzione_deposito) }}
+                      </q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </q-list>
+              </q-card-section>
+            </q-card>
+
             <q-card flat bordered class="vp-p-id__card-info vp-p-id__card-info--full">
               <q-card-section>
-                <div class="vp-eyebrow">Stanze e cauzioni</div>
+                <div class="vp-eyebrow">Stanze</div>
                 <q-list separator dense>
                   <q-item v-for="a in situazione.assignments" :key="a.id">
                     <q-item-section>
@@ -419,13 +455,6 @@
                         <span v-if="a.data_atto_cessione">
                           · cessione {{ formattaData(a.data_atto_cessione) }}
                         </span>
-                      </q-item-label>
-                    </q-item-section>
-                    <q-item-section side>
-                      <q-item-label caption>Versato</q-item-label>
-                      <q-item-label class="vp-mono">{{ formattaEuro(a.deposito_versato) }}</q-item-label>
-                      <q-item-label v-if="a.deposito_restituito" caption>
-                        Restituito {{ formattaEuro(a.deposito_restituito) }}
                       </q-item-label>
                     </q-item-section>
                   </q-item>

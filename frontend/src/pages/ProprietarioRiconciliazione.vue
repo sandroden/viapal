@@ -581,7 +581,7 @@ const { formattaData } = useFormatoData();
 const filtroRiconciliato = ref<'all' | 'true' | 'false'>('false');
 const filtroDataDa = ref<string | null>(null);
 const filtroDataA = ref<string | null>(null);
-const filtroCausale = ref<'all' | 'affitto' | 'utenze' | 'extra'>('all');
+const filtroCausale = ref<'all' | 'affitto' | 'utenze' | 'extra' | 'caparra'>('all');
 // Filtro inquilino client-side: usato quando si parte dai Receivable
 // (nessuna BT selezionata che inferisca il tenant). Il flusso "click BT"
 // inferisce comunque il tenant via tenantInferito, che ha priorità.
@@ -603,6 +603,7 @@ const opzioniCausale = [
   { label: 'Affitto', value: 'affitto' },
   { label: 'Utenze', value: 'utenze' },
   { label: 'Extra', value: 'extra' },
+  { label: 'Caparra', value: 'caparra' },
 ] as const;
 
 const iconaStatoBt = computed(() => {
@@ -1090,6 +1091,7 @@ function etichettaCausale(c: string): string {
   if (c === 'affitto') return 'Affitto';
   if (c === 'utenze') return 'Utenze';
   if (c === 'extra') return 'Extra';
+  if (c === 'caparra') return 'Caparra';
   return c;
 }
 
@@ -1097,6 +1099,7 @@ function iconaCausalePer(c: string): string {
   if (c === 'affitto') return 'home';
   if (c === 'utenze') return 'bolt';
   if (c === 'extra') return 'more_horiz';
+  if (c === 'caparra') return 'savings';
   return 'category';
 }
 
@@ -1303,6 +1306,10 @@ watch([filtroRiconciliato, filtroDataDa, filtroDataA], () => {
   background: var(--vp-terra-soft, #ead0bd);
   color: var(--vp-terra-deep, #6c3a18);
 }
+.vp-p-rec__chip--c-caparra {
+  background: var(--vp-argilla, #e6dccb);
+  color: var(--vp-ink);
+}
 .vp-p-rec__causale-icon {
   flex-shrink: 0;
   background: transparent;
@@ -1318,6 +1325,10 @@ watch([filtroRiconciliato, filtroDataDa, filtroDataA], () => {
 .vp-p-rec__causale-icon.vp-p-rec__chip--c-extra {
   background: transparent;
   color: var(--vp-terra, #b56a3b);
+}
+.vp-p-rec__causale-icon.vp-p-rec__chip--c-caparra {
+  background: transparent;
+  color: var(--vp-argilla-deep, #8a7748);
 }
 .vp-p-rec__rec-titolo {
   display: inline-flex;

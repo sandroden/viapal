@@ -44,6 +44,10 @@ export interface TenantInfo {
   frequenza_conguagli_display?: string;
   note_pagamento?: string;
   user?: number;
+  deposito_versato?: string | null;
+  data_versamento_deposito?: string | null;
+  deposito_restituito?: string | null;
+  data_restituzione_deposito?: string | null;
   [k: string]: unknown;
 }
 

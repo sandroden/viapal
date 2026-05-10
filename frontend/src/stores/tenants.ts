@@ -11,6 +11,10 @@ export interface Tenant {
   documento_tipo?: string | null;
   documento_numero?: string | null;
   note?: string | null;
+  deposito_versato?: string | null;
+  data_versamento_deposito?: string | null;
+  deposito_restituito?: string | null;
+  data_restituzione_deposito?: string | null;
 }
 
 interface State {

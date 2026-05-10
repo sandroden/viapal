@@ -9,8 +9,6 @@ export interface AssignmentRiga {
   valid_from: string;
   valid_to: string | null;
   canone_mensile: number;
-  deposito_versato: number;
-  deposito_restituito: number | null;
   data_atto_cessione: string | null;
 }
 
