@@ -1,13 +1,46 @@
 <template>
   <q-page padding class="vp-p-id">
-    <q-btn
-      flat
-      icon="arrow_back"
-      no-caps
-      label="Torna agli inquilini"
-      to="/p/inquilini"
-      class="vp-p-id__back"
-    />
+    <div class="vp-p-id__nav-inq">
+      <q-btn
+        flat
+        icon="arrow_back"
+        no-caps
+        label="Torna agli inquilini"
+        :to="linkLista"
+        class="vp-p-id__back"
+      />
+      <div class="vp-p-id__nav-frecce">
+        <q-btn
+          flat
+          round
+          dense
+          icon="navigate_before"
+          aria-label="Inquilino precedente"
+          :disable="!inquilinoPrecedente"
+          @click="vaiInquilinoPrecedente"
+        >
+          <q-tooltip v-if="inquilinoPrecedente">
+            {{ inquilinoPrecedente.nominativo }}
+          </q-tooltip>
+        </q-btn>
+        <span v-if="posizioneInLista" class="vp-p-id__nav-pos">
+          {{ posizioneInLista }}
+        </span>
+        <q-btn
+          flat
+          round
+          dense
+          icon="navigate_next"
+          aria-label="Inquilino successivo"
+          :disable="!inquilinoSuccessivo"
+          @click="vaiInquilinoSuccessivo"
+        >
+          <q-tooltip v-if="inquilinoSuccessivo">
+            {{ inquilinoSuccessivo.nominativo }}
+          </q-tooltip>
+        </q-btn>
+      </div>
+    </div>
 
     <header class="vp-p-id__head">
       <div>
@@ -414,9 +447,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import type { QTableProps } from 'quasar';
 import { useTenantSituazioneStore } from 'stores/tenantSituazione';
+import { useTenantsStore, type Tenant } from 'stores/tenants';
 import KpiCard from 'src/components/KpiCard.vue';
 import SemaforoBadge from 'src/components/SemaforoBadge.vue';
 import type { SemaforoLivello } from 'src/types/semaforo';
@@ -439,7 +473,9 @@ interface RigaPagamento {
 }
 
 const route = useRoute();
+const router = useRouter();
 const store = useTenantSituazioneStore();
+const tenantsStore = useTenantsStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
 
@@ -447,7 +483,18 @@ const tenantId = computed(() => Number(route.params.id));
 
 const annoCorrente = new Date().getFullYear();
 const annoMin = annoCorrente - 5;
-const annoSelezionato = ref<number>(annoCorrente);
+
+function parseAnno(v: unknown): number {
+  const n = Number(Array.isArray(v) ? v[0] : v);
+  if (Number.isFinite(n) && n >= annoMin && n <= annoCorrente) return n;
+  return annoCorrente;
+}
+function parseTab(v: unknown): 'pagamenti' | 'profilo' {
+  const s = Array.isArray(v) ? v[0] : v;
+  return s === 'profilo' ? 'profilo' : 'pagamenti';
+}
+
+const annoSelezionato = ref<number>(parseAnno(route.query.anno));
 const anniDisponibili = computed<number[]>(() => {
   const lista: number[] = [];
   for (let a = annoCorrente; a >= annoMin; a -= 1) lista.push(a);
@@ -456,7 +503,7 @@ const anniDisponibili = computed<number[]>(() => {
 const puoIndietro = computed(() => annoSelezionato.value > annoMin);
 const puoAvanti = computed(() => annoSelezionato.value < annoCorrente);
 
-const tabAttivo = ref<'pagamenti' | 'profilo'>('pagamenti');
+const tabAttivo = ref<'pagamenti' | 'profilo'>(parseTab(route.query.tab));
 
 const situazione = computed(() => store.get(tenantId.value, annoSelezionato.value));
 
@@ -519,27 +566,96 @@ const colonnePagamenti: QTableProps['columns'] = [
 
 const paginazionePagamenti = { rowsPerPage: 0, sortBy: 'scadenza' };
 
+const listaInquiliniAnno = computed<Tenant[]>(() =>
+  tenantsStore.tenantsAnno(annoSelezionato.value),
+);
+const indiceCorrente = computed<number>(() =>
+  listaInquiliniAnno.value.findIndex((t) => t.id === tenantId.value),
+);
+const inquilinoPrecedente = computed<Tenant | null>(() => {
+  const i = indiceCorrente.value;
+  if (i <= 0) return null;
+  return listaInquiliniAnno.value[i - 1] ?? null;
+});
+const inquilinoSuccessivo = computed<Tenant | null>(() => {
+  const i = indiceCorrente.value;
+  const lista = listaInquiliniAnno.value;
+  if (i < 0 || i >= lista.length - 1) return null;
+  return lista[i + 1] ?? null;
+});
+const posizioneInLista = computed<string>(() => {
+  const i = indiceCorrente.value;
+  if (i < 0) return '';
+  return `${i + 1}/${listaInquiliniAnno.value.length}`;
+});
+
+const linkLista = computed(() => ({
+  path: '/p/inquilini',
+  query: { anno: String(annoSelezionato.value) },
+}));
+
+function aggiornaQuery(): void {
+  void router.replace({
+    query: {
+      anno: String(annoSelezionato.value),
+      tab: tabAttivo.value,
+    },
+  });
+}
+
+function vaiInquilino(t: Tenant | null): void {
+  if (!t) return;
+  void router.push({
+    name: 'p-inquilino-dettaglio',
+    params: { id: t.id },
+    query: {
+      anno: String(annoSelezionato.value),
+      tab: tabAttivo.value,
+    },
+  });
+}
+
+function vaiInquilinoPrecedente(): void {
+  vaiInquilino(inquilinoPrecedente.value);
+}
+function vaiInquilinoSuccessivo(): void {
+  vaiInquilino(inquilinoSuccessivo.value);
+}
+
 onMounted(() => {
   void store.loadSituazione(tenantId.value, annoSelezionato.value);
+  void tenantsStore.fetchTenantsAnno(annoSelezionato.value);
+  aggiornaQuery();
 });
 
 watch(tenantId, (id) => {
-  if (id) void store.loadSituazione(id, annoSelezionato.value);
+  if (id) {
+    void store.loadSituazione(id, annoSelezionato.value);
+    aggiornaQuery();
+  }
 });
+
+watch(tabAttivo, aggiornaQuery);
 
 function onAnnoChange(v: number) {
   void store.loadSituazione(tenantId.value, v);
+  void tenantsStore.fetchTenantsAnno(v);
+  aggiornaQuery();
 }
 function annoPrecedente() {
   if (puoIndietro.value) {
     annoSelezionato.value -= 1;
     void store.loadSituazione(tenantId.value, annoSelezionato.value);
+    void tenantsStore.fetchTenantsAnno(annoSelezionato.value);
+    aggiornaQuery();
   }
 }
 function annoSuccessivo() {
   if (puoAvanti.value) {
     annoSelezionato.value += 1;
     void store.loadSituazione(tenantId.value, annoSelezionato.value);
+    void tenantsStore.fetchTenantsAnno(annoSelezionato.value);
+    aggiornaQuery();
   }
 }
 
@@ -588,8 +704,27 @@ function livelloStato(stato: string, giorni_ritardo: number): SemaforoLivello {
 </script>
 
 <style scoped>
-.vp-p-id__back {
+.vp-p-id__nav-inq {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-gap-3);
   margin-bottom: var(--vp-gap-3);
+  flex-wrap: wrap;
+}
+.vp-p-id__back {
+  margin: 0;
+}
+.vp-p-id__nav-frecce {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-gap-1);
+}
+.vp-p-id__nav-pos {
+  font-size: var(--vp-text-sm);
+  color: var(--vp-ink-3);
+  min-width: 2.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 .vp-p-id__head {
   display: flex;
