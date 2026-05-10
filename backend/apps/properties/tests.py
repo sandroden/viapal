@@ -305,3 +305,199 @@ class TestOwnerBankAccount:
             iban="IT60X0542811101000000123456",
         )
         assert str(account) == "Sandro Dentella — Banca Mediolanum (3456)"
+
+
+# ---------------------------------------------------------------------------
+# Test signal caparra → Receivable
+# ---------------------------------------------------------------------------
+
+
+class TestCaparraSignal:
+    """Verifica che il signal generi i Receivable CAPARRA con idempotenza
+    e che il caso Arun (più assignment, una sola caparra) non duplichi."""
+
+    @pytest.fixture
+    def tenant_con_room(self, db, tenant, room):
+        RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2024, 9, 1),
+            canone_mensile=Decimal("450"),
+            deposito_versato=Decimal("0"),
+        )
+        return tenant
+
+    def test_versamento_genera_receivable_positivo(self, tenant_con_room):
+        from billing.models import Receivable
+
+        tenant_con_room.deposito_versato = Decimal("900")
+        tenant_con_room.data_versamento_deposito = datetime.date(2024, 9, 1)
+        tenant_con_room.save()
+
+        recs = Receivable.objects.filter(
+            assignment__tenant=tenant_con_room,
+            causale=Receivable.Causale.CAPARRA,
+        )
+        assert recs.count() == 1
+        r = recs.get()
+        assert r.importo_dovuto == Decimal("900")
+        assert r.scadenza == datetime.date(2024, 9, 1)
+        assert r.descrizione == "Caparra (versamento)"
+
+    def test_restituzione_genera_receivable_negativo(self, tenant_con_room):
+        from billing.models import Receivable
+
+        tenant_con_room.deposito_versato = Decimal("900")
+        tenant_con_room.deposito_restituito = Decimal("900")
+        tenant_con_room.data_restituzione_deposito = datetime.date(2025, 6, 30)
+        tenant_con_room.save()
+
+        positivo = Receivable.objects.get(
+            assignment__tenant=tenant_con_room,
+            causale=Receivable.Causale.CAPARRA,
+            importo_dovuto__gt=0,
+        )
+        negativo = Receivable.objects.get(
+            assignment__tenant=tenant_con_room,
+            causale=Receivable.Causale.CAPARRA,
+            importo_dovuto__lt=0,
+        )
+        assert positivo.importo_dovuto == Decimal("900")
+        assert negativo.importo_dovuto == Decimal("-900")
+        assert negativo.scadenza == datetime.date(2025, 6, 30)
+
+    def test_idempotenza_save_multipli(self, tenant_con_room):
+        from billing.models import Receivable
+
+        tenant_con_room.deposito_versato = Decimal("900")
+        tenant_con_room.save()
+        tenant_con_room.save()
+        tenant_con_room.note_pagamento = "x"
+        tenant_con_room.save()
+
+        assert (
+            Receivable.objects.filter(
+                assignment__tenant=tenant_con_room,
+                causale=Receivable.Causale.CAPARRA,
+            ).count()
+            == 1
+        )
+
+    def test_caso_arun_piu_assignment_una_caparra(self, db, tenant, room):
+        """Tenant con 3 RoomAssignment consecutivi: una sola caparra."""
+        from billing.models import Receivable
+
+        room_2 = Room.objects.create(nome="Camera 2", ordinamento=2)
+        # Caparra impostata sul tenant.
+        tenant.deposito_versato = Decimal("900")
+        tenant.data_versamento_deposito = datetime.date(2024, 9, 1)
+        tenant.save()
+        # Nessun assignment ancora → nessun Receivable.
+        assert (
+            Receivable.objects.filter(
+                assignment__tenant=tenant, causale=Receivable.Causale.CAPARRA
+            ).count()
+            == 0
+        )
+
+        # Primo assignment: il signal su RoomAssignment scatena la creazione.
+        RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2024, 9, 1),
+            valid_to=datetime.date(2025, 2, 28),
+            canone_mensile=Decimal("450"),
+            deposito_versato=Decimal("0"),
+        )
+        # Secondo assignment: cambia stanza. Caparra invariata.
+        RoomAssignment.objects.create(
+            room=room_2,
+            tenant=tenant,
+            valid_from=datetime.date(2025, 3, 1),
+            valid_to=datetime.date(2025, 6, 30),
+            canone_mensile=Decimal("450"),
+            deposito_versato=Decimal("0"),
+        )
+        # Terzo assignment: torna in prima stanza.
+        RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2025, 7, 1),
+            canone_mensile=Decimal("450"),
+            deposito_versato=Decimal("0"),
+        )
+
+        recs = Receivable.objects.filter(
+            assignment__tenant=tenant, causale=Receivable.Causale.CAPARRA
+        )
+        assert recs.count() == 1
+        # Legato al primo assignment.
+        primo = tenant.assignments.order_by("valid_from").first()
+        assert recs.get().assignment_id == primo.id
+
+    def test_tenant_senza_assignment_no_crash(self, tenant):
+        from billing.models import Receivable
+
+        tenant.deposito_versato = Decimal("500")
+        tenant.save()  # non deve sollevare; non crea nulla.
+        assert (
+            Receivable.objects.filter(
+                causale=Receivable.Causale.CAPARRA
+            ).count()
+            == 0
+        )
+
+    def test_restituzione_su_ultimo_assignment(self, db, tenant, room):
+        from billing.models import Receivable
+
+        room_2 = Room.objects.create(nome="Camera 2", ordinamento=2)
+        RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2024, 9, 1),
+            valid_to=datetime.date(2025, 2, 28),
+            canone_mensile=Decimal("450"),
+            deposito_versato=Decimal("0"),
+        )
+        ultimo = RoomAssignment.objects.create(
+            room=room_2,
+            tenant=tenant,
+            valid_from=datetime.date(2025, 3, 1),
+            valid_to=datetime.date(2025, 6, 30),
+            canone_mensile=Decimal("450"),
+            deposito_versato=Decimal("0"),
+        )
+        tenant.deposito_versato = Decimal("900")
+        tenant.deposito_restituito = Decimal("900")
+        tenant.data_restituzione_deposito = datetime.date(2025, 6, 30)
+        tenant.save()
+
+        negativo = Receivable.objects.get(
+            assignment__tenant=tenant,
+            causale=Receivable.Causale.CAPARRA,
+            importo_dovuto__lt=0,
+        )
+        assert negativo.assignment_id == ultimo.id
+
+    def test_data_restituzione_default_valid_to(self, db, tenant, room):
+        from billing.models import Receivable
+
+        ultimo = RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2024, 9, 1),
+            valid_to=datetime.date(2025, 6, 30),
+            canone_mensile=Decimal("450"),
+            deposito_versato=Decimal("0"),
+        )
+        tenant.deposito_versato = Decimal("900")
+        tenant.deposito_restituito = Decimal("900")
+        # data_restituzione_deposito NON valorizzata.
+        tenant.save()
+
+        negativo = Receivable.objects.get(
+            assignment__tenant=tenant,
+            causale=Receivable.Causale.CAPARRA,
+            importo_dovuto__lt=0,
+        )
+        assert negativo.scadenza == ultimo.valid_to

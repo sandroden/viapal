@@ -19,6 +19,7 @@ class Receivable(TimestampedModel):
         AFFITTO = "affitto", "Affitto"
         UTENZE = "utenze", "Utenze"
         EXTRA = "extra", "Extra"
+        CAPARRA = "caparra", "Caparra"
 
     assignment = models.ForeignKey(
         RoomAssignment,
