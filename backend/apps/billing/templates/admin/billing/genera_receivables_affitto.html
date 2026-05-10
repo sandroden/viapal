@@ -1,0 +1,82 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label='billing' %}">Pagamenti e bollette</a>
+    &rsaquo; <a href="{% url 'admin:billing_receivable_changelist' %}">Receivable</a>
+    &rsaquo; Genera Receivable affitto
+  </div>
+{% endblock %}
+
+{% block content %}
+  <h1>{{ title }}</h1>
+
+  <p style="max-width: 760px; color: #555;">
+    Genera i <strong>Receivable affitto</strong> per il mese scelto chiamando
+    <code>billing.calc.rent.genera_pagamenti_mese</code> — la stessa funzione
+    dell'action sui periodi utenze e del management command
+    <code>genera_rent_payments</code>. Itera i <code>RoomAssignment</code>
+    attivi nel mese e applica il pro-rata sui giorni effettivi.
+  </p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <ul class="errorlist">
+        {% for err in form.non_field_errors %}<li>{{ err }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+    <table>
+      <tbody>
+        {% for f in form %}
+          <tr>
+            <th><label for="{{ f.id_for_label }}">{{ f.label }}</label></th>
+            <td>
+              {{ f }}
+              {% if f.help_text %}<p class="help">{{ f.help_text }}</p>{% endif %}
+              {% if f.errors %}
+                <ul class="errorlist">
+                  {% for err in f.errors %}<li>{{ err }}</li>{% endfor %}
+                </ul>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="submit-row">
+      <input type="submit" value="Genera" class="default" />
+      <a href="{% url 'admin:billing_receivable_changelist' %}" class="button cancel-link">
+        Annulla
+      </a>
+    </div>
+  </form>
+
+  {% if risultato.sim %}
+    <h2 style="margin-top: 2em;">Dettaglio dry-run — {{ risultato.etichetta }}</h2>
+    <table style="border-collapse: collapse;">
+      <thead>
+        <tr style="background:#f0f0f0;">
+          <th style="padding:4px 8px;text-align:left;">Inquilino</th>
+          <th style="padding:4px 8px;">Competenza</th>
+          <th style="padding:4px 8px;text-align:right;">Importo</th>
+          <th style="padding:4px 8px;">Scadenza</th>
+          <th style="padding:4px 8px;">Azione</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in risultato.sim %}
+          <tr>
+            <td style="padding:4px 8px;">{{ s.tenant_nominativo }}</td>
+            <td style="padding:4px 8px;">{{ s.competenza_da }} → {{ s.competenza_a }}</td>
+            <td style="padding:4px 8px;text-align:right;"><b>{{ s.importo_dovuto }}€</b>{% if s.is_aggiustamento %} <i>(aggiust.)</i>{% endif %}</td>
+            <td style="padding:4px 8px;">{{ s.scadenza }}</td>
+            <td style="padding:4px 8px;">{{ s.azione_prevista }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endblock %}

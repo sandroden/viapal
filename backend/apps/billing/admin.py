@@ -188,6 +188,18 @@ class ExpenseCategoryAdmin(ModalEditMixin, JumboModelAdmin):
 @admin.register(Receivable)
 class ReceivableAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 1000
+
+    def get_urls(self):
+        from django.urls import path
+
+        from .admin_views import genera_receivables_affitto_view
+        return [
+            path(
+                "genera-affitto/",
+                self.admin_site.admin_view(genera_receivables_affitto_view),
+                name="billing_receivable_genera_affitto",
+            ),
+        ] + super().get_urls()
     list_display = (
         "causale", "assignment", "competenza_da", "competenza_a",
         "importo_dovuto", "scadenza", "stato",

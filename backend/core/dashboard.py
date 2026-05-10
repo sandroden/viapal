@@ -204,6 +204,11 @@ class ViapalIndexDashboard(Dashboard):
                 title="Strumenti rapidi",
                 children=[
                     _link(
+                        "Genera Receivable affitto (mese)",
+                        reverse("admin:billing_receivable_genera_affitto"),
+                        "Form standalone: genera gli addebiti affitto del mese scelto (con dry-run e filtro inquilino)",
+                    ),
+                    _link(
                         "Genera settlement annuale",
                         reverse("admin:accounting_ownersettlement_genera"),
                         "Chiusura conti tra fratelli per anno (cassa virtuale)",
