@@ -179,7 +179,7 @@ requires-dist = [
     { name = "django-environ", specifier = ">=0.13.0" },
     { name = "djangorestframework", specifier = ">=3.17.1" },
     { name = "jmb-filters", specifier = ">=2.0.3" },
-    { name = "jmb-jadmin", specifier = ">=2.1.10" },
+    { name = "jmb-jadmin", specifier = ">=2.1.11" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4" },
@@ -460,15 +460,15 @@ wheels = [
 
 [[package]]
 name = "jmb-jadmin"
-version = "2.1.10"
+version = "2.1.11"
 source = { registry = "https://pypi.thux.dev/" }
 dependencies = [
     { name = "django" },
     { name = "jmb-filters" },
 ]
-sdist = { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.10.tar.gz", hash = "sha256:5c282ef39a4f328fb31f9a6e960ee7fe44106e48b69b6c907767086297e5a0d7" }
+sdist = { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.11.tar.gz", hash = "sha256:a897699cc28e6aba2a87c1b45ae92e7aef89cefea911bc5c76491b1f7b8c7de0" }
 wheels = [
-    { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.10-py3-none-any.whl", hash = "sha256:e941e40e8a5ef55b8e2be399edab8b6b5f0f7998104ff8b70fcd0a4e88abadb7" },
+    { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.11-py3-none-any.whl", hash = "sha256:dbcf246d3f95ad5515124a01f77c8dbdea2e832a09a09f579bce61e14148c414" },
 ]
 
 [[package]]
