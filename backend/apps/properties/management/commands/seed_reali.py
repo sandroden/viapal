@@ -88,6 +88,7 @@ INQUILINI = [
         "cf": "PLKSNN91P66Z209I",
         "giorno_pagamento": 15,
         "stanza_codice": "papa",
+        "deposito_versato": Decimal("466.00"),
     },
     {
         "username": "arun",
@@ -98,6 +99,7 @@ INQUILINI = [
         "cf": "SNGRNA90C22Z222R",
         "giorno_pagamento": 15,
         "stanza_codice": "ufficio",
+        "deposito_versato": Decimal("466.00"),
     },
     {
         "username": "mariasevera",
@@ -108,6 +110,7 @@ INQUILINI = [
         "cf": "RMSMSV63P21F704B",
         "giorno_pagamento": 5,    # storica, paga ancora come prima
         "stanza_codice": "mamma",
+        "deposito_versato": Decimal("466.00"),  # contratto nuovo
     },
     {
         "username": "elisa",
@@ -118,6 +121,7 @@ INQUILINI = [
         "cf": "CHPLSE90D54Z611V",
         "giorno_pagamento": 15,
         "stanza_codice": "sala",  # poi cessione a Diana
+        "deposito_versato": Decimal("466.00"),
     },
     {
         "username": "diana",
@@ -128,6 +132,7 @@ INQUILINI = [
         "cf": "PRRDCR88S41Z604P",
         "giorno_pagamento": 15,
         "stanza_codice": "sala",  # subentra a Elisa
+        "deposito_versato": Decimal("466.00"),
     },
     {
         "username": "davide",
@@ -138,6 +143,7 @@ INQUILINI = [
         "cf": "DMIDVD99E28C286O",
         "giorno_pagamento": 5,   # storica, paga ancora come prima
         "stanza_codice": "guardaroba",
+        "deposito_versato": Decimal("466.00"),  # contratto nuovo
     },
     {
         "username": "lindy",
@@ -148,6 +154,7 @@ INQUILINI = [
         "cf": "NYTLDY92E54Z337Q",
         "giorno_pagamento": 16,  # bonifico ricevuto il 16/12 e 16/01
         "stanza_codice": None,   # storica fugace 21/12/24 - 7/2/25
+        "deposito_versato": Decimal("1060.00"),  # da foglio Bruna
     },
     # Storici (contratto 2023, usciti)
     {
@@ -159,6 +166,7 @@ INQUILINI = [
         "cf": "DNGSVT88P15G786Q",
         "giorno_pagamento": 30,  # vedeva pagare a fine mese
         "stanza_codice": None,   # storico
+        "deposito_versato": Decimal("465.00"),  # contratto vecchio
     },
     {
         "username": "eugenia",
@@ -169,6 +177,7 @@ INQUILINI = [
         "cf": "BLNGNE85E67I535Y",
         "giorno_pagamento": 24,
         "stanza_codice": None,
+        "deposito_versato": Decimal("465.00"),  # contratto vecchio
     },
     {
         "username": "marianna",
@@ -369,6 +378,7 @@ class Command(BaseCommand):
                     "codice_fiscale": p["cf"],
                     "giorno_pagamento_affitto": p["giorno_pagamento"],
                     "frequenza_conguagli": "mensile",
+                    "deposito_versato": p.get("deposito_versato", Decimal("0")),
                 },
             )
             out[p["username"]] = tp
@@ -404,10 +414,6 @@ class Command(BaseCommand):
         # Canone per inquilino: 1860/4 = 465 (vecchio); 2330/5 = 466 (nuovo)
         canone_v = Decimal("465.00")
         canone_n = Decimal("466.00")
-        deposito_v = canone_v
-        deposito_n = canone_n
-        # NB: il deposito totale del contratto e' 2 mensilita',
-        # ma per inquilino registriamo 1 mensilita' del suo canone
 
         # Vecchio contratto (2023-09 -> 2025-02-14, prima del nuovo)
         # 4 inquilini: Davide/D'Angella/Mariasevera/Eugenia
@@ -433,7 +439,6 @@ class Command(BaseCommand):
                 defaults={
                     "valid_to": date(2025, 2, 14),
                     "canone_mensile": canone_v,
-                    "deposito_versato": deposito_v,
                     "data_atto_cessione": None,
                     "note": f"Contratto vecchio (2023-09 / 2025-02): {u} -> {s}",
                 },
@@ -467,7 +472,6 @@ class Command(BaseCommand):
                 defaults={
                     "valid_to": vt,
                     "canone_mensile": canone_n,
-                    "deposito_versato": deposito_n,
                     "data_atto_cessione": cessione,
                     "note": note,
                 },
@@ -481,7 +485,6 @@ class Command(BaseCommand):
             defaults={
                 "valid_to": date(2025, 2, 7),
                 "canone_mensile": canone_v,
-                "deposito_versato": Decimal("1060.00"),  # da foglio Bruna
                 "data_atto_cessione": None,
                 "note": "Lindy Nyathi: contratto temporaneo 21/12/24 - 7/2/25",
             },
@@ -493,7 +496,6 @@ class Command(BaseCommand):
             defaults={
                 "valid_to": None,
                 "canone_mensile": canone_n,
-                "deposito_versato": deposito_n,
                 "data_atto_cessione": date(2025, 7, 10),
                 "note": "Diana subentra a Elisa Chiappini (cessione AdE)",
             },

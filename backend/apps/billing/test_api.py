@@ -97,7 +97,6 @@ def assignment_1(db, room_1, tenant_1):
         tenant=tenant_1,
         valid_from=datetime.date(2024, 9, 1),
         canone_mensile=Decimal("400"),
-        deposito_versato=Decimal("400"),
     )
 
 
@@ -108,7 +107,6 @@ def assignment_2(db, room_2, tenant_2):
         tenant=tenant_2,
         valid_from=datetime.date(2024, 9, 1),
         canone_mensile=Decimal("380"),
-        deposito_versato=Decimal("380"),
     )
 
 

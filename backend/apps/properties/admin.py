@@ -48,7 +48,7 @@ class RoomAssignmentInlineForTenant(admin.TabularInline):
 
     model = RoomAssignment
     extra = 0
-    fields = ("room", "valid_from", "valid_to", "canone_mensile", "deposito_versato")
+    fields = ("room", "valid_from", "valid_to", "canone_mensile")
     autocomplete_fields = ("room",)
     ordering = ("-valid_from",)
     show_change_link = True
@@ -59,7 +59,7 @@ class RoomAssignmentInlineForRoom(admin.TabularInline):
 
     model = RoomAssignment
     extra = 0
-    fields = ("tenant", "valid_from", "valid_to", "canone_mensile", "deposito_versato")
+    fields = ("tenant", "valid_from", "valid_to", "canone_mensile")
     autocomplete_fields = ("tenant",)
     ordering = ("-valid_from",)
     show_change_link = True
@@ -154,6 +154,20 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
         ("Pagamenti", {
             "fields": ("giorno_pagamento_affitto", "frequenza_conguagli", "note_pagamento"),
         }),
+        ("Deposito (caparra)", {
+            "fields": (
+                "deposito_versato", "data_versamento_deposito",
+                "deposito_restituito", "data_restituzione_deposito",
+            ),
+            "description": (
+                "Versando un valore in 'deposito versato' viene creato "
+                "automaticamente un Receivable CAPARRA legato al primo "
+                "RoomAssignment del tenant. La restituzione (anche solo "
+                "contabile, per saldare l'ultima rata) genera un secondo "
+                "Receivable con importo negativo legato all'ultimo "
+                "RoomAssignment."
+            ),
+        }),
     )
     readonly_fields = ("created_at", "updated_at")
 
@@ -233,7 +247,7 @@ class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 900
     list_display = (
         "tenant", "room", "valid_from", "valid_to",
-        "canone_mensile", "deposito_versato",
+        "canone_mensile",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
     list_filter = (
@@ -250,7 +264,7 @@ class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
             "fields": ("room", "tenant", "valid_from", "valid_to"),
         }),
         ("Economico", {
-            "fields": ("canone_mensile", "deposito_versato", "deposito_restituito", "data_restituzione_deposito"),
+            "fields": ("canone_mensile",),
         }),
         ("Cessione", {
             "fields": ("data_atto_cessione",),

@@ -196,7 +196,6 @@ class TestRoomAssignment:
             tenant=tenant,
             valid_from=datetime.date(2024, 9, 1),
             canone_mensile=Decimal("450"),
-            deposito_versato=Decimal("900"),
         )
         assignment.full_clean()
         assignment.save()
@@ -210,7 +209,6 @@ class TestRoomAssignment:
             valid_from=datetime.date(2024, 9, 1),
             valid_to=datetime.date(2025, 3, 31),
             canone_mensile=Decimal("450"),
-            deposito_versato=Decimal("900"),
         )
 
         # Il secondo inizia dopo la fine del primo: non c'è overlap
@@ -219,7 +217,6 @@ class TestRoomAssignment:
             tenant=tenant_2,
             valid_from=datetime.date(2025, 4, 1),
             canone_mensile=Decimal("480"),
-            deposito_versato=Decimal("960"),
         )
         assignment_2.full_clean()  # non deve sollevare eccezioni
 
@@ -231,7 +228,6 @@ class TestRoomAssignment:
             valid_from=datetime.date(2024, 9, 1),
             valid_to=datetime.date(2025, 6, 30),
             canone_mensile=Decimal("450"),
-            deposito_versato=Decimal("900"),
         )
 
         # Inizia durante l'assegnazione esistente: overlap
@@ -240,7 +236,6 @@ class TestRoomAssignment:
             tenant=tenant_2,
             valid_from=datetime.date(2025, 3, 1),  # dentro il periodo del primo
             canone_mensile=Decimal("480"),
-            deposito_versato=Decimal("960"),
         )
         with pytest.raises(ValidationError):
             assignment_2.full_clean()
@@ -253,7 +248,6 @@ class TestRoomAssignment:
             valid_from=datetime.date(2024, 9, 1),
             valid_to=None,  # aperto
             canone_mensile=Decimal("450"),
-            deposito_versato=Decimal("900"),
         )
 
         assignment_2 = RoomAssignment(
@@ -261,7 +255,6 @@ class TestRoomAssignment:
             tenant=tenant_2,
             valid_from=datetime.date(2025, 1, 1),
             canone_mensile=Decimal("480"),
-            deposito_versato=Decimal("960"),
         )
         with pytest.raises(ValidationError):
             assignment_2.full_clean()
@@ -275,7 +268,6 @@ class TestRoomAssignment:
             tenant=tenant,
             valid_from=datetime.date(2024, 9, 1),
             canone_mensile=Decimal("450"),
-            deposito_versato=Decimal("900"),
         )
 
         # Stessa finestra temporale, stanza diversa: deve passare
@@ -284,7 +276,6 @@ class TestRoomAssignment:
             tenant=tenant_2,
             valid_from=datetime.date(2024, 9, 1),
             canone_mensile=Decimal("420"),
-            deposito_versato=Decimal("840"),
         )
         assignment_2.full_clean()  # non deve sollevare eccezioni
 
@@ -323,7 +314,6 @@ class TestCaparraSignal:
             tenant=tenant,
             valid_from=datetime.date(2024, 9, 1),
             canone_mensile=Decimal("450"),
-            deposito_versato=Decimal("0"),
         )
         return tenant
 
@@ -407,7 +397,6 @@ class TestCaparraSignal:
             valid_from=datetime.date(2024, 9, 1),
             valid_to=datetime.date(2025, 2, 28),
             canone_mensile=Decimal("450"),
-            deposito_versato=Decimal("0"),
         )
         # Secondo assignment: cambia stanza. Caparra invariata.
         RoomAssignment.objects.create(
@@ -416,7 +405,6 @@ class TestCaparraSignal:
             valid_from=datetime.date(2025, 3, 1),
             valid_to=datetime.date(2025, 6, 30),
             canone_mensile=Decimal("450"),
-            deposito_versato=Decimal("0"),
         )
         # Terzo assignment: torna in prima stanza.
         RoomAssignment.objects.create(
@@ -424,7 +412,6 @@ class TestCaparraSignal:
             tenant=tenant,
             valid_from=datetime.date(2025, 7, 1),
             canone_mensile=Decimal("450"),
-            deposito_versato=Decimal("0"),
         )
 
         recs = Receivable.objects.filter(
@@ -457,7 +444,6 @@ class TestCaparraSignal:
             valid_from=datetime.date(2024, 9, 1),
             valid_to=datetime.date(2025, 2, 28),
             canone_mensile=Decimal("450"),
-            deposito_versato=Decimal("0"),
         )
         ultimo = RoomAssignment.objects.create(
             room=room_2,
@@ -465,7 +451,6 @@ class TestCaparraSignal:
             valid_from=datetime.date(2025, 3, 1),
             valid_to=datetime.date(2025, 6, 30),
             canone_mensile=Decimal("450"),
-            deposito_versato=Decimal("0"),
         )
         tenant.deposito_versato = Decimal("900")
         tenant.deposito_restituito = Decimal("900")
@@ -488,7 +473,6 @@ class TestCaparraSignal:
             valid_from=datetime.date(2024, 9, 1),
             valid_to=datetime.date(2025, 6, 30),
             canone_mensile=Decimal("450"),
-            deposito_versato=Decimal("0"),
         )
         tenant.deposito_versato = Decimal("900")
         tenant.deposito_restituito = Decimal("900")

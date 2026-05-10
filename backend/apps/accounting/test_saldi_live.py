@@ -73,7 +73,6 @@ def assignment(db):
         tenant=tenant,
         valid_from=datetime.date(2024, 1, 1),
         canone_mensile=Decimal("400"),
-        deposito_versato=Decimal("800"),
     )
 
 

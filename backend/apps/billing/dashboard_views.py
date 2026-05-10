@@ -646,10 +646,6 @@ class TenantSituazioneView(APIView):
                 "valid_from": a.valid_from.isoformat(),
                 "valid_to": a.valid_to.isoformat() if a.valid_to else None,
                 "canone_mensile": float(a.canone_mensile),
-                "deposito_versato": float(a.deposito_versato or 0),
-                "deposito_restituito": float(a.deposito_restituito or 0)
-                if hasattr(a, "deposito_restituito") and a.deposito_restituito
-                else None,
                 "data_atto_cessione": a.data_atto_cessione.isoformat()
                 if getattr(a, "data_atto_cessione", None)
                 else None,

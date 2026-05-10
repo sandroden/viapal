@@ -141,23 +141,6 @@ class RoomAssignment(TimestampedModel):
         decimal_places=2,
         verbose_name="canone mensile",
     )
-    deposito_versato = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        verbose_name="deposito versato",
-    )
-    deposito_restituito = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        verbose_name="deposito restituito",
-    )
-    data_restituzione_deposito = models.DateField(
-        null=True,
-        blank=True,
-        verbose_name="data restituzione deposito",
-    )
     data_atto_cessione = models.DateField(
         null=True,
         blank=True,

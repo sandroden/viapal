@@ -42,6 +42,10 @@ class TenantProfileSerializer(serializers.ModelSerializer):
             "frequenza_conguagli",
             "frequenza_conguagli_display",
             "note_pagamento",
+            "deposito_versato",
+            "data_versamento_deposito",
+            "deposito_restituito",
+            "data_restituzione_deposito",
         ]
 
 
@@ -72,9 +76,6 @@ class RoomAssignmentSerializer(serializers.ModelSerializer):
             "valid_from",
             "valid_to",
             "canone_mensile",
-            "deposito_versato",
-            "deposito_restituito",
-            "data_restituzione_deposito",
             "data_atto_cessione",
             "note",
         ]

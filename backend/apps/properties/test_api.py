@@ -95,7 +95,6 @@ def assignment_1(db, room_1, tenant_1):
         tenant=tenant_1,
         valid_from=datetime.date(2024, 9, 1),
         canone_mensile=Decimal("400"),
-        deposito_versato=Decimal("400"),
     )
 
 
@@ -106,7 +105,6 @@ def assignment_2(db, room_2, tenant_2):
         tenant=tenant_2,
         valid_from=datetime.date(2024, 9, 1),
         canone_mensile=Decimal("380"),
-        deposito_versato=Decimal("380"),
     )
 
 
@@ -223,7 +221,6 @@ class TestTenantProfileViewSet:
             valid_from=datetime.date(2024, 3, 1),
             valid_to=datetime.date(2024, 12, 31),
             canone_mensile=Decimal("400"),
-            deposito_versato=Decimal("400"),
         )
         # tenant_2: assignment aperto dal 2025 → presente solo dal 2025
         RoomAssignment.objects.create(
@@ -231,7 +228,6 @@ class TestTenantProfileViewSet:
             tenant=tenant_2,
             valid_from=datetime.date(2025, 6, 1),
             canone_mensile=Decimal("380"),
-            deposito_versato=Decimal("380"),
         )
 
         resp_2024 = client_prop.get("/api/v1/tenants/?anno=2024")

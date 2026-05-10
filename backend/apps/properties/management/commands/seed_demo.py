@@ -307,6 +307,7 @@ class Command(BaseCommand):
                 "email_alt": "m.russo.privata@gmail.com",
                 "giorno_pagamento_affitto": 1,
                 "frequenza_conguagli": "mensile",
+                "deposito_versato": Decimal("420.00"),
             },
             {
                 "username": "davide",
@@ -320,6 +321,7 @@ class Command(BaseCommand):
                 "email_alt": "",
                 "giorno_pagamento_affitto": 10,
                 "frequenza_conguagli": "mensile",
+                "deposito_versato": Decimal("380.00"),
             },
             {
                 "username": "diana",
@@ -333,6 +335,7 @@ class Command(BaseCommand):
                 "email_alt": "dianap.ro@outlook.com",
                 "giorno_pagamento_affitto": 5,
                 "frequenza_conguagli": "mensile",
+                "deposito_versato": Decimal("500.00"),
             },
             {
                 "username": "arun",
@@ -346,6 +349,7 @@ class Command(BaseCommand):
                 "email_alt": "",
                 "giorno_pagamento_affitto": 15,
                 "frequenza_conguagli": "bimestrale",
+                "deposito_versato": Decimal("400.00"),
             },
             {
                 "username": "eshani",
@@ -359,6 +363,7 @@ class Command(BaseCommand):
                 "email_alt": "eshani.perera@hotmail.com",
                 "giorno_pagamento_affitto": 27,
                 "frequenza_conguagli": "mensile",
+                "deposito_versato": Decimal("450.00"),
             },
         ]
 
@@ -386,6 +391,7 @@ class Command(BaseCommand):
                     "email_alt": td["email_alt"],
                     "giorno_pagamento_affitto": td["giorno_pagamento_affitto"],
                     "frequenza_conguagli": td["frequenza_conguagli"],
+                    "deposito_versato": td["deposito_versato"],
                 },
             )
             tenant_profiles[td["username"]] = profile
@@ -413,6 +419,7 @@ class Command(BaseCommand):
                 "email_alt": "",
                 "giorno_pagamento_affitto": 1,
                 "frequenza_conguagli": "mensile",
+                "deposito_versato": Decimal("400.00"),
             },
         )
         tenant_profiles["marco_vecchio"] = marco_profile
@@ -503,7 +510,6 @@ class Command(BaseCommand):
                 "valid_from": date(2024, 9, 20),
                 "valid_to": None,
                 "canone_mensile": Decimal("420.00"),
-                "deposito_versato": Decimal("420.00"),
                 "data_atto_cessione": None,
             },
             {
@@ -512,7 +518,6 @@ class Command(BaseCommand):
                 "valid_from": date(2024, 9, 20),
                 "valid_to": None,
                 "canone_mensile": Decimal("380.00"),
-                "deposito_versato": Decimal("380.00"),
                 "data_atto_cessione": None,
             },
             {
@@ -521,7 +526,6 @@ class Command(BaseCommand):
                 "valid_from": date(2024, 9, 20),
                 "valid_to": None,
                 "canone_mensile": Decimal("500.00"),
-                "deposito_versato": Decimal("500.00"),
                 "data_atto_cessione": None,
             },
             # Camera Avena: storico Marco Vecchio
@@ -531,7 +535,6 @@ class Command(BaseCommand):
                 "valid_from": date(2024, 9, 20),
                 "valid_to": date(2025, 8, 31),
                 "canone_mensile": Decimal("400.00"),
-                "deposito_versato": Decimal("400.00"),
                 "data_atto_cessione": date(2025, 8, 31),
             },
             # Camera Avena: Arun subentra con cessione dal 2025-09-01
@@ -541,7 +544,6 @@ class Command(BaseCommand):
                 "valid_from": date(2025, 9, 1),
                 "valid_to": None,
                 "canone_mensile": Decimal("400.00"),
-                "deposito_versato": Decimal("400.00"),
                 "data_atto_cessione": date(2025, 8, 31),
             },
             {
@@ -550,7 +552,6 @@ class Command(BaseCommand):
                 "valid_from": date(2024, 9, 20),
                 "valid_to": None,
                 "canone_mensile": Decimal("450.00"),
-                "deposito_versato": Decimal("450.00"),
                 "data_atto_cessione": None,
             },
         ]
@@ -567,7 +568,6 @@ class Command(BaseCommand):
                 defaults={
                     "valid_to": spec["valid_to"],
                     "canone_mensile": spec["canone_mensile"],
-                    "deposito_versato": spec["deposito_versato"],
                     "data_atto_cessione": spec["data_atto_cessione"],
                 },
             )

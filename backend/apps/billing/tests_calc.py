@@ -99,7 +99,6 @@ def make_assignment(db, make_room, make_tenant):
             valid_from=valid_from,
             valid_to=valid_to,
             canone_mensile=canone,
-            deposito_versato=canone,
         )
 
     return _make
