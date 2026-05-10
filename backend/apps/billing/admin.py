@@ -15,7 +15,7 @@ _ALLOC_SOGLIA = Decimal("1.00")
 
 from jmb.jadmin import JumboActionForm, JumboModelAdmin, ModalEditMixin
 
-from properties.models import OwnerProfile
+from properties.models import OwnerProfile, TenantProfile
 
 from .models import (
     AnnualUtilityCost,
@@ -688,6 +688,16 @@ class AnnualUtilityCostAdmin(ModalEditMixin, JumboModelAdmin):
 def rigenera_receivables_utenze(modeladmin, request, queryset):
     from billing.calc.utility import calcola_conguaglio_periodo
 
+    form = modeladmin.get_action_form_instance(request)
+    if form.is_valid():
+        dry_run = bool(form.cleaned_data.get("dry_run"))
+        tenant = form.cleaned_data.get("tenant")
+    else:
+        dry_run = False
+        tenant = None
+    tenant_id = tenant.pk if tenant else None
+    tag = "[DRY-RUN] " if dry_run else ""
+
     tot_persistiti = 0
     tot_skippati = 0
     skippati_dettaglio: list[str] = []
@@ -696,9 +706,40 @@ def rigenera_receivables_utenze(modeladmin, request, queryset):
     for period in queryset:
         label = f"{period.periodo_da} → {period.periodo_a} (id={period.pk})"
         try:
-            risultato = calcola_conguaglio_periodo(period.pk, persist=True)
+            risultato = calcola_conguaglio_periodo(
+                period.pk, persist=not dry_run, tenant_id=tenant_id,
+            )
         except Exception as e:
             errori.append(f"{label}: {e}")
+            continue
+
+        if dry_run:
+            quote = risultato["quote"]
+            if not quote:
+                messages.info(
+                    request,
+                    f"{tag}{label}: nessuna quota per "
+                    + (f"{tenant.nominativo}" if tenant else "i tenant attivi")
+                    + " (verifica che ci siano bollette luce/gas nel periodo).",
+                )
+                continue
+            messages.info(
+                request,
+                f"{tag}{label}: tot {risultato['totale_periodo']}€, "
+                f"giorni-persona {risultato['sum_giorni_presenza']}",
+            )
+            for q in quote:
+                dettaglio = ", ".join(
+                    f"{v} {q['dettaglio'].get(v, 0)}€"
+                    for v in ("luce", "gas", "tari", "altro")
+                    if q["dettaglio"].get(v)
+                )
+                messages.info(
+                    request,
+                    f"    • {q['tenant_nominativo']}: "
+                    f"{q['giorni_presenza']}gg → {q['quota']}€"
+                    + (f" ({dettaglio})" if dettaglio else ""),
+                )
             continue
 
         skippati = risultato.get("skippati_per_allocation", [])
@@ -715,11 +756,13 @@ def rigenera_receivables_utenze(modeladmin, request, queryset):
         for msg in errori:
             messages.error(request, msg)
 
-    if tot_persistiti or tot_skippati:
+    if not dry_run and (tot_persistiti or tot_skippati):
         messages.success(
             request,
             f"Rigenerazione completata: {tot_persistiti} Receivable utenze persistiti su "
-            f"{queryset.count()} periodi.",
+            f"{queryset.count()} periodi"
+            + (f" (solo inquilino {tenant.nominativo})" if tenant else "")
+            + ".",
         )
     if skippati_dettaglio:
         messages.warning(
@@ -747,7 +790,15 @@ def rigenera_receivables_affitto(modeladmin, request, queryset):
     from billing.calc.rent import genera_pagamenti_mese
 
     form = modeladmin.get_action_form_instance(request)
-    force = bool(form.cleaned_data.get("force")) if form.is_valid() else False
+    if form.is_valid():
+        force = bool(form.cleaned_data.get("force"))
+        dry_run = bool(form.cleaned_data.get("dry_run"))
+        tenant = form.cleaned_data.get("tenant")
+    else:
+        force = dry_run = False
+        tenant = None
+    tenant_id = tenant.pk if tenant else None
+    tag = "[DRY-RUN] " if dry_run else ""
 
     tot_creati = 0
     tot_aggiornati = 0
@@ -755,6 +806,7 @@ def rigenera_receivables_affitto(modeladmin, request, queryset):
     skippati_alloc_dettaglio: list[str] = []
     errori: list[str] = []
     mesi_processati: set[tuple[int, int]] = set()
+    sim_per_azione: dict[str, int] = {}  # solo dry-run: contatore per azione_prevista
 
     for period in queryset:
         for anno, mese in _mesi_in_periodo(period.periodo_da, period.periodo_a):
@@ -763,9 +815,22 @@ def rigenera_receivables_affitto(modeladmin, request, queryset):
                 continue  # stesso mese può essere coperto da più periodi selezionati
             mesi_processati.add(chiave)
             try:
-                ris = genera_pagamenti_mese(anno, mese, force=force)
+                ris = genera_pagamenti_mese(
+                    anno, mese, force=force, persist=not dry_run, tenant_id=tenant_id,
+                )
             except Exception as e:
                 errori.append(f"{anno}/{mese:02d}: {e}")
+                continue
+            if dry_run:
+                for s in ris.get("simulazione", []):
+                    sim_per_azione[s["azione_prevista"]] = sim_per_azione.get(s["azione_prevista"], 0) + 1
+                    flag = " [aggiust.]" if s["is_aggiustamento"] else ""
+                    messages.info(
+                        request,
+                        f"{tag}{anno}/{mese:02d} — {s['tenant_nominativo']}: "
+                        f"{s['azione_prevista']} → {s['importo_dovuto']}€"
+                        f" (scad. {s['scadenza']}, comp. {s['competenza_da']}→{s['competenza_a']}){flag}",
+                    )
                 continue
             tot_creati += ris["creati"]
             tot_aggiornati += ris["aggiornati"]
@@ -778,12 +843,31 @@ def rigenera_receivables_affitto(modeladmin, request, queryset):
 
     for msg in errori:
         messages.error(request, msg)
+    if dry_run:
+        if sim_per_azione:
+            riassunto = ", ".join(f"{a}: {n}" for a, n in sorted(sim_per_azione.items()))
+            messages.info(
+                request,
+                f"{tag}Simulazione su {len(mesi_processati)} mesi — {riassunto}"
+                + (f" (solo {tenant.nominativo})" if tenant else "")
+                + (" [FORCE]" if force else ""),
+            )
+        else:
+            messages.info(
+                request,
+                f"{tag}Nessun assignment attivo "
+                + (f"per {tenant.nominativo} " if tenant else "")
+                + f"sui {len(mesi_processati)} mesi selezionati.",
+            )
+        return
     if tot_creati or tot_aggiornati or tot_skippati:
         messages.success(
             request,
             f"Rigenerazione affitti su {len(mesi_processati)} mesi: "
-            f"{tot_creati} creati, {tot_aggiornati} aggiornati, {tot_skippati} skippati."
-            + (" [FORCE]" if force else ""),
+            f"{tot_creati} creati, {tot_aggiornati} aggiornati, {tot_skippati} skippati"
+            + (f" (solo {tenant.nominativo})" if tenant else "")
+            + (" [FORCE]" if force else "")
+            + ".",
         )
     if skippati_alloc_dettaglio:
         messages.warning(
@@ -796,7 +880,12 @@ def rigenera_receivables_affitto(modeladmin, request, queryset):
 
 
 class UtilityChargePeriodActionForm(JumboActionForm):
-    """Action form: campo `force` visibile solo per la rigenerazione affitto.
+    """Action form: campi extra visibili in base all'azione selezionata.
+
+    - ``force``: rigenerazione affitto, sovrascrive esistenti.
+    - ``dry_run``: simulazione (entrambe le actions): mostra il risultato
+      senza scrivere nel DB.
+    - ``tenant``: limita l'azione a un solo inquilino (debug).
 
     Il template ``jmb.jadmin/admin/actions.html`` aggiunge automaticamente
     classi CSS che la JS ``jmb.extra_action_fields_init`` usa per mostrare/
@@ -809,10 +898,21 @@ class UtilityChargePeriodActionForm(JumboActionForm):
         help_text="Se attivo, ricalcola anche i Receivable già presenti "
         "(la guardia allocations protegge comunque quelli riconciliati).",
     )
+    dry_run = forms.BooleanField(
+        required=False,
+        label="Solo simulazione (dry-run)",
+        help_text="Mostra cosa verrebbe scritto, senza toccare il DB.",
+    )
+    tenant = forms.ModelChoiceField(
+        queryset=TenantProfile.objects.all(),
+        required=False,
+        label="Solo inquilino",
+        help_text="Se valorizzato, limita l'azione a questo inquilino (debug).",
+    )
     fields_map = {
         "export_action": ["output_type"],
-        "rigenera_receivables_utenze": [],
-        "rigenera_receivables_affitto": ["force"],
+        "rigenera_receivables_utenze": ["dry_run", "tenant"],
+        "rigenera_receivables_affitto": ["force", "dry_run", "tenant"],
     }
 
 

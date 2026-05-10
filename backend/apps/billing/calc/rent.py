@@ -45,7 +45,13 @@ def _quota_condominio_per(competenza_da: date) -> Decimal:
     return tot
 
 
-def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
+def genera_pagamenti_mese(
+    anno: int,
+    mese: int,
+    force: bool = False,
+    persist: bool = True,
+    tenant_id: int | None = None,
+) -> dict:
     """
     Per ogni RoomAssignment attivo (anche parzialmente) nel mese, crea un
     Receivable causale=affitto se non esiste gia' (o lo sovrascrive se
@@ -93,12 +99,15 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
         valid_to__gte=primo_del_mese,
     )
     assignments_qs = assignments_qs.distinct().select_related("tenant")
+    if tenant_id is not None:
+        assignments_qs = assignments_qs.filter(tenant_id=tenant_id)
 
     creati = 0
     aggiornati = 0
     skippati = 0
     skippati_per_allocation: list[dict] = []
     payment_ids: list[int] = []
+    simulazione: list[dict] = []  # popolato solo se persist=False
 
     for assignment in assignments_qs:
         # Competenza
@@ -135,6 +144,32 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
             "is_aggiustamento": is_aggiustamento,
         }
         defaults_create = {**defaults_base, "stato": StatoPagamento.ATTESO}
+
+        if not persist:
+            esistente = Receivable.objects.filter(
+                assignment=assignment,
+                causale=Receivable.Causale.AFFITTO,
+                competenza_da=competenza_da,
+                competenza_a=competenza_a,
+            ).first()
+            if esistente and esistente.allocations.exists():
+                azione = "skip_allocation"
+            elif esistente and force:
+                azione = "update"
+            elif esistente:
+                azione = "skip"
+            else:
+                azione = "create"
+            simulazione.append({
+                "tenant_nominativo": assignment.tenant.nominativo,
+                "competenza_da": competenza_da,
+                "competenza_a": competenza_a,
+                "importo_dovuto": importo_dovuto,
+                "scadenza": scadenza,
+                "is_aggiustamento": is_aggiustamento,
+                "azione_prevista": azione,
+            })
+            continue
 
         if force:
             # In rigenerazione preserviamo `stato`/`data_pagamento`/
@@ -216,6 +251,7 @@ def genera_pagamenti_mese(anno: int, mese: int, force: bool = False) -> dict:
         "skippati": skippati,
         "skippati_per_allocation": skippati_per_allocation,
         "payments": payment_ids,
+        "simulazione": simulazione,
     }
 
 

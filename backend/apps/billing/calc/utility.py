@@ -154,7 +154,11 @@ def _raccoglie_voci_annual(periodo_da: date, periodo_a: date) -> dict[str, Decim
     return totali
 
 
-def calcola_conguaglio_periodo(period_id: int, persist: bool = False) -> dict:
+def calcola_conguaglio_periodo(
+    period_id: int,
+    persist: bool = False,
+    tenant_id: int | None = None,
+) -> dict:
     """
     Calcola la ripartizione di un UtilityChargePeriod fra i RoomAssignment
     attivi (anche parzialmente) nel periodo, con criterio pro_rata_giorni.
@@ -275,6 +279,15 @@ def calcola_conguaglio_periodo(period_id: int, persist: bool = False) -> dict:
     # --- Passo 5: differenza di arrotondamento ---
     somma_quote = sum(q["quota"] for q in quote)
     diff_arrotondamento = _arrotonda(totale_periodo - somma_quote)
+
+    # Filtro single-tenant (debug): denominatore e totali restano interi (così
+    # le quote dei singoli sono comunque corrette), ma persist e return
+    # vengono limitati al tenant richiesto.
+    if tenant_id is not None:
+        ass_ids_tenant = set(
+            RoomAssignment.objects.filter(tenant_id=tenant_id).values_list("pk", flat=True)
+        )
+        quote = [q for q in quote if q["assignment_id"] in ass_ids_tenant]
 
     # --- Passo 6: persist (se richiesto) ---
     skippati_per_allocation: list[dict] = []
