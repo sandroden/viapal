@@ -31,6 +31,9 @@ class TenantProfileViewSet(ReadOnlyModelViewSet):
     Profili inquilini.
     - Proprietari: vedono tutti. Per default solo gli attivi (con assignment in
       corso oggi); query param ``?solo_attivi=0`` per includere anche gli storici.
+      In alternativa, ``?anno=YYYY`` filtra gli inquilini con almeno un
+      assignment che si sovrappone all'anno indicato (ha la precedenza su
+      ``solo_attivi``).
     - Inquilini: vedono solo il proprio.
     """
 
@@ -47,6 +50,22 @@ class TenantProfileViewSet(ReadOnlyModelViewSet):
         )
         if not is_proprietario:
             return qs.filter(user=user)
+
+        anno_param = self.request.query_params.get("anno")
+        if anno_param:
+            try:
+                anno = int(anno_param)
+            except (TypeError, ValueError):
+                anno = None
+            if anno is not None:
+                inizio = datetime.date(anno, 1, 1)
+                fine = datetime.date(anno, 12, 31)
+                return qs.filter(
+                    assignments__valid_from__lte=fine,
+                ).filter(
+                    Q(assignments__valid_to__isnull=True)
+                    | Q(assignments__valid_to__gt=inizio)
+                ).distinct()
 
         solo_attivi = self.request.query_params.get("solo_attivi", "1")
         if solo_attivi in ("0", "false", "False"):

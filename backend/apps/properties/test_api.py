@@ -213,6 +213,46 @@ class TestTenantProfileViewSet:
         assert tenant_1.id in ids
         assert tenant_2.id not in ids
 
+    def test_proprietario_filtra_per_anno(
+        self, client_prop, tenant_1, tenant_2, room_1, room_2
+    ):
+        # tenant_1: assignment chiuso nel 2024 → presente solo nel 2024
+        RoomAssignment.objects.create(
+            room=room_1,
+            tenant=tenant_1,
+            valid_from=datetime.date(2024, 3, 1),
+            valid_to=datetime.date(2024, 12, 31),
+            canone_mensile=Decimal("400"),
+            deposito_versato=Decimal("400"),
+        )
+        # tenant_2: assignment aperto dal 2025 → presente solo dal 2025
+        RoomAssignment.objects.create(
+            room=room_2,
+            tenant=tenant_2,
+            valid_from=datetime.date(2025, 6, 1),
+            canone_mensile=Decimal("380"),
+            deposito_versato=Decimal("380"),
+        )
+
+        resp_2024 = client_prop.get("/api/v1/tenants/?anno=2024")
+        ids_2024 = [t["id"] for t in resp_2024.json()]
+        assert tenant_1.id in ids_2024
+        assert tenant_2.id not in ids_2024
+
+        resp_2025 = client_prop.get("/api/v1/tenants/?anno=2025")
+        ids_2025 = [t["id"] for t in resp_2025.json()]
+        assert tenant_1.id not in ids_2025
+        assert tenant_2.id in ids_2025
+
+    def test_proprietario_anno_invalido_fallback_a_solo_attivi(
+        self, client_prop, tenant_1, assignment_1
+    ):
+        # Anno non parsabile → comportamento default (solo attivi oggi)
+        resp = client_prop.get("/api/v1/tenants/?anno=pippo")
+        assert resp.status_code == 200
+        ids = [t["id"] for t in resp.json()]
+        assert tenant_1.id in ids
+
     def test_inquilino_vede_solo_se_stesso(self, client_inq_1, tenant_1, tenant_2):
         resp = client_inq_1.get("/api/v1/tenants/")
         assert resp.status_code == 200
