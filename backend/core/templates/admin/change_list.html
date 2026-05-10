@@ -1,0 +1,20 @@
+{# Override globale del changelist admin.
+
+Estende `filters:admin/change_list.html` (che vince via app_directories
+loader perché jmb.filters viene prima di jmb.jadmin in INSTALLED_APPS) e
+aggiunge lo script `jmb.jadmin.js`. Quest'ultimo, oltre a esporre helper,
+chiama in coda `jmb.extra_action_fields_init()`: aggancia il listener al
+`<select name=action>` e nasconde i campi `.extrafield` mostrando solo
+quelli con classe `action_<nome_action>` (vedi
+`jmb/jadmin/templates/admin/actions.html`).
+
+Senza questo override la JS non viene mai caricata sulla changelist e i
+campi extra del `JumboActionForm` restano sempre visibili.
+#}
+{% extends "filters:admin/change_list.html" %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="{% static 'jmb/js/jmb.jadmin.js' %}"></script>
+{% endblock %}

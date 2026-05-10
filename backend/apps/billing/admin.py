@@ -571,6 +571,7 @@ class UtilityBillActionForm(JumboActionForm):
         label="Pagata da proprietario",
     )
     fields_map = {
+        "export_action": ["output_type"],
         "imposta_pagata_da_owner": ["pagata_da:required"],
     }
 
@@ -809,6 +810,7 @@ class UtilityChargePeriodActionForm(JumboActionForm):
         "(la guardia allocations protegge comunque quelli riconciliati).",
     )
     fields_map = {
+        "export_action": ["output_type"],
         "rigenera_receivables_utenze": [],
         "rigenera_receivables_affitto": ["force"],
     }
