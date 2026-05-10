@@ -1,6 +1,8 @@
 """
 Modelli relativi agli inquilini.
 """
+from decimal import Decimal
+
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
@@ -53,6 +55,32 @@ class TenantProfile(TimestampedModel):
     note_pagamento = models.TextField(
         blank=True,
         verbose_name="note pagamento",
+    )
+
+    deposito_versato = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0"),
+        verbose_name="deposito versato",
+        help_text="Caparra versata dall'inquilino. Vale per l'intero rapporto, "
+        "anche se l'inquilino cambia stanza o contratto.",
+    )
+    data_versamento_deposito = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="data versamento deposito",
+    )
+    deposito_restituito = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="deposito restituito",
+    )
+    data_restituzione_deposito = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="data restituzione deposito",
     )
 
     class Meta:
