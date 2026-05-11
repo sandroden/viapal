@@ -152,12 +152,15 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
             "fields": ("user", "nominativo", "codice_fiscale", "telefono", "email_alt"),
         }),
         ("Pagamenti", {
-            "fields": ("giorno_pagamento_affitto", "frequenza_conguagli", "note_pagamento"),
+            "fields": (
+                ("giorno_pagamento_affitto", "frequenza_conguagli"),
+                "note_pagamento",
+            ),
         }),
         ("Deposito (caparra)", {
             "fields": (
-                "deposito_versato", "data_versamento_deposito",
-                "deposito_restituito", "data_restituzione_deposito",
+                ("deposito_versato", "data_versamento_deposito"),
+                ("deposito_restituito", "data_restituzione_deposito"),
             ),
             "description": (
                 "Versando un valore in 'deposito versato' viene creato "
@@ -170,6 +173,14 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
         }),
     )
     readonly_fields = ("created_at", "updated_at")
+    tabs = (
+        ("Anagrafica", {"items": ["Anagrafica"]}),
+        ("Pagamenti e deposito", {
+            "items": ["Pagamenti", "Deposito (caparra)"],
+            "active": True,
+        }),
+        ("Assegnazione stanze", {"items": [RoomAssignmentInlineForTenant]}),
+    )
 
 
 # ---------------------------------------------------------------------------

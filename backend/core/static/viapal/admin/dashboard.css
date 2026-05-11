@@ -10,3 +10,18 @@
   height: 20px;
   color: #4a4a4a;
 }
+
+/* Affianca i campi quando un fieldset.fields contiene una tupla
+   (es. `("a", "b")`). jmb-jadmin override il template fieldset con
+   `<div class="field-box">` ma carica solo admin_tabs.css/ajax_inlines.css,
+   non base.css → senza queste regole i field-box vanno uno sotto l'altro. */
+fieldset .form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 24px;
+  align-items: flex-start;
+}
+fieldset .field-box {
+  flex: 1 1 240px;
+  min-width: 0;
+}
