@@ -180,11 +180,55 @@
       <q-tab-panels v-model="tabAttivo" animated class="vp-p-id__panels">
         <!-- TAB PAGAMENTI -->
         <q-tab-panel name="pagamenti" class="vp-p-id__panel">
+          <div class="vp-p-id__toolbar">
+            <q-btn
+              round
+              dense
+              flat
+              size="sm"
+              :icon="iconaTipoPer(filtroTipo)"
+              :color="filtroTipo === 'all' ? 'grey-7' : 'primary'"
+              :class="
+                filtroTipo === 'all'
+                  ? ''
+                  : `vp-p-id__filtro-attivo vp-p-id__chip--c-${filtroTipo}`
+              "
+            >
+              <q-tooltip>Tipo: {{ etichettaTipoFiltro }}</q-tooltip>
+              <q-menu>
+                <q-list dense>
+                  <q-item
+                    v-for="o in opzioniTipo"
+                    :key="o.value"
+                    v-close-popup
+                    clickable
+                    :active="filtroTipo === o.value"
+                    @click="filtroTipo = o.value"
+                  >
+                    <q-item-section avatar>
+                      <q-icon
+                        :name="iconaTipoPer(o.value)"
+                        :class="
+                          o.value === 'all'
+                            ? ''
+                            : `vp-p-id__causale-icon vp-p-id__chip--c-${o.value}`
+                        "
+                      />
+                    </q-item-section>
+                    <q-item-section>{{ o.label }}</q-item-section>
+                  </q-item>
+                </q-list>
+              </q-menu>
+            </q-btn>
+            <span v-if="filtroTipo !== 'all'" class="vp-p-id__filtro-info">
+              {{ righePagamentiFiltrate.length }} di {{ righePagamenti.length }} righe
+            </span>
+          </div>
           <q-table
-            v-if="righePagamenti.length"
+            v-if="righePagamentiFiltrate.length"
             flat
             bordered
-            :rows="righePagamenti"
+            :rows="righePagamentiFiltrate"
             :columns="colonnePagamenti"
             row-key="rowKey"
             :pagination="paginazionePagamenti"
@@ -196,7 +240,18 @@
                   :name="iconaPerTipo(props.row.tipo)"
                   size="18px"
                   class="vp-p-id__tipo-icon"
-                />
+                  :class="[
+                    `vp-p-id__chip--c-${props.row.tipo}`,
+                    filtroTipo === 'all' ? 'vp-p-id__tipo-icon--clickable' : '',
+                  ]"
+                  @click="
+                    filtroTipo === 'all' ? (filtroTipo = props.row.tipo) : null
+                  "
+                >
+                  <q-tooltip v-if="filtroTipo === 'all'">
+                    Filtra: solo {{ etichettaPerTipo(props.row.tipo) }}
+                  </q-tooltip>
+                </q-icon>
                 {{ etichettaPerTipo(props.row.tipo) }}
               </q-td>
             </template>
@@ -232,10 +287,16 @@
             </template>
           </q-table>
           <EmptyState
-            v-else
+            v-else-if="righePagamenti.length === 0"
             icon="inbox"
             title="Nessun pagamento"
             message="Per quest'anno non sono registrati pagamenti dovuti."
+          />
+          <EmptyState
+            v-else
+            icon="filter_alt_off"
+            title="Nessuna riga con questo filtro"
+            :message="`Nessun pagamento di tipo ${etichettaTipoFiltro.toLowerCase()} per quest'anno.`"
           />
 
           <div v-if="situazione.utility.righe.length" class="vp-p-id__sotto-sezione">
@@ -513,6 +574,8 @@ const tenantId = computed(() => Number(route.params.id));
 const annoCorrente = new Date().getFullYear();
 const annoMin = annoCorrente - 5;
 
+type FiltroTipo = TipoPagamento | 'all';
+
 function parseAnno(v: unknown): number {
   const n = Number(Array.isArray(v) ? v[0] : v);
   if (Number.isFinite(n) && n >= annoMin && n <= annoCorrente) return n;
@@ -521,6 +584,11 @@ function parseAnno(v: unknown): number {
 function parseTab(v: unknown): 'pagamenti' | 'profilo' {
   const s = Array.isArray(v) ? v[0] : v;
   return s === 'profilo' ? 'profilo' : 'pagamenti';
+}
+function parseTipo(v: unknown): FiltroTipo {
+  const s = Array.isArray(v) ? v[0] : v;
+  if (s === 'rent' || s === 'utility' || s === 'extra') return s;
+  return 'all';
 }
 
 const annoSelezionato = ref<number>(parseAnno(route.query.anno));
@@ -533,6 +601,14 @@ const puoIndietro = computed(() => annoSelezionato.value > annoMin);
 const puoAvanti = computed(() => annoSelezionato.value < annoCorrente);
 
 const tabAttivo = ref<'pagamenti' | 'profilo'>(parseTab(route.query.tab));
+
+const filtroTipo = ref<FiltroTipo>(parseTipo(route.query.tipo));
+const opzioniTipo = [
+  { label: 'Tutti', value: 'all' as const },
+  { label: 'Affitto', value: 'rent' as const },
+  { label: 'Utenze', value: 'utility' as const },
+  { label: 'Extra', value: 'extra' as const },
+];
 
 const situazione = computed(() => store.get(tenantId.value, annoSelezionato.value));
 
@@ -583,6 +659,21 @@ const righePagamenti = computed<RigaPagamento[]>(() => {
   return out;
 });
 
+const righePagamentiFiltrate = computed<RigaPagamento[]>(() =>
+  filtroTipo.value === 'all'
+    ? righePagamenti.value
+    : righePagamenti.value.filter((r) => r.tipo === filtroTipo.value),
+);
+
+const etichettaTipoFiltro = computed(
+  () => opzioniTipo.find((o) => o.value === filtroTipo.value)?.label ?? '',
+);
+
+function iconaTipoPer(t: FiltroTipo): string {
+  if (t === 'all') return 'category';
+  return ICONE_TIPO[t];
+}
+
 const colonnePagamenti: QTableProps['columns'] = [
   { name: 'tipo', label: 'Tipo', field: 'tipo', align: 'left', sortable: true },
   { name: 'descrizione', label: 'Descrizione', field: 'descrizione', align: 'left', sortable: true },
@@ -624,23 +715,25 @@ const linkLista = computed(() => ({
 }));
 
 function aggiornaQuery(): void {
-  void router.replace({
-    query: {
-      anno: String(annoSelezionato.value),
-      tab: tabAttivo.value,
-    },
-  });
+  const q: Record<string, string> = {
+    anno: String(annoSelezionato.value),
+    tab: tabAttivo.value,
+  };
+  if (filtroTipo.value !== 'all') q.tipo = filtroTipo.value;
+  void router.replace({ query: q });
 }
 
 function vaiInquilino(t: Tenant | null): void {
   if (!t) return;
+  const q: Record<string, string> = {
+    anno: String(annoSelezionato.value),
+    tab: tabAttivo.value,
+  };
+  if (filtroTipo.value !== 'all') q.tipo = filtroTipo.value;
   void router.push({
     name: 'p-inquilino-dettaglio',
     params: { id: t.id },
-    query: {
-      anno: String(annoSelezionato.value),
-      tab: tabAttivo.value,
-    },
+    query: q,
   });
 }
 
@@ -665,6 +758,7 @@ watch(tenantId, (id) => {
 });
 
 watch(tabAttivo, aggiornaQuery);
+watch(filtroTipo, aggiornaQuery);
 
 function onAnnoChange(v: number) {
   void store.loadSituazione(tenantId.value, v);
@@ -863,6 +957,34 @@ function livelloStato(stato: string, giorni_ritardo: number): SemaforoLivello {
 }
 .vp-p-id__tipo-icon {
   margin-right: var(--vp-gap-1);
+  color: var(--vp-ink-3);
+}
+.vp-p-id__tipo-icon--clickable {
+  cursor: pointer;
+}
+.vp-p-id__tipo-icon--clickable:hover {
+  filter: brightness(0.9);
+}
+.vp-p-id__chip--c-rent {
+  color: var(--vp-salvia, #4f6e3f);
+}
+.vp-p-id__chip--c-utility {
+  color: var(--vp-miele, #b08a1f);
+}
+.vp-p-id__chip--c-extra {
+  color: var(--vp-terra, #b56a3b);
+}
+.vp-p-id__causale-icon {
+  flex-shrink: 0;
+}
+.vp-p-id__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-gap-2);
+  margin-bottom: var(--vp-gap-2);
+}
+.vp-p-id__filtro-info {
+  font-size: var(--vp-text-sm);
   color: var(--vp-ink-3);
 }
 .vp-p-id__card {
