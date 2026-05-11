@@ -139,9 +139,9 @@ class OwnerBankAccountAdmin(ModalEditMixin, JumboModelAdmin):
 class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 900
     list_display = (
-        "nominativo", "codice_fiscale", "telefono",
+        "get_modal_edit_icon", "nominativo", "codice_fiscale", "telefono",
         "giorno_pagamento_affitto", "frequenza_conguagli",
-        "get_modal_edit_icon", "get_modal_delete_icon",
+        "get_modal_delete_icon",
     )
     search_fields = ("nominativo", "codice_fiscale", "user__username", "user__email")
     list_filter = ("frequenza_conguagli",)
