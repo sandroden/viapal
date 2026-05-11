@@ -34,6 +34,14 @@ TIPO_PER_CAUSALE = {
     Receivable.Causale.EXTRA: "extra",
 }
 
+# Causali "di gestione" mostrate nelle dashboard rendita/pagamenti.
+# CAPARRA è esclusa: i depositi cauzionali non sono entrate operative.
+CAUSALI_OPERATIVE = (
+    Receivable.Causale.AFFITTO,
+    Receivable.Causale.UTENZE,
+    Receivable.Causale.EXTRA,
+)
+
 
 def _calcola_semaforo(giorni_ritardo: int) -> str:
     """
@@ -123,6 +131,7 @@ class DashboardInquilinoView(APIView):
             Receivable.objects.filter(
                 assignment__in=assignments,
                 stato__in=STATI_DA_PAGARE,
+                causale__in=CAUSALI_OPERATIVE,
             )
             .select_related("assignment__room", "utility_period")
             .order_by("scadenza")
@@ -262,6 +271,7 @@ class DashboardProprietarioView(APIView):
             stato=StatoPagamento.PAGATO,
             data_pagamento__year=anno,
             incassato_da_owner__isnull=False,
+            causale__in=CAUSALI_OPERATIVE,
         ):
             if r.incassato_da_owner_id in bilancio_per_owner:
                 voce_key = VOCE_KEY_PER_CAUSALE[r.causale]
@@ -306,7 +316,9 @@ class DashboardProprietarioView(APIView):
             Receivable.Causale.EXTRA: "extra",
         }
         for r in Receivable.objects.filter(
-            stato=StatoPagamento.PAGATO, data_pagamento__year=anno
+            stato=StatoPagamento.PAGATO,
+            data_pagamento__year=anno,
+            causale__in=CAUSALI_OPERATIVE,
         ).select_related("assignment__tenant"):
             row = breakdown_per_tenant.setdefault(
                 r.assignment.tenant.nominativo,
@@ -335,6 +347,7 @@ class DashboardProprietarioView(APIView):
             ritardi_qs = (
                 Receivable.objects.filter(
                     stato__in=[StatoPagamento.IN_RITARDO, StatoPagamento.INSOLUTO],
+                    causale__in=CAUSALI_OPERATIVE,
                 )
                 .select_related(
                     "assignment__tenant", "assignment__room", "utility_period"
@@ -345,6 +358,7 @@ class DashboardProprietarioView(APIView):
                     stato__in=[StatoPagamento.ATTESO, StatoPagamento.DICHIARATO],
                     scadenza__lte=soglia_scadenza,
                     scadenza__gte=oggi,
+                    causale__in=CAUSALI_OPERATIVE,
                 )
                 .select_related(
                     "assignment__tenant", "assignment__room", "utility_period"
@@ -444,6 +458,7 @@ class BilancioOwnerDettaglioView(APIView):
                     stato=StatoPagamento.PAGATO,
                     data_pagamento__year=anno,
                     incassato_da_owner_id=owner_id,
+                    causale__in=CAUSALI_OPERATIVE,
                 )
                 .select_related("assignment__tenant", "utility_period")
                 .order_by("-data_pagamento", "-id")
