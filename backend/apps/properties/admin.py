@@ -255,7 +255,7 @@ class ContractAdmin(ModalEditMixin, JumboModelAdmin):
 
 @admin.register(RoomAssignment)
 class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
-    modal_edit_width = 900
+    modal_edit_width = 1200
     list_display = (
         "tenant", "room", "valid_from", "valid_to",
         "canone_mensile",
