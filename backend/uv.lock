@@ -460,15 +460,15 @@ wheels = [
 
 [[package]]
 name = "jmb-jadmin"
-version = "2.1.11"
+version = "2.1.12"
 source = { registry = "https://pypi.thux.dev/" }
 dependencies = [
     { name = "django" },
     { name = "jmb-filters" },
 ]
-sdist = { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.11.tar.gz", hash = "sha256:a897699cc28e6aba2a87c1b45ae92e7aef89cefea911bc5c76491b1f7b8c7de0" }
+sdist = { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.12.tar.gz", hash = "sha256:2ad2101f2a793cd1b4af1eb206e78976858c68c5dd230116387214fdce0adcc5" }
 wheels = [
-    { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.11-py3-none-any.whl", hash = "sha256:dbcf246d3f95ad5515124a01f77c8dbdea2e832a09a09f579bce61e14148c414" },
+    { url = "https://pypi.thux.dev/packages/jmb_jadmin-2.1.12-py3-none-any.whl", hash = "sha256:8d3458e9a6eb7eb1dcd71d8d46fd1c309024172199853632f601ae3b7d507592" },
 ]
 
 [[package]]
