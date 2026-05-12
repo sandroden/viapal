@@ -11,6 +11,34 @@
         </div>
       </div>
       <div class="vp-p-di__filtri">
+        <div class="vp-p-di__nav-anno">
+          <q-btn
+            flat
+            round
+            dense
+            icon="chevron_left"
+            aria-label="Anno precedente"
+            :disable="!puoIndietro"
+            @click="annoPrecedente"
+          />
+          <q-select
+            v-model="annoSelezionato"
+            :options="anniDisponibili"
+            dense
+            outlined
+            label="Anno"
+            class="vp-p-di__sel-anno"
+          />
+          <q-btn
+            flat
+            round
+            dense
+            icon="chevron_right"
+            aria-label="Anno successivo"
+            :disable="!puoAvanti"
+            @click="annoSuccessivo"
+          />
+        </div>
         <q-input
           v-model="dataDa"
           dense
@@ -113,6 +141,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import type { QTableProps } from 'quasar';
 import { api } from 'boot/axios';
 import SemaforoBadge from 'src/components/SemaforoBadge.vue';
@@ -156,11 +185,59 @@ const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
 const auth = useAuthStore();
 const contiStore = useOwnerBankAccountsStore();
+const router = useRouter();
+const route = useRoute();
 
+const annoCorrente = new Date().getFullYear();
+const annoMin = annoCorrente - 5;
+const annoMax = annoCorrente + 1;
+
+function parseAnno(v: unknown): number {
+  const n = Number(Array.isArray(v) ? v[0] : v);
+  if (Number.isFinite(n) && n >= annoMin && n <= annoMax) return n;
+  return annoCorrente;
+}
+
+function inizioAnno(a: number): string {
+  return `${a}-01-01`;
+}
+function fineAnno(a: number): string {
+  return `${a}-12-31`;
+}
+
+const annoSelezionato = ref<number>(parseAnno(route.query.anno));
 const righe = ref<ReceivableRiga[]>([]);
 const caricamento = ref(false);
-const dataDa = ref<string | null>(null);
-const dataA = ref<string | null>(null);
+const dataDa = ref<string | null>(
+  typeof route.query.dataDa === 'string' && route.query.dataDa
+    ? route.query.dataDa
+    : inizioAnno(annoSelezionato.value),
+);
+const dataA = ref<string | null>(
+  typeof route.query.dataA === 'string' && route.query.dataA
+    ? route.query.dataA
+    : fineAnno(annoSelezionato.value),
+);
+
+const anniDisponibili = computed<number[]>(() => {
+  const lista: number[] = [];
+  for (let a = annoMax; a >= annoMin; a -= 1) lista.push(a);
+  return lista;
+});
+const puoIndietro = computed(() => annoSelezionato.value > annoMin);
+const puoAvanti = computed(() => annoSelezionato.value < annoMax);
+
+function annoPrecedente(): void {
+  if (puoIndietro.value) annoSelezionato.value -= 1;
+}
+function annoSuccessivo(): void {
+  if (puoAvanti.value) annoSelezionato.value += 1;
+}
+
+watch(annoSelezionato, (a) => {
+  dataDa.value = inizioAnno(a);
+  dataA.value = fineAnno(a);
+});
 
 const dialogPagamento = ref(false);
 const receivableSelezionato = ref<ReceivableInput | null>(null);
@@ -292,9 +369,21 @@ function ricarica(): void {
   void carica();
 }
 
-watch([dataDa, dataA], () => {
+watch([dataDa, dataA, annoSelezionato], () => {
+  aggiornaQuery();
   void carica();
 });
+
+function aggiornaQuery(): void {
+  const q: Record<string, string> = { anno: String(annoSelezionato.value) };
+  if (dataDa.value && dataDa.value !== inizioAnno(annoSelezionato.value)) {
+    q.dataDa = dataDa.value;
+  }
+  if (dataA.value && dataA.value !== fineAnno(annoSelezionato.value)) {
+    q.dataA = dataA.value;
+  }
+  void router.replace({ query: q });
+}
 
 onMounted(() => {
   void carica();
@@ -343,6 +432,14 @@ async function dopoSalvataggio(): Promise<void> {
   align-items: center;
   gap: var(--vp-gap-2);
   flex-wrap: wrap;
+}
+.vp-p-di__nav-anno {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-gap-1);
+}
+.vp-p-di__sel-anno {
+  min-width: 120px;
 }
 .vp-p-di__sel {
   min-width: 160px;
