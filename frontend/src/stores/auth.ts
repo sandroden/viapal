@@ -3,6 +3,14 @@ import { api } from 'boot/axios';
 
 export type Role = 'proprietario' | 'inquilino' | null;
 
+export interface BankAccountInfo {
+  id: number;
+  banca: string;
+  intestatario: string;
+  iban: string;
+  owner_id: number;
+}
+
 export interface User {
   id: number;
   username: string;
@@ -12,6 +20,8 @@ export interface User {
   is_staff: boolean;
   is_superuser: boolean;
   role: Role;
+  owner_profile_id: number | null;
+  bank_accounts: BankAccountInfo[];
 }
 
 interface State {

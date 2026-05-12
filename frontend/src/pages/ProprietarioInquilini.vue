@@ -6,6 +6,14 @@
         <h1 class="vp-display vp-p-inq__titolo">Inquilini</h1>
       </div>
       <div class="vp-p-inq__controls">
+        <q-btn
+          unelevated
+          color="primary"
+          icon="payments"
+          label="Da incassare"
+          no-caps
+          :to="{ name: 'p-da-incassare' }"
+        />
         <div v-if="!mostraTutti" class="vp-p-inq__nav-anno">
           <q-btn
             flat

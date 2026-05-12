@@ -23,6 +23,7 @@ export interface RentRiga {
   giorni_ritardo: number;
   data_pagamento: string | null;
   is_aggiustamento: boolean;
+  bank_account_destinazione_id: number | null;
 }
 
 export interface UtilityLine {
@@ -41,6 +42,7 @@ export interface UtilityRiga {
   stato: string;
   data_pagamento: string | null;
   lines: UtilityLine[];
+  bank_account_destinazione_id: number | null;
 }
 
 export interface ExtraRiga {
@@ -48,8 +50,10 @@ export interface ExtraRiga {
   data: string;
   descrizione: string;
   importo: number;
+  importo_pagato: number;
   scadenza: string | null;
   stato: string;
+  bank_account_destinazione_id: number | null;
 }
 
 export interface QuotaCondominioRiga {

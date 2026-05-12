@@ -274,7 +274,20 @@
             </template>
             <template #body-cell-stato="props">
               <q-td :props="props">
+                <span
+                  v-if="props.row.stato !== 'pagato'"
+                  class="vp-p-id__stato-click"
+                  @click="aprireRegistraPagamento(props.row)"
+                >
+                  <SemaforoBadge
+                    :livello="livelloStato(props.row.stato, props.row.giorni_ritardo)"
+                    :label="props.row.stato"
+                  />
+                  <q-icon name="payments" size="14px" class="vp-p-id__stato-icon" />
+                  <q-tooltip>Registra pagamento</q-tooltip>
+                </span>
                 <SemaforoBadge
+                  v-else
                   :livello="livelloStato(props.row.stato, props.row.giorni_ritardo)"
                   :label="props.row.stato"
                 />
@@ -532,6 +545,15 @@
         </q-tab-panel>
       </q-tab-panels>
     </template>
+
+    <RegistraPagamentoDialog
+      v-if="receivableSelezionato"
+      v-model="dialogPagamento"
+      :receivable="receivableSelezionato"
+      :owner-accounts="contiUtente"
+      :default-owner-account-id="contoDiDefaultUtente"
+      @saved="dopoSalvataggioPagamento"
+    />
   </q-page>
 </template>
 
@@ -541,14 +563,36 @@ import { useRoute, useRouter } from 'vue-router';
 import type { QTableProps } from 'quasar';
 import { useTenantSituazioneStore } from 'stores/tenantSituazione';
 import { useTenantsStore, type Tenant } from 'stores/tenants';
+import { useAuthStore } from 'stores/auth';
+import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
 import KpiCard from 'src/components/KpiCard.vue';
 import SemaforoBadge from 'src/components/SemaforoBadge.vue';
 import type { SemaforoLivello } from 'src/types/semaforo';
 import EmptyState from 'src/components/EmptyState.vue';
+import RegistraPagamentoDialog from 'src/components/RegistraPagamentoDialog.vue';
+
+type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'caparra';
+
+interface ReceivableInput {
+  id: number;
+  causale: CausaleReceivable;
+  importo_dovuto: number;
+  importo_pagato: number;
+  descrizione: string;
+  tenant_nominativo: string;
+  scadenza: string;
+  bank_account_destinazione_id: number | null;
+}
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
 type TipoPagamento = 'rent' | 'utility' | 'extra';
+
+const TIPO_TO_CAUSALE: Record<TipoPagamento, CausaleReceivable> = {
+  rent: 'affitto',
+  utility: 'utenze',
+  extra: 'extra',
+};
 
 interface RigaPagamento {
   rowKey: string;
@@ -560,6 +604,8 @@ interface RigaPagamento {
   stato: string;
   giorni_ritardo: number;
   data_pagamento: string | null;
+  receivable_id: number;
+  bank_account_destinazione_id: number | null;
 }
 
 const route = useRoute();
@@ -627,6 +673,8 @@ const righePagamenti = computed<RigaPagamento[]>(() => {
       stato: r.stato,
       giorni_ritardo: r.giorni_ritardo,
       data_pagamento: r.data_pagamento,
+      receivable_id: r.id,
+      bank_account_destinazione_id: r.bank_account_destinazione_id,
     });
   }
   for (const c of situazione.value.utility.righe) {
@@ -640,6 +688,8 @@ const righePagamenti = computed<RigaPagamento[]>(() => {
       stato: c.stato,
       giorni_ritardo: c.scadenza ? giorniRitardo(c.scadenza) : 0,
       data_pagamento: c.data_pagamento,
+      receivable_id: c.id,
+      bank_account_destinazione_id: c.bank_account_destinazione_id,
     });
   }
   for (const e of situazione.value.extra.righe) {
@@ -648,11 +698,13 @@ const righePagamenti = computed<RigaPagamento[]>(() => {
       tipo: 'extra',
       descrizione: e.descrizione,
       importo_dovuto: e.importo,
-      importo_pagato: 0,
+      importo_pagato: e.importo_pagato ?? 0,
       scadenza: e.scadenza,
       stato: e.stato,
       giorni_ritardo: e.scadenza ? giorniRitardo(e.scadenza) : 0,
       data_pagamento: null,
+      receivable_id: e.id,
+      bank_account_destinazione_id: e.bank_account_destinazione_id,
     });
   }
   out.sort((a, b) => (a.scadenza ?? '').localeCompare(b.scadenza ?? ''));
@@ -747,6 +799,7 @@ function vaiInquilinoSuccessivo(): void {
 onMounted(() => {
   void store.loadSituazione(tenantId.value, annoSelezionato.value);
   void tenantsStore.fetchTenantsAnno(annoSelezionato.value);
+  void contiStore.ensureLoaded();
   aggiornaQuery();
 });
 
@@ -824,6 +877,45 @@ function livelloStato(stato: string, giorni_ritardo: number): SemaforoLivello {
   if (giorni_ritardo > -7) return 'miele';
   return 'salvia';
 }
+
+// --- Registra pagamento (modale su righe in stato atteso) -----------------
+
+const auth = useAuthStore();
+const contiStore = useOwnerBankAccountsStore();
+const tenantCorrente = computed(() => situazione.value?.tenant ?? null);
+
+const dialogPagamento = ref(false);
+const receivableSelezionato = ref<ReceivableInput | null>(null);
+
+function aprireRegistraPagamento(riga: RigaPagamento): void {
+  if (riga.stato === 'pagato') return;
+  const t = tenantCorrente.value;
+  if (!t) return;
+  receivableSelezionato.value = {
+    id: riga.receivable_id,
+    causale: TIPO_TO_CAUSALE[riga.tipo],
+    importo_dovuto: riga.importo_dovuto,
+    importo_pagato: riga.importo_pagato,
+    descrizione: riga.descrizione,
+    tenant_nominativo: t.nominativo,
+    scadenza: riga.scadenza ?? new Date().toISOString().slice(0, 10),
+    bank_account_destinazione_id: riga.bank_account_destinazione_id,
+  };
+  dialogPagamento.value = true;
+}
+
+async function dopoSalvataggioPagamento(): Promise<void> {
+  await store.loadSituazione(tenantId.value, annoSelezionato.value, true);
+}
+
+const contiUtente = computed(() =>
+  contiStore.accounts.length > 0
+    ? contiStore.accounts
+    : (auth.user?.bank_accounts ?? []),
+);
+const contoDiDefaultUtente = computed(
+  () => auth.user?.bank_accounts?.[0]?.id ?? null,
+);
 </script>
 
 <style scoped>
@@ -1001,5 +1093,25 @@ function livelloStato(stato: string, giorni_ritardo: number): SemaforoLivello {
 }
 .vp-p-id__card-info--full {
   grid-column: 1 / -1;
+}
+.vp-p-id__stato-click {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-gap-1);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background-color 120ms;
+}
+.vp-p-id__stato-click:hover {
+  background: var(--vp-paper-2, rgba(0, 0, 0, 0.04));
+}
+.vp-p-id__stato-icon {
+  color: var(--vp-ink-3);
+  opacity: 0.6;
+}
+.vp-p-id__stato-click:hover .vp-p-id__stato-icon {
+  opacity: 1;
+  color: var(--vp-salvia, #4f6e3f);
 }
 </style>

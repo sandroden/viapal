@@ -33,6 +33,12 @@ export interface NuovaSpesa {
   fornitore?: string | undefined;
   metodo_pagamento?: string | undefined;
   note?: string | undefined;
+  anticipata_da_owner?: number | null;
+  // Creazione contestuale BankTransaction in uscita
+  crea_bank_transaction?: boolean;
+  bt_owner_account?: number | null;
+  bt_data?: string;
+  bt_descrizione?: string;
 }
 
 interface State {

@@ -171,6 +171,52 @@
             <q-input v-model="form.categoria" outlined label="Categoria" />
             <q-input v-model="form.fornitore" outlined label="Fornitore" />
             <q-input v-model="form.note" outlined type="textarea" label="Note" autogrow />
+
+            <q-separator />
+            <div class="vp-p-spese__bt-sezione">
+              <q-toggle
+                v-model="form.crea_bank_transaction"
+                label="Crea anche movimento banca"
+              />
+              <div
+                v-if="form.crea_bank_transaction && contiUtente.length > 0"
+                class="vp-p-spese__bt-campi"
+              >
+                <q-select
+                  v-model="form.bt_owner_account"
+                  :options="opzioniContiBT"
+                  option-label="label"
+                  option-value="value"
+                  emit-value
+                  map-options
+                  outlined
+                  dense
+                  label="Conto da cui esce"
+                />
+                <q-input
+                  v-model="form.bt_data"
+                  type="date"
+                  outlined
+                  dense
+                  label="Data movimento"
+                />
+                <q-input
+                  v-model="form.bt_descrizione"
+                  outlined
+                  dense
+                  label="Descrizione movimento (opzionale)"
+                  :placeholder="form.descrizione"
+                />
+              </div>
+              <q-banner
+                v-if="form.crea_bank_transaction && contiUtente.length === 0"
+                class="bg-amber-1 text-amber-9"
+                rounded
+              >
+                Nessun conto bancario configurato: impossibile creare il movimento.
+              </q-banner>
+            </div>
+
             <q-banner v-if="errore" class="bg-red-1 text-red-9" rounded>{{ errore }}</q-banner>
           </q-form>
         </q-card-section>
@@ -195,6 +241,8 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import type { QTableProps } from 'quasar';
 import { Notify } from 'quasar';
 import { useExpensesStore, type Expense, type NuovaSpesa } from 'stores/expenses';
+import { useAuthStore } from 'stores/auth';
+import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 import BarChartAnni from 'src/components/BarChartAnni.vue';
@@ -202,6 +250,8 @@ import PdfDialog from 'src/components/PdfDialog.vue';
 import PdfIconButton from 'src/components/PdfIconButton.vue';
 
 const store = useExpensesStore();
+const auth = useAuthStore();
+const contiStore = useOwnerBankAccountsStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
 
@@ -209,14 +259,50 @@ const dialogAperto = ref(false);
 const loadingSalva = ref(false);
 const errore = ref('');
 
-const form = reactive<NuovaSpesa>({
+const contiUtente = computed(() =>
+  contiStore.accounts.length > 0
+    ? contiStore.accounts
+    : (auth.user?.bank_accounts ?? []),
+);
+const opzioniContiBT = computed(() =>
+  contiUtente.value.map((a) => ({
+    value: a.id,
+    label: `${a.banca} — ${a.intestatario} (…${a.iban.slice(-4)})`,
+  })),
+);
+const contoDefaultBT = computed(
+  () => auth.user?.bank_accounts?.[0]?.id ?? contiUtente.value[0]?.id ?? null,
+);
+
+interface FormSpesa extends NuovaSpesa {
+  crea_bank_transaction: boolean;
+  bt_owner_account: number | null;
+  bt_data: string;
+  bt_descrizione: string;
+}
+
+const form = reactive<FormSpesa>({
   data: new Date().toISOString().slice(0, 10),
   descrizione: '',
   importo: 0,
   categoria: '',
   fornitore: '',
   note: '',
+  crea_bank_transaction: true,
+  bt_owner_account: contoDefaultBT.value,
+  bt_data: new Date().toISOString().slice(0, 10),
+  bt_descrizione: '',
 });
+
+watch(contoDefaultBT, (id) => {
+  if (form.bt_owner_account == null) form.bt_owner_account = id;
+});
+watch(
+  () => form.data,
+  (d) => {
+    if (d) form.bt_data = d;
+  },
+);
 
 const colonne: QTableProps['columns'] = [
   { name: 'data', label: 'Data', field: 'data', align: 'left', sortable: true },
@@ -412,6 +498,7 @@ const storicoRows = computed<StoricoRow[]>(() => {
 
 onMounted(() => {
   void store.fetchExpenses();
+  void contiStore.ensureLoaded();
 });
 
 function ricarica() {
@@ -429,16 +516,28 @@ async function salva() {
     errore.value = 'Compila i campi obbligatori';
     return;
   }
+  if (form.crea_bank_transaction && !form.bt_owner_account) {
+    errore.value = 'Seleziona il conto da cui esce il movimento.';
+    return;
+  }
   loadingSalva.value = true;
   try {
-    await store.creaSpesa({
+    const payload: NuovaSpesa = {
       data: form.data,
       descrizione: form.descrizione,
       importo: form.importo,
       categoria: form.categoria || undefined,
       fornitore: form.fornitore || undefined,
       note: form.note || undefined,
-    });
+      anticipata_da_owner: auth.user?.owner_profile_id ?? null,
+      crea_bank_transaction: form.crea_bank_transaction,
+    };
+    if (form.crea_bank_transaction) {
+      payload.bt_owner_account = form.bt_owner_account;
+      payload.bt_data = form.bt_data || form.data;
+      payload.bt_descrizione = form.bt_descrizione || form.descrizione;
+    }
+    await store.creaSpesa(payload);
     Notify.create({ type: 'positive', message: 'Spesa salvata', icon: 'check_circle' });
     dialogAperto.value = false;
     Object.assign(form, {
@@ -448,6 +547,10 @@ async function salva() {
       categoria: '',
       fornitore: '',
       note: '',
+      crea_bank_transaction: true,
+      bt_owner_account: contoDefaultBT.value,
+      bt_data: new Date().toISOString().slice(0, 10),
+      bt_descrizione: '',
     });
   } catch (e: unknown) {
     const msg =
@@ -569,6 +672,18 @@ async function salva() {
 .vp-p-spese__dialog-titolo {
   font-size: var(--vp-text-xl);
   margin: var(--vp-gap-1) 0 0;
+}
+.vp-p-spese__bt-sezione {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-gap-2);
+}
+.vp-p-spese__bt-campi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-gap-2);
+  padding-left: var(--vp-gap-3);
+  border-left: 2px solid var(--vp-paper-3);
 }
 .vp-mono {
   font-variant-numeric: tabular-nums;
