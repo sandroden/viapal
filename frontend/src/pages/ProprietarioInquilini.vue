@@ -57,6 +57,7 @@
       bordered
       :rows="righe"
       :columns="colonne"
+      :visible-columns="colonneVisibili"
       row-key="id"
       :loading="caricamento"
       :pagination="paginazione"
@@ -78,7 +79,7 @@
             color="primary"
             no-caps
             label="Dettaglio"
-            @click.stop="apri(props.row)"
+            @click.stop="apri(props.row, 'profilo')"
           />
         </q-td>
       </template>
@@ -128,24 +129,25 @@ const caricamento = computed<boolean>(() =>
     : Boolean(store.loadingAnno[annoSelezionato.value]),
 );
 
-const colonne = computed<QTableProps['columns']>(() => {
-  const base: QTableProps['columns'] = [
-    { name: 'nominativo', label: 'Nominativo', field: 'nominativo', align: 'left', sortable: true },
-    { name: 'email', label: 'Email', field: 'email', align: 'left', sortable: true },
-    { name: 'telefono', label: 'Telefono', field: 'telefono', align: 'left' },
-  ];
-  if (!mostraTutti.value) {
-    base.push({
-      name: 'saldo',
-      label: `Saldo ${annoSelezionato.value}`,
-      field: (r: Tenant) => r.saldo ?? null,
-      align: 'right',
-      sortable: true,
-      sort: (a: number | null, b: number | null) => (a ?? 0) - (b ?? 0),
-    });
-  }
-  base.push({ name: 'azioni', label: '', field: 'id', align: 'right' });
-  return base;
+const colonne: QTableProps['columns'] = [
+  { name: 'nominativo', label: 'Nominativo', field: 'nominativo', align: 'left', sortable: true },
+  { name: 'email', label: 'Email', field: 'email', align: 'left', sortable: true },
+  { name: 'telefono', label: 'Telefono', field: 'telefono', align: 'left' },
+  {
+    name: 'saldo',
+    label: 'Saldo',
+    field: 'saldo',
+    align: 'right',
+    sortable: true,
+    sort: (a: number | null, b: number | null) => (a ?? 0) - (b ?? 0),
+  },
+  { name: 'azioni', label: '', field: 'id', align: 'right' },
+];
+
+const colonneVisibili = computed<string[]>(() => {
+  const v = ['nominativo', 'email', 'telefono', 'azioni'];
+  if (!mostraTutti.value) v.splice(3, 0, 'saldo');
+  return v;
 });
 
 function classeSaldo(s: number | null | undefined): string {
@@ -189,8 +191,8 @@ watch(
   { immediate: true },
 );
 
-function apri(t: Tenant) {
-  const q: Record<string, string> = {};
+function apri(t: Tenant, tab: 'pagamenti' | 'profilo' = 'pagamenti') {
+  const q: Record<string, string> = { tab };
   if (!mostraTutti.value) q.anno = String(annoSelezionato.value);
   void router.push({
     name: 'p-inquilino-dettaglio',
