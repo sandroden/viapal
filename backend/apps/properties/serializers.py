@@ -27,6 +27,7 @@ class TenantProfileSerializer(serializers.ModelSerializer):
     frequenza_conguagli_display = serializers.CharField(
         source="get_frequenza_conguagli_display", read_only=True
     )
+    saldo = serializers.SerializerMethodField()
 
     class Meta:
         model = TenantProfile
@@ -46,7 +47,14 @@ class TenantProfileSerializer(serializers.ModelSerializer):
             "data_versamento_deposito",
             "deposito_restituito",
             "data_restituzione_deposito",
+            "saldo",
         ]
+
+    def get_saldo(self, obj):
+        saldi = self.context.get("saldi_anno")
+        if saldi is None:
+            return None
+        return saldi.get(obj.id, 0.0)
 
 
 class RoomSerializer(serializers.ModelSerializer):

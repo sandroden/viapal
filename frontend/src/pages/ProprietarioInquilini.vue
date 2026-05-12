@@ -64,6 +64,11 @@
       class="vp-p-inq__table"
       @row-click="(_, riga: Tenant) => apri(riga)"
     >
+      <template #body-cell-saldo="props">
+        <q-td :props="props" class="vp-mono vp-p-inq__saldo" :class="classeSaldo(props.row.saldo)">
+          {{ props.row.saldo === null || props.row.saldo === undefined ? '—' : formattaEuro(props.row.saldo) }}
+        </q-td>
+      </template>
       <template #body-cell-azioni="props">
         <q-td :props="props" auto-width>
           <q-btn
@@ -86,6 +91,9 @@ import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { QTableProps } from 'quasar';
 import { useTenantsStore, type Tenant } from 'stores/tenants';
+import { useFormatoEuro } from 'src/composables/useFormatoEuro';
+
+const { formattaEuro } = useFormatoEuro();
 
 const router = useRouter();
 const route = useRoute();
@@ -120,12 +128,32 @@ const caricamento = computed<boolean>(() =>
     : Boolean(store.loadingAnno[annoSelezionato.value]),
 );
 
-const colonne: QTableProps['columns'] = [
-  { name: 'nominativo', label: 'Nominativo', field: 'nominativo', align: 'left', sortable: true },
-  { name: 'email', label: 'Email', field: 'email', align: 'left', sortable: true },
-  { name: 'telefono', label: 'Telefono', field: 'telefono', align: 'left' },
-  { name: 'azioni', label: '', field: 'id', align: 'right' },
-];
+const colonne = computed<QTableProps['columns']>(() => {
+  const base: QTableProps['columns'] = [
+    { name: 'nominativo', label: 'Nominativo', field: 'nominativo', align: 'left', sortable: true },
+    { name: 'email', label: 'Email', field: 'email', align: 'left', sortable: true },
+    { name: 'telefono', label: 'Telefono', field: 'telefono', align: 'left' },
+  ];
+  if (!mostraTutti.value) {
+    base.push({
+      name: 'saldo',
+      label: `Saldo ${annoSelezionato.value}`,
+      field: (r: Tenant) => r.saldo ?? null,
+      align: 'right',
+      sortable: true,
+      sort: (a: number | null, b: number | null) => (a ?? 0) - (b ?? 0),
+    });
+  }
+  base.push({ name: 'azioni', label: '', field: 'id', align: 'right' });
+  return base;
+});
+
+function classeSaldo(s: number | null | undefined): string {
+  if (s === null || s === undefined) return '';
+  if (s < -0.005) return 'vp-p-inq__saldo--neg';
+  if (s > 0.005) return 'vp-p-inq__saldo--pos';
+  return 'vp-p-inq__saldo--zero';
+}
 
 const paginazione = { rowsPerPage: 25, sortBy: 'nominativo' };
 
@@ -202,5 +230,18 @@ function apri(t: Tenant) {
 .vp-p-inq__table {
   background: var(--vp-cream);
   border-color: var(--vp-paper-3) !important;
+}
+.vp-p-inq__saldo--neg {
+  color: var(--vp-terra, #b56a3b);
+  font-weight: 600;
+}
+.vp-p-inq__saldo--pos {
+  color: var(--vp-salvia, #4f6e3f);
+}
+.vp-p-inq__saldo--zero {
+  color: var(--vp-ink-3);
+}
+.vp-mono {
+  font-variant-numeric: tabular-nums;
 }
 </style>

@@ -15,6 +15,7 @@ export interface Tenant {
   data_versamento_deposito?: string | null;
   deposito_restituito?: string | null;
   data_restituzione_deposito?: string | null;
+  saldo?: number | null;
 }
 
 interface State {

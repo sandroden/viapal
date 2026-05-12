@@ -2,8 +2,10 @@
 ViewSet per l'app properties.
 """
 import datetime
+from decimal import Decimal
 
-from django.db.models import Q
+from django.db.models import Q, Sum
+from django.db.models.functions import Coalesce
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from accounts.permissions import IsProprietario, IsInquilinoSelf
@@ -58,6 +60,7 @@ class TenantProfileViewSet(ReadOnlyModelViewSet):
             except (TypeError, ValueError):
                 anno = None
             if anno is not None:
+                self._anno_filtro = anno
                 inizio = datetime.date(anno, 1, 1)
                 fine = datetime.date(anno, 12, 31)
                 return qs.filter(
@@ -78,6 +81,35 @@ class TenantProfileViewSet(ReadOnlyModelViewSet):
             Q(assignments__valid_to__isnull=True)
             | Q(assignments__valid_to__gt=oggi)
         ).distinct()
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        anno = getattr(self, "_anno_filtro", None)
+        if anno is not None:
+            from billing.models import Receivable
+
+            tenant_ids = list(self.filter_queryset(self.get_queryset()).values_list("id", flat=True))
+            if tenant_ids:
+                agg = (
+                    Receivable.objects
+                    .filter(
+                        assignment__tenant_id__in=tenant_ids,
+                        competenza_da__year=anno,
+                    )
+                    .exclude(causale=Receivable.Causale.CAPARRA)
+                    .values("assignment__tenant_id")
+                    .annotate(
+                        dovuto=Coalesce(Sum("importo_dovuto"), Decimal("0")),
+                        pagato=Coalesce(Sum("importo_pagato"), Decimal("0")),
+                    )
+                )
+                ctx["saldi_anno"] = {
+                    row["assignment__tenant_id"]: float(row["pagato"] - row["dovuto"])
+                    for row in agg
+                }
+            else:
+                ctx["saldi_anno"] = {}
+        return ctx
 
 
 class RoomViewSet(ReadOnlyModelViewSet):
