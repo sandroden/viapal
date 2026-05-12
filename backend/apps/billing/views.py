@@ -34,6 +34,7 @@ from billing.serializers import (
     ExpenseSerializer,
     ExtraChargeSerializer,
     ReceivableForReconcileSerializer,
+    RegistraPagamentoInputSerializer,
     RentPaymentSerializer,
     UtilityBillSerializer,
     UtilityChargePeriodSerializer,
@@ -292,7 +293,13 @@ class UtilityBillViewSet(ModelViewSet):
 
 
 class ExpenseViewSet(ModelViewSet):
-    """Spese immobile. Solo proprietari (full CRUD)."""
+    """Spese immobile. Solo proprietari (full CRUD).
+
+    In creazione accetta i campi extra ``crea_bank_transaction``,
+    ``bt_owner_account``, ``bt_data``, ``bt_descrizione`` (vedi
+    ``ExpenseSerializer``) per registrare contestualmente il movimento bancario
+    in uscita corrispondente. La BT non ha legame strutturale con la Expense;
+    l'allineamento è implicito (stessa data e importo opposto)."""
 
     serializer_class = ExpenseSerializer
     permission_classes = [IsProprietario]
@@ -300,6 +307,29 @@ class ExpenseViewSet(ModelViewSet):
         "category", "supplier", "anticipata_da_owner",
         "riferimento_quota_owner", "utility_bill",
     ).order_by("-data")
+
+    def perform_create(self, serializer):
+        validated = serializer.validated_data
+        crea_bt = validated.pop("crea_bank_transaction", True)
+        bt_owner_account_id = validated.pop("bt_owner_account", None)
+        bt_data = validated.pop("bt_data", None)
+        bt_descrizione = validated.pop("bt_descrizione", "") or ""
+
+        with transaction.atomic():
+            expense = serializer.save()
+            if crea_bt and bt_owner_account_id:
+                from properties.models import OwnerBankAccount
+                account = OwnerBankAccount.objects.get(pk=bt_owner_account_id)
+                BankTransaction.objects.create(
+                    data=bt_data or expense.data,
+                    descrizione=bt_descrizione or (
+                        expense.descrizione or
+                        (expense.category.nome if expense.category else "Spesa")
+                    ),
+                    importo=-expense.importo,
+                    owner_account=account,
+                    note="",
+                )
 
 
 class BankTransactionViewSet(ReadOnlyModelViewSet):
@@ -597,4 +627,89 @@ class ReconciliationBulkView(APIView):
         return Response(
             {"bank_transactions": bt_data, "receivables": rec_data},
             status=status.HTTP_200_OK,
+        )
+
+
+class RegistraPagamentoReceivableView(APIView):
+    """POST /api/v1/receivables/<pk>/registra-pagamento/
+
+    Inserimento veloce di un pagamento ricevuto dal proprietario senza passare
+    dall'admin: data + importo + conto. Crea atomicamente:
+
+    1. ``BankTransaction`` in entrata sul conto indicato;
+    2. ``BankTransactionAllocation`` che lega BT al Receivable.
+
+    Se l'importo è maggiore del residuo del Receivable, alloca solo il residuo
+    e lascia la differenza sulla BT (visibile come "parziale" in
+    riconciliazione). Se è minore, alloca tutto: il Receivable resta atteso.
+    """
+
+    permission_classes = [IsProprietario]
+
+    def post(self, request, pk):
+        try:
+            receivable = Receivable.objects.get(pk=pk)
+        except Receivable.DoesNotExist:
+            return Response(
+                {"detail": "Receivable non trovato."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if receivable.stato == StatoPagamento.PAGATO:
+            return Response(
+                {"detail": "Receivable già pagato."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        serializer = RegistraPagamentoInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        v = serializer.validated_data
+
+        allocato_attuale = (
+            receivable.allocations.aggregate(tot=Sum("importo"))["tot"] or Decimal("0")
+        )
+        residuo = receivable.importo_dovuto - allocato_attuale
+        if residuo <= 0:
+            return Response(
+                {"detail": "Receivable già completamente allocato."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        quota = min(v["importo"], residuo)
+
+        with transaction.atomic():
+            bt = BankTransaction.objects.create(
+                data=v["data"],
+                descrizione=v["descrizione"] or "",
+                importo=v["importo"],
+                owner_account=v["owner_account"],
+                note=v.get("note", "") or "",
+            )
+            BankTransactionAllocation.objects.create(
+                bank_transaction=bt,
+                receivable=receivable,
+                importo=quota,
+            )
+            _riallinea_receivable(receivable.id)
+
+        bt_qs = (
+            BankTransaction.objects.filter(pk=bt.pk)
+            .select_related("owner_account__owner")
+            .prefetch_related(
+                "allocations__receivable__assignment__tenant",
+                "allocations__receivable__utility_period",
+            )
+        )
+        bt_data = BankTransactionSerializer(bt_qs.first()).data
+
+        rec_qs = (
+            Receivable.objects.filter(pk=receivable.pk)
+            .select_related("assignment__tenant", "utility_period")
+            .annotate(_alloc=Sum("allocations__importo"))
+        )
+        rec_data = ReceivableForReconcileSerializer(rec_qs.first()).data
+
+        return Response(
+            {"bank_transaction": bt_data, "receivable": rec_data},
+            status=status.HTTP_201_CREATED,
         )

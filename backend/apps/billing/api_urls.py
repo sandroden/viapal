@@ -10,6 +10,7 @@ from billing.views import (
     ExtraChargeViewSet,
     ReceivableViewSet,
     ReconciliationBulkView,
+    RegistraPagamentoReceivableView,
     RentPaymentViewSet,
     UtilityBillViewSet,
     UtilityChargeViewSet,
@@ -31,5 +32,10 @@ urlpatterns = router.urls + [
         "reconciliations/",
         ReconciliationBulkView.as_view(),
         name="reconciliations-bulk",
+    ),
+    path(
+        "receivables/<int:pk>/registra-pagamento/",
+        RegistraPagamentoReceivableView.as_view(),
+        name="receivable-registra-pagamento",
     ),
 ]

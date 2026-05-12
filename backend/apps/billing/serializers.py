@@ -246,6 +246,20 @@ class ExpenseSerializer(serializers.ModelSerializer):
     )
     file_pdf = serializers.SerializerMethodField()
 
+    # Campi write-only opzionali per creare contestualmente la BankTransaction
+    # in uscita corrispondente alla spesa. Non sono persistiti sulla Expense:
+    # il ViewSet li consuma in `perform_create` per istanziare la BT.
+    crea_bank_transaction = serializers.BooleanField(
+        write_only=True, required=False, default=True,
+    )
+    bt_owner_account = serializers.IntegerField(
+        write_only=True, required=False, allow_null=True,
+    )
+    bt_data = serializers.DateField(write_only=True, required=False, allow_null=True)
+    bt_descrizione = serializers.CharField(
+        write_only=True, required=False, allow_blank=True, max_length=300,
+    )
+
     class Meta:
         model = Expense
         fields = [
@@ -267,6 +281,10 @@ class ExpenseSerializer(serializers.ModelSerializer):
             "bolletta_prodotto",
             "bolletta_consumo",
             "file_pdf",
+            "crea_bank_transaction",
+            "bt_owner_account",
+            "bt_data",
+            "bt_descrizione",
         ]
 
     def get_file_pdf(self, obj):
@@ -276,6 +294,35 @@ class ExpenseSerializer(serializers.ModelSerializer):
         # URL relativo (/media/...) → il frontend lo carica nella sua origine
         # via proxy, stesso-origin per l'iframe (no X-Frame-Options issue).
         return bolletta.file_pdf.url
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs.get("crea_bank_transaction", True):
+            from properties.models import OwnerBankAccount
+            account_id = attrs.get("bt_owner_account")
+            if not account_id:
+                raise serializers.ValidationError({
+                    "bt_owner_account": "Specificare il conto su cui registrare l'uscita."
+                })
+            try:
+                account = OwnerBankAccount.objects.get(pk=account_id)
+            except OwnerBankAccount.DoesNotExist:
+                raise serializers.ValidationError({
+                    "bt_owner_account": "Conto inesistente."
+                })
+            if not account.attivo:
+                raise serializers.ValidationError({
+                    "bt_owner_account": "Conto non attivo."
+                })
+            anticipante = attrs.get("anticipata_da_owner")
+            if anticipante and account.owner_id != anticipante.id:
+                raise serializers.ValidationError({
+                    "bt_owner_account": (
+                        "Il conto non appartiene al proprietario che anticipa "
+                        "la spesa."
+                    ),
+                })
+        return attrs
 
 
 class ExtraChargeSerializer(serializers.ModelSerializer):
@@ -409,6 +456,7 @@ class ReceivableForReconcileSerializer(serializers.ModelSerializer):
             "stato",
             "stato_display",
             "allocations",
+            "bank_account_destinazione",
         ]
 
     def get_allocations(self, r: Receivable) -> list[dict]:
@@ -445,3 +493,35 @@ class ReceivableForReconcileSerializer(serializers.ModelSerializer):
     def get_residuo(self, r: Receivable):
         allocato = self.get_importo_allocato(r) or 0
         return r.importo_dovuto - allocato
+
+
+class RegistraPagamentoInputSerializer(serializers.Serializer):
+    """Input per POST /api/v1/receivables/{id}/registra-pagamento/.
+
+    Riceve i dati di un bonifico in entrata appena ricevuto dal proprietario e
+    li trasforma in BankTransaction + BankTransactionAllocation legate al
+    Receivable corrente. Validazioni dell'`owner_account` (deve essere attivo)
+    e dell'`importo` (positivo) sono qui; il fatto che il Receivable non sia
+    già PAGATO è verificato dalla view perché dipende dall'istanza caricata.
+    """
+
+    data = serializers.DateField()
+    importo = serializers.DecimalField(max_digits=10, decimal_places=2)
+    owner_account = serializers.IntegerField()
+    descrizione = serializers.CharField(allow_blank=True, max_length=300, default="")
+    note = serializers.CharField(allow_blank=True, required=False, default="")
+
+    def validate_importo(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("L'importo deve essere positivo.")
+        return value
+
+    def validate_owner_account(self, value):
+        from properties.models import OwnerBankAccount
+        try:
+            acct = OwnerBankAccount.objects.get(pk=value)
+        except OwnerBankAccount.DoesNotExist:
+            raise serializers.ValidationError("Conto inesistente.")
+        if not acct.attivo:
+            raise serializers.ValidationError("Il conto selezionato non è attivo.")
+        return acct

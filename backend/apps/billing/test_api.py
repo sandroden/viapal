@@ -1053,3 +1053,280 @@ class TestReceivableViewSet:
     def test_inquilino_403(self, client_inq_1):
         resp = client_inq_1.get("/api/v1/receivables/")
         assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Test endpoint POST /api/v1/receivables/<pk>/registra-pagamento/
+# ---------------------------------------------------------------------------
+
+
+class TestRegistraPagamentoReceivable:
+    def _url(self, pk):
+        return f"/api/v1/receivables/{pk}/registra-pagamento/"
+
+    def test_importo_uguale_dovuto_paga_completamente(
+        self, client_prop, rent_payment_1, owner_account
+    ):
+        resp = client_prop.post(
+            self._url(rent_payment_1.id),
+            {
+                "data": "2026-05-03",
+                "importo": "400.00",
+                "owner_account": owner_account.id,
+                "descrizione": "Bonifico Inquilino 1 - affitto Mag 2026",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        rent_payment_1.refresh_from_db()
+        assert rent_payment_1.stato == StatoPagamento.PAGATO
+        assert rent_payment_1.importo_pagato == Decimal("400.00")
+        body = resp.json()
+        assert body["bank_transaction"]["importo"] == "400.00"
+        assert body["bank_transaction"]["stato_riconciliazione"] == "pieno"
+
+    def test_importo_minore_dovuto_resta_atteso_parziale(
+        self, client_prop, rent_payment_1, owner_account
+    ):
+        resp = client_prop.post(
+            self._url(rent_payment_1.id),
+            {
+                "data": "2026-05-03",
+                "importo": "250.00",
+                "owner_account": owner_account.id,
+                "descrizione": "Acconto",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        rent_payment_1.refresh_from_db()
+        assert rent_payment_1.stato == StatoPagamento.ATTESO
+        assert rent_payment_1.importo_pagato == Decimal("250.00")
+        body = resp.json()
+        assert body["bank_transaction"]["stato_riconciliazione"] == "pieno"
+
+    def test_importo_maggiore_dovuto_bt_ha_residuo(
+        self, client_prop, rent_payment_1, owner_account
+    ):
+        resp = client_prop.post(
+            self._url(rent_payment_1.id),
+            {
+                "data": "2026-05-03",
+                "importo": "500.00",
+                "owner_account": owner_account.id,
+                "descrizione": "Bonifico tondo",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        rent_payment_1.refresh_from_db()
+        assert rent_payment_1.stato == StatoPagamento.PAGATO
+        body = resp.json()
+        assert body["bank_transaction"]["importo"] == "500.00"
+        assert Decimal(body["bank_transaction"]["importo_allocato"]) == Decimal("400.00")
+        assert Decimal(body["bank_transaction"]["residuo"]) == Decimal("100.00")
+        assert body["bank_transaction"]["stato_riconciliazione"] == "parziale"
+
+    def test_receivable_gia_pagato_409(
+        self, client_prop, rent_payment_1, owner_account
+    ):
+        rent_payment_1.stato = StatoPagamento.PAGATO
+        rent_payment_1.save(update_fields=["stato"])
+        resp = client_prop.post(
+            self._url(rent_payment_1.id),
+            {
+                "data": "2026-05-03",
+                "importo": "400.00",
+                "owner_account": owner_account.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 409
+
+    def test_owner_account_inattivo_400(
+        self, client_prop, rent_payment_1, owner_account
+    ):
+        owner_account.attivo = False
+        owner_account.save(update_fields=["attivo"])
+        resp = client_prop.post(
+            self._url(rent_payment_1.id),
+            {
+                "data": "2026-05-03",
+                "importo": "400.00",
+                "owner_account": owner_account.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_importo_zero_400(
+        self, client_prop, rent_payment_1, owner_account
+    ):
+        resp = client_prop.post(
+            self._url(rent_payment_1.id),
+            {
+                "data": "2026-05-03",
+                "importo": "0",
+                "owner_account": owner_account.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_receivable_inesistente_404(self, client_prop, owner_account):
+        resp = client_prop.post(
+            self._url(99999),
+            {
+                "data": "2026-05-03",
+                "importo": "100.00",
+                "owner_account": owner_account.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 404
+
+    def test_inquilino_403(self, client_inq_1, rent_payment_1, owner_account):
+        resp = client_inq_1.post(
+            self._url(rent_payment_1.id),
+            {
+                "data": "2026-05-03",
+                "importo": "400.00",
+                "owner_account": owner_account.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 403
+
+    def test_utility_receivable(
+        self, client_prop, charge_1, owner_account
+    ):
+        """L'endpoint funziona anche su Receivable causale=utenze."""
+        resp = client_prop.post(
+            self._url(charge_1.id),
+            {
+                "data": "2026-05-10",
+                "importo": "45.00",
+                "owner_account": owner_account.id,
+                "descrizione": "Bonifico utenze",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        charge_1.refresh_from_db()
+        assert charge_1.stato == StatoPagamento.PAGATO
+
+    def test_extra_receivable(
+        self, client_prop, extra_charge_1, owner_account
+    ):
+        """Anche su Receivable causale=extra."""
+        resp = client_prop.post(
+            self._url(extra_charge_1.id),
+            {
+                "data": "2026-05-15",
+                "importo": "50.00",
+                "owner_account": owner_account.id,
+                "descrizione": "Bonifico extra",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        extra_charge_1.refresh_from_db()
+        assert extra_charge_1.stato == StatoPagamento.PAGATO
+
+
+# ---------------------------------------------------------------------------
+# Test ExpenseSerializer: creazione contestuale BankTransaction in uscita
+# ---------------------------------------------------------------------------
+
+
+class TestExpenseCreaBT:
+    URL = "/api/v1/expenses/"
+
+    @pytest.fixture
+    def expense_category(self, db):
+        from billing.models import ExpenseCategory
+        return ExpenseCategory.objects.create(nome="Manutenzione", codice="MAN")
+
+    def test_default_crea_bank_transaction(
+        self, client_prop, owner_account, expense_category, owner_prop
+    ):
+        from billing.models import BankTransaction
+        resp = client_prop.post(
+            self.URL,
+            {
+                "data": "2026-05-10",
+                "category": expense_category.id,
+                "importo": "120.50",
+                "descrizione": "Riparazione caldaia",
+                "anticipata_da_owner": owner_prop.id,
+                "bt_owner_account": owner_account.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        # BT creata in uscita (importo negativo)
+        bts = list(BankTransaction.objects.filter(owner_account=owner_account))
+        assert len(bts) == 1
+        assert bts[0].importo == Decimal("-120.50")
+        assert bts[0].data == datetime.date(2026, 5, 10)
+        assert "caldaia" in bts[0].descrizione.lower()
+
+    def test_flag_off_no_bt(
+        self, client_prop, owner_account, expense_category, owner_prop
+    ):
+        from billing.models import BankTransaction
+        resp = client_prop.post(
+            self.URL,
+            {
+                "data": "2026-05-10",
+                "category": expense_category.id,
+                "importo": "50.00",
+                "descrizione": "Spesa senza BT",
+                "anticipata_da_owner": owner_prop.id,
+                "crea_bank_transaction": False,
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        assert not BankTransaction.objects.filter(owner_account=owner_account).exists()
+
+    def test_conto_di_owner_diverso_400(
+        self, client_prop, expense_category, owner_prop, user_inq_2
+    ):
+        from properties.models import OwnerBankAccount
+        altro = OwnerProfile.objects.create(user=user_inq_2, nominativo="Altro Owner")
+        conto_altrui = OwnerBankAccount.objects.create(
+            owner=altro,
+            banca="Altra Banca",
+            intestatario="Altro Owner",
+            iban="IT99X0000000000000000000099",
+        )
+        resp = client_prop.post(
+            self.URL,
+            {
+                "data": "2026-05-10",
+                "category": expense_category.id,
+                "importo": "50.00",
+                "descrizione": "Spesa mal indirizzata",
+                "anticipata_da_owner": owner_prop.id,
+                "bt_owner_account": conto_altrui.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_flag_on_senza_conto_400(
+        self, client_prop, expense_category, owner_prop
+    ):
+        resp = client_prop.post(
+            self.URL,
+            {
+                "data": "2026-05-10",
+                "category": expense_category.id,
+                "importo": "50.00",
+                "descrizione": "Senza conto",
+                "anticipata_da_owner": owner_prop.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400

@@ -694,6 +694,7 @@ class TenantSituazioneView(APIView):
                 "giorni_ritardo": giorni,
                 "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
                 "is_aggiustamento": r.is_aggiustamento,
+                "bank_account_destinazione_id": r.bank_account_destinazione_id,
             })
             rent_dovuto += r.importo_dovuto
             if r.importo_pagato:
@@ -742,6 +743,7 @@ class TenantSituazioneView(APIView):
                 "stato": r.stato,
                 "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
                 "lines": lines,
+                "bank_account_destinazione_id": r.bank_account_destinazione_id,
             })
             utility_dovuto += r.importo_dovuto
             if r.importo_pagato:
@@ -764,8 +766,10 @@ class TenantSituazioneView(APIView):
                 "data": r.competenza_da.isoformat(),
                 "descrizione": r.descrizione,
                 "importo": float(r.importo_dovuto),
+                "importo_pagato": float(r.importo_pagato or 0),
                 "scadenza": r.scadenza.isoformat() if r.scadenza else None,
                 "stato": r.stato,
+                "bank_account_destinazione_id": r.bank_account_destinazione_id,
             })
             extra_totale += r.importo_dovuto
 
