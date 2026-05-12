@@ -702,7 +702,7 @@ const righePagamenti = computed<RigaPagamento[]>(() => {
       scadenza: e.scadenza,
       stato: e.stato,
       giorni_ritardo: e.scadenza ? giorniRitardo(e.scadenza) : 0,
-      data_pagamento: null,
+      data_pagamento: e.data_pagamento,
       receivable_id: e.id,
       bank_account_destinazione_id: e.bank_account_destinazione_id,
     });

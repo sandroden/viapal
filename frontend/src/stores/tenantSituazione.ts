@@ -53,6 +53,7 @@ export interface ExtraRiga {
   importo_pagato: number;
   scadenza: string | null;
   stato: string;
+  data_pagamento: string | null;
   bank_account_destinazione_id: number | null;
 }
 
@@ -94,6 +95,8 @@ export interface TenantSituazione {
   };
   extra: {
     totale_anno: number;
+    pagato_anno: number;
+    saldo: number;
     righe: ExtraRiga[];
   };
   totali_anno: {

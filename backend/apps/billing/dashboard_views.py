@@ -760,6 +760,7 @@ class TenantSituazioneView(APIView):
         )
         extra_righe = []
         extra_totale = Decimal("0")
+        extra_pagato = Decimal("0")
         for r in extra_qs:
             extra_righe.append({
                 "id": r.id,
@@ -769,9 +770,12 @@ class TenantSituazioneView(APIView):
                 "importo_pagato": float(r.importo_pagato or 0),
                 "scadenza": r.scadenza.isoformat() if r.scadenza else None,
                 "stato": r.stato,
+                "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
                 "bank_account_destinazione_id": r.bank_account_destinazione_id,
             })
             extra_totale += r.importo_dovuto
+            if r.importo_pagato:
+                extra_pagato += r.importo_pagato
 
         # Ritardo medio (giorni positivi su rent pagati nell'anno)
         ritardi_giorni = []
@@ -787,7 +791,7 @@ class TenantSituazioneView(APIView):
         )
 
         totale_dovuto = rent_dovuto + utility_dovuto + extra_totale
-        totale_pagato = rent_pagato + utility_pagato
+        totale_pagato = rent_pagato + utility_pagato + extra_pagato
 
         # Quota condominio: dal contratto attivo
         contract_attivo = (
@@ -850,6 +854,8 @@ class TenantSituazioneView(APIView):
             },
             "extra": {
                 "totale_anno": float(extra_totale),
+                "pagato_anno": float(extra_pagato),
+                "saldo": float(extra_pagato - extra_totale),
                 "righe": extra_righe,
             },
             "totali_anno": {
