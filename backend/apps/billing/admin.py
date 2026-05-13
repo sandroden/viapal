@@ -696,6 +696,105 @@ class AnnualUtilityCostAdmin(ModalEditMixin, JumboModelAdmin):
 # ---------------------------------------------------------------------------
 
 
+@admin.action(description="Reset a bozza: disabbina pagamenti, cancella receivable e azzera totali")
+def reset_periodi_a_bozza(modeladmin, request, queryset):
+    """Riporta i periodi selezionati allo stato ``bozza``:
+
+      - rimuove tutte le ``BankTransactionAllocation`` collegate ai Receivable
+        utenze del periodo (disabbinamento: i bonifici restano, vanno
+        riallocati a mano dopo il ricalcolo);
+      - elimina i Receivable utenze del periodo;
+      - svuota la M2M ``utility_bills`` (così le bollette non risultano più
+        "consumate" e possono rientrare nel ricalcolo);
+      - azzera tot_luce/tot_gas/tot_tari/tot_altro/giorni_totali, data_invio
+        e mette stato=bozza.
+
+    Pensato per ri-rodare il calcolo storico: ATTENZIONE, perde le allocations.
+    """
+    n_periodi = 0
+    n_alloc = 0
+    n_recv = 0
+    for period in queryset:
+        recv_ids = list(
+            Receivable.objects.filter(
+                utility_period=period, causale=Receivable.Causale.UTENZE
+            ).values_list("pk", flat=True)
+        )
+        if recv_ids:
+            alloc_qs = BankTransactionAllocation.objects.filter(receivable_id__in=recv_ids)
+            n_alloc += alloc_qs.count()
+            alloc_qs.delete()
+            n_recv += len(recv_ids)
+            Receivable.objects.filter(pk__in=recv_ids).delete()
+
+        period.utility_bills.clear()
+        period.tot_luce = 0
+        period.tot_gas = 0
+        period.tot_tari = 0
+        period.tot_altro = 0
+        period.giorni_totali = 0
+        period.data_invio = None
+        period.stato = UtilityChargePeriod.StatoPeriodo.BOZZA
+        period.save(
+            update_fields=[
+                "tot_luce", "tot_gas", "tot_tari", "tot_altro",
+                "giorni_totali", "data_invio", "stato",
+            ]
+        )
+        n_periodi += 1
+
+    messages.success(
+        request,
+        f"Reset completato su {n_periodi} periodi: "
+        f"{n_recv} Receivable utenze eliminati, {n_alloc} allocations rimosse.",
+    )
+
+
+@admin.action(description="Ricalcola e chiudi (in ordine cronologico)")
+def ricalcola_e_chiudi_in_sequenza(modeladmin, request, queryset):
+    """Ricalcola i periodi selezionati in ordine di ``periodo_da`` crescente
+    e li promuove a ``inviato`` dopo ciascun calcolo.
+
+    L'ordine è fondamentale: chiudendo P prima di calcolare Q (con Q ⩾ P),
+    le bollette di P risultano "consumed" (via M2M) e non vengono ricontate
+    in Q. Le bollette retroattive che cadono interamente in periodi già
+    chiusi vengono ribaltate sul primo bozza successivo (cioè di norma Q).
+    """
+    from billing.calc.utility import calcola_conguaglio_periodo
+
+    n_calcolati = 0
+    errori: list[str] = []
+    riepilogo: list[str] = []
+    for period in queryset.order_by("periodo_da"):
+        label = f"{period.periodo_da} → {period.periodo_a} (id={period.pk})"
+        try:
+            ris = calcola_conguaglio_periodo(period.pk, persist=True)
+        except Exception as e:
+            errori.append(f"{label}: {e}")
+            continue
+        if ris.get("skipped"):
+            riepilogo.append(f"{label}: skippato ({ris['skipped']})")
+            continue
+        period.stato = UtilityChargePeriod.StatoPeriodo.INVIATO
+        period.save(update_fields=["stato"])
+        n_calcolati += 1
+        tot_v = ris["totali_per_voce"]
+        riepilogo.append(
+            f"{label}: tot {ris['totale_periodo']}€ "
+            f"(luce {tot_v.get('luce', 0)}, gas {tot_v.get('gas', 0)}, "
+            f"tari {tot_v.get('tari', 0)}, altro {tot_v.get('altro', 0)})"
+        )
+
+    for msg in errori:
+        messages.error(request, msg)
+    for msg in riepilogo:
+        messages.info(request, msg)
+    messages.success(
+        request,
+        f"Ricalcolati e chiusi {n_calcolati} periodi in sequenza.",
+    )
+
+
 @admin.action(description="Rigenera Receivable utenze")
 def rigenera_receivables_utenze(modeladmin, request, queryset):
     from billing.calc.utility import calcola_conguaglio_periodo
@@ -941,7 +1040,12 @@ class UtilityChargePeriodAdmin(ModalEditMixin, JumboModelAdmin):
     ordering = ("-periodo_da",)
     inlines = (ReceivableUtilityInline,)
     action_form = UtilityChargePeriodActionForm
-    actions = (rigenera_receivables_utenze, rigenera_receivables_affitto)
+    actions = (
+        rigenera_receivables_utenze,
+        rigenera_receivables_affitto,
+        ricalcola_e_chiudi_in_sequenza,
+        reset_periodi_a_bozza,
+    )
     filter_horizontal = ("utility_bills", "annual_utility_costs")
     advanced_search_fields = (
         ("note__icontains:note", "nota_calcolo__icontains:nota calcolo"),

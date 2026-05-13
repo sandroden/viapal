@@ -973,3 +973,332 @@ class TestGuardiaAllocation:
             causale=Receivable.Causale.UTENZE,
         )
         assert r2.importo_dovuto == Decimal("150.00")
+
+
+# ---------------------------------------------------------------------------
+# Attribuzione bolletta → periodo (regole del 2026-05-13)
+# ---------------------------------------------------------------------------
+
+
+class TestAttribuzioneBolletta:
+    """La bolletta si attribuisce in pro-rata sui giorni di intersezione col
+    periodo, dopo aver troncato le porzioni che cadono in periodi `inviato`.
+
+    Caso operativo: a fine mese arriva una bolletta etichettata "gen-apr" ma
+    gen-feb era già stato fatturato con un'altra bolletta. La porzione gen-feb
+    si comprime: tutto l'importo si attribuisce su mar-apr (l'unico periodo
+    rimasto nel range bolletta).
+    """
+
+    def test_prodotto_gas_va_su_voce_gas_anche_con_supplier_energia(
+        self, db, make_assignment, supplier_luce, owner
+    ):
+        """`bill.prodotto` è il discriminante luce/gas, non `supplier.tipo`.
+        (regressione: bolletta gas erogata dallo stesso fornitore luce.)"""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        period = UtilityChargePeriod.objects.create(
+            periodo_da=datetime.date(2026, 5, 1),
+            periodo_a=datetime.date(2026, 5, 31),
+        )
+        UtilityBill.objects.create(
+            supplier=supplier_luce,  # tipo "energia"
+            prodotto="gas",          # ma prodotto gas
+            numero_fattura="WIND-GAS",
+            data_emissione=datetime.date(2026, 5, 31),
+            periodo_da=datetime.date(2026, 5, 1),
+            periodo_a=datetime.date(2026, 5, 31),
+            importo_totale=Decimal("22.37"),
+            pagata_da_owner=owner,
+        )
+        # Serve almeno un assignment per avere quote
+        make_assignment(valid_from=datetime.date(2026, 5, 1))
+
+        ris = calcola_conguaglio_periodo(period.pk)
+        # Niente luce, tutto gas
+        assert ris["totali_per_voce"].get("luce", Decimal("0")) == Decimal("0")
+        assert ris["totali_per_voce"]["gas"] == Decimal("22.37")
+
+    def test_troncamento_porzione_in_periodo_inviato(
+        self, db, make_assignment, supplier_luce, owner
+    ):
+        """Bolletta etichettata gen-apr (120gg), periodo gen-feb già `inviato`:
+        la porzione gen-feb si comprime, l'intero importo va sul periodo
+        mar-apr (61gg)."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        # gen-feb chiuso
+        gen_feb = UtilityChargePeriod.objects.create(
+            periodo_da=datetime.date(2025, 1, 1),
+            periodo_a=datetime.date(2025, 2, 28),
+            stato=UtilityChargePeriod.StatoPeriodo.INVIATO,
+        )
+        # mar-apr in calcolo
+        mar_apr = UtilityChargePeriod.objects.create(
+            periodo_da=datetime.date(2025, 3, 1),
+            periodo_a=datetime.date(2025, 4, 30),
+        )
+        # Bolletta gen-apr che arriva durante mar-apr
+        UtilityBill.objects.create(
+            supplier=supplier_luce,
+            prodotto="luce",
+            numero_fattura="ENEL-GENAPR",
+            data_emissione=datetime.date(2025, 4, 15),
+            periodo_da=datetime.date(2025, 1, 1),
+            periodo_a=datetime.date(2025, 4, 30),
+            importo_totale=Decimal("120.00"),
+            pagata_da_owner=owner,
+        )
+        make_assignment(valid_from=datetime.date(2025, 1, 1))
+
+        ris = calcola_conguaglio_periodo(mar_apr.pk)
+        # gen-feb è chiuso → range effettivo = mar-apr (61gg). Tutta sul periodo.
+        assert ris["totali_per_voce"]["luce"] == Decimal("120.00"), (
+            f"Atteso 120.00 (tutta la bolletta), trovato {ris['totali_per_voce']['luce']}"
+        )
+
+    def test_ribaltamento_su_successivo_se_tutto_in_chiusi(
+        self, db, make_assignment, supplier_luce, owner
+    ):
+        """Bolletta che cade interamente in periodi `inviato`: viene
+        ribaltata sul primo periodo bozza con periodo_da ≥ data_emissione."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        # gen-feb e mar-apr entrambi chiusi
+        UtilityChargePeriod.objects.create(
+            periodo_da=datetime.date(2025, 1, 1),
+            periodo_a=datetime.date(2025, 2, 28),
+            stato=UtilityChargePeriod.StatoPeriodo.INVIATO,
+        )
+        UtilityChargePeriod.objects.create(
+            periodo_da=datetime.date(2025, 3, 1),
+            periodo_a=datetime.date(2025, 4, 30),
+            stato=UtilityChargePeriod.StatoPeriodo.INVIATO,
+        )
+        # maggio in calcolo (bozza)
+        mag = UtilityChargePeriod.objects.create(
+            periodo_da=datetime.date(2025, 5, 1),
+            periodo_a=datetime.date(2025, 5, 31),
+        )
+        # Bolletta gen-apr emessa a maggio: range tutto in chiusi → ribalta su maggio
+        UtilityBill.objects.create(
+            supplier=supplier_luce,
+            prodotto="luce",
+            numero_fattura="ENEL-RETRO",
+            data_emissione=datetime.date(2025, 5, 22),
+            periodo_da=datetime.date(2025, 1, 1),
+            periodo_a=datetime.date(2025, 4, 30),
+            importo_totale=Decimal("111.21"),
+            pagata_da_owner=owner,
+        )
+        # Bolletta maggio "vera"
+        UtilityBill.objects.create(
+            supplier=supplier_luce,
+            prodotto="luce",
+            numero_fattura="WIND-MAG",
+            data_emissione=datetime.date(2025, 5, 31),
+            periodo_da=datetime.date(2025, 5, 1),
+            periodo_a=datetime.date(2025, 5, 31),
+            importo_totale=Decimal("156.49"),
+            pagata_da_owner=owner,
+        )
+        make_assignment(valid_from=datetime.date(2025, 1, 1))
+
+        ris = calcola_conguaglio_periodo(mag.pk)
+        # 156.49 (mag) + 111.21 (ribaltata) = 267.70
+        assert ris["totali_per_voce"]["luce"] == Decimal("267.70"), (
+            f"Atteso 267.70, trovato {ris['totali_per_voce']['luce']}"
+        )
+
+    def test_bolletta_consumata_da_periodo_inviato_non_riconta(
+        self, db, make_assignment, supplier_luce, owner
+    ):
+        """Una bolletta già agganciata via M2M a un periodo `inviato` non
+        rientra nel calcolo di un altro periodo (anche se il range bolletta
+        intersecherebbe l'altro periodo)."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        # mar-apr inviato, con la sua bolletta gen-apr già "consumata"
+        mar_apr = UtilityChargePeriod.objects.create(
+            periodo_da=datetime.date(2025, 3, 1),
+            periodo_a=datetime.date(2025, 4, 30),
+            stato=UtilityChargePeriod.StatoPeriodo.INVIATO,
+        )
+        bolletta = UtilityBill.objects.create(
+            supplier=supplier_luce,
+            prodotto="luce",
+            numero_fattura="ENEL-CONS",
+            data_emissione=datetime.date(2025, 5, 22),
+            periodo_da=datetime.date(2025, 1, 1),
+            periodo_a=datetime.date(2025, 4, 30),
+            importo_totale=Decimal("111.21"),
+            pagata_da_owner=owner,
+        )
+        mar_apr.utility_bills.add(bolletta)
+
+        # Calcolo maggio: la bolletta NON deve essere riconteggiata
+        mag = UtilityChargePeriod.objects.create(
+            periodo_da=datetime.date(2025, 5, 1),
+            periodo_a=datetime.date(2025, 5, 31),
+        )
+        UtilityBill.objects.create(
+            supplier=supplier_luce,
+            prodotto="luce",
+            numero_fattura="WIND-MAG",
+            data_emissione=datetime.date(2025, 5, 31),
+            periodo_da=datetime.date(2025, 5, 1),
+            periodo_a=datetime.date(2025, 5, 31),
+            importo_totale=Decimal("156.49"),
+            pagata_da_owner=owner,
+        )
+        make_assignment(valid_from=datetime.date(2025, 1, 1))
+
+        ris = calcola_conguaglio_periodo(mag.pk)
+        # Solo la bolletta di maggio
+        assert ris["totali_per_voce"]["luce"] == Decimal("156.49"), (
+            f"Atteso 156.49, trovato {ris['totali_per_voce']['luce']}"
+        )
+
+    def test_pinning_manuale_override_algoritmo(
+        self, db, make_assignment, supplier_luce, owner
+    ):
+        """Se la M2M ``period.utility_bills`` è già popolata, il calcolo entra
+        in modalità pinning: ogni bolletta agganciata contribuisce per
+        l'importo intero, ignorando completamente l'algoritmo di troncamento/
+        ribaltamento. Caso d'uso: decisioni storiche dell'utente caso-per-caso
+        che non sono ricavabili da regole automatiche."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        # Setup: due bollette potenzialmente candidate per maggio, ma l'utente
+        # vuole solo una agganciata.
+        mag = UtilityChargePeriod.objects.create(
+            periodo_da=datetime.date(2025, 5, 1),
+            periodo_a=datetime.date(2025, 5, 31),
+        )
+        b_pinned = UtilityBill.objects.create(
+            supplier=supplier_luce,
+            prodotto="luce",
+            numero_fattura="PIN-1",
+            data_emissione=datetime.date(2025, 5, 22),
+            periodo_da=datetime.date(2025, 1, 1),  # range storico, automatico
+            periodo_a=datetime.date(2025, 4, 30),  # lo metterebbe altrove
+            importo_totale=Decimal("111.21"),
+            pagata_da_owner=owner,
+        )
+        # Bolletta "naturale" per maggio, NON pinnata: deve essere ignorata
+        UtilityBill.objects.create(
+            supplier=supplier_luce,
+            prodotto="luce",
+            numero_fattura="AUTO-MAG",
+            data_emissione=datetime.date(2025, 5, 31),
+            periodo_da=datetime.date(2025, 5, 1),
+            periodo_a=datetime.date(2025, 5, 31),
+            importo_totale=Decimal("156.49"),
+            pagata_da_owner=owner,
+        )
+        # Pin manuale: solo b_pinned su maggio
+        mag.utility_bills.add(b_pinned)
+        make_assignment(valid_from=datetime.date(2025, 5, 1))
+
+        ris = calcola_conguaglio_periodo(mag.pk)
+        # Solo la bolletta pinnata, intera. L'altra è ignorata.
+        assert ris["totali_per_voce"]["luce"] == Decimal("111.21"), (
+            f"Atteso 111.21 (solo pinned), trovato {ris['totali_per_voce']['luce']}"
+        )
+
+    def test_ciclo_fatturazione_non_influenza_giorni_presenza(
+        self, db, make_assignment, make_room, make_tenant, supplier_luce, owner
+    ):
+        """Regressione: il calcolo utenze deve essere SEMPRE pro-rata sui
+        giorni effettivi di RoomAssignment, indipendente da
+        ``TenantProfile.ciclo_fatturazione`` (che vale solo per gli affitti).
+
+        Caso: tenant con ciclo='ingresso' entrato il 9/2/2025. Per il periodo
+        gen-feb 2025 deve contare 20gg (dal 9 al 28), non un altro valore
+        eventualmente influenzato dal ciclo di fatturazione 'ingresso'.
+        """
+        from billing.calc.utility import calcola_conguaglio_periodo
+        from properties.models import TenantProfile
+
+        period = UtilityChargePeriod.objects.create(
+            periodo_da=datetime.date(2025, 1, 1),
+            periodo_a=datetime.date(2025, 2, 28),
+        )
+        UtilityBill.objects.create(
+            supplier=supplier_luce,
+            prodotto="luce",
+            numero_fattura="REGR-CICLO-1",
+            data_emissione=datetime.date(2025, 2, 28),
+            periodo_da=datetime.date(2025, 1, 1),
+            periodo_a=datetime.date(2025, 2, 28),
+            importo_totale=Decimal("295.00"),
+            pagata_da_owner=owner,
+        )
+        # Tenant con ciclo_fatturazione='ingresso' (NON deve influenzare utenze)
+        tenant_ingresso = make_tenant(nominativo="Tenant Ingresso")
+        tenant_ingresso.ciclo_fatturazione = TenantProfile.CicloFatturazione.INGRESSO
+        tenant_ingresso.save(update_fields=["ciclo_fatturazione"])
+        # Tenant con ciclo_fatturazione='solare' (controllo)
+        tenant_solare = make_tenant(nominativo="Tenant Solare")
+        tenant_solare.ciclo_fatturazione = TenantProfile.CicloFatturazione.SOLARE
+        tenant_solare.save(update_fields=["ciclo_fatturazione"])
+
+        # Entrambi entrano il 9/2/2025: presenti 20gg nel bimestre.
+        ass_ingresso = make_assignment(
+            tenant=tenant_ingresso,
+            valid_from=datetime.date(2025, 2, 9),
+        )
+        ass_solare = make_assignment(
+            tenant=tenant_solare,
+            valid_from=datetime.date(2025, 2, 9),
+        )
+
+        ris = calcola_conguaglio_periodo(period.pk)
+        quote_by_id = {q["assignment_id"]: q for q in ris["quote"]}
+        # Identica presenza per entrambi: 20gg
+        assert quote_by_id[ass_ingresso.pk]["giorni_presenza"] == 20, (
+            f"Atteso 20gg, trovato {quote_by_id[ass_ingresso.pk]['giorni_presenza']}"
+        )
+        assert quote_by_id[ass_solare.pk]["giorni_presenza"] == 20, (
+            f"Atteso 20gg, trovato {quote_by_id[ass_solare.pk]['giorni_presenza']}"
+        )
+        # Identica quota: il ciclo_fatturazione non discrimina
+        assert quote_by_id[ass_ingresso.pk]["quota"] == quote_by_id[ass_solare.pk]["quota"]
+
+    def test_persist_popola_m2m_utility_bills(
+        self, db, make_assignment, supplier_luce, owner
+    ):
+        """``persist=True`` aggancia le bollette utilizzate alla M2M del periodo,
+        così i ricalcoli successivi le riconoscono come "consumate"."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        period = UtilityChargePeriod.objects.create(
+            periodo_da=datetime.date(2025, 5, 1),
+            periodo_a=datetime.date(2025, 5, 31),
+        )
+        b1 = UtilityBill.objects.create(
+            supplier=supplier_luce,
+            prodotto="luce",
+            numero_fattura="WIND-MAG-1",
+            data_emissione=datetime.date(2025, 5, 31),
+            periodo_da=datetime.date(2025, 5, 1),
+            periodo_a=datetime.date(2025, 5, 31),
+            importo_totale=Decimal("100.00"),
+            pagata_da_owner=owner,
+        )
+        b2 = UtilityBill.objects.create(
+            supplier=supplier_luce,
+            prodotto="gas",
+            numero_fattura="WIND-MAG-2",
+            data_emissione=datetime.date(2025, 5, 31),
+            periodo_da=datetime.date(2025, 5, 1),
+            periodo_a=datetime.date(2025, 5, 31),
+            importo_totale=Decimal("20.00"),
+            pagata_da_owner=owner,
+        )
+        make_assignment(valid_from=datetime.date(2025, 5, 1))
+
+        calcola_conguaglio_periodo(period.pk, persist=True)
+        period.refresh_from_db()
+        bills_agganciate = set(period.utility_bills.values_list("pk", flat=True))
+        assert bills_agganciate == {b1.pk, b2.pk}
