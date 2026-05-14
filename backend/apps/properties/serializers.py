@@ -31,6 +31,7 @@ class TenantProfileSerializer(serializers.ModelSerializer):
         source="get_ciclo_fatturazione_display", read_only=True
     )
     saldo = serializers.SerializerMethodField()
+    saldo_totale = serializers.SerializerMethodField()
 
     class Meta:
         model = TenantProfile
@@ -53,10 +54,17 @@ class TenantProfileSerializer(serializers.ModelSerializer):
             "deposito_restituito",
             "data_restituzione_deposito",
             "saldo",
+            "saldo_totale",
         ]
 
     def get_saldo(self, obj):
         saldi = self.context.get("saldi_anno")
+        if saldi is None:
+            return None
+        return saldi.get(obj.id, 0.0)
+
+    def get_saldo_totale(self, obj):
+        saldi = self.context.get("saldi_totali")
         if saldi is None:
             return None
         return saldi.get(obj.id, 0.0)

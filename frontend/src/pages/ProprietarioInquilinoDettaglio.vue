@@ -159,10 +159,16 @@
           is-currency
         />
         <KpiCard
-          label="Saldo"
-          :value="situazione.totali_anno.saldo"
+          :label="`Saldo ${situazione.anno}`"
+          :value="situazione.saldi.anno"
           is-currency
-          :sublabel="situazione.totali_anno.saldo >= 0 ? 'In regola' : 'Da incassare'"
+          :sublabel="situazione.saldi.anno >= 0 ? 'In regola' : 'Da incassare'"
+        />
+        <KpiCard
+          label="Saldo totale"
+          :value="situazione.saldi.totale"
+          is-currency
+          :sublabel="situazione.saldi.totale >= 0 ? 'In regola' : 'Da incassare'"
         />
         <KpiCard
           label="Ritardo medio"

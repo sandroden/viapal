@@ -5,6 +5,7 @@ import datetime
 from decimal import Decimal
 
 from django.db.models import Q, Sum
+from django.db.models.functions import Coalesce
 from rest_framework.permissions import IsAuthenticated  # noqa: F401
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -830,6 +831,24 @@ class TenantSituazioneView(APIView):
         totale_dovuto = rent_dovuto + utility_dovuto + extra_totale + caparra_dovuto
         totale_pagato = rent_pagato + utility_pagato + extra_pagato + caparra_pagato
 
+        # Saldi "globali" allineati alla colonna Saldo della lista inquilini:
+        # somma su tutti i Receivable !CAPARRA, filtrati per competenza_da__year
+        # (anno selezionato) o senza filtro (cumulativo).
+        receivable_base = (
+            Receivable.objects.filter(assignment__tenant=tenant)
+            .exclude(causale=Receivable.Causale.CAPARRA)
+        )
+        agg_anno = receivable_base.filter(competenza_da__year=anno).aggregate(
+            dovuto=Coalesce(Sum("importo_dovuto"), Decimal("0")),
+            pagato=Coalesce(Sum("importo_pagato"), Decimal("0")),
+        )
+        agg_totale = receivable_base.aggregate(
+            dovuto=Coalesce(Sum("importo_dovuto"), Decimal("0")),
+            pagato=Coalesce(Sum("importo_pagato"), Decimal("0")),
+        )
+        saldo_anno_globale = float(agg_anno["pagato"] - agg_anno["dovuto"])
+        saldo_totale_globale = float(agg_totale["pagato"] - agg_totale["dovuto"])
+
         # Quota condominio: dal contratto attivo
         contract_attivo = (
             Contract.objects.filter(data_decorrenza__lte=oggi)
@@ -905,6 +924,10 @@ class TenantSituazioneView(APIView):
                 "dovuto": float(totale_dovuto),
                 "pagato": float(totale_pagato),
                 "saldo": float(totale_pagato - totale_dovuto),
+            },
+            "saldi": {
+                "anno": saldo_anno_globale,
+                "totale": saldo_totale_globale,
             },
             "ritardo_medio_giorni": ritardo_medio,
         })

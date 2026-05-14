@@ -122,6 +122,10 @@ export interface TenantSituazione {
     pagato: number;
     saldo: number;
   };
+  saldi: {
+    anno: number;
+    totale: number;
+  };
   ritardo_medio_giorni: number;
 }
 

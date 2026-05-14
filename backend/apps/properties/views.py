@@ -84,31 +84,52 @@ class TenantProfileViewSet(ReadOnlyModelViewSet):
 
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
+        user = self.request.user
+        is_proprietario = (
+            user.is_authenticated
+            and (user.groups.filter(name="proprietari").exists() or user.is_superuser)
+        )
+        if not is_proprietario:
+            return ctx
+
+        from billing.models import Receivable
+
+        tenant_ids = list(self.filter_queryset(self.get_queryset()).values_list("id", flat=True))
+        if not tenant_ids:
+            ctx["saldi_totali"] = {}
+            if getattr(self, "_anno_filtro", None) is not None:
+                ctx["saldi_anno"] = {}
+            return ctx
+
+        base_qs = (
+            Receivable.objects
+            .filter(assignment__tenant_id__in=tenant_ids)
+            .exclude(causale=Receivable.Causale.CAPARRA)
+        )
+
+        agg_totale = base_qs.values("assignment__tenant_id").annotate(
+            dovuto=Coalesce(Sum("importo_dovuto"), Decimal("0")),
+            pagato=Coalesce(Sum("importo_pagato"), Decimal("0")),
+        )
+        ctx["saldi_totali"] = {
+            row["assignment__tenant_id"]: float(row["pagato"] - row["dovuto"])
+            for row in agg_totale
+        }
+
         anno = getattr(self, "_anno_filtro", None)
         if anno is not None:
-            from billing.models import Receivable
-
-            tenant_ids = list(self.filter_queryset(self.get_queryset()).values_list("id", flat=True))
-            if tenant_ids:
-                agg = (
-                    Receivable.objects
-                    .filter(
-                        assignment__tenant_id__in=tenant_ids,
-                        competenza_da__year=anno,
-                    )
-                    .exclude(causale=Receivable.Causale.CAPARRA)
-                    .values("assignment__tenant_id")
-                    .annotate(
-                        dovuto=Coalesce(Sum("importo_dovuto"), Decimal("0")),
-                        pagato=Coalesce(Sum("importo_pagato"), Decimal("0")),
-                    )
+            agg_anno = (
+                base_qs.filter(competenza_da__year=anno)
+                .values("assignment__tenant_id")
+                .annotate(
+                    dovuto=Coalesce(Sum("importo_dovuto"), Decimal("0")),
+                    pagato=Coalesce(Sum("importo_pagato"), Decimal("0")),
                 )
-                ctx["saldi_anno"] = {
-                    row["assignment__tenant_id"]: float(row["pagato"] - row["dovuto"])
-                    for row in agg
-                }
-            else:
-                ctx["saldi_anno"] = {}
+            )
+            ctx["saldi_anno"] = {
+                row["assignment__tenant_id"]: float(row["pagato"] - row["dovuto"])
+                for row in agg_anno
+            }
         return ctx
 
 

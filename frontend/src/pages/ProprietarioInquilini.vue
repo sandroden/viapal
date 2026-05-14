@@ -70,6 +70,19 @@
           {{ props.row.saldo === null || props.row.saldo === undefined ? '—' : formattaEuro(props.row.saldo) }}
         </q-td>
       </template>
+      <template #body-cell-saldo_totale="props">
+        <q-td
+          :props="props"
+          class="vp-mono vp-p-inq__saldo"
+          :class="classeSaldo(props.row.saldo_totale)"
+        >
+          {{
+            props.row.saldo_totale === null || props.row.saldo_totale === undefined
+              ? '—'
+              : formattaEuro(props.row.saldo_totale)
+          }}
+        </q-td>
+      </template>
       <template #body-cell-azioni="props">
         <q-td :props="props" auto-width>
           <q-btn
@@ -129,24 +142,33 @@ const caricamento = computed<boolean>(() =>
     : Boolean(store.loadingAnno[annoSelezionato.value]),
 );
 
-const colonne: QTableProps['columns'] = [
+const colonne = computed<QTableProps['columns']>(() => [
   { name: 'nominativo', label: 'Nominativo', field: 'nominativo', align: 'left', sortable: true },
   { name: 'email', label: 'Email', field: 'email', align: 'left', sortable: true },
   { name: 'telefono', label: 'Telefono', field: 'telefono', align: 'left' },
   {
     name: 'saldo',
-    label: 'Saldo',
+    label: `Saldo ${annoSelezionato.value}`,
     field: 'saldo',
     align: 'right',
     sortable: true,
     sort: (a: number | null, b: number | null) => (a ?? 0) - (b ?? 0),
   },
+  {
+    name: 'saldo_totale',
+    label: 'Saldo totale',
+    field: 'saldo_totale',
+    align: 'right',
+    sortable: true,
+    sort: (a: number | null, b: number | null) => (a ?? 0) - (b ?? 0),
+  },
   { name: 'azioni', label: '', field: 'id', align: 'right' },
-];
+]);
 
 const colonneVisibili = computed<string[]>(() => {
-  const v = ['nominativo', 'email', 'telefono', 'azioni'];
-  if (!mostraTutti.value) v.splice(3, 0, 'saldo');
+  const v = ['nominativo', 'email', 'telefono'];
+  if (!mostraTutti.value) v.push('saldo');
+  v.push('saldo_totale', 'azioni');
   return v;
 });
 
