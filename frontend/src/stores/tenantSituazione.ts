@@ -57,6 +57,18 @@ export interface ExtraRiga {
   bank_account_destinazione_id: number | null;
 }
 
+export interface CaparraRiga {
+  id: number;
+  data: string;
+  descrizione: string;
+  importo: number;
+  importo_pagato: number;
+  scadenza: string | null;
+  stato: string;
+  data_pagamento: string | null;
+  bank_account_destinazione_id: number | null;
+}
+
 export interface QuotaCondominioRiga {
   valid_from: string;
   valid_to: string | null;
@@ -98,6 +110,12 @@ export interface TenantSituazione {
     pagato_anno: number;
     saldo: number;
     righe: ExtraRiga[];
+  };
+  caparra: {
+    dovuto_anno: number;
+    pagato_anno: number;
+    saldo: number;
+    righe: CaparraRiga[];
   };
   totali_anno: {
     dovuto: number;

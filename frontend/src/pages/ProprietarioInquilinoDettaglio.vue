@@ -124,6 +124,12 @@
                           <span class="vp-mono">{{ formattaEuro(situazione.extra.totale_anno) }}</span>
                         </q-item-section>
                       </q-item>
+                      <q-item v-if="situazione.caparra && situazione.caparra.righe.length">
+                        <q-item-section>Caparra</q-item-section>
+                        <q-item-section side>
+                          <span class="vp-mono">{{ formattaEuro(situazione.caparra.dovuto_anno) }}</span>
+                        </q-item-section>
+                      </q-item>
                       <q-separator spaced />
                       <q-item>
                         <q-item-section><strong>Totale</strong></q-item-section>
@@ -134,7 +140,8 @@
                     </q-list>
                     <div class="vp-p-id__popup-nota">
                       Comprende affitti, utenze (luce, gas, TARI) e addebiti extra
-                      (es. conguaglio condominiale).
+                      (es. conguaglio condominiale). La caparra è inclusa solo
+                      dopo la restituzione.
                     </div>
                   </q-card-section>
                 </q-card>
@@ -160,7 +167,7 @@
         <KpiCard
           label="Ritardo medio"
           :value="`${situazione.ritardo_medio_giorni.toFixed(1)} gg`"
-          :sublabel="situazione.ritardo_medio_giorni === 0 ? 'Mai in ritardo' : 'Sui pagati'"
+          :sublabel="situazione.ritardo_medio_giorni === 0 ? 'Mai in ritardo' : 'Su tutte le scadenze'"
         />
       </section>
 
@@ -586,12 +593,13 @@ interface ReceivableInput {
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
-type TipoPagamento = 'rent' | 'utility' | 'extra';
+type TipoPagamento = 'rent' | 'utility' | 'extra' | 'caparra';
 
 const TIPO_TO_CAUSALE: Record<TipoPagamento, CausaleReceivable> = {
   rent: 'affitto',
   utility: 'utenze',
   extra: 'extra',
+  caparra: 'caparra',
 };
 
 interface RigaPagamento {
@@ -633,7 +641,7 @@ function parseTab(v: unknown): 'pagamenti' | 'profilo' {
 }
 function parseTipo(v: unknown): FiltroTipo {
   const s = Array.isArray(v) ? v[0] : v;
-  if (s === 'rent' || s === 'utility' || s === 'extra') return s;
+  if (s === 'rent' || s === 'utility' || s === 'extra' || s === 'caparra') return s;
   return 'all';
 }
 
@@ -654,6 +662,7 @@ const opzioniTipo = [
   { label: 'Affitto', value: 'rent' as const },
   { label: 'Utenze', value: 'utility' as const },
   { label: 'Extra', value: 'extra' as const },
+  { label: 'Caparra', value: 'caparra' as const },
 ];
 
 const situazione = computed(() => store.get(tenantId.value, annoSelezionato.value));
@@ -705,6 +714,21 @@ const righePagamenti = computed<RigaPagamento[]>(() => {
       data_pagamento: e.data_pagamento,
       receivable_id: e.id,
       bank_account_destinazione_id: e.bank_account_destinazione_id,
+    });
+  }
+  for (const c of situazione.value.caparra?.righe ?? []) {
+    out.push({
+      rowKey: `caparra-${c.id}`,
+      tipo: 'caparra',
+      descrizione: c.descrizione,
+      importo_dovuto: c.importo,
+      importo_pagato: c.importo_pagato ?? 0,
+      scadenza: c.scadenza,
+      stato: c.stato,
+      giorni_ritardo: c.scadenza ? giorniRitardo(c.scadenza) : 0,
+      data_pagamento: c.data_pagamento,
+      receivable_id: c.id,
+      bank_account_destinazione_id: c.bank_account_destinazione_id,
     });
   }
   out.sort((a, b) => (a.scadenza ?? '').localeCompare(b.scadenza ?? ''));
@@ -857,11 +881,13 @@ const ETICHETTE_TIPO: Record<TipoPagamento, string> = {
   rent: 'Affitto',
   utility: 'Utenze',
   extra: 'Extra',
+  caparra: 'Caparra',
 };
 const ICONE_TIPO: Record<TipoPagamento, string> = {
   rent: 'home',
   utility: 'bolt',
   extra: 'receipt',
+  caparra: 'savings',
 };
 function etichettaPerTipo(t: TipoPagamento): string {
   return ETICHETTE_TIPO[t];
@@ -1065,6 +1091,9 @@ const contoDiDefaultUtente = computed(
 }
 .vp-p-id__chip--c-extra {
   color: var(--vp-terra, #b56a3b);
+}
+.vp-p-id__chip--c-caparra {
+  color: var(--vp-ink-2, #5b6470);
 }
 .vp-p-id__causale-icon {
   flex-shrink: 0;

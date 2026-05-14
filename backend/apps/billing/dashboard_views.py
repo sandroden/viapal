@@ -777,21 +777,58 @@ class TenantSituazioneView(APIView):
             if r.importo_pagato:
                 extra_pagato += r.importo_pagato
 
-        # Ritardo medio (giorni positivi su rent pagati nell'anno)
+        # Caparra dell'anno: esposta solo dopo la chiusura (data di restituzione
+        # valorizzata). Senza, il versamento incassato in passato apparirebbe come
+        # credito permanente dell'inquilino.
+        caparra_righe: list[dict] = []
+        caparra_dovuto = Decimal("0")
+        caparra_pagato = Decimal("0")
+        caparra_qs_list: list[Receivable] = []
+        if tenant.data_restituzione_deposito:
+            caparra_qs = (
+                Receivable.objects.filter(
+                    assignment__tenant=tenant,
+                    causale=Receivable.Causale.CAPARRA,
+                    competenza_da__year=anno,
+                )
+                .order_by("competenza_da")
+            )
+            caparra_qs_list = list(caparra_qs)
+            for r in caparra_qs_list:
+                caparra_righe.append({
+                    "id": r.id,
+                    "data": r.competenza_da.isoformat(),
+                    "descrizione": r.descrizione or r.get_causale_display(),
+                    "importo": float(r.importo_dovuto),
+                    "importo_pagato": float(r.importo_pagato or 0),
+                    "scadenza": r.scadenza.isoformat() if r.scadenza else None,
+                    "stato": r.stato,
+                    "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
+                    "bank_account_destinazione_id": r.bank_account_destinazione_id,
+                })
+                caparra_dovuto += r.importo_dovuto
+                if r.importo_pagato:
+                    caparra_pagato += r.importo_pagato
+
+        # Ritardo medio: tutti i Receivable dell'anno con scadenza valida.
+        # Pagati: ritardo storico (data_pagamento - scadenza).
+        # Non pagati: ritardo in essere (oggi - scadenza).
         ritardi_giorni = []
-        for r in rent_qs:
-            if r.data_pagamento and r.scadenza:
-                d = (r.data_pagamento - r.scadenza).days
-                if d > 0:
-                    ritardi_giorni.append(d)
+        for r in list(rent_qs) + list(utility_qs) + list(extra_qs):
+            if not r.scadenza:
+                continue
+            riferimento = r.data_pagamento or oggi
+            d = (riferimento - r.scadenza).days
+            if d > 0:
+                ritardi_giorni.append(d)
         ritardo_medio = (
             float(sum(ritardi_giorni) / len(ritardi_giorni))
             if ritardi_giorni
             else 0.0
         )
 
-        totale_dovuto = rent_dovuto + utility_dovuto + extra_totale
-        totale_pagato = rent_pagato + utility_pagato + extra_pagato
+        totale_dovuto = rent_dovuto + utility_dovuto + extra_totale + caparra_dovuto
+        totale_pagato = rent_pagato + utility_pagato + extra_pagato + caparra_pagato
 
         # Quota condominio: dal contratto attivo
         contract_attivo = (
@@ -857,6 +894,12 @@ class TenantSituazioneView(APIView):
                 "pagato_anno": float(extra_pagato),
                 "saldo": float(extra_pagato - extra_totale),
                 "righe": extra_righe,
+            },
+            "caparra": {
+                "dovuto_anno": float(caparra_dovuto),
+                "pagato_anno": float(caparra_pagato),
+                "saldo": float(caparra_pagato - caparra_dovuto),
+                "righe": caparra_righe,
             },
             "totali_anno": {
                 "dovuto": float(totale_dovuto),
