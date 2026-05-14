@@ -140,12 +140,12 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 900
     list_display = (
         "get_modal_edit_icon", "nominativo", "codice_fiscale",
-        "giorno_pagamento_affitto",
+        "giorno_pagamento_affitto", "ciclo_fatturazione",
         "deposito_versato", "deposito_restituito",
         "get_modal_delete_icon",
     )
     search_fields = ("nominativo", "codice_fiscale", "user__username", "user__email")
-    list_filter = ("frequenza_conguagli",)
+    list_filter = ("frequenza_conguagli", "ciclo_fatturazione")
     list_select_related = ("user",)
     inlines = (RoomAssignmentInlineForTenant,)
     fieldsets = (
@@ -155,6 +155,7 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
         ("Pagamenti", {
             "fields": (
                 ("giorno_pagamento_affitto", "frequenza_conguagli"),
+                "ciclo_fatturazione",
                 "note_pagamento",
             ),
         }),

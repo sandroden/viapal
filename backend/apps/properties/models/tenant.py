@@ -17,6 +17,10 @@ class TenantProfile(TimestampedModel):
         MENSILE = "mensile", "Mensile"
         BIMESTRALE = "bimestrale", "Bimestrale"
 
+    class CicloFatturazione(models.TextChoices):
+        SOLARE = "solare", "Mese solare (1-31)"
+        INGRESSO = "ingresso", "Dal giorno di ingresso"
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -51,6 +55,18 @@ class TenantProfile(TimestampedModel):
         choices=FrequenzaConguagli.choices,
         default=FrequenzaConguagli.MENSILE,
         verbose_name="frequenza conguagli",
+    )
+    ciclo_fatturazione = models.CharField(
+        max_length=20,
+        choices=CicloFatturazione.choices,
+        default=CicloFatturazione.SOLARE,
+        verbose_name="ciclo fatturazione affitto",
+        help_text=(
+            "Solare: mese di calendario (1-31), con pro-rata su ingresso/uscita "
+            "infra-mese. Ingresso: mensilità dal giorno di valid_from al giorno "
+            "precedente del mese successivo (es. 9/2-8/3), canone pieno tranne "
+            "moncone finale all'uscita."
+        ),
     )
     note_pagamento = models.TextField(
         blank=True,

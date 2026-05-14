@@ -26,6 +26,31 @@ def _arrotonda(valore: Decimal) -> Decimal:
     return valore.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def _anniversary_periodo(
+    anno: int, mese: int, anniversary_day: int
+) -> tuple[date, date]:
+    """Per il ciclo 'ingresso': ritorna (competenza_da, mensilita_completa_a)
+    della mensilità che inizia nel mese (anno, mese) con il giorno
+    `anniversary_day`.
+
+    Esempio: anniversary_day=9, anno=2025, mese=2 → (9/2/2025, 8/3/2025).
+
+    Edge case mesi corti: se anniversary_day non esiste nel mese (es. 31 in
+    febbraio), si usa l'ultimo giorno del mese.
+    """
+    n_giorni = _giorni_mese(anno, mese)
+    giorno_inizio = min(anniversary_day, n_giorni)
+    competenza_da = date(anno, mese, giorno_inizio)
+    if mese == 12:
+        next_anno, next_mese = anno + 1, 1
+    else:
+        next_anno, next_mese = anno, mese + 1
+    next_n_giorni = _giorni_mese(next_anno, next_mese)
+    next_giorno = min(anniversary_day, next_n_giorni)
+    prossimo_inizio = date(next_anno, next_mese, next_giorno)
+    return competenza_da, prossimo_inizio - timedelta(days=1)
+
+
 def _quota_condominio_per(competenza_da: date) -> Decimal:
     """Ritorna la quota mensile di spese condominio a carico dell'inquilino
     (``TenantCondominioRate``) valida per la data di competenza, o 0 se non
@@ -109,33 +134,73 @@ def genera_pagamenti_mese(
     payment_ids: list[int] = []
     simulazione: list[dict] = []  # popolato solo se persist=False
 
+    from properties.models import TenantProfile
+
     for assignment in assignments_qs:
-        # Competenza
-        competenza_da = max(primo_del_mese, assignment.valid_from)
-        a_to = assignment.valid_to if assignment.valid_to else ultimo_mese
-        competenza_a = min(ultimo_mese, a_to)
+        tenant = assignment.tenant
+        ciclo_ingresso = (
+            tenant.ciclo_fatturazione == TenantProfile.CicloFatturazione.INGRESSO
+        )
 
-        giorni_competenza = (competenza_a - competenza_da).days + 1
-
-        # Canone + quota condominio mensile (TenantCondominioRate del periodo)
-        canone_pieno = assignment.canone_mensile + _quota_condominio_per(competenza_da)
-
-        # Importo pro-rata
-        if giorni_competenza < n_giorni_mese:
-            is_aggiustamento = True
-            importo_dovuto = _arrotonda(
-                canone_pieno * Decimal(giorni_competenza) / Decimal(n_giorni_mese)
+        if ciclo_ingresso:
+            anniversary_day = assignment.valid_from.day
+            competenza_da, mensilita_completa_a = _anniversary_periodo(
+                anno, mese, anniversary_day
             )
-        else:
-            is_aggiustamento = False
-            importo_dovuto = canone_pieno
+            # Skip se la mensilità non è dentro l'assignment
+            if competenza_da < assignment.valid_from:
+                continue
+            if assignment.valid_to and competenza_da > assignment.valid_to:
+                continue
 
-        # Scadenza
-        giorno_pagamento = assignment.tenant.giorno_pagamento_affitto
-        # giorno_pagamento e' tra 1 e 28 (validazione modello), ma per sicurezza
-        giorno_eff = min(giorno_pagamento, n_giorni_mese)
-        data_scadenza_base = date(anno, mese, giorno_eff)
-        scadenza = data_scadenza_base + timedelta(days=5)
+            # Troncamento dal valid_to (uscita anticipata infra-mensilità)
+            if assignment.valid_to and assignment.valid_to < mensilita_completa_a:
+                competenza_a = assignment.valid_to
+                giorni_mensilita_completa = (mensilita_completa_a - competenza_da).days + 1
+                giorni_competenza = (competenza_a - competenza_da).days + 1
+                is_aggiustamento = True
+                canone_pieno = assignment.canone_mensile + _quota_condominio_per(
+                    competenza_da
+                )
+                importo_dovuto = _arrotonda(
+                    canone_pieno
+                    * Decimal(giorni_competenza)
+                    / Decimal(giorni_mensilita_completa)
+                )
+            else:
+                competenza_a = mensilita_completa_a
+                is_aggiustamento = False
+                canone_pieno = assignment.canone_mensile + _quota_condominio_per(
+                    competenza_da
+                )
+                importo_dovuto = canone_pieno
+
+            # Scadenza: data di inizio mensilità + 5 giorni
+            scadenza = competenza_da + timedelta(days=5)
+        else:
+            # Ciclo solare (default)
+            competenza_da = max(primo_del_mese, assignment.valid_from)
+            a_to = assignment.valid_to if assignment.valid_to else ultimo_mese
+            competenza_a = min(ultimo_mese, a_to)
+
+            giorni_competenza = (competenza_a - competenza_da).days + 1
+            canone_pieno = assignment.canone_mensile + _quota_condominio_per(
+                competenza_da
+            )
+
+            if giorni_competenza < n_giorni_mese:
+                is_aggiustamento = True
+                importo_dovuto = _arrotonda(
+                    canone_pieno * Decimal(giorni_competenza) / Decimal(n_giorni_mese)
+                )
+            else:
+                is_aggiustamento = False
+                importo_dovuto = canone_pieno
+
+            giorno_pagamento = tenant.giorno_pagamento_affitto
+            giorno_eff = min(giorno_pagamento, n_giorni_mese)
+            data_scadenza_base = date(anno, mese, giorno_eff)
+            scadenza = data_scadenza_base + timedelta(days=5)
 
         defaults_base = {
             "competenza_a": competenza_a,

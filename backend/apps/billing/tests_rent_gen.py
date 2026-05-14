@@ -516,3 +516,121 @@ class TestScadenzaFebbbraio:
         # feb 2026 ha 28 giorni, giorno_eff = min(28, 28) = 28
         # scadenza = 28 feb + 5 = 5 mar
         assert p.scadenza == datetime.date(2026, 3, 5)
+
+
+# ---------------------------------------------------------------------------
+# Test ciclo_fatturazione = INGRESSO (mensilità da giorno di ingresso)
+# ---------------------------------------------------------------------------
+
+
+class TestCicloIngresso:
+    """Inquilino con ciclo_fatturazione='ingresso': mensilità anniversary.
+
+    Scenario reale: ragazza entrata 9/2/2025, valid_to=8/7/2025
+    (esce il 9/7, ultimo giorno coperto è 8/7) → 5 mensilità intere.
+    """
+
+    @pytest.fixture
+    def assignment_ingresso(self, db, make_assignment):
+        a = make_assignment(
+            canone=Decimal("500.00"),
+            valid_from=datetime.date(2025, 2, 9),
+            valid_to=datetime.date(2025, 7, 8),
+        )
+        a.tenant.ciclo_fatturazione = TenantProfile.CicloFatturazione.INGRESSO
+        a.tenant.save(update_fields=["ciclo_fatturazione"])
+        return a
+
+    def test_mensilita_feb_intera(self, assignment_ingresso):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        genera_pagamenti_mese(2025, 2)
+        p = Receivable.objects.get(causale="affitto")
+        assert p.competenza_da == datetime.date(2025, 2, 9)
+        assert p.competenza_a == datetime.date(2025, 3, 8)
+        assert not p.is_aggiustamento
+        assert p.importo_dovuto == Decimal("500.00")
+        # Scadenza = 9 feb + 5gg = 14 feb
+        assert p.scadenza == datetime.date(2025, 2, 14)
+
+    def test_mensilita_mar_intera(self, assignment_ingresso):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        genera_pagamenti_mese(2025, 3)
+        p = Receivable.objects.get(causale="affitto")
+        assert p.competenza_da == datetime.date(2025, 3, 9)
+        assert p.competenza_a == datetime.date(2025, 4, 8)
+        assert not p.is_aggiustamento
+        assert p.importo_dovuto == Decimal("500.00")
+
+    def test_5_mensilita_totali(self, assignment_ingresso):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        for mese in range(2, 8):
+            genera_pagamenti_mese(2025, mese)
+
+        records = list(
+            Receivable.objects.filter(causale="affitto").order_by("competenza_da")
+        )
+        assert len(records) == 5
+        attesi = [
+            (datetime.date(2025, 2, 9), datetime.date(2025, 3, 8)),
+            (datetime.date(2025, 3, 9), datetime.date(2025, 4, 8)),
+            (datetime.date(2025, 4, 9), datetime.date(2025, 5, 8)),
+            (datetime.date(2025, 5, 9), datetime.date(2025, 6, 8)),
+            (datetime.date(2025, 6, 9), datetime.date(2025, 7, 8)),
+        ]
+        for p, (da, a) in zip(records, attesi):
+            assert (p.competenza_da, p.competenza_a) == (da, a)
+            assert not p.is_aggiustamento
+            assert p.importo_dovuto == Decimal("500.00")
+
+    def test_mese_7_nessun_record(self, assignment_ingresso):
+        """Mese 7 con valid_to=8/7: competenza_da=9/7 > 8/7 → skip."""
+        from billing.calc.rent import genera_pagamenti_mese
+
+        risultato = genera_pagamenti_mese(2025, 7)
+        assert risultato["creati"] == 0
+        assert Receivable.objects.filter(causale="affitto").count() == 0
+
+    def test_moncone_uscita_prorata(self, db, make_assignment):
+        """Uscita 20/7: mensilità 9/7-20/7 = 12 gg su 31 (mens. completa 9/7-8/8)."""
+        from billing.calc.rent import genera_pagamenti_mese
+
+        a = make_assignment(
+            canone=Decimal("500.00"),
+            valid_from=datetime.date(2025, 2, 9),
+            valid_to=datetime.date(2025, 7, 20),
+        )
+        a.tenant.ciclo_fatturazione = TenantProfile.CicloFatturazione.INGRESSO
+        a.tenant.save(update_fields=["ciclo_fatturazione"])
+
+        genera_pagamenti_mese(2025, 7)
+
+        p = Receivable.objects.get(causale="affitto")
+        assert p.competenza_da == datetime.date(2025, 7, 9)
+        assert p.competenza_a == datetime.date(2025, 7, 20)
+        assert p.is_aggiustamento
+        atteso = (Decimal("500.00") * Decimal(12) / Decimal(31)).quantize(
+            Decimal("0.01"), rounding=__import__("decimal").ROUND_HALF_UP
+        )
+        assert p.importo_dovuto == atteso
+
+    def test_solare_default_non_impattato(self, db, make_assignment):
+        """Tenant senza override del ciclo: comportamento solare invariato."""
+        from billing.calc.rent import genera_pagamenti_mese
+
+        a = make_assignment(
+            canone=Decimal("500.00"),
+            valid_from=datetime.date(2025, 2, 9),
+        )
+        # Niente ciclo_fatturazione: resta default 'solare'
+        assert a.tenant.ciclo_fatturazione == TenantProfile.CicloFatturazione.SOLARE
+
+        genera_pagamenti_mese(2025, 2)
+
+        p = Receivable.objects.get(causale="affitto")
+        # Solare: competenza 9/2-28/2, pro-rata 20gg/28gg
+        assert p.competenza_da == datetime.date(2025, 2, 9)
+        assert p.competenza_a == datetime.date(2025, 2, 28)
+        assert p.is_aggiustamento

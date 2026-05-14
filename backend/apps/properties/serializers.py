@@ -27,6 +27,9 @@ class TenantProfileSerializer(serializers.ModelSerializer):
     frequenza_conguagli_display = serializers.CharField(
         source="get_frequenza_conguagli_display", read_only=True
     )
+    ciclo_fatturazione_display = serializers.CharField(
+        source="get_ciclo_fatturazione_display", read_only=True
+    )
     saldo = serializers.SerializerMethodField()
 
     class Meta:
@@ -42,6 +45,8 @@ class TenantProfileSerializer(serializers.ModelSerializer):
             "giorno_pagamento_affitto",
             "frequenza_conguagli",
             "frequenza_conguagli_display",
+            "ciclo_fatturazione",
+            "ciclo_fatturazione_display",
             "note_pagamento",
             "deposito_versato",
             "data_versamento_deposito",
