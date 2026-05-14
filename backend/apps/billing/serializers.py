@@ -18,6 +18,7 @@ from billing.models import (
     UtilityBill,
     UtilityChargePeriod,
 )
+from properties.models import OwnerProfile
 
 
 class RentPaymentSerializer(serializers.ModelSerializer):
@@ -226,6 +227,15 @@ class ExpenseCategorySerializer(serializers.ModelSerializer):
 
 
 class ExpenseSerializer(serializers.ModelSerializer):
+    # Reso opzionale in input: il viewset lo deriva da `bt_owner_account.owner`
+    # quando viene creata contestualmente una BankTransaction. Il modello resta
+    # NOT NULL: se non c'è né l'uno né l'altro, il save fallirà a livello DB
+    # (e il serializer rifiuterà comunque tramite la validate qui sotto).
+    anticipata_da_owner = serializers.PrimaryKeyRelatedField(
+        queryset=OwnerProfile.objects.all(),
+        required=False,
+        allow_null=True,
+    )
     category_nome = serializers.CharField(source="category.nome", read_only=True)
     anticipata_da_nominativo = serializers.CharField(
         source="anticipata_da_owner.nominativo", read_only=True

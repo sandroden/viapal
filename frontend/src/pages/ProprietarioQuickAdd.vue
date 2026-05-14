@@ -30,17 +30,23 @@
           outlined
           label="Cosa hai pagato?"
           :rules="[(v) => !!v || 'Inserisci una descrizione']"
+          :error="!!errorOf('descrizione')"
+          :error-message="errorOf('descrizione')"
         />
         <q-select
-          v-model="form.categoria"
+          v-model="form.category"
           outlined
           label="Categoria"
-          :options="categorie"
+          :options="opzioniCategoria"
+          option-label="nome"
+          option-value="id"
           emit-value
           map-options
+          :error="!!errorOf('category')"
+          :error-message="errorOf('category')"
         />
 
-        <q-banner v-if="errore" class="bg-red-1 text-red-9" rounded>{{ errore }}</q-banner>
+        <q-banner v-if="globalError" class="bg-red-1 text-red-9" rounded>{{ globalError }}</q-banner>
 
         <q-btn
           unelevated
@@ -67,52 +73,61 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { Notify } from 'quasar';
 import { useExpensesStore, type NuovaSpesa } from 'stores/expenses';
+import { useExpenseCategoriesStore } from 'stores/expenseCategories';
+import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
+import { useAuthStore } from 'stores/auth';
+import { useFormErrors } from 'src/composables/useFormErrors';
 
 const store = useExpensesStore();
+const categoriesStore = useExpenseCategoriesStore();
+const contiStore = useOwnerBankAccountsStore();
+const auth = useAuthStore();
 const loading = ref(false);
-const errore = ref('');
+const { globalError, captureError, reset: resetErrors, errorOf } = useFormErrors();
+
+const opzioniCategoria = computed(() => categoriesStore.categories);
+const contoDefault = computed(
+  () => auth.user?.bank_accounts?.[0]?.id ?? contiStore.accounts[0]?.id ?? null,
+);
 
 const form = reactive<NuovaSpesa>({
   data: new Date().toISOString().slice(0, 10),
   descrizione: '',
   importo: 0,
-  categoria: '',
+  category: null,
 });
 
-const categorie = [
-  { label: 'Manutenzione', value: 'manutenzione' },
-  { label: 'Utenze', value: 'utenze' },
-  { label: 'Pulizie', value: 'pulizie' },
-  { label: 'Tasse', value: 'tasse' },
-  { label: 'Altro', value: 'altro' },
-];
+onMounted(() => {
+  void categoriesStore.ensureLoaded();
+  void contiStore.ensureLoaded();
+});
 
 async function salva() {
-  errore.value = '';
-  if (!form.descrizione || !form.data || !form.importo || form.importo <= 0) {
-    errore.value = 'Compila i campi obbligatori';
-    return;
-  }
+  resetErrors();
   loading.value = true;
   try {
-    await store.creaSpesa({
+    const payload: NuovaSpesa = {
       data: form.data,
       descrizione: form.descrizione,
       importo: form.importo,
-      categoria: form.categoria || undefined,
-    });
+      category: form.category,
+    };
+    if (contoDefault.value) {
+      payload.crea_bank_transaction = true;
+      payload.bt_owner_account = contoDefault.value;
+      payload.bt_data = form.data;
+      payload.bt_descrizione = form.descrizione;
+    }
+    await store.creaSpesa(payload);
     Notify.create({ type: 'positive', message: 'Spesa salvata', icon: 'check_circle' });
     form.descrizione = '';
     form.importo = 0;
-    form.categoria = '';
+    form.category = null;
   } catch (e: unknown) {
-    const msg =
-      (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-      'Salvataggio non riuscito';
-    errore.value = msg;
+    captureError(e);
   } finally {
     loading.value = false;
   }

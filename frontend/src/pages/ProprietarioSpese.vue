@@ -159,17 +159,42 @@
         </q-card-section>
         <q-card-section>
           <q-form class="q-gutter-md" @submit.prevent="salva">
-            <q-input v-model="form.data" type="date" outlined label="Data" />
-            <q-input v-model="form.descrizione" outlined label="Descrizione" />
+            <q-input
+              v-model="form.data"
+              type="date"
+              outlined
+              label="Data"
+              :error="!!errorOf('data')"
+              :error-message="errorOf('data')"
+            />
+            <q-input
+              v-model="form.descrizione"
+              outlined
+              label="Descrizione"
+              :error="!!errorOf('descrizione')"
+              :error-message="errorOf('descrizione')"
+            />
             <q-input
               v-model.number="form.importo"
               type="number"
               step="0.01"
               outlined
               label="Importo (€)"
+              :error="!!errorOf('importo')"
+              :error-message="errorOf('importo')"
             />
-            <q-input v-model="form.categoria" outlined label="Categoria" />
-            <q-input v-model="form.fornitore" outlined label="Fornitore" />
+            <q-select
+              v-model="form.category"
+              :options="opzioniCategoria"
+              option-label="nome"
+              option-value="id"
+              emit-value
+              map-options
+              outlined
+              label="Categoria"
+              :error="!!errorOf('category')"
+              :error-message="errorOf('category')"
+            />
             <q-input v-model="form.note" outlined type="textarea" label="Note" autogrow />
 
             <q-separator />
@@ -192,6 +217,8 @@
                   outlined
                   dense
                   label="Conto da cui esce"
+                  :error="!!errorOf('bt_owner_account')"
+                  :error-message="errorOf('bt_owner_account')"
                 />
                 <q-input
                   v-model="form.bt_data"
@@ -217,7 +244,7 @@
               </q-banner>
             </div>
 
-            <q-banner v-if="errore" class="bg-red-1 text-red-9" rounded>{{ errore }}</q-banner>
+            <q-banner v-if="globalError" class="bg-red-1 text-red-9" rounded>{{ globalError }}</q-banner>
           </q-form>
         </q-card-section>
         <q-card-actions align="right">
@@ -243,8 +270,10 @@ import { Notify } from 'quasar';
 import { useExpensesStore, type Expense, type NuovaSpesa } from 'stores/expenses';
 import { useAuthStore } from 'stores/auth';
 import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
+import { useExpenseCategoriesStore } from 'stores/expenseCategories';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
+import { useFormErrors } from 'src/composables/useFormErrors';
 import BarChartAnni from 'src/components/BarChartAnni.vue';
 import PdfDialog from 'src/components/PdfDialog.vue';
 import PdfIconButton from 'src/components/PdfIconButton.vue';
@@ -252,12 +281,15 @@ import PdfIconButton from 'src/components/PdfIconButton.vue';
 const store = useExpensesStore();
 const auth = useAuthStore();
 const contiStore = useOwnerBankAccountsStore();
+const categoriesStore = useExpenseCategoriesStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
+const { globalError, captureError, reset: resetErrors, errorOf } = useFormErrors();
 
 const dialogAperto = ref(false);
 const loadingSalva = ref(false);
-const errore = ref('');
+
+const opzioniCategoria = computed(() => categoriesStore.categories);
 
 const contiUtente = computed(() =>
   contiStore.accounts.length > 0
@@ -285,8 +317,7 @@ const form = reactive<FormSpesa>({
   data: new Date().toISOString().slice(0, 10),
   descrizione: '',
   importo: 0,
-  categoria: '',
-  fornitore: '',
+  category: null,
   note: '',
   crea_bank_transaction: true,
   bt_owner_account: contoDefaultBT.value,
@@ -342,7 +373,7 @@ function toNumber(v: string | number | null | undefined): number {
 }
 
 function categoriaOf(e: Expense): string {
-  return e.category_nome || e.categoria || 'Altro';
+  return e.category_nome || 'Altro';
 }
 
 const annoSelezionato = ref<number>(new Date().getFullYear());
@@ -499,6 +530,7 @@ const storicoRows = computed<StoricoRow[]>(() => {
 onMounted(() => {
   void store.fetchExpenses();
   void contiStore.ensureLoaded();
+  void categoriesStore.ensureLoaded();
 });
 
 function ricarica() {
@@ -507,29 +539,19 @@ function ricarica() {
 
 function annulla() {
   dialogAperto.value = false;
-  errore.value = '';
+  resetErrors();
 }
 
 async function salva() {
-  errore.value = '';
-  if (!form.descrizione || !form.data || !form.importo || form.importo <= 0) {
-    errore.value = 'Compila i campi obbligatori';
-    return;
-  }
-  if (form.crea_bank_transaction && !form.bt_owner_account) {
-    errore.value = 'Seleziona il conto da cui esce il movimento.';
-    return;
-  }
+  resetErrors();
   loadingSalva.value = true;
   try {
     const payload: NuovaSpesa = {
       data: form.data,
       descrizione: form.descrizione,
       importo: form.importo,
-      categoria: form.categoria || undefined,
-      fornitore: form.fornitore || undefined,
+      category: form.category,
       note: form.note || undefined,
-      anticipata_da_owner: auth.user?.owner_profile_id ?? null,
       crea_bank_transaction: form.crea_bank_transaction,
     };
     if (form.crea_bank_transaction) {
@@ -544,8 +566,7 @@ async function salva() {
       data: new Date().toISOString().slice(0, 10),
       descrizione: '',
       importo: 0,
-      categoria: '',
-      fornitore: '',
+      category: null,
       note: '',
       crea_bank_transaction: true,
       bt_owner_account: contoDefaultBT.value,
@@ -553,10 +574,7 @@ async function salva() {
       bt_descrizione: '',
     });
   } catch (e: unknown) {
-    const msg =
-      (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-      'Salvataggio non riuscito';
-    errore.value = msg;
+    captureError(e);
   } finally {
     loadingSalva.value = false;
   }

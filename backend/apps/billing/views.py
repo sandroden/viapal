@@ -24,6 +24,7 @@ from billing.models import (
     BankTransaction,
     BankTransactionAllocation,
     Expense,
+    ExpenseCategory,
     Receivable,
     StatoPagamento,
     UtilityBill,
@@ -31,6 +32,7 @@ from billing.models import (
 )
 from billing.serializers import (
     BankTransactionSerializer,
+    ExpenseCategorySerializer,
     ExpenseSerializer,
     ExtraChargeSerializer,
     ReceivableForReconcileSerializer,
@@ -292,6 +294,15 @@ class UtilityBillViewSet(ModelViewSet):
         return Response(serializer.data, status=201)
 
 
+class ExpenseCategoryViewSet(ReadOnlyModelViewSet):
+    """Categorie di spesa. Read-only via API: si gestiscono dall'admin Django."""
+
+    serializer_class = ExpenseCategorySerializer
+    permission_classes = [IsProprietario]
+    queryset = ExpenseCategory.objects.all().order_by("nome")
+    pagination_class = None
+
+
 class ExpenseViewSet(ModelViewSet):
     """Spese immobile. Solo proprietari (full CRUD).
 
@@ -309,17 +320,24 @@ class ExpenseViewSet(ModelViewSet):
     ).order_by("-data")
 
     def perform_create(self, serializer):
+        from properties.models import OwnerBankAccount
         validated = serializer.validated_data
         crea_bt = validated.pop("crea_bank_transaction", True)
         bt_owner_account_id = validated.pop("bt_owner_account", None)
         bt_data = validated.pop("bt_data", None)
         bt_descrizione = validated.pop("bt_descrizione", "") or ""
 
+        # Se l'anticipante non è esplicito ma c'è un conto BT, derivalo da lì:
+        # il conto appartiene a un proprietario e la spesa è "anticipata" da lui.
+        account = None
+        if crea_bt and bt_owner_account_id:
+            account = OwnerBankAccount.objects.get(pk=bt_owner_account_id)
+            if validated.get("anticipata_da_owner") is None:
+                validated["anticipata_da_owner"] = account.owner
+
         with transaction.atomic():
             expense = serializer.save()
-            if crea_bt and bt_owner_account_id:
-                from properties.models import OwnerBankAccount
-                account = OwnerBankAccount.objects.get(pk=bt_owner_account_id)
+            if crea_bt and account is not None:
                 BankTransaction.objects.create(
                     data=bt_data or expense.data,
                     descrizione=bt_descrizione or (

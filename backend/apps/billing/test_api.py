@@ -1359,3 +1359,63 @@ class TestExpenseCreaBT:
             format="json",
         )
         assert resp.status_code == 400
+
+    def test_anticipante_auto_dal_conto_bt(
+        self, client_prop, owner_account, expense_category, owner_prop
+    ):
+        """Se la BT viene creata, l'anticipante è derivato dal conto BT
+        anche se il client non lo invia."""
+        from billing.models import Expense
+        resp = client_prop.post(
+            self.URL,
+            {
+                "data": "2026-05-10",
+                "category": expense_category.id,
+                "importo": "30.00",
+                "descrizione": "Spesa senza anticipante esplicito",
+                "bt_owner_account": owner_account.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        exp = Expense.objects.get(pk=resp.json()["id"])
+        assert exp.anticipata_da_owner_id == owner_account.owner_id == owner_prop.id
+
+    def test_senza_categoria_400_field_error(
+        self, client_prop, owner_account
+    ):
+        resp = client_prop.post(
+            self.URL,
+            {
+                "data": "2026-05-10",
+                "importo": "30.00",
+                "descrizione": "Spesa senza categoria",
+                "bt_owner_account": owner_account.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert "category" in resp.json()
+
+
+class TestExpenseCategoryEndpoint:
+    URL = "/api/v1/expense-categories/"
+
+    @pytest.fixture
+    def categorie(self, db):
+        from billing.models import ExpenseCategory
+        return [
+            ExpenseCategory.objects.create(nome="IMU", codice="imu"),
+            ExpenseCategory.objects.create(nome="Manutenzione", codice="man"),
+        ]
+
+    def test_lista_per_proprietario(self, client_prop, categorie):
+        resp = client_prop.get(self.URL)
+        assert resp.status_code == 200, resp.content
+        data = resp.json()
+        nomi = sorted(c["nome"] for c in data)
+        assert nomi == ["IMU", "Manutenzione"]
+
+    def test_negato_per_inquilino(self, client_inq_1, categorie):
+        resp = client_inq_1.get(self.URL)
+        assert resp.status_code == 403

@@ -18,23 +18,17 @@ export interface Expense {
   bolletta_prodotto?: 'gas' | 'luce' | 'acqua' | null;
   bolletta_consumo?: string | number | null;
   file_pdf?: string | null;
-  // legacy / form fields
-  categoria?: string | null;
-  fornitore?: string | null;
-  metodo_pagamento?: string | null;
-  ricevuta?: string | null;
 }
 
 export interface NuovaSpesa {
   data: string;
   descrizione: string;
   importo: number;
-  categoria?: string | undefined;
-  fornitore?: string | undefined;
-  metodo_pagamento?: string | undefined;
+  category: number | null;
   note?: string | undefined;
-  anticipata_da_owner?: number | null;
-  // Creazione contestuale BankTransaction in uscita
+  // Creazione contestuale BankTransaction in uscita.
+  // L'anticipante (`anticipata_da_owner`) viene derivato lato BE dal proprietario
+  // del conto BT, quindi il FE non lo invia.
   crea_bank_transaction?: boolean;
   bt_owner_account?: number | null;
   bt_data?: string;
