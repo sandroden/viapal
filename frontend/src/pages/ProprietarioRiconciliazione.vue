@@ -160,7 +160,12 @@
           </div>
           <div class="vp-p-rec__col-meta">
             <template
-              v-if="filtroImportoBt === 'tutti' && sogliaMicroResidui === 0 && !nascondiInterOwner"
+              v-if="
+                filtroImportoBt === 'tutti'
+                  && sogliaMicroResidui === 0
+                  && !nascondiInterOwner
+                  && !tenantPerFiltroBt
+              "
             >
               {{ store.bts.length }} risultati
             </template>
@@ -557,7 +562,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { Notify } from 'quasar';
 import { useRiconciliazioneStore, type BankTransactionFE, type ReceivableFE } from 'stores/riconciliazione';
-import { useTenantsStore } from 'stores/tenants';
+import { useTenantsStore, type Tenant } from 'stores/tenants';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 import BankTransactionLedgerDialog from 'src/components/BankTransactionLedgerDialog.vue';
@@ -618,9 +623,11 @@ const etichettaStatoBt = computed(
 );
 const iconaCausale = computed(() => iconaCausalePer(filtroCausale.value));
 const etichettaFiltroTenant = computed(() => {
-  if (!filtroTenant.value) return 'Filtra per inquilino';
+  if (!filtroTenant.value) return 'Filtra per inquilino (filtra anche le BT per nome/cognome)';
   const t = tenantsStore.tenants.find((x) => x.id === filtroTenant.value);
-  return t ? `Inquilino: ${t.nominativo}` : 'Filtra per inquilino';
+  return t
+    ? `Inquilino: ${t.nominativo} — filtra anche le BT per nome/cognome`
+    : 'Filtra per inquilino';
 });
 const etichettaCausaleFiltro = computed(
   () =>
@@ -729,7 +736,42 @@ function apriDialogInterOwner(bt: BankTransactionFE) {
   dialogInterOwnerAperto.value = true;
 }
 
+// Tokens "significativi" del nominativo (nome/cognome con len>=3, lowercase):
+// usato sia per inferire l'inquilino dalla descrizione di una BT, sia per
+// filtrare le BT quando l'utente seleziona un inquilino dal menu.
+function tenantTokens(t: Tenant): string[] {
+  return t.nominativo
+    .split(/\s+/)
+    .filter((tok) => tok.length >= 3)
+    .map((tok) => tok.toLowerCase());
+}
+
+function btTestoMatchTenant(descr: string, t: Tenant): boolean {
+  const tokens = tenantTokens(t);
+  if (tokens.length === 0) return true;
+  const lower = descr.toLowerCase();
+  return tokens.some((tok) => lower.includes(tok));
+}
+
+const tenantPerFiltroBt = computed<Tenant | null>(() => {
+  if (mostraTuttiInquilini.value) return null;
+  if (!filtroTenant.value) return null;
+  return tenantsStore.tenants.find((t) => t.id === filtroTenant.value) ?? null;
+});
+
+// BT con allocations verso un receivable di questo tenant: vanno sempre mostrate
+// (anche se la descrizione non contiene nome/cognome — es. pagamento fatto da
+// terzi e già abbinato manualmente).
+function btHaAllocAlTenant(bt: BankTransactionFE, tenantId: number): boolean {
+  for (const alloc of bt.allocations) {
+    const r = store.receivables.find((rr) => rr.id === alloc.receivable);
+    if (r && r.tenant_id === tenantId) return true;
+  }
+  return false;
+}
+
 const btOrdinate = computed<BankTransactionFE[]>(() => {
+  const tenantBt = tenantPerFiltroBt.value;
   const filtrate = store.bts.filter((bt) => {
     if (nascondiInterOwner.value && bt.is_inter_owner) return false;
     if (filtroImportoBt.value !== 'tutti') {
@@ -748,6 +790,16 @@ const btOrdinate = computed<BankTransactionFE[]>(() => {
         return false;
       }
     }
+    if (tenantBt && !btSelezionate.has(bt.id)) {
+      // BT già selezionata (esplicita o auto): sempre visibile.
+      // Altrimenti: match testuale su nome/cognome OPPURE allocations al tenant.
+      if (
+        !btTestoMatchTenant(bt.descrizione, tenantBt)
+        && !btHaAllocAlTenant(bt, tenantBt.id)
+      ) {
+        return false;
+      }
+    }
     return true;
   });
   return filtrate.sort((a, b) => (a.data < b.data ? 1 : -1));
@@ -756,14 +808,8 @@ const btOrdinate = computed<BankTransactionFE[]>(() => {
 // Inquilino dedotto: priorità (1) allocations esistenti, (2) match
 // testuale sul nominativo nella descrizione del bonifico (es. "Bon. da Rossi").
 function inquilinoDaDescrizione(descr: string) {
-  const lower = descr.toLowerCase();
   for (const t of tenantsStore.tenants) {
-    const tokens = t.nominativo
-      .split(/\s+/)
-      .filter((tok) => tok.length >= 3);
-    if (tokens.some((tok) => lower.includes(tok.toLowerCase()))) {
-      return t;
-    }
+    if (btTestoMatchTenant(descr, t)) return t;
   }
   return null;
 }
