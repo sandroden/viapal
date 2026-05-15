@@ -1302,3 +1302,148 @@ class TestAttribuzioneBolletta:
         period.refresh_from_db()
         bills_agganciate = set(period.utility_bills.values_list("pk", flat=True))
         assert bills_agganciate == {b1.pk, b2.pk}
+
+
+# ---------------------------------------------------------------------------
+# Output arricchito: importo_esistente nelle quote, contatori diversi/uguali, ordering
+# ---------------------------------------------------------------------------
+
+
+class TestQuoteImportoEsistente:
+    """Le quote includono `importo_esistente` per consentire all'admin di
+    distinguere nuovo/uguale/diverso in dry-run."""
+
+    @pytest.fixture
+    def setup(self, db, make_assignment, make_tenant, make_room, periodo_maggio, supplier_luce, owner):
+        # 2 inquilini per maggio 2026
+        t1 = make_tenant(nominativo="Aaa")
+        t2 = make_tenant(nominativo="Bbb")
+        make_assignment(
+            tenant=t1, room=make_room(),
+            valid_from=datetime.date(2026, 5, 1),
+        )
+        make_assignment(
+            tenant=t2, room=make_room(),
+            valid_from=datetime.date(2026, 5, 1),
+        )
+        UtilityBill.objects.create(
+            supplier=supplier_luce,
+            numero_fattura="ENEL-TEST-DIVERG",
+            data_emissione=datetime.date(2026, 5, 15),
+            periodo_da=datetime.date(2026, 5, 1),
+            periodo_a=datetime.date(2026, 5, 31),
+            importo_totale=Decimal("200.00"),
+            pagata_da_owner=owner,
+        )
+        return periodo_maggio
+
+    def test_dry_run_quote_includono_importo_esistente_none(self, setup):
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        # Prima esecuzione, nessun Receivable esiste ancora
+        ris = calcola_conguaglio_periodo(setup.pk, persist=False)
+        for q in ris["quote"]:
+            assert q["importo_esistente"] is None
+
+    def test_dry_run_quote_includono_importo_esistente_valorizzato(self, setup):
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        # Persisti prima
+        calcola_conguaglio_periodo(setup.pk, persist=True)
+        # Poi dry-run: importo_esistente deve riflettere il valore esistente
+        ris = calcola_conguaglio_periodo(setup.pk, persist=False)
+        for q in ris["quote"]:
+            assert q["importo_esistente"] == q["quota"]
+
+
+class TestPersistContatoriUtility:
+    """Persist popola contatori creati / aggiornati_diversi / aggiornati_uguali."""
+
+    @pytest.fixture
+    def setup(self, db, make_assignment, make_tenant, make_room, periodo_maggio, supplier_luce, owner):
+        t1 = make_tenant(nominativo="Aaa")
+        t2 = make_tenant(nominativo="Bbb")
+        make_assignment(
+            tenant=t1, room=make_room(),
+            valid_from=datetime.date(2026, 5, 1),
+        )
+        make_assignment(
+            tenant=t2, room=make_room(),
+            valid_from=datetime.date(2026, 5, 1),
+        )
+        UtilityBill.objects.create(
+            supplier=supplier_luce,
+            numero_fattura="ENEL-PERSIST-CNT",
+            data_emissione=datetime.date(2026, 5, 15),
+            periodo_da=datetime.date(2026, 5, 1),
+            periodo_a=datetime.date(2026, 5, 31),
+            importo_totale=Decimal("200.00"),
+            pagata_da_owner=owner,
+        )
+        return periodo_maggio
+
+    def test_prima_run_conta_creati(self, setup):
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        ris = calcola_conguaglio_periodo(setup.pk, persist=True)
+        assert ris["creati"] == 2
+        assert ris["aggiornati_diversi"] == 0
+        assert ris["aggiornati_uguali"] == 0
+
+    def test_seconda_run_uguali(self, setup):
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        calcola_conguaglio_periodo(setup.pk, persist=True)
+        ris = calcola_conguaglio_periodo(setup.pk, persist=True)
+        assert ris["creati"] == 0
+        assert ris["aggiornati_diversi"] == 0
+        assert ris["aggiornati_uguali"] == 2
+
+    def test_run_dopo_modifica_bolletta_conta_diversi(self, setup):
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        calcola_conguaglio_periodo(setup.pk, persist=True)
+        # Modifico l'importo della bolletta pinned: il pinning M2M trattiene
+        # la bolletta, e il ricalcolo somma il nuovo importo_totale.
+        bill = UtilityBill.objects.get(numero_fattura="ENEL-PERSIST-CNT")
+        bill.importo_totale = Decimal("300.00")
+        bill.save(update_fields=["importo_totale"])
+        ris = calcola_conguaglio_periodo(setup.pk, persist=True)
+        assert ris["aggiornati_diversi"] == 2
+        assert ris["aggiornati_uguali"] == 0
+
+
+class TestOrderingQuotePerNominativo:
+    """Le quote escono in ordine alfabetico di nominativo per output stabile."""
+
+    def test_ordering(self, db, make_assignment, make_tenant, make_room, periodo_maggio, supplier_luce, owner):
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        # Tenant in ordine non alfabetico per pk
+        t_zorro = make_tenant(nominativo="Zorro")
+        t_alpha = make_tenant(nominativo="Alpha")
+        t_mike = make_tenant(nominativo="Mike")
+        make_assignment(
+            tenant=t_zorro, room=make_room(),
+            valid_from=datetime.date(2026, 5, 1),
+        )
+        make_assignment(
+            tenant=t_alpha, room=make_room(),
+            valid_from=datetime.date(2026, 5, 1),
+        )
+        make_assignment(
+            tenant=t_mike, room=make_room(),
+            valid_from=datetime.date(2026, 5, 1),
+        )
+        UtilityBill.objects.create(
+            supplier=supplier_luce,
+            numero_fattura="ENEL-ORDER",
+            data_emissione=datetime.date(2026, 5, 15),
+            periodo_da=datetime.date(2026, 5, 1),
+            periodo_a=datetime.date(2026, 5, 31),
+            importo_totale=Decimal("300.00"),
+            pagata_da_owner=owner,
+        )
+        ris = calcola_conguaglio_periodo(periodo_maggio.pk, persist=False)
+        nominativi = [q["tenant_nominativo"] for q in ris["quote"]]
+        assert nominativi == ["Alpha", "Mike", "Zorro"]

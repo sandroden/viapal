@@ -634,3 +634,307 @@ class TestCicloIngresso:
         assert p.competenza_da == datetime.date(2025, 2, 9)
         assert p.competenza_a == datetime.date(2025, 2, 28)
         assert p.is_aggiustamento
+
+
+# ---------------------------------------------------------------------------
+# Output arricchito: divergenza, contatori diversi/uguali, ordering
+# ---------------------------------------------------------------------------
+
+
+class TestSimulazioneDivergenza:
+    """In dry-run, la simulazione segnala se l'importo calcolato divergerebbe
+    dall'esistente, sia con force (azione=update) sia senza (azione=skip)."""
+
+    def test_simulazione_segnala_divergenza_con_force(self, db, make_assignment):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        a = make_assignment(
+            canone=Decimal("500.00"),
+            valid_from=datetime.date(2026, 5, 1),
+        )
+        # Crea il Receivable
+        genera_pagamenti_mese(2026, 5)
+        # Forza divergenza modificando il canone
+        a.canone_mensile = Decimal("600.00")
+        a.save(update_fields=["canone_mensile"])
+
+        ris = genera_pagamenti_mese(2026, 5, force=True, persist=False)
+        sim = ris["simulazione"]
+        assert len(sim) == 1
+        assert sim[0]["azione_prevista"] == "update"
+        assert sim[0]["divergenza"] is True
+        assert sim[0]["importo_esistente"] == Decimal("500.00")
+        assert sim[0]["importo_dovuto"] == Decimal("600.00")
+
+    def test_simulazione_segnala_divergenza_senza_force(self, db, make_assignment):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        a = make_assignment(
+            canone=Decimal("500.00"),
+            valid_from=datetime.date(2026, 5, 1),
+        )
+        genera_pagamenti_mese(2026, 5)
+        a.canone_mensile = Decimal("600.00")
+        a.save(update_fields=["canone_mensile"])
+
+        ris = genera_pagamenti_mese(2026, 5, force=False, persist=False)
+        sim = ris["simulazione"]
+        assert len(sim) == 1
+        assert sim[0]["azione_prevista"] == "skip"
+        assert sim[0]["divergenza"] is True
+        assert sim[0]["importo_esistente"] == Decimal("500.00")
+        assert sim[0]["importo_dovuto"] == Decimal("600.00")
+
+    def test_simulazione_create_non_ha_divergenza(self, db, make_assignment):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        make_assignment(
+            canone=Decimal("500.00"),
+            valid_from=datetime.date(2026, 5, 1),
+        )
+        ris = genera_pagamenti_mese(2026, 5, persist=False)
+        sim = ris["simulazione"]
+        assert len(sim) == 1
+        assert sim[0]["azione_prevista"] == "create"
+        assert sim[0]["divergenza"] is None
+        assert sim[0]["importo_esistente"] is None
+
+    def test_simulazione_skip_uguale_segnala_non_divergenza(
+        self, db, make_assignment
+    ):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        make_assignment(
+            canone=Decimal("500.00"),
+            valid_from=datetime.date(2026, 5, 1),
+        )
+        genera_pagamenti_mese(2026, 5)
+        # Stesso canone: no divergenza
+        ris = genera_pagamenti_mese(2026, 5, persist=False)
+        sim = ris["simulazione"]
+        assert len(sim) == 1
+        assert sim[0]["azione_prevista"] == "skip"
+        assert sim[0]["divergenza"] is False
+
+
+class TestContatoriPersist:
+    """Persist con force distingue aggiornati_diversi vs aggiornati_uguali.
+    Persist senza force popola skippati_divergenti per importi divergenti."""
+
+    def test_force_conta_diversi_uguali(self, db, make_assignment):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        a1 = make_assignment(
+            canone=Decimal("500.00"),
+            valid_from=datetime.date(2026, 5, 1),
+            nominativo="Aaa",
+        )
+        a2 = make_assignment(
+            canone=Decimal("600.00"),
+            valid_from=datetime.date(2026, 5, 1),
+            nominativo="Bbb",
+        )
+        genera_pagamenti_mese(2026, 5)
+
+        # Solo a1 cambia canone: divergerà
+        a1.canone_mensile = Decimal("510.00")
+        a1.save(update_fields=["canone_mensile"])
+
+        ris = genera_pagamenti_mese(2026, 5, force=True)
+        assert ris["aggiornati"] == 2
+        assert ris["aggiornati_diversi"] == 1
+        assert ris["aggiornati_uguali"] == 1
+
+    def test_no_force_popola_skippati_divergenti(self, db, make_assignment):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        a1 = make_assignment(
+            canone=Decimal("500.00"),
+            valid_from=datetime.date(2026, 5, 1),
+            nominativo="Aaa",
+        )
+        a2 = make_assignment(
+            canone=Decimal("600.00"),
+            valid_from=datetime.date(2026, 5, 1),
+            nominativo="Bbb",
+        )
+        genera_pagamenti_mese(2026, 5)
+        a1.canone_mensile = Decimal("510.00")
+        a1.save(update_fields=["canone_mensile"])
+
+        ris = genera_pagamenti_mese(2026, 5, force=False)
+        # Tutti e 2 skippati (no force), ma solo 1 divergente
+        assert ris["skippati"] == 2
+        assert len(ris["skippati_divergenti"]) == 1
+        div = ris["skippati_divergenti"][0]
+        assert div["tenant_nominativo"] == "Aaa"
+        assert div["importo_esistente"] == Decimal("500.00")
+        assert div["importo_calcolato"] == Decimal("510.00")
+
+
+class TestDuplicatoAltroAssignment:
+    """Quando un tenant ha 2 assignment in continuita' (es. rinnovo) e i
+    Receivable storici sono su quello vecchio, il calcolo del nuovo assignment
+    deve riconoscerlo come 'create_duplicato' e NON creare un duplicato."""
+
+    @pytest.fixture
+    def setup_rinnovo(self, db, make_room, make_tenant):
+        """Eshani-like: 1 tenant, 2 assignment back-to-back nella stessa camera."""
+        room = make_room()
+        t = make_tenant(nominativo="Tenant Rinnovo")
+        a1 = RoomAssignment.objects.create(
+            room=room, tenant=t,
+            valid_from=datetime.date(2025, 1, 1),
+            valid_to=datetime.date(2025, 2, 14),
+            canone_mensile=Decimal("500.00"),
+        )
+        a2 = RoomAssignment.objects.create(
+            room=room, tenant=t,
+            valid_from=datetime.date(2025, 2, 15),
+            valid_to=None,
+            canone_mensile=Decimal("520.00"),
+        )
+        # Receivable storico per marzo 2025 linkato (erroneamente) ad a1
+        Receivable.objects.create(
+            assignment=a1,
+            causale=Receivable.Causale.AFFITTO,
+            competenza_da=datetime.date(2025, 3, 1),
+            competenza_a=datetime.date(2025, 3, 31),
+            importo_dovuto=Decimal("520.00"),
+            scadenza=datetime.date(2025, 3, 6),
+            stato=StatoPagamento.ATTESO,
+        )
+        return a1, a2
+
+    def test_dry_run_segnala_create_duplicato(self, setup_rinnovo):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        a1, a2 = setup_rinnovo
+        ris = genera_pagamenti_mese(2025, 3, persist=False)
+        sim = ris["simulazione"]
+        # Solo a2 e' attivo nel mese di marzo (a1 finisce 14/2)
+        assert len(sim) == 1
+        assert sim[0]["azione_prevista"] == "create_duplicato"
+        assert sim[0]["altro_importo"] == Decimal("520.00")
+        assert sim[0]["altro_assignment_id"] == a1.pk
+        assert sim[0]["divergenza"] is False  # importi coincidono
+
+    def test_persist_non_crea_duplicati(self, setup_rinnovo):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        a1, a2 = setup_rinnovo
+        ris = genera_pagamenti_mese(2025, 3, persist=True)
+        # Nessun nuovo Receivable creato
+        assert ris["creati"] == 0
+        assert ris["aggiornati"] == 0
+        assert len(ris["duplicati_altro_assignment"]) == 1
+        dup = ris["duplicati_altro_assignment"][0]
+        assert dup["assignment_id_corrente"] == a2.pk
+        assert dup["assignment_id_esistente"] == a1.pk
+        # Il DB resta con 1 solo Receivable (non duplicato)
+        assert Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO,
+            competenza_da=datetime.date(2025, 3, 1),
+        ).count() == 1
+
+    def test_dry_run_force_segnala_update_riassocia(self, setup_rinnovo):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        a1, a2 = setup_rinnovo
+        # a2 ha canone 520, il Receivable storico ha importo 520 → uguale
+        ris = genera_pagamenti_mese(2025, 3, force=True, persist=False)
+        sim = ris["simulazione"]
+        assert len(sim) == 1
+        assert sim[0]["azione_prevista"] == "update_riassocia"
+        assert sim[0]["altro_assignment_id"] == a1.pk
+        assert sim[0]["divergenza"] is False
+
+    def test_persist_force_riassocia_e_aggiorna(self, setup_rinnovo):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        a1, a2 = setup_rinnovo
+        # Cambio canone di a2 per forzare divergenza importo
+        a2.canone_mensile = Decimal("540.00")
+        a2.save(update_fields=["canone_mensile"])
+
+        ris = genera_pagamenti_mese(2025, 3, force=True, persist=True)
+        assert ris["aggiornati"] == 1
+        assert ris["aggiornati_diversi"] == 1
+        assert len(ris["rilinkati"]) == 1
+        r = ris["rilinkati"][0]
+        assert r["old_assignment_id"] == a1.pk
+        assert r["new_assignment_id"] == a2.pk
+        assert r["importo_pre"] == Decimal("520.00")
+        assert r["importo_post"] == Decimal("540.00")
+
+        # Verifica nel DB: il Receivable è stato rilinkato e aggiornato
+        rec = Receivable.objects.get(
+            causale=Receivable.Causale.AFFITTO,
+            competenza_da=datetime.date(2025, 3, 1),
+        )
+        assert rec.assignment_id == a2.pk
+        assert rec.importo_dovuto == Decimal("540.00")
+        # No duplicati creati
+        assert Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO,
+            competenza_da=datetime.date(2025, 3, 1),
+        ).count() == 1
+
+    def test_force_non_tocca_se_altro_record_e_allocato(self, setup_rinnovo):
+        """Anche con force, se il Receivable di un altro assignment è già
+        allocato a BankTransaction, NON viene toccato."""
+        from billing.calc.rent import genera_pagamenti_mese
+
+        a1, a2 = setup_rinnovo
+        recv = Receivable.objects.get(assignment=a1)
+
+        owner_user = User.objects.create_user("owner_dup", email="owner_dup@v.it", password="pwd")
+        owner = OwnerProfile.objects.create(user=owner_user, nominativo="Owner Dup")
+        owner_account = OwnerBankAccount.objects.create(
+            owner=owner, banca="X", intestatario="X",
+            iban="IT00X0000000000000000000099",
+        )
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2025, 3, 5),
+            descrizione="bonifico",
+            importo=recv.importo_dovuto,
+            owner_account=owner_account,
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=recv, importo=recv.importo_dovuto
+        )
+
+        ris = genera_pagamenti_mese(2025, 3, force=True, persist=True)
+        recv.refresh_from_db()
+        # Non rilinkato, ancora su a1
+        assert recv.assignment_id == a1.pk
+        assert len(ris["skippati_per_allocation"]) == 1
+        assert len(ris["rilinkati"]) == 0
+
+
+class TestOrderingAssignmentsPerNominativo:
+    """Simulazione e generazione iterano in ordine alfabetico di nominativo
+    inquilino, per output log deterministico."""
+
+    def test_ordering_simulazione(self, db, make_assignment):
+        from billing.calc.rent import genera_pagamenti_mese
+
+        # Creati in ordine non alfabetico
+        make_assignment(
+            canone=Decimal("500.00"),
+            valid_from=datetime.date(2026, 5, 1),
+            nominativo="Zorro",
+        )
+        make_assignment(
+            canone=Decimal("500.00"),
+            valid_from=datetime.date(2026, 5, 1),
+            nominativo="Alpha",
+        )
+        make_assignment(
+            canone=Decimal("500.00"),
+            valid_from=datetime.date(2026, 5, 1),
+            nominativo="Mike",
+        )
+        ris = genera_pagamenti_mese(2026, 5, persist=False)
+        nominativi = [s["tenant_nominativo"] for s in ris["simulazione"]]
+        assert nominativi == ["Alpha", "Mike", "Zorro"]

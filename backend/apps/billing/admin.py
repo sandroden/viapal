@@ -810,11 +810,19 @@ def rigenera_receivables_utenze(modeladmin, request, queryset):
     tag = "[DRY-RUN] " if dry_run else ""
 
     tot_persistiti = 0
+    tot_creati = 0
+    tot_aggiornati_diversi = 0
+    tot_aggiornati_uguali = 0
     tot_skippati = 0
+    # Contatori dry-run: nuovo/uguale/diverso per quote
+    sim_nuovo = 0
+    sim_uguale = 0
+    sim_diverso = 0
     skippati_dettaglio: list[str] = []
     errori: list[str] = []
 
-    for period in queryset:
+    # Ordine cronologico crescente per output log.
+    for period in queryset.order_by("periodo_da"):
         label = f"{period.periodo_da} → {period.periodo_a} (id={period.pk})"
         try:
             risultato = calcola_conguaglio_periodo(
@@ -845,10 +853,23 @@ def rigenera_receivables_utenze(modeladmin, request, queryset):
                     for v in ("luce", "gas", "tari", "altro")
                     if q["dettaglio"].get(v)
                 )
+                importo_pre = q.get("importo_esistente")
+                if importo_pre is None:
+                    marker = "nuovo"
+                    sim_nuovo += 1
+                elif importo_pre == q["quota"]:
+                    marker = "uguale"
+                    sim_uguale += 1
+                else:
+                    delta = q["quota"] - importo_pre
+                    segno = "+" if delta >= 0 else ""
+                    marker = f"diverso (era {importo_pre}€, Δ{segno}{delta}€)"
+                    sim_diverso += 1
                 messages.info(
                     request,
                     f"    • {q['tenant_nominativo']}: "
                     f"{q['giorni_presenza']}gg → {q['quota']}€"
+                    f" [{marker}]"
                     + (f" ({dettaglio})" if dettaglio else ""),
                 )
             continue
@@ -856,6 +877,9 @@ def rigenera_receivables_utenze(modeladmin, request, queryset):
         skippati = risultato.get("skippati_per_allocation", [])
         n_persistiti = len(risultato["quote"]) - len(skippati)
         tot_persistiti += n_persistiti
+        tot_creati += risultato.get("creati", 0)
+        tot_aggiornati_diversi += risultato.get("aggiornati_diversi", 0)
+        tot_aggiornati_uguali += risultato.get("aggiornati_uguali", 0)
         tot_skippati += len(skippati)
         for s in skippati:
             skippati_dettaglio.append(
@@ -867,11 +891,23 @@ def rigenera_receivables_utenze(modeladmin, request, queryset):
         for msg in errori:
             messages.error(request, msg)
 
-    if not dry_run and (tot_persistiti or tot_skippati):
+    if dry_run:
+        if sim_nuovo or sim_uguale or sim_diverso:
+            messages.info(
+                request,
+                f"{tag}Riepilogo: {sim_nuovo} nuovi, {sim_uguale} invariati, "
+                f"{sim_diverso} con importo cambiato.",
+            )
+        return
+
+    if tot_persistiti or tot_skippati:
+        tot_aggiornati = tot_aggiornati_diversi + tot_aggiornati_uguali
         messages.success(
             request,
             f"Rigenerazione completata: {tot_persistiti} Receivable utenze persistiti su "
-            f"{queryset.count()} periodi"
+            f"{queryset.count()} periodi "
+            f"({tot_creati} creati, {tot_aggiornati} aggiornati "
+            f"di cui {tot_aggiornati_diversi} con importo cambiato)"
             + (f" (solo inquilino {tenant.nominativo})" if tenant else "")
             + ".",
         )
@@ -913,13 +949,27 @@ def rigenera_receivables_affitto(modeladmin, request, queryset):
 
     tot_creati = 0
     tot_aggiornati = 0
+    tot_aggiornati_diversi = 0
+    tot_aggiornati_uguali = 0
     tot_skippati = 0
     skippati_alloc_dettaglio: list[str] = []
+    skippati_div_dettaglio: list[str] = []
+    duplicati_dettaglio: list[str] = []
+    rilinkati_dettaglio: list[str] = []
     errori: list[str] = []
     mesi_processati: set[tuple[int, int]] = set()
-    sim_per_azione: dict[str, int] = {}  # solo dry-run: contatore per azione_prevista
+    # Dry-run: contatori per coppia (azione, divergenza)
+    sim_create = 0
+    sim_update_diverso = 0
+    sim_update_uguale = 0
+    sim_skip_diverso = 0
+    sim_skip_uguale = 0
+    sim_skip_allocation = 0
+    sim_create_duplicato = 0
+    sim_update_riassocia = 0
 
-    for period in queryset:
+    # Ordine cronologico crescente per output log.
+    for period in queryset.order_by("periodo_da"):
         for anno, mese in _mesi_in_periodo(period.periodo_da, period.periodo_a):
             chiave = (anno, mese)
             if chiave in mesi_processati:
@@ -934,32 +984,119 @@ def rigenera_receivables_affitto(modeladmin, request, queryset):
                 continue
             if dry_run:
                 for s in ris.get("simulazione", []):
-                    sim_per_azione[s["azione_prevista"]] = sim_per_azione.get(s["azione_prevista"], 0) + 1
+                    azione = s["azione_prevista"]
+                    divergenza = s.get("divergenza")
                     flag = " [aggiust.]" if s["is_aggiustamento"] else ""
-                    messages.info(
-                        request,
-                        f"{tag}{anno}/{mese:02d} — {s['tenant_nominativo']}: "
-                        f"{s['azione_prevista']} → {s['importo_dovuto']}€"
-                        f" (scad. {s['scadenza']}, comp. {s['competenza_da']}→{s['competenza_a']}){flag}",
-                    )
+                    pre = s.get("importo_esistente")
+                    if azione == "create":
+                        sim_create += 1
+                        messages.info(
+                            request,
+                            f"{tag}{anno}/{mese:02d} — {s['tenant_nominativo']}: "
+                            f"create → {s['importo_dovuto']}€"
+                            f" (scad. {s['scadenza']}, comp. {s['competenza_da']}→{s['competenza_a']}){flag}",
+                        )
+                    elif azione == "update" and divergenza:
+                        sim_update_diverso += 1
+                        messages.info(
+                            request,
+                            f"{tag}{anno}/{mese:02d} — {s['tenant_nominativo']}: "
+                            f"update {pre}€ → {s['importo_dovuto']}€"
+                            f" (scad. {s['scadenza']}, comp. {s['competenza_da']}→{s['competenza_a']}){flag}",
+                        )
+                    elif azione == "update":
+                        sim_update_uguale += 1
+                        # nessuna riga (solo contatore: importo invariato)
+                    elif azione == "skip" and divergenza:
+                        sim_skip_diverso += 1
+                        messages.warning(
+                            request,
+                            f"{tag}{anno}/{mese:02d} — {s['tenant_nominativo']}: "
+                            f"skip (no force): esistente {pre}€, "
+                            f"calcolato {s['importo_dovuto']}€ — correzione non applicata{flag}",
+                        )
+                    elif azione == "skip":
+                        sim_skip_uguale += 1
+                        # nessuna riga (importo coincide)
+                    elif azione == "skip_allocation":
+                        sim_skip_allocation += 1
+                        messages.warning(
+                            request,
+                            f"{tag}{anno}/{mese:02d} — {s['tenant_nominativo']}: "
+                            f"skip_allocation (allocato a BT): "
+                            f"esistente {pre}€, calcolato {s['importo_dovuto']}€{flag}",
+                        )
+                    elif azione == "create_duplicato":
+                        sim_create_duplicato += 1
+                        altro_pre = s.get("altro_importo")
+                        altro_aid = s.get("altro_assignment_id")
+                        messages.warning(
+                            request,
+                            f"{tag}{anno}/{mese:02d} — {s['tenant_nominativo']}: "
+                            f"create_duplicato: esiste già {altro_pre}€ su altro "
+                            f"assignment id={altro_aid} per stesso periodo; "
+                            f"calcolato {s['importo_dovuto']}€ — il record esistente "
+                            f"non viene toccato (usa 'Sovrascrivi esistenti' per "
+                            f"aggiornare e riassociare){flag}",
+                        )
+                    elif azione == "update_riassocia":
+                        sim_update_riassocia += 1
+                        altro_pre = s.get("altro_importo")
+                        altro_aid = s.get("altro_assignment_id")
+                        messages.info(
+                            request,
+                            f"{tag}{anno}/{mese:02d} — {s['tenant_nominativo']}: "
+                            f"update_riassocia: aggiorna {altro_pre}€ → "
+                            f"{s['importo_dovuto']}€ e rilinka da assignment "
+                            f"id={altro_aid}{flag}",
+                        )
                 continue
             tot_creati += ris["creati"]
             tot_aggiornati += ris["aggiornati"]
+            tot_aggiornati_diversi += ris.get("aggiornati_diversi", 0)
+            tot_aggiornati_uguali += ris.get("aggiornati_uguali", 0)
             tot_skippati += ris["skippati"]
             for s in ris.get("skippati_per_allocation", []):
                 skippati_alloc_dettaglio.append(
                     f"{anno}/{mese:02d} — {s['tenant_nominativo']}: "
                     f"esistente {s['importo_esistente']}€, calcolato {s['importo_calcolato']}€"
                 )
+            for s in ris.get("skippati_divergenti", []):
+                skippati_div_dettaglio.append(
+                    f"{anno}/{mese:02d} — {s['tenant_nominativo']}: "
+                    f"esistente {s['importo_esistente']}€, calcolato {s['importo_calcolato']}€"
+                )
+            for s in ris.get("duplicati_altro_assignment", []):
+                duplicati_dettaglio.append(
+                    f"{anno}/{mese:02d} — {s['tenant_nominativo']}: "
+                    f"esistente {s['importo_esistente']}€ su assignment id={s['assignment_id_esistente']}, "
+                    f"calcolato {s['importo_calcolato']}€ per assignment id={s['assignment_id_corrente']}"
+                )
+            for s in ris.get("rilinkati", []):
+                rilinkati_dettaglio.append(
+                    f"{anno}/{mese:02d} — {s['tenant_nominativo']}: "
+                    f"riassociato da assignment id={s['old_assignment_id']} a id={s['new_assignment_id']}; "
+                    f"importo {s['importo_pre']}€ → {s['importo_post']}€"
+                )
 
     for msg in errori:
         messages.error(request, msg)
     if dry_run:
-        if sim_per_azione:
-            riassunto = ", ".join(f"{a}: {n}" for a, n in sorted(sim_per_azione.items()))
+        n_mesi = len(mesi_processati)
+        if (sim_create or sim_update_diverso or sim_update_uguale
+                or sim_skip_diverso or sim_skip_uguale or sim_skip_allocation
+                or sim_create_duplicato or sim_update_riassocia):
             messages.info(
                 request,
-                f"{tag}Simulazione su {len(mesi_processati)} mesi — {riassunto}"
+                f"{tag}Simulazione su {n_mesi} mesi — "
+                f"create: {sim_create}, "
+                f"update_diverso: {sim_update_diverso}, "
+                f"update_uguale: {sim_update_uguale}, "
+                f"skip_diverso: {sim_skip_diverso}, "
+                f"skip_uguale: {sim_skip_uguale}, "
+                f"skip_allocation: {sim_skip_allocation}, "
+                f"create_duplicato: {sim_create_duplicato}, "
+                f"update_riassocia: {sim_update_riassocia}"
                 + (f" (solo {tenant.nominativo})" if tenant else "")
                 + (" [FORCE]" if force else ""),
             )
@@ -968,14 +1105,16 @@ def rigenera_receivables_affitto(modeladmin, request, queryset):
                 request,
                 f"{tag}Nessun assignment attivo "
                 + (f"per {tenant.nominativo} " if tenant else "")
-                + f"sui {len(mesi_processati)} mesi selezionati.",
+                + f"sui {n_mesi} mesi selezionati.",
             )
         return
     if tot_creati or tot_aggiornati or tot_skippati:
         messages.success(
             request,
             f"Rigenerazione affitti su {len(mesi_processati)} mesi: "
-            f"{tot_creati} creati, {tot_aggiornati} aggiornati, {tot_skippati} skippati"
+            f"{tot_creati} creati, {tot_aggiornati} aggiornati "
+            f"(di cui {tot_aggiornati_diversi} con importo cambiato), "
+            f"{tot_skippati} skippati"
             + (f" (solo {tenant.nominativo})" if tenant else "")
             + (" [FORCE]" if force else "")
             + ".",
@@ -988,6 +1127,39 @@ def rigenera_receivables_affitto(modeladmin, request, queryset):
         )
         for d in skippati_alloc_dettaglio:
             messages.warning(request, f"    {d}")
+    if skippati_div_dettaglio:
+        n = len(skippati_div_dettaglio)
+        messages.warning(
+            request,
+            f"{n} Receivable con importo divergente NON sovrascritti "
+            "(manca 'Sovrascrivi esistenti'):",
+        )
+        for d in skippati_div_dettaglio[:20]:
+            messages.warning(request, f"    {d}")
+        if n > 20:
+            messages.warning(request, f"    … e altri {n - 20}")
+    if duplicati_dettaglio:
+        n = len(duplicati_dettaglio)
+        messages.warning(
+            request,
+            f"{n} Receivable NON creati perché esiste già un record per lo stesso "
+            "tenant nello stesso periodo, ma su altro assignment "
+            "(usa 'Sovrascrivi esistenti' per aggiornarli e riassociarli):",
+        )
+        for d in duplicati_dettaglio[:20]:
+            messages.warning(request, f"    {d}")
+        if n > 20:
+            messages.warning(request, f"    … e altri {n - 20}")
+    if rilinkati_dettaglio:
+        n = len(rilinkati_dettaglio)
+        messages.info(
+            request,
+            f"{n} Receivable riassociati a un assignment diverso (force):",
+        )
+        for d in rilinkati_dettaglio[:20]:
+            messages.info(request, f"    {d}")
+        if n > 20:
+            messages.info(request, f"    … e altri {n - 20}")
 
 
 class UtilityChargePeriodActionForm(JumboActionForm):

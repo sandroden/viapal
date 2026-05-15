@@ -11,12 +11,13 @@ from typing import TypedDict
 VOCI_FATTURABILI = ("luce", "gas")
 
 
-class QuotaInquilino(TypedDict):
+class QuotaInquilino(TypedDict, total=False):
     assignment_id: int
     tenant_nominativo: str
     giorni_presenza: int
     quota: Decimal
     dettaglio: dict  # {'luce': Decimal, 'gas': Decimal, 'tari': Decimal, ...}
+    importo_esistente: Decimal | None  # Receivable utenze gia' presente per (period, assignment)
 
 
 def _giorni_intersezione(da1: date, a1: date, da2: date, a2: date) -> int:
@@ -372,7 +373,22 @@ def calcola_conguaglio_periodo(
         if giorni > 0:
             presenze.append((assignment, giorni))
 
+    # Ordine deterministico (per output log e quote stabili).
+    presenze.sort(key=lambda x: x[0].tenant.nominativo)
+
     sum_giorni = sum(g for _, g in presenze)
+
+    # Importi gia' presenti (per segnalare divergenze in dry-run e contatori
+    # diversi/uguali in persist). Una sola query, mappa per assignment_id.
+    from billing.models import Receivable
+
+    receivables_esistenti = {
+        r.assignment_id: r.importo_dovuto
+        for r in Receivable.objects.filter(
+            utility_period=period,
+            causale=Receivable.Causale.UTENZE,
+        )
+    }
 
     # --- Passo 4: calcolo quote ---
     quote: list[QuotaInquilino] = []
@@ -399,6 +415,7 @@ def calcola_conguaglio_periodo(
                 giorni_presenza=giorni_presenza,
                 quota=quota_totale,
                 dettaglio=dettaglio,
+                importo_esistente=receivables_esistenti.get(assignment.pk),
             )
         )
 
@@ -417,10 +434,21 @@ def calcola_conguaglio_periodo(
 
     # --- Passo 6: persist (se richiesto) ---
     skippati_per_allocation: list[dict] = []
+    persist_stats: dict = {
+        "creati": 0,
+        "aggiornati_diversi": 0,
+        "aggiornati_uguali": 0,
+    }
     if persist:
-        skippati_per_allocation = _persist_receivables(
+        persist_result = _persist_receivables(
             period, quote, totali_per_voce, periodo_da, sum_giorni, bollette_usate
         )
+        skippati_per_allocation = persist_result["skippati_per_allocation"]
+        persist_stats = {
+            "creati": persist_result["creati"],
+            "aggiornati_diversi": persist_result["aggiornati_diversi"],
+            "aggiornati_uguali": persist_result["aggiornati_uguali"],
+        }
 
     return {
         "period_id": period_id,
@@ -432,6 +460,7 @@ def calcola_conguaglio_periodo(
         "quote": quote,
         "diff_arrotondamento": diff_arrotondamento,
         "skippati_per_allocation": skippati_per_allocation,
+        **persist_stats,
     }
 
 
@@ -490,6 +519,9 @@ def _persist_receivables(
         period.utility_bills.set(bollette_usate)
 
     skippati: list[dict] = []
+    creati = 0
+    aggiornati_diversi = 0
+    aggiornati_uguali = 0
 
     for q in quote:
         assignment = RoomAssignment.objects.get(pk=q["assignment_id"])
@@ -512,7 +544,8 @@ def _persist_receivables(
             )
             continue
 
-        Receivable.objects.update_or_create(
+        importo_pre = existing.importo_dovuto if existing else None
+        _obj, created = Receivable.objects.update_or_create(
             utility_period=period,
             assignment=assignment,
             causale=Receivable.Causale.UTENZE,
@@ -524,5 +557,16 @@ def _persist_receivables(
                 "scadenza": scadenza,
             },
         )
+        if created:
+            creati += 1
+        elif importo_pre != q["quota"]:
+            aggiornati_diversi += 1
+        else:
+            aggiornati_uguali += 1
 
-    return skippati
+    return {
+        "skippati_per_allocation": skippati,
+        "creati": creati,
+        "aggiornati_diversi": aggiornati_diversi,
+        "aggiornati_uguali": aggiornati_uguali,
+    }

@@ -126,11 +126,18 @@ def genera_pagamenti_mese(
     assignments_qs = assignments_qs.distinct().select_related("tenant")
     if tenant_id is not None:
         assignments_qs = assignments_qs.filter(tenant_id=tenant_id)
+    # Ordine deterministico per output log cronologico/alfabetico.
+    assignments_qs = assignments_qs.order_by("tenant__nominativo")
 
     creati = 0
     aggiornati = 0
+    aggiornati_diversi = 0
+    aggiornati_uguali = 0
     skippati = 0
     skippati_per_allocation: list[dict] = []
+    skippati_divergenti: list[dict] = []
+    duplicati_altro_assignment: list[dict] = []
+    rilinkati: list[dict] = []
     payment_ids: list[int] = []
     simulazione: list[dict] = []  # popolato solo se persist=False
 
@@ -210,30 +217,129 @@ def genera_pagamenti_mese(
         }
         defaults_create = {**defaults_base, "stato": StatoPagamento.ATTESO}
 
-        if not persist:
-            esistente = Receivable.objects.filter(
-                assignment=assignment,
+        esistente = Receivable.objects.filter(
+            assignment=assignment,
+            causale=Receivable.Causale.AFFITTO,
+            competenza_da=competenza_da,
+            competenza_a=competenza_a,
+        ).first()
+        # Se sull'assignment corrente non c'è nulla, può esistere su un altro
+        # assignment dello stesso tenant (es. rinnovo contratto in continuita').
+        # In quel caso NON dobbiamo creare un duplicato: lo segnaliamo.
+        altro_assignment_rec = None
+        if esistente is None:
+            altro_assignment_rec = Receivable.objects.filter(
+                assignment__tenant_id=assignment.tenant_id,
                 causale=Receivable.Causale.AFFITTO,
                 competenza_da=competenza_da,
                 competenza_a=competenza_a,
-            ).first()
+            ).exclude(assignment=assignment).first()
+
+        if not persist:
             if esistente and esistente.allocations.exists():
                 azione = "skip_allocation"
+            elif altro_assignment_rec is not None and altro_assignment_rec.allocations.exists():
+                # Esiste su altro assignment ed è allocato a BT: intoccabile
+                azione = "skip_allocation"
+            elif altro_assignment_rec is not None and force:
+                # Con force: si aggiorna importo e si rilinka all'assignment corrente
+                azione = "update_riassocia"
+            elif altro_assignment_rec is not None:
+                azione = "create_duplicato"
             elif esistente and force:
                 azione = "update"
             elif esistente:
                 azione = "skip"
             else:
                 azione = "create"
+            importo_esistente = esistente.importo_dovuto if esistente else None
+            altro_importo = (
+                altro_assignment_rec.importo_dovuto if altro_assignment_rec else None
+            )
+            altro_assignment_id = (
+                altro_assignment_rec.assignment_id if altro_assignment_rec else None
+            )
+            if azione in ("update", "skip") and esistente is not None:
+                divergenza: bool | None = importo_esistente != importo_dovuto
+            elif azione in ("create_duplicato", "update_riassocia"):
+                divergenza = altro_importo != importo_dovuto
+            else:
+                divergenza = None
             simulazione.append({
                 "tenant_nominativo": assignment.tenant.nominativo,
                 "competenza_da": competenza_da,
                 "competenza_a": competenza_a,
                 "importo_dovuto": importo_dovuto,
+                "importo_esistente": importo_esistente,
+                "altro_importo": altro_importo,
+                "altro_assignment_id": altro_assignment_id,
                 "scadenza": scadenza,
                 "is_aggiustamento": is_aggiustamento,
                 "azione_prevista": azione,
+                "divergenza": divergenza,
             })
+            continue
+
+        # ----- Persist -----
+        # Se esiste un Receivable per lo stesso tenant nello stesso periodo
+        # ma su un altro assignment: con `force` lo aggiorniamo riassociando
+        # all'assignment corrente; senza force segnaliamo e skip (no duplicati).
+        if esistente is None and altro_assignment_rec is not None:
+            if altro_assignment_rec.allocations.exists():
+                skippati_per_allocation.append(
+                    {
+                        "receivable_id": altro_assignment_rec.pk,
+                        "assignment_id": assignment.pk,
+                        "tenant_nominativo": assignment.tenant.nominativo,
+                        "importo_esistente": altro_assignment_rec.importo_dovuto,
+                        "importo_calcolato": importo_dovuto,
+                    }
+                )
+                payment_ids.append(altro_assignment_rec.pk)
+                continue
+            if force:
+                importo_pre = altro_assignment_rec.importo_dovuto
+                old_assignment_id = altro_assignment_rec.assignment_id
+                altro_assignment_rec.assignment = assignment
+                for k, v in defaults_base.items():
+                    setattr(altro_assignment_rec, k, v)
+                altro_assignment_rec.save(
+                    update_fields=[*defaults_base.keys(), "assignment", "updated_at"]
+                )
+                aggiornati += 1
+                if importo_pre != importo_dovuto:
+                    aggiornati_diversi += 1
+                else:
+                    aggiornati_uguali += 1
+                rilinkati.append(
+                    {
+                        "receivable_id": altro_assignment_rec.pk,
+                        "tenant_nominativo": assignment.tenant.nominativo,
+                        "anno": anno,
+                        "mese": mese,
+                        "old_assignment_id": old_assignment_id,
+                        "new_assignment_id": assignment.pk,
+                        "importo_pre": importo_pre,
+                        "importo_post": importo_dovuto,
+                    }
+                )
+                payment_ids.append(altro_assignment_rec.pk)
+                continue
+            duplicati_altro_assignment.append(
+                {
+                    "receivable_id": altro_assignment_rec.pk,
+                    "assignment_id_corrente": assignment.pk,
+                    "assignment_id_esistente": altro_assignment_rec.assignment_id,
+                    "tenant_nominativo": assignment.tenant.nominativo,
+                    "anno": anno,
+                    "mese": mese,
+                    "competenza_da": competenza_da,
+                    "competenza_a": competenza_a,
+                    "importo_esistente": altro_assignment_rec.importo_dovuto,
+                    "importo_calcolato": importo_dovuto,
+                }
+            )
+            payment_ids.append(altro_assignment_rec.pk)
             continue
 
         if force:
@@ -241,12 +347,6 @@ def genera_pagamenti_mese(
             # `importo_pagato`/`incassato_da_owner` se il record esiste già.
             # Guardia integrità: se il Receivable ha allocations bancarie,
             # NON viene sovrascritto (vedi razionale in _persist_receivables di calc/utility.py).
-            esistente = Receivable.objects.filter(
-                assignment=assignment,
-                causale=Receivable.Causale.AFFITTO,
-                competenza_da=competenza_da,
-                competenza_a=competenza_a,
-            ).first()
             if esistente and esistente.allocations.exists():
                 skippati_per_allocation.append(
                     {
@@ -263,6 +363,7 @@ def genera_pagamenti_mese(
             if esistente:
                 payment = esistente
                 created = False
+                importo_pre = esistente.importo_dovuto
                 for k, v in defaults_base.items():
                     setattr(payment, k, v)
                 payment.save(
@@ -280,23 +381,29 @@ def genera_pagamenti_mese(
                 creati += 1
             else:
                 aggiornati += 1
+                if importo_pre != importo_dovuto:
+                    aggiornati_diversi += 1
+                else:
+                    aggiornati_uguali += 1
         else:
-            # Chiave: (assignment, causale=affitto, competenza_da, competenza_a)
-            exists = Receivable.objects.filter(
-                assignment=assignment,
-                causale=Receivable.Causale.AFFITTO,
-                competenza_da=competenza_da,
-                competenza_a=competenza_a,
-            ).exists()
-
-            if exists:
+            # No force: chiave (assignment, causale, competenza_da, competenza_a).
+            if esistente is not None:
                 skippati += 1
-                payment = Receivable.objects.get(
-                    assignment=assignment,
-                    causale=Receivable.Causale.AFFITTO,
-                    competenza_da=competenza_da,
-                    competenza_a=competenza_a,
-                )
+                payment = esistente
+                if payment.importo_dovuto != importo_dovuto:
+                    skippati_divergenti.append(
+                        {
+                            "receivable_id": payment.pk,
+                            "assignment_id": assignment.pk,
+                            "tenant_nominativo": assignment.tenant.nominativo,
+                            "anno": anno,
+                            "mese": mese,
+                            "competenza_da": competenza_da,
+                            "competenza_a": competenza_a,
+                            "importo_esistente": payment.importo_dovuto,
+                            "importo_calcolato": importo_dovuto,
+                        }
+                    )
             else:
                 payment = Receivable.objects.create(
                     assignment=assignment,
@@ -313,8 +420,13 @@ def genera_pagamenti_mese(
         "mese": mese,
         "creati": creati,
         "aggiornati": aggiornati,
+        "aggiornati_diversi": aggiornati_diversi,
+        "aggiornati_uguali": aggiornati_uguali,
         "skippati": skippati,
         "skippati_per_allocation": skippati_per_allocation,
+        "skippati_divergenti": skippati_divergenti,
+        "duplicati_altro_assignment": duplicati_altro_assignment,
+        "rilinkati": rilinkati,
         "payments": payment_ids,
         "simulazione": simulazione,
     }
