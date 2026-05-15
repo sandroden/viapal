@@ -48,7 +48,7 @@ class RoomAssignmentInlineForTenant(admin.TabularInline):
 
     model = RoomAssignment
     extra = 0
-    fields = ("room", "valid_from", "valid_to", "canone_mensile")
+    fields = ("room", "valid_from", "valid_to", "canone_mensile", "costo_cessione")
     autocomplete_fields = ("room",)
     ordering = ("-valid_from",)
     show_change_link = True
@@ -137,7 +137,8 @@ class OwnerBankAccountAdmin(ModalEditMixin, JumboModelAdmin):
 
 @admin.register(TenantProfile)
 class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
-    modal_edit_width = 900
+    # 1100 (era 900): l'inline assegnazioni ha una colonna in più (costo cessione).
+    modal_edit_width = 1100
     list_display = (
         "get_modal_edit_icon", "nominativo", "codice_fiscale",
         "giorno_pagamento_affitto", "ciclo_fatturazione",
@@ -280,7 +281,7 @@ class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
             "fields": ("canone_mensile",),
         }),
         ("Cessione", {
-            "fields": ("data_atto_cessione",),
+            "fields": ("costo_cessione", "data_atto_cessione"),
             "classes": ("collapse",),
         }),
         ("Note", {

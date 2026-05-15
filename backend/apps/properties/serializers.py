@@ -97,6 +97,7 @@ class RoomAssignmentSerializer(serializers.ModelSerializer):
             "valid_from",
             "valid_to",
             "canone_mensile",
+            "costo_cessione",
             "data_atto_cessione",
             "note",
         ]

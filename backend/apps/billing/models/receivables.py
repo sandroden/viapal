@@ -20,6 +20,7 @@ class Receivable(TimestampedModel):
         UTENZE = "utenze", "Utenze"
         EXTRA = "extra", "Extra"
         CAPARRA = "caparra", "Caparra"
+        REGISTRAZIONE = "registrazione", "Registrazione contratto"
 
     assignment = models.ForeignKey(
         RoomAssignment,
@@ -28,7 +29,7 @@ class Receivable(TimestampedModel):
         verbose_name="assegnazione",
     )
     causale = models.CharField(
-        max_length=10,
+        max_length=15,
         choices=Causale.choices,
         verbose_name="causale",
     )

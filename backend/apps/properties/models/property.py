@@ -141,6 +141,20 @@ class RoomAssignment(TimestampedModel):
         decimal_places=2,
         verbose_name="canone mensile",
     )
+    costo_cessione = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="costo cessione (totale)",
+        help_text=(
+            "Costo TOTALE della registrazione/cessione del contratto. Se "
+            "valorizzato, alla data di inizio occupazione genera: il 50% come "
+            "addebito all'inquilino entrante (Receivable 'registrazione') e il "
+            "50% come spesa proprietari ripartita pro-quota. Lasciare vuoto "
+            "per il contratto collettivo (nessun addebito)."
+        ),
+    )
     data_atto_cessione = models.DateField(
         null=True,
         blank=True,

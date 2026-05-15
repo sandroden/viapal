@@ -97,6 +97,85 @@ def _crea_caparra_restituzione(tenant: TenantProfile) -> None:
     )
 
 
+_EXPENSE_CAT_REGISTRAZIONE = ("registrazione-contratti", "Registrazione contratti")
+
+
+def _owner_anticipante():
+    """Il proprietario che anticipa il 50% cessione: per convenzione Sandro.
+
+    Se non lo si trova (es. fixture incomplete) la Expense non viene creata,
+    ma il Receivable inquilino sì: meglio un dato parziale che un crash.
+    """
+    from .models import OwnerProfile
+
+    return OwnerProfile.objects.filter(nominativo__icontains="sandro").first()
+
+
+def _crea_costo_cessione(assignment: RoomAssignment) -> None:
+    """Genera gli effetti del costo di cessione di un RoomAssignment.
+
+    Criterio (volutamente semplice): scatta se ``costo_cessione`` è valorizzato
+    sull'assegnazione. Il contratto collettivo non lo valorizza → nessun
+    effetto. ``costo_cessione`` è il TOTALE, splittato 50/50:
+
+    - 50% → Receivable causale REGISTRAZIONE all'inquilino entrante;
+    - 50% → Expense ripartibile pro-quota tra i proprietari (anticipante
+      Sandro), categoria "Registrazione contratti".
+
+    Entrambi datati all'inizio occupazione (``valid_from``). Idempotente: una
+    sola coppia per assignment; variazioni dell'importo NON rigenerano.
+    """
+    costo = assignment.costo_cessione
+    if costo is None or costo <= Decimal("0"):
+        return
+
+    from billing.models import Expense, ExpenseCategory, Receivable, StatoPagamento
+
+    quota_inquilino = (costo / 2).quantize(Decimal("0.01"))
+    quota_proprietari = costo - quota_inquilino
+    data_evento = assignment.valid_from
+
+    if not Receivable.objects.filter(
+        assignment=assignment,
+        causale=Receivable.Causale.REGISTRAZIONE,
+    ).exists():
+        Receivable.objects.create(
+            assignment=assignment,
+            causale=Receivable.Causale.REGISTRAZIONE,
+            descrizione="Registrazione contratto (quota inquilino 50%)",
+            competenza_da=data_evento,
+            competenza_a=None,
+            scadenza=data_evento,
+            importo_dovuto=quota_inquilino,
+            stato=StatoPagamento.ATTESO,
+        )
+
+    marker = f"[auto:cessione:{assignment.pk}]"
+    if not Expense.objects.filter(note__contains=marker).exists():
+        anticipante = _owner_anticipante()
+        if anticipante is None:
+            log.warning(
+                "Costo cessione assignment %s: nessun proprietario 'Sandro' "
+                "trovato, Expense 50%% proprietari non creata.",
+                assignment.pk,
+            )
+            return
+        codice, nome = _EXPENSE_CAT_REGISTRAZIONE
+        categoria, _ = ExpenseCategory.objects.get_or_create(
+            codice=codice,
+            defaults={"nome": nome, "ripartibile_inquilini": False},
+        )
+        Expense.objects.create(
+            data=data_evento,
+            category=categoria,
+            importo=quota_proprietari,
+            descrizione=f"Cessione {assignment.room} — {assignment.tenant}",
+            anticipata_da_owner=anticipante,
+            ripartibile_su_inquilini=False,
+            note=marker,
+        )
+
+
 @receiver(post_save, sender=TenantProfile)
 def genera_receivable_caparra_da_tenant(sender, instance, **kwargs):
     _crea_caparra_versamento(instance)
@@ -107,7 +186,9 @@ def genera_receivable_caparra_da_tenant(sender, instance, **kwargs):
 def genera_receivable_caparra_da_assignment(sender, instance, created, **kwargs):
     """Recupera il caso in cui il tenant aveva già caparra valorizzata
     al momento della creazione del primo assignment."""
-    if not created:
-        return
-    _crea_caparra_versamento(instance.tenant)
-    _crea_caparra_restituzione(instance.tenant)
+    if created:
+        _crea_caparra_versamento(instance.tenant)
+        _crea_caparra_restituzione(instance.tenant)
+    # Il costo di cessione va valutato anche sugli update: spesso viene
+    # valorizzato a mano dopo aver creato l'assegnazione.
+    _crea_costo_cessione(instance)

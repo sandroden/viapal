@@ -485,3 +485,145 @@ class TestCaparraSignal:
             importo_dovuto__lt=0,
         )
         assert negativo.scadenza == ultimo.valid_to
+
+
+# ---------------------------------------------------------------------------
+# Test signal costo cessione → Receivable inquilino 50% + Expense proprietari 50%
+# ---------------------------------------------------------------------------
+
+
+class TestCostoCessioneSignal:
+    """``RoomAssignment.costo_cessione`` valorizzato (costo TOTALE) genera, alla
+    data di inizio occupazione: il 50% come Receivable REGISTRAZIONE
+    all'inquilino entrante e il 50% come Expense ripartibile pro-quota tra i
+    proprietari (anticipante Sandro). Il contratto collettivo non valorizza il
+    campo → nessun effetto."""
+
+    def _receivables(self, assignment):
+        from billing.models import Receivable
+
+        return Receivable.objects.filter(
+            assignment=assignment,
+            causale=Receivable.Causale.REGISTRAZIONE,
+        )
+
+    def _expenses(self, assignment):
+        from billing.models import Expense
+
+        return Expense.objects.filter(note__contains=f"[auto:cessione:{assignment.pk}]")
+
+    def test_cessione_genera_receivable_e_expense(self, db, tenant, room, owner_a):
+        assignment = RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2025, 7, 10),
+            canone_mensile=Decimal("450"),
+            costo_cessione=Decimal("130"),
+        )
+        recs = self._receivables(assignment)
+        assert recs.count() == 1
+        r = recs.get()
+        assert r.importo_dovuto == Decimal("65.00")
+        assert r.scadenza == datetime.date(2025, 7, 10)
+        assert r.competenza_da == datetime.date(2025, 7, 10)
+        assert r.competenza_a is None
+        assert "inquilino" in r.descrizione
+
+        exps = self._expenses(assignment)
+        assert exps.count() == 1
+        e = exps.get()
+        assert e.importo == Decimal("65.00")
+        assert e.data == datetime.date(2025, 7, 10)
+        assert e.anticipata_da_owner == owner_a
+        assert e.ripartibile_su_inquilini is False
+        assert e.category.codice == "registrazione-contratti"
+
+    def test_split_somma_uguale_al_totale(self, db, tenant, room, owner_a):
+        """Importo dispari: inquilino + proprietari = totale (no centesimi persi)."""
+        assignment = RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2025, 7, 10),
+            canone_mensile=Decimal("450"),
+            costo_cessione=Decimal("130.01"),
+        )
+        r = self._receivables(assignment).get()
+        e = self._expenses(assignment).get()
+        assert r.importo_dovuto + e.importo == Decimal("130.01")
+
+    def test_collettivo_non_genera(self, db, tenant, room, owner_a):
+        """costo_cessione vuoto (contratto collettivo) → nessun effetto."""
+        assignment = RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2023, 9, 1),
+            canone_mensile=Decimal("450"),
+        )
+        assert self._receivables(assignment).count() == 0
+        assert self._expenses(assignment).count() == 0
+
+    def test_idempotenza_save_multipli(self, db, tenant, room, owner_a):
+        assignment = RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2025, 7, 10),
+            canone_mensile=Decimal("450"),
+            costo_cessione=Decimal("130"),
+        )
+        assignment.note = "x"
+        assignment.save()
+        assignment.save()
+        assert self._receivables(assignment).count() == 1
+        assert self._expenses(assignment).count() == 1
+
+    def test_valorizzato_dopo_creazione(self, db, tenant, room, owner_a):
+        """costo_cessione spesso valorizzato a mano dopo aver creato
+        l'assegnazione: lo scatto avviene anche sull'update."""
+        assignment = RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2025, 7, 10),
+            canone_mensile=Decimal("450"),
+        )
+        assert self._receivables(assignment).count() == 0
+
+        assignment.costo_cessione = Decimal("130")
+        assignment.save()
+
+        assert self._receivables(assignment).get().importo_dovuto == Decimal("65.00")
+        assert self._expenses(assignment).count() == 1
+
+    def test_senza_owner_sandro_solo_receivable(self, db, tenant, room):
+        """Nessun proprietario 'Sandro': il Receivable inquilino c'è comunque,
+        la Expense proprietari no (nessun crash)."""
+        assignment = RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2025, 7, 10),
+            canone_mensile=Decimal("450"),
+            costo_cessione=Decimal("130"),
+        )
+        assert self._receivables(assignment).count() == 1
+        assert self._expenses(assignment).count() == 0
+
+    def test_due_cessioni_due_coppie(self, db, tenant, tenant_2, room, owner_a):
+        """Cambio inquilino sulla stessa stanza: una coppia per cessione."""
+        a1 = RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2025, 1, 1),
+            valid_to=datetime.date(2025, 7, 10),
+            canone_mensile=Decimal("450"),
+            costo_cessione=Decimal("130"),
+        )
+        a2 = RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant_2,
+            valid_from=datetime.date(2025, 7, 10),
+            canone_mensile=Decimal("450"),
+            costo_cessione=Decimal("130"),
+        )
+        assert self._receivables(a1).count() == 1
+        assert self._receivables(a2).count() == 1
+        assert self._expenses(a1).count() == 1
+        assert self._expenses(a2).count() == 1
