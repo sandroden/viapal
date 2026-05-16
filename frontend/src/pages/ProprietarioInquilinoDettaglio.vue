@@ -512,7 +512,9 @@
                   </q-item>
                   <q-item v-if="situazione.tenant.deposito_restituito">
                     <q-item-section>
-                      <q-item-label caption>Restituito</q-item-label>
+                      <q-item-label caption>
+                        {{ restituzioneEffettuata ? 'Restituito' : 'Restituzione dovuta' }}
+                      </q-item-label>
                       <q-item-label class="vp-mono">
                         {{ formattaEuro(Number(situazione.tenant.deposito_restituito)) }}
                       </q-item-label>
@@ -520,11 +522,65 @@
                         v-if="situazione.tenant.data_restituzione_deposito"
                         caption
                       >
-                        il {{ formattaData(situazione.tenant.data_restituzione_deposito) }}
+                        {{ restituzioneEffettuata ? 'il' : 'dovuta il' }}
+                        {{ formattaData(situazione.tenant.data_restituzione_deposito) }}
                       </q-item-label>
                     </q-item-section>
                   </q-item>
                 </q-list>
+
+                <template v-if="simulazioneUscita">
+                  <q-separator spaced />
+                  <div class="vp-eyebrow">
+                    {{ simulazioneUscita.giaRestituito ? 'Chiusura cauzione' : 'Simulazione uscita' }}
+                  </div>
+                  <q-list dense>
+                    <q-item>
+                      <q-item-section>Deposito versato</q-item-section>
+                      <q-item-section side>
+                        <span class="vp-mono">{{ formattaEuro(simulazioneUscita.versato) }}</span>
+                      </q-item-section>
+                    </q-item>
+                    <q-item>
+                      <q-item-section>
+                        Saldo totale corrente
+                        <q-item-label caption>
+                          {{ simulazioneUscita.saldo >= 0 ? 'a favore inquilino' : 'a debito inquilino' }}
+                        </q-item-label>
+                      </q-item-section>
+                      <q-item-section side>
+                        <span class="vp-mono">{{ formattaEuro(simulazioneUscita.saldo) }}</span>
+                      </q-item-section>
+                    </q-item>
+                    <q-separator spaced />
+                    <q-item>
+                      <q-item-section>
+                        <strong>
+                          {{ simulazioneUscita.giaRestituito ? 'Cauzione già restituita' : 'Netto da restituire' }}
+                        </strong>
+                      </q-item-section>
+                      <q-item-section side>
+                        <strong class="vp-mono vp-p-id__sim-netto">
+                          {{ formattaEuro(simulazioneUscita.netto) }}
+                        </strong>
+                      </q-item-section>
+                    </q-item>
+                    <q-item v-if="simulazioneUscita.residuoDebito > 0">
+                      <q-item-section class="vp-p-id__sim-warn">
+                        La cauzione non copre il debito: resta a carico
+                        dell'inquilino un residuo di
+                        {{ formattaEuro(simulazioneUscita.residuoDebito) }}.
+                      </q-item-section>
+                    </q-item>
+                  </q-list>
+                  <div class="vp-p-id__popup-nota">
+                    {{
+                      simulazioneUscita.giaRestituito
+                        ? 'La cauzione è stata restituita: nulla da trattenere. Il saldo residuo resta da incassare a parte.'
+                        : 'Stima alla data odierna: deposito versato al netto del saldo totale cumulativo (affitti, utenze, extra). Non include addebiti di fine locazione non ancora registrati.'
+                    }}
+                  </div>
+                </template>
               </q-card-section>
             </q-card>
 
@@ -672,6 +728,37 @@ const opzioniTipo = [
 ];
 
 const situazione = computed(() => store.get(tenantId.value, annoSelezionato.value));
+
+// Riga Receivable di restituzione caparra (importo negativo). Esposta dal
+// backend solo quando data_restituzione_deposito è valorizzata.
+const rigaRestituzione = computed(() => {
+  const righe = situazione.value?.caparra?.righe ?? [];
+  return righe.find((r) => r.importo < 0) ?? null;
+});
+// "Effettuata" = il Receivable di restituzione risulta pagato. Altrimenti
+// la data_restituzione è solo la scadenza in cui la restituzione è DOVUTA.
+const restituzioneEffettuata = computed(
+  () => rigaRestituzione.value?.stato === 'pagato',
+);
+
+const simulazioneUscita = computed(() => {
+  const s = situazione.value;
+  if (!s) return null;
+  const versato = Number(s.tenant.deposito_versato || 0);
+  if (versato <= 0) return null;
+  const saldo = s.saldi.totale; // < 0 = inquilino a debito
+  // Se la cauzione è già stata effettivamente restituita non c'è più nulla
+  // da trattenere: il netto da restituire si azzera.
+  const restituito = restituzioneEffettuata.value;
+  const netto = restituito ? 0 : versato + saldo;
+  return {
+    versato,
+    saldo,
+    netto: Math.max(netto, 0),
+    residuoDebito: !restituito && netto < 0 ? -netto : 0,
+    giaRestituito: restituito,
+  };
+});
 
 const righePagamenti = computed<RigaPagamento[]>(() => {
   if (!situazione.value) return [];
@@ -1116,6 +1203,13 @@ const contoDiDefaultUtente = computed(
 }
 .vp-p-id__card {
   background: var(--vp-paper-1);
+}
+.vp-p-id__sim-netto {
+  font-size: var(--vp-text-lg);
+}
+.vp-p-id__sim-warn {
+  color: var(--vp-terra, #b56a3b);
+  font-size: var(--vp-text-sm);
 }
 .vp-p-id__griglia {
   display: grid;
