@@ -9,6 +9,20 @@
         :to="linkDettaglio"
       />
       <q-space />
+      <q-btn-toggle
+        v-model="vista"
+        no-caps
+        dense
+        unelevated
+        toggle-color="primary"
+        color="grey-3"
+        text-color="grey-8"
+        class="vp-rd__vista"
+        :options="[
+          { label: 'Per causale', value: 'causale' },
+          { label: 'Cronologica', value: 'cronologica' },
+        ]"
+      />
       <q-btn
         unelevated
         color="primary"
@@ -45,7 +59,7 @@
       </header>
 
       <section
-        v-for="sez in rendiconto.sezioni"
+        v-for="sez in (vista === 'causale' ? rendiconto.sezioni : [])"
         :key="sez.causale"
         class="vp-rd__sez"
       >
@@ -111,6 +125,77 @@
                 :class="diffClass(diffSez(sez))"
               >
                 {{ formattaEuro(diffSez(sez)) }}
+              </td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+
+      <section
+        v-for="g in (vista === 'cronologica' ? cronologico : [])"
+        :key="g.anno"
+        class="vp-rd__sez vp-rd__anno"
+      >
+        <h2 class="vp-rd__sez-tit">{{ g.anno }}</h2>
+        <table class="vp-rd__tab">
+          <thead>
+            <tr>
+              <th class="vp-rd__c-data">Data</th>
+              <th>Descrizione</th>
+              <th class="vp-rd__c-num">Dovuto</th>
+              <th class="vp-rd__c-num">Pagato</th>
+              <th class="vp-rd__c-num">Differenza</th>
+              <th class="vp-rd__c-nota">Nota</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="(r, i) in g.righe" :key="i">
+              <tr>
+                <td class="vp-rd__c-data">{{ r.data ? formattaData(r.data) : '—' }}</td>
+                <td>{{ r.descrizione }}</td>
+                <td class="vp-rd__c-num vp-mono">{{ formattaEuro(r.dovuto) }}</td>
+                <td class="vp-rd__c-num vp-mono">
+                  {{ r.pagato ? formattaEuro(r.pagato) : '—' }}
+                </td>
+                <td
+                  class="vp-rd__c-num vp-mono"
+                  :class="diffClass(diffRow(r) ?? 0)"
+                >
+                  {{ formattaDiff(diffRow(r)) }}
+                </td>
+                <td class="vp-rd__c-nota">
+                  <span :class="notaClass(r.nota)">{{ etichettaNota(r) }}</span>
+                </td>
+              </tr>
+              <tr v-if="r.allocazioni.length" class="vp-rd__cover">
+                <td></td>
+                <td colspan="5" class="vp-rd__cover-cell">
+                  <span
+                    v-for="(a, j) in r.allocazioni"
+                    :key="j"
+                    class="vp-rd__cover-item"
+                  >
+                    bonifico {{ formattaData(a.data) }}
+                    {{ formattaEuro(a.bonifico_totale) }}/{{ formattaEuro(a.quota) }}<span
+                      v-if="a.split"
+                      class="vp-rd__star"
+                    > *</span><template v-if="j < r.allocazioni.length - 1">; </template>
+                  </span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2"><strong>Totale {{ g.anno }}</strong></td>
+              <td class="vp-rd__c-num vp-mono">{{ formattaEuro(g.dovuto) }}</td>
+              <td class="vp-rd__c-num vp-mono">{{ formattaEuro(g.pagato) }}</td>
+              <td
+                class="vp-rd__c-num vp-mono"
+                :class="diffClass(g.pagato - g.dovuto)"
+              >
+                {{ formattaEuro(g.pagato - g.dovuto) }}
               </td>
               <td></td>
             </tr>
@@ -281,7 +366,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   useRendicontoStore,
@@ -299,6 +384,41 @@ const { formattaData } = useFormatoData();
 
 const tenantId = computed(() => Number(route.params.id));
 const rendiconto = computed(() => store.get(tenantId.value));
+
+type RigaCron = RendicontoRiga & { causale: string };
+interface GruppoAnno {
+  anno: number;
+  righe: RigaCron[];
+  dovuto: number;
+  pagato: number;
+}
+
+const vista = ref<'causale' | 'cronologica'>('causale');
+
+// Vista cronologica: tutte le voci non-deposito unite e ordinate per data,
+// raggruppate per anno con totali parziali a fine anno.
+const cronologico = computed<GruppoAnno[]>(() => {
+  const r = rendiconto.value;
+  if (!r) return [];
+  const rows: RigaCron[] = [];
+  for (const s of r.sezioni) {
+    for (const x of s.righe) rows.push({ ...x, causale: s.causale });
+  }
+  rows.sort((a, b) => (a.data ?? '').localeCompare(b.data ?? ''));
+  const gruppi: GruppoAnno[] = [];
+  let cur: GruppoAnno | null = null;
+  for (const row of rows) {
+    const anno = row.data ? Number(row.data.slice(0, 4)) : 0;
+    if (!cur || cur.anno !== anno) {
+      cur = { anno, righe: [], dovuto: 0, pagato: 0 };
+      gruppi.push(cur);
+    }
+    cur.righe.push(row);
+    cur.dovuto += row.dovuto;
+    cur.pagato += row.pagato;
+  }
+  return gruppi;
+});
 
 const linkDettaglio = computed(() => ({
   path: `/p/inquilini/${tenantId.value}`,
@@ -335,8 +455,13 @@ function diffClass(v: number): string {
 function diffRiga(sez: RendicontoSezione, r: RendicontoRiga): number | null {
   return sez.causale === 'affitto' ? r.diff_mese : r.diff;
 }
+function diffRow(r: RigaCron): number | null {
+  return r.causale === 'affitto' ? r.diff_mese : r.diff;
+}
+// Differenze sotto 1 € non vengono mostrate (arrotondamenti/centesimi
+// di riparto): non aggiungono informazione e sporcano la lettura.
 function formattaDiff(v: number | null): string {
-  if (v === null || v === 0) return '—';
+  if (v === null || Math.abs(v) < 1) return '—';
   return formattaEuro(v);
 }
 function diffSez(sez: RendicontoSezione): number {
@@ -530,6 +655,12 @@ onBeforeUnmount(() => {
   padding-left: var(--vp-gap-3);
 }
 
+.vp-rd__vista {
+  border: 1px solid var(--vp-paper-3);
+  border-radius: var(--vp-r-md, 8px);
+  overflow: hidden;
+}
+
 @media print {
   .no-print {
     display: none !important;
@@ -540,6 +671,13 @@ onBeforeUnmount(() => {
     background: #fff;
     max-width: none;
     padding: 0;
+  }
+  /* Vista cronologica: ogni anno su pagina propria. */
+  .vp-rd__anno {
+    break-after: page;
+  }
+  .vp-rd__anno:last-of-type {
+    break-after: auto;
   }
 }
 </style>
