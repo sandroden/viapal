@@ -65,15 +65,16 @@ class Command(BaseCommand):
                     f"  - {tenant}: +{tenant.deposito_versato}€ "
                     f"su assignment {primo.pk}"
                 )
-        if tenant.deposito_restituito and tenant.deposito_restituito > 0:
+        if tenant.data_restituzione_prevista:
+            importo = tenant.deposito_da_restituire or tenant.deposito_versato
             esiste = Receivable.objects.filter(
                 assignment__tenant=tenant,
                 causale=Receivable.Causale.DEPOSITO,
                 importo_dovuto__lt=0,
             ).exists()
             ultimo = tenant.assignments.order_by("-valid_from", "-id").first()
-            if not esiste and ultimo is not None:
+            if not esiste and ultimo is not None and importo and importo > 0:
                 self.stdout.write(
-                    f"  - {tenant}: -{tenant.deposito_restituito}€ "
+                    f"  - {tenant}: -{importo}€ "
                     f"su assignment {ultimo.pk}"
                 )

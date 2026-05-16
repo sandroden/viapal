@@ -510,20 +510,20 @@
                       </q-item-label>
                     </q-item-section>
                   </q-item>
-                  <q-item v-if="situazione.tenant.deposito_restituito">
+                  <q-item v-if="situazione.tenant.data_restituzione_prevista">
                     <q-item-section>
                       <q-item-label caption>
                         {{ restituzioneEffettuata ? 'Restituito' : 'Restituzione dovuta' }}
                       </q-item-label>
                       <q-item-label class="vp-mono">
-                        {{ formattaEuro(Number(situazione.tenant.deposito_restituito)) }}
+                        {{ formattaEuro(importoDaRestituire) }}
                       </q-item-label>
-                      <q-item-label
-                        v-if="situazione.tenant.data_restituzione_deposito"
-                        caption
-                      >
+                      <q-item-label caption>
                         {{ restituzioneEffettuata ? 'il' : 'dovuta il' }}
-                        {{ formattaData(situazione.tenant.data_restituzione_deposito) }}
+                        {{ formattaData(situazione.tenant.data_restituzione_prevista) }}
+                        <template v-if="!situazione.tenant.deposito_da_restituire">
+                          · pari al versato
+                        </template>
                       </q-item-label>
                     </q-item-section>
                   </q-item>
@@ -532,13 +532,24 @@
                 <template v-if="simulazioneUscita">
                   <q-separator spaced />
                   <div class="vp-eyebrow">
-                    {{ simulazioneUscita.giaRestituito ? 'Chiusura cauzione' : 'Simulazione uscita' }}
+                    {{ simulazioneUscita.giaRestituito ? 'Chiusura deposito' : 'Simulazione uscita' }}
                   </div>
                   <q-list dense>
                     <q-item>
                       <q-item-section>Deposito versato</q-item-section>
                       <q-item-section side>
                         <span class="vp-mono">{{ formattaEuro(simulazioneUscita.versato) }}</span>
+                      </q-item-section>
+                    </q-item>
+                    <q-item
+                      v-if="simulazioneUscita.daRestituire !== simulazioneUscita.versato"
+                    >
+                      <q-item-section>
+                        Importo da rendere
+                        <q-item-label caption>override su versato</q-item-label>
+                      </q-item-section>
+                      <q-item-section side>
+                        <span class="vp-mono">{{ formattaEuro(simulazioneUscita.daRestituire) }}</span>
                       </q-item-section>
                     </q-item>
                     <q-item>
@@ -556,7 +567,7 @@
                     <q-item>
                       <q-item-section>
                         <strong>
-                          {{ simulazioneUscita.giaRestituito ? 'Cauzione già restituita' : 'Netto da restituire' }}
+                          {{ simulazioneUscita.giaRestituito ? 'Deposito già restituito' : 'Netto da restituire' }}
                         </strong>
                       </q-item-section>
                       <q-item-section side>
@@ -567,7 +578,7 @@
                     </q-item>
                     <q-item v-if="simulazioneUscita.residuoDebito > 0">
                       <q-item-section class="vp-p-id__sim-warn">
-                        La cauzione non copre il debito: resta a carico
+                        Il deposito non copre il debito: resta a carico
                         dell'inquilino un residuo di
                         {{ formattaEuro(simulazioneUscita.residuoDebito) }}.
                       </q-item-section>
@@ -576,7 +587,7 @@
                   <div class="vp-p-id__popup-nota">
                     {{
                       simulazioneUscita.giaRestituito
-                        ? 'La cauzione è stata restituita: nulla da trattenere. Il saldo residuo resta da incassare a parte.'
+                        ? 'Il deposito è stato restituito: nulla da trattenere. Il saldo residuo resta da incassare a parte.'
                         : 'Stima alla data odierna: deposito versato al netto del saldo totale cumulativo (affitti, utenze, extra). Non include addebiti di fine locazione non ancora registrati.'
                     }}
                   </div>
@@ -730,7 +741,7 @@ const opzioniTipo = [
 const situazione = computed(() => store.get(tenantId.value, annoSelezionato.value));
 
 // Riga Receivable di restituzione deposito (importo negativo). Esposta dal
-// backend solo quando data_restituzione_deposito è valorizzata.
+// backend solo quando data_restituzione_prevista è valorizzata.
 const rigaRestituzione = computed(() => {
   const righe = situazione.value?.deposito?.righe ?? [];
   return righe.find((r) => r.importo < 0) ?? null;
@@ -741,18 +752,30 @@ const restituzioneEffettuata = computed(
   () => rigaRestituzione.value?.stato === 'pagato',
 );
 
+// Importo lordo da rendere all'uscita: override esplicito se valorizzato,
+// altrimenti pari al deposito versato (allineato alla logica del backend).
+const importoDaRestituire = computed(() => {
+  const t = situazione.value?.tenant;
+  if (!t) return 0;
+  const override = Number(t.deposito_da_restituire || 0);
+  if (override > 0) return override;
+  return Number(t.deposito_versato || 0);
+});
+
 const simulazioneUscita = computed(() => {
   const s = situazione.value;
   if (!s) return null;
   const versato = Number(s.tenant.deposito_versato || 0);
-  if (versato <= 0) return null;
+  const daRestituire = importoDaRestituire.value;
+  if (versato <= 0 && daRestituire <= 0) return null;
   const saldo = s.saldi.totale; // < 0 = inquilino a debito
-  // Se la cauzione è già stata effettivamente restituita non c'è più nulla
+  // Se il deposito è già stato effettivamente restituito non c'è più nulla
   // da trattenere: il netto da restituire si azzera.
   const restituito = restituzioneEffettuata.value;
-  const netto = restituito ? 0 : versato + saldo;
+  const netto = restituito ? 0 : daRestituire + saldo;
   return {
     versato,
+    daRestituire,
     saldo,
     netto: Math.max(netto, 0),
     residuoDebito: !restituito && netto < 0 ? -netto : 0,

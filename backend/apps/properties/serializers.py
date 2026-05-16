@@ -51,8 +51,8 @@ class TenantProfileSerializer(serializers.ModelSerializer):
             "note_pagamento",
             "deposito_versato",
             "data_versamento_deposito",
-            "deposito_restituito",
-            "data_restituzione_deposito",
+            "deposito_da_restituire",
+            "data_restituzione_prevista",
             "saldo",
             "saldo_totale",
         ]

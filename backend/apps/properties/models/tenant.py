@@ -86,17 +86,24 @@ class TenantProfile(TimestampedModel):
         blank=True,
         verbose_name="data versamento deposito",
     )
-    deposito_restituito = models.DecimalField(
+    deposito_da_restituire = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         null=True,
         blank=True,
-        verbose_name="deposito restituito",
+        verbose_name="deposito da restituire",
+        help_text="Importo lordo da rendere all'uscita. Se vuoto si assume "
+        "pari al deposito versato; valorizzalo solo se differisce (es. "
+        "rimborsi aggiuntivi a favore dell'inquilino).",
     )
-    data_restituzione_deposito = models.DateField(
+    data_restituzione_prevista = models.DateField(
         null=True,
         blank=True,
-        verbose_name="data restituzione deposito",
+        verbose_name="data restituzione prevista",
+        help_text="Data in cui la restituzione è dovuta. Valorizzandola "
+        "viene generato il Receivable DEPOSITO di restituzione (importo "
+        "negativo). La restituzione effettiva si deduce dal pagamento di "
+        "quel Receivable.",
     )
 
     class Meta:

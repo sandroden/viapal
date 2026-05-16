@@ -785,7 +785,7 @@ class TenantSituazioneView(APIView):
         deposito_dovuto = Decimal("0")
         deposito_pagato = Decimal("0")
         deposito_qs_list: list[Receivable] = []
-        if tenant.data_restituzione_deposito:
+        if tenant.data_restituzione_prevista:
             deposito_qs = (
                 Receivable.objects.filter(
                     assignment__tenant=tenant,

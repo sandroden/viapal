@@ -798,8 +798,8 @@ class TestTenantSituazione:
     ):
         tenant_1.deposito_versato = Decimal("1500")
         tenant_1.data_versamento_deposito = datetime.date(2024, 9, 1)
-        tenant_1.deposito_restituito = Decimal("1500")
-        tenant_1.data_restituzione_deposito = datetime.date(2026, 4, 30)
+        tenant_1.deposito_da_restituire = Decimal("1500")
+        tenant_1.data_restituzione_prevista = datetime.date(2026, 4, 30)
         tenant_1.save()
         resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/situazione/?anno=2026")
         assert resp.status_code == 200

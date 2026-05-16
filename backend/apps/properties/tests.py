@@ -338,8 +338,8 @@ class TestDepositoSignal:
         from billing.models import Receivable
 
         tenant_con_room.deposito_versato = Decimal("900")
-        tenant_con_room.deposito_restituito = Decimal("900")
-        tenant_con_room.data_restituzione_deposito = datetime.date(2025, 6, 30)
+        tenant_con_room.deposito_da_restituire = Decimal("900")
+        tenant_con_room.data_restituzione_prevista = datetime.date(2025, 6, 30)
         tenant_con_room.save()
 
         positivo = Receivable.objects.get(
@@ -453,8 +453,8 @@ class TestDepositoSignal:
             canone_mensile=Decimal("450"),
         )
         tenant.deposito_versato = Decimal("900")
-        tenant.deposito_restituito = Decimal("900")
-        tenant.data_restituzione_deposito = datetime.date(2025, 6, 30)
+        tenant.deposito_da_restituire = Decimal("900")
+        tenant.data_restituzione_prevista = datetime.date(2025, 6, 30)
         tenant.save()
 
         negativo = Receivable.objects.get(
@@ -464,10 +464,12 @@ class TestDepositoSignal:
         )
         assert negativo.assignment_id == ultimo.id
 
-    def test_data_restituzione_default_valid_to(self, db, tenant, room):
+    def test_senza_data_prevista_nessuna_restituzione(self, db, tenant, room):
+        """È la data prevista a fare da trigger: senza, nessun Receivable
+        negativo anche se 'deposito da restituire' è valorizzato."""
         from billing.models import Receivable
 
-        ultimo = RoomAssignment.objects.create(
+        RoomAssignment.objects.create(
             room=room,
             tenant=tenant,
             valid_from=datetime.date(2024, 9, 1),
@@ -475,8 +477,30 @@ class TestDepositoSignal:
             canone_mensile=Decimal("450"),
         )
         tenant.deposito_versato = Decimal("900")
-        tenant.deposito_restituito = Decimal("900")
-        # data_restituzione_deposito NON valorizzata.
+        tenant.deposito_da_restituire = Decimal("900")
+        # data_restituzione_prevista NON valorizzata.
+        tenant.save()
+
+        assert not Receivable.objects.filter(
+            assignment__tenant=tenant,
+            causale=Receivable.Causale.DEPOSITO,
+            importo_dovuto__lt=0,
+        ).exists()
+
+    def test_restituzione_importo_default_versato(self, db, tenant, room):
+        """Data prevista valorizzata ma 'deposito da restituire' vuoto:
+        l'importo si assume pari al deposito versato."""
+        from billing.models import Receivable
+
+        RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2024, 9, 1),
+            valid_to=datetime.date(2025, 6, 30),
+            canone_mensile=Decimal("450"),
+        )
+        tenant.deposito_versato = Decimal("900")
+        tenant.data_restituzione_prevista = datetime.date(2025, 6, 30)
         tenant.save()
 
         negativo = Receivable.objects.get(
@@ -484,7 +508,32 @@ class TestDepositoSignal:
             causale=Receivable.Causale.DEPOSITO,
             importo_dovuto__lt=0,
         )
-        assert negativo.scadenza == ultimo.valid_to
+        assert negativo.importo_dovuto == Decimal("-900")
+        assert negativo.scadenza == datetime.date(2025, 6, 30)
+
+    def test_restituzione_importo_override_caso_arun(self, db, tenant, room):
+        """Caso Arun: versati 400 ma se ne restituiscono 530 (materasso).
+        L'override su 'deposito da restituire' prevale sul versato."""
+        from billing.models import Receivable
+
+        RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2024, 9, 1),
+            valid_to=datetime.date(2025, 6, 30),
+            canone_mensile=Decimal("450"),
+        )
+        tenant.deposito_versato = Decimal("400")
+        tenant.deposito_da_restituire = Decimal("530")
+        tenant.data_restituzione_prevista = datetime.date(2025, 6, 30)
+        tenant.save()
+
+        negativo = Receivable.objects.get(
+            assignment__tenant=tenant,
+            causale=Receivable.Causale.DEPOSITO,
+            importo_dovuto__lt=0,
+        )
+        assert negativo.importo_dovuto == Decimal("-530")
 
 
 # ---------------------------------------------------------------------------

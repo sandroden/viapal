@@ -13,8 +13,8 @@ export interface Tenant {
   note?: string | null;
   deposito_versato?: string | null;
   data_versamento_deposito?: string | null;
-  deposito_restituito?: string | null;
-  data_restituzione_deposito?: string | null;
+  deposito_da_restituire?: string | null;
+  data_restituzione_prevista?: string | null;
   saldo?: number | null;
   saldo_totale?: number | null;
 }

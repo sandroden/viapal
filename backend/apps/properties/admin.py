@@ -142,7 +142,7 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
     list_display = (
         "get_modal_edit_icon", "nominativo", "codice_fiscale",
         "giorno_pagamento_affitto", "ciclo_fatturazione",
-        "deposito_versato", "deposito_restituito",
+        "deposito_versato", "deposito_da_restituire",
         "get_modal_delete_icon",
     )
     search_fields = ("nominativo", "codice_fiscale", "user__username", "user__email")
@@ -163,15 +163,15 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
         ("Deposito", {
             "fields": (
                 ("deposito_versato", "data_versamento_deposito"),
-                ("deposito_restituito", "data_restituzione_deposito"),
+                ("deposito_da_restituire", "data_restituzione_prevista"),
             ),
             "description": (
                 "Versando un valore in 'deposito versato' viene creato "
                 "automaticamente un Receivable DEPOSITO legato al primo "
-                "RoomAssignment del tenant. La restituzione (anche solo "
-                "contabile, per saldare l'ultima rata) genera un secondo "
-                "Receivable con importo negativo legato all'ultimo "
-                "RoomAssignment."
+                "RoomAssignment del tenant. Valorizzando 'data restituzione "
+                "prevista' viene generato un secondo Receivable con importo "
+                "negativo (pari a 'deposito da restituire', o al versato se "
+                "vuoto) legato all'ultimo RoomAssignment."
             ),
         }),
     )

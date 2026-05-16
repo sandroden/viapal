@@ -11,7 +11,6 @@ in fase di setup iniziale).
 from __future__ import annotations
 
 import logging
-from datetime import date
 from decimal import Decimal
 
 from django.db.models.signals import post_save
@@ -59,7 +58,18 @@ def _crea_deposito_versamento(tenant: TenantProfile) -> None:
 
 
 def _crea_deposito_restituzione(tenant: TenantProfile) -> None:
-    if tenant.deposito_restituito is None or tenant.deposito_restituito <= Decimal("0"):
+    # Trigger: la presenza della data prevista di restituzione. Senza data
+    # non c'è restituzione da contabilizzare.
+    if tenant.data_restituzione_prevista is None:
+        return
+
+    # Importo lordo da rendere: override esplicito, altrimenti pari al
+    # deposito versato (caso normale). Il netto effettivo dipende dal saldo
+    # dell'inquilino ed è calcolato altrove (simulazione uscita).
+    importo = tenant.deposito_da_restituire
+    if importo is None or importo <= Decimal("0"):
+        importo = tenant.deposito_versato
+    if importo is None or importo <= Decimal("0"):
         return
 
     from billing.models import Receivable, StatoPagamento
@@ -75,16 +85,13 @@ def _crea_deposito_restituzione(tenant: TenantProfile) -> None:
     ultimo = tenant.assignments.order_by("-valid_from", "-id").first()
     if ultimo is None:
         log.info(
-            "Deposito restituito per tenant %s ma nessun RoomAssignment.",
+            "Restituzione deposito prevista per tenant %s ma nessun "
+            "RoomAssignment.",
             tenant.pk,
         )
         return
 
-    data_evento = (
-        tenant.data_restituzione_deposito
-        or ultimo.valid_to
-        or date.today()
-    )
+    data_evento = tenant.data_restituzione_prevista
     Receivable.objects.create(
         assignment=ultimo,
         causale=Receivable.Causale.DEPOSITO,
@@ -92,7 +99,7 @@ def _crea_deposito_restituzione(tenant: TenantProfile) -> None:
         competenza_da=data_evento,
         competenza_a=None,
         scadenza=data_evento,
-        importo_dovuto=-tenant.deposito_restituito,
+        importo_dovuto=-importo,
         stato=StatoPagamento.ATTESO,
     )
 
