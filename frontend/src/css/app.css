@@ -18,3 +18,19 @@ html, body, #q-app {
   box-shadow: var(--vp-shadow-1);
   padding: var(--vp-gap-5);
 }
+
+/* Stampa rendiconto: nasconde la chrome dell'app (menu, header, drawer).
+   Attivata dalla classe body.vp-print-doc impostata dalla pagina. */
+@media print {
+  body.vp-print-doc .q-header,
+  body.vp-print-doc .q-drawer,
+  body.vp-print-doc .q-page-container > .no-print {
+    display: none !important;
+  }
+  body.vp-print-doc .q-page-container {
+    padding: 0 !important;
+  }
+  body.vp-print-doc {
+    background: #fff !important;
+  }
+}

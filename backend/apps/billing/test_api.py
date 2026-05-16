@@ -811,6 +811,127 @@ class TestTenantSituazione:
         assert data["totali_anno"]["dovuto"] == -1500.0
 
 
+class TestRendiconto:
+    def test_inquilino_403(self, client_inq_1, tenant_1):
+        resp = client_inq_1.get(
+            f"/api/v1/tenants/{tenant_1.id}/rendiconto/"
+        )
+        assert resp.status_code == 403
+
+    def test_tenant_inesistente_404(self, client_prop):
+        resp = client_prop.get("/api/v1/tenants/99999/rendiconto/")
+        assert resp.status_code == 404
+
+    def test_storico_differenze_e_chiusura(
+        self, client_prop, tenant_1, assignment_1, rent_payment_1, extra_charge_1
+    ):
+        # rent_payment_1: 400 dovuto, non pagato → nota 'non_pagata'
+        tenant_1.deposito_versato = Decimal("1000")
+        tenant_1.data_versamento_deposito = datetime.date(2024, 9, 1)
+        tenant_1.data_restituzione_prevista = datetime.date(2026, 6, 30)
+        tenant_1.save()
+
+        resp = client_prop.get(
+            f"/api/v1/tenants/{tenant_1.id}/rendiconto/"
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert data["tenant"]["id"] == tenant_1.id
+        causali = {s["causale"]: s for s in data["sezioni"]}
+        assert "affitto" in causali
+        riga_affitto = causali["affitto"]["righe"][0]
+        assert riga_affitto["dovuto"] == 400.0
+        assert riga_affitto["pagato"] == 0.0
+        assert riga_affitto["diff"] == -400.0
+        assert riga_affitto["nota"] == "non_pagata"
+
+        # Totali e saldo (400 affitto + 50 extra, nulla pagato)
+        assert data["totali"]["dovuto"] == 450.0
+        assert data["totali"]["pagato"] == 0.0
+        assert data["totali"]["saldo"] == -450.0
+
+        # Chiusura: da_restituire = versato (no override) = 1000
+        dep = data["deposito"]
+        assert dep["versato"] == 1000.0
+        assert dep["da_restituire"] == 1000.0
+        assert dep["override"] is False
+        assert dep["restituito_effettivo"] is False
+        # netto = 1000 + (-450) = 550
+        assert dep["netto_da_restituire"] == 550.0
+        assert dep["residuo_debito"] == 0.0
+
+    def test_bonifico_split_allocazioni_e_ledger(
+        self, client_prop, tenant_1, assignment_1, rent_payment_1,
+        extra_charge_1, owner_account,
+    ):
+        """Un bonifico unico (450) imputato 400 affitto + 50 extra: la riga
+        affitto espone l'allocazione 'split' e il ledger la ripartizione."""
+        from billing.models import BankTransaction, BankTransactionAllocation
+
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 5, 10),
+            descrizione="Bonifico cumulativo",
+            importo=Decimal("450.00"),
+            owner_account=owner_account,
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=rent_payment_1,
+            importo=Decimal("400.00"),
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=extra_charge_1,
+            importo=Decimal("50.00"),
+        )
+
+        resp = client_prop.get(
+            f"/api/v1/tenants/{tenant_1.id}/rendiconto/"
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+
+        causali = {s["causale"]: s for s in data["sezioni"]}
+        ra = causali["affitto"]["righe"][0]
+        assert ra["pagato"] == 400.0
+        assert len(ra["allocazioni"]) == 1
+        al = ra["allocazioni"][0]
+        assert al["bonifico_totale"] == 450.0
+        assert al["quota"] == 400.0
+        assert al["split"] is True
+        # diff per mese affitti = bonifico lordo del mese − affitto dovuto
+        # del mese: 450 − 400 = +50 (i 50 andati a copertura dell'extra).
+        assert ra["diff_mese"] == 50.0
+
+        # Ledger versamenti: un bonifico con 2 imputazioni
+        assert len(data["versamenti"]) == 1
+        v = data["versamenti"][0]
+        assert v["importo"] == 450.0
+        assert {i["causale"] for i in v["imputazioni"]} == {"affitto", "extra"}
+        assert data["totale_versato"] == 450.0
+
+        # Parziali per anno: 2026 con dovuto 450, pagato 450
+        pa2026 = [p for p in data["parziali_anno"] if p["anno"] == 2026]
+        assert pa2026 and pa2026[0]["dovuto"] == 450.0
+        assert pa2026[0]["pagato"] == 450.0
+
+    def test_override_importo_da_restituire(
+        self, client_prop, tenant_1, assignment_1
+    ):
+        tenant_1.deposito_versato = Decimal("400")
+        tenant_1.deposito_da_restituire = Decimal("530")
+        tenant_1.data_restituzione_prevista = datetime.date(2026, 6, 30)
+        tenant_1.save()
+
+        resp = client_prop.get(
+            f"/api/v1/tenants/{tenant_1.id}/rendiconto/"
+        )
+        assert resp.status_code == 200
+        dep = resp.json()["deposito"]
+        assert dep["versato"] == 400.0
+        assert dep["da_restituire"] == 530.0
+        assert dep["override"] is True
+
+
 # ---------------------------------------------------------------------------
 # Test riconciliazione bulk (POST /api/v1/reconciliations/)
 # ---------------------------------------------------------------------------

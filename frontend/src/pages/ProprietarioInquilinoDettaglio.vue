@@ -592,6 +592,21 @@
                     }}
                   </div>
                 </template>
+
+                <q-btn
+                  flat
+                  dense
+                  no-caps
+                  size="sm"
+                  color="primary"
+                  icon="description"
+                  label="Rendiconto stampabile"
+                  class="vp-p-id__rendiconto-btn"
+                  :to="{
+                    name: 'p-inquilino-rendiconto',
+                    params: { id: tenantId },
+                  }"
+                />
               </q-card-section>
             </q-card>
 
@@ -1229,6 +1244,9 @@ const contoDiDefaultUtente = computed(
 }
 .vp-p-id__sim-netto {
   font-size: var(--vp-text-lg);
+}
+.vp-p-id__rendiconto-btn {
+  margin-top: var(--vp-gap-3);
 }
 .vp-p-id__sim-warn {
   color: var(--vp-terra, #b56a3b);

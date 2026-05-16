@@ -12,7 +12,13 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsInquilino, IsProprietario
 from billing._dates import format_mese, format_mese_anno
-from billing.models import Receivable, StatoPagamento, TenantCondominioRate, UtilityChargePeriod
+from billing.models import (
+    BankTransactionAllocation,
+    Receivable,
+    StatoPagamento,
+    TenantCondominioRate,
+    UtilityChargePeriod,
+)
 from properties.models import Contract, OwnerProfile, RoomAssignment, TenantProfile
 from properties.serializers import TenantProfileSerializer  # noqa: F401
 
@@ -930,4 +936,303 @@ class TenantSituazioneView(APIView):
                 "totale": saldo_totale_globale,
             },
             "ritardo_medio_giorni": ritardo_medio,
+        })
+
+
+# ---------------------------------------------------------------------------
+# Rendiconto deposito (storico completo da consegnare all'uscita)
+# ---------------------------------------------------------------------------
+
+def _nota_riga(dovuto: Decimal, pagato: Decimal) -> str:
+    """Codice nota automatica per una riga del rendiconto."""
+    if dovuto <= 0:
+        return "ok"
+    if pagato <= 0:
+        return "non_pagata"
+    if pagato < dovuto:
+        return "parziale"
+    if pagato > dovuto:
+        return "eccesso"
+    return "ok"
+
+
+def _descr_rendiconto(r: Receivable):
+    """(descrizione, data) coerenti per riga di rendiconto e imputazione."""
+    p = r.utility_period
+    if r.causale == Receivable.Causale.UTENZE and p:
+        return (
+            f"Utenze {p.periodo_da.isoformat()} → {p.periodo_a.isoformat()}",
+            p.periodo_da,
+        )
+    if r.causale == Receivable.Causale.AFFITTO:
+        return (
+            r.descrizione or f"Affitto {format_mese_anno(r.competenza_da)}",
+            r.competenza_da,
+        )
+    return (r.descrizione or r.get_causale_display(), r.competenza_da)
+
+
+class RendicontoView(APIView):
+    """
+    GET /api/v1/tenants/<tenant_id>/rendiconto/
+
+    Storico completo (tutti gli anni) dei Receivable non-DEPOSITO
+    dell'inquilino, raggruppati per causale, con differenze per riga,
+    imputazioni dei bonifici (ledger), parziali per anno e chiusura del
+    deposito. Pensato per essere consegnato alla restituzione.
+    Riservato ai proprietari.
+    """
+
+    permission_classes = [IsProprietario]
+
+    _SEZIONI = (
+        (Receivable.Causale.AFFITTO, "Affitti"),
+        (Receivable.Causale.UTENZE, "Utenze"),
+        (Receivable.Causale.EXTRA, "Addebiti extra"),
+        (Receivable.Causale.REGISTRAZIONE, "Registrazione contratto"),
+    )
+
+    def get(self, request, tenant_id: int):
+        oggi = datetime.date.today()
+        try:
+            tenant = TenantProfile.objects.select_related("user").get(pk=tenant_id)
+        except TenantProfile.DoesNotExist:
+            return Response({"detail": "Inquilino non trovato."}, status=404)
+
+        assignments = list(
+            RoomAssignment.objects.filter(tenant=tenant).order_by("valid_from")
+        )
+        periodo_da = assignments[0].valid_from.isoformat() if assignments else None
+        if assignments and all(a.valid_to for a in assignments):
+            periodo_a = max(a.valid_to for a in assignments).isoformat()
+        else:
+            periodo_a = None  # rapporto ancora in corso
+
+        # Tutte le allocazioni bonifico→addebito dell'inquilino, in un'unica
+        # query. Servono sia per le note di copertura sulle righe sia per il
+        # ledger "Versamenti e imputazioni".
+        allocs = list(
+            BankTransactionAllocation.objects.filter(
+                receivable__assignment__tenant=tenant
+            )
+            .exclude(receivable__causale=Receivable.Causale.DEPOSITO)
+            .select_related(
+                "bank_transaction",
+                "receivable",
+                "receivable__utility_period",
+            )
+            .order_by("bank_transaction__data", "bank_transaction_id", "id")
+        )
+        alloc_per_receivable: dict[int, list] = {}
+        for a in allocs:
+            alloc_per_receivable.setdefault(a.receivable_id, []).append(a)
+
+        # parziali per anno (senza deposito): anno della "data" della riga
+        parziali: dict[int, list[Decimal]] = {}
+
+        sezioni = []
+        tot_dovuto = Decimal("0")
+        tot_pagato = Decimal("0")
+        for causale, label in self._SEZIONI:
+            qs = (
+                Receivable.objects.filter(
+                    assignment__tenant=tenant, causale=causale
+                )
+                .select_related("utility_period")
+                .order_by("competenza_da", "id")
+            )
+            righe = []
+            # meta[i] = (mese 'YYYY-MM', dovuto, {bt_id: bt_importo}) per la
+            # diff mensile degli affitti (gestisce 2 righe nello stesso mese
+            # per cambio stanza a metà mese).
+            meta: list[tuple] = []
+            sez_dovuto = Decimal("0")
+            sez_pagato = Decimal("0")
+            for r in qs:
+                dovuto = r.importo_dovuto
+                pagato = r.importo_pagato or Decimal("0")
+                descr, data = _descr_rendiconto(r)
+                righe_alloc = alloc_per_receivable.get(r.id, [])
+                allocazioni = [
+                    {
+                        "data": a.bank_transaction.data.isoformat(),
+                        "bonifico_totale": float(a.bank_transaction.importo),
+                        "quota": float(a.importo),
+                        # bonifico "split": ha coperto più del solo importo
+                        # imputato a questa riga (eccedenza andata altrove).
+                        "split": a.bank_transaction.importo != a.importo,
+                    }
+                    for a in righe_alloc
+                ]
+                mese = f"{data.year:04d}-{data.month:02d}" if data else None
+                righe.append({
+                    "data": data.isoformat() if data else None,
+                    "mese": mese,
+                    "scadenza": r.scadenza.isoformat() if r.scadenza else None,
+                    "descrizione": descr,
+                    "dovuto": float(dovuto),
+                    "pagato": float(pagato),
+                    "diff": float(pagato - dovuto),
+                    # Valorizzata solo per gli affitti, solo sull'ultima riga
+                    "diff_mese": None,
+                    "nota": _nota_riga(dovuto, pagato),
+                    "stato": r.stato,
+                    "data_pagamento": r.data_pagamento.isoformat()
+                    if r.data_pagamento else None,
+                    "allocazioni": allocazioni,
+                })
+                meta.append((
+                    mese,
+                    dovuto,
+                    {
+                        a.bank_transaction_id: a.bank_transaction.importo
+                        for a in righe_alloc
+                    },
+                ))
+                sez_dovuto += dovuto
+                sez_pagato += pagato
+                if data:
+                    acc = parziali.setdefault(
+                        data.year, [Decimal("0"), Decimal("0")]
+                    )
+                    acc[0] += dovuto
+                    acc[1] += pagato
+            if not righe:
+                continue
+            if causale == Receivable.Causale.AFFITTO:
+                # Diff per mese di competenza: somma dei bonifici (distinti)
+                # che hanno pagato l'affitto del mese, meno l'affitto dovuto
+                # del mese. L'eventuale eccedenza è il sovra-versato che è
+                # andato a coprire le utenze. Mostrata sull'ultima riga del
+                # mese; le altre righe del mese restano senza diff.
+                ultimo_idx_per_mese: dict[str, int] = {}
+                dovuto_per_mese: dict[str, Decimal] = {}
+                bt_per_mese: dict[str, dict] = {}
+                for idx, (mese, dovuto, bts) in enumerate(meta):
+                    if mese is None:
+                        continue
+                    ultimo_idx_per_mese[mese] = idx
+                    dovuto_per_mese.setdefault(mese, Decimal("0"))
+                    dovuto_per_mese[mese] += dovuto
+                    bt_per_mese.setdefault(mese, {}).update(bts)
+                for mese, idx in ultimo_idx_per_mese.items():
+                    versato_lordo = sum(
+                        bt_per_mese[mese].values(), Decimal("0")
+                    )
+                    righe[idx]["diff_mese"] = float(
+                        versato_lordo - dovuto_per_mese[mese]
+                    )
+            sezioni.append({
+                "causale": causale,
+                "label": label,
+                "righe": righe,
+                "dovuto": float(sez_dovuto),
+                "pagato": float(sez_pagato),
+                "saldo": float(sez_pagato - sez_dovuto),
+            })
+            tot_dovuto += sez_dovuto
+            tot_pagato += sez_pagato
+
+        saldo = tot_pagato - tot_dovuto
+
+        parziali_anno = [
+            {
+                "anno": anno,
+                "dovuto": float(d),
+                "pagato": float(p),
+                "saldo": float(p - d),
+            }
+            for anno, (d, p) in sorted(parziali.items())
+        ]
+
+        # --- Ledger: versamenti (bonifici) e loro imputazioni ---
+        versamenti_map: dict[int, dict] = {}
+        for a in allocs:
+            bt = a.bank_transaction
+            v = versamenti_map.get(bt.id)
+            if v is None:
+                v = {
+                    "data": bt.data.isoformat(),
+                    "descrizione": (bt.descrizione or "").strip()[:120],
+                    "importo": float(bt.importo),
+                    "imputato": Decimal("0"),
+                    "imputazioni": [],
+                }
+                versamenti_map[bt.id] = v
+            descr_r, _ = _descr_rendiconto(a.receivable)
+            v["imputazioni"].append({
+                "descrizione": descr_r,
+                "causale": a.receivable.causale,
+                "quota": float(a.importo),
+            })
+            v["imputato"] += a.importo
+        versamenti = []
+        tot_versato = Decimal("0")
+        for v in sorted(versamenti_map.values(), key=lambda x: x["data"]):
+            imputato = v.pop("imputato")
+            v["imputato"] = float(imputato)
+            tot_versato += imputato
+            versamenti.append(v)
+
+        # --- Chiusura deposito ---
+        versato = tenant.deposito_versato or Decimal("0")
+        override = tenant.deposito_da_restituire or Decimal("0")
+        da_restituire = override if override > 0 else versato
+
+        dep_qs = Receivable.objects.filter(
+            assignment__tenant=tenant, causale=Receivable.Causale.DEPOSITO
+        ).order_by("competenza_da", "id")
+        riga_restituzione = next(
+            (r for r in dep_qs if r.importo_dovuto < 0), None
+        )
+        restituito_effettivo = bool(
+            riga_restituzione
+            and riga_restituzione.stato == StatoPagamento.PAGATO
+        )
+        netto = Decimal("0") if restituito_effettivo else (da_restituire + saldo)
+        residuo_debito = -netto if (not restituito_effettivo and netto < 0) else Decimal("0")
+
+        deposito_movimenti = [
+            {
+                "data": r.competenza_da.isoformat() if r.competenza_da else None,
+                "descrizione": r.descrizione or r.get_causale_display(),
+                "importo": float(r.importo_dovuto),
+                "pagato": float(r.importo_pagato or 0),
+                "stato": r.stato,
+            }
+            for r in dep_qs
+        ]
+
+        return Response({
+            "tenant": {
+                "id": tenant.id,
+                "nominativo": tenant.nominativo,
+                "codice_fiscale": tenant.codice_fiscale or None,
+                "email": (tenant.user.email or None) if tenant.user_id else None,
+            },
+            "periodo": {"da": periodo_da, "a": periodo_a},
+            "emesso_il": oggi.isoformat(),
+            "sezioni": sezioni,
+            "totali": {
+                "dovuto": float(tot_dovuto),
+                "pagato": float(tot_pagato),
+                "saldo": float(saldo),
+            },
+            "parziali_anno": parziali_anno,
+            "versamenti": versamenti,
+            "totale_versato": float(tot_versato),
+            "deposito": {
+                "versato": float(versato),
+                "data_versamento": tenant.data_versamento_deposito.isoformat()
+                if tenant.data_versamento_deposito else None,
+                "da_restituire": float(da_restituire),
+                "override": override > 0,
+                "data_restituzione_prevista":
+                    tenant.data_restituzione_prevista.isoformat()
+                    if tenant.data_restituzione_prevista else None,
+                "restituito_effettivo": restituito_effettivo,
+                "netto_da_restituire": float(max(netto, Decimal("0"))),
+                "residuo_debito": float(residuo_debito),
+                "movimenti": deposito_movimenti,
+            },
         })
