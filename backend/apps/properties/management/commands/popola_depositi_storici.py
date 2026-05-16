@@ -1,5 +1,5 @@
-"""Genera i Receivable di causale CAPARRA per tenant esistenti la cui
-caparra è già stata valorizzata su TenantProfile ma non ha ancora un
+"""Genera i Receivable di causale DEPOSITO per tenant esistenti il cui
+deposito è già stato valorizzato su TenantProfile ma non ha ancora un
 Receivable corrispondente.
 
 Idempotente: rilancia in sicurezza, non crea duplicati.
@@ -8,13 +8,13 @@ from django.core.management.base import BaseCommand
 
 from properties.models import TenantProfile
 from properties.signals import (
-    _crea_caparra_restituzione,
-    _crea_caparra_versamento,
+    _crea_deposito_restituzione,
+    _crea_deposito_versamento,
 )
 
 
 class Command(BaseCommand):
-    help = "Genera i Receivable CAPARRA mancanti per i tenant esistenti."
+    help = "Genera i Receivable DEPOSITO mancanti per i tenant esistenti."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -27,7 +27,7 @@ class Command(BaseCommand):
         from billing.models import Receivable
 
         before = Receivable.objects.filter(
-            causale=Receivable.Causale.CAPARRA
+            causale=Receivable.Causale.DEPOSITO
         ).count()
 
         for tenant in TenantProfile.objects.all():
@@ -35,17 +35,17 @@ class Command(BaseCommand):
                 # In dry-run, simuliamo i check senza scrivere.
                 self._report_tenant(tenant)
                 continue
-            _crea_caparra_versamento(tenant)
-            _crea_caparra_restituzione(tenant)
+            _crea_deposito_versamento(tenant)
+            _crea_deposito_restituzione(tenant)
 
         after = Receivable.objects.filter(
-            causale=Receivable.Causale.CAPARRA
+            causale=Receivable.Causale.DEPOSITO
         ).count()
         creati = after - before
         prefix = "[DRY-RUN] " if options["dry_run"] else ""
         self.stdout.write(
             self.style.SUCCESS(
-                f"{prefix}Receivable CAPARRA creati: {creati} "
+                f"{prefix}Receivable DEPOSITO creati: {creati} "
                 f"(totale dopo: {after})"
             )
         )
@@ -56,7 +56,7 @@ class Command(BaseCommand):
         if tenant.deposito_versato and tenant.deposito_versato > 0:
             esiste = Receivable.objects.filter(
                 assignment__tenant=tenant,
-                causale=Receivable.Causale.CAPARRA,
+                causale=Receivable.Causale.DEPOSITO,
                 importo_dovuto__gt=0,
             ).exists()
             primo = tenant.assignments.order_by("valid_from", "id").first()
@@ -68,7 +68,7 @@ class Command(BaseCommand):
         if tenant.deposito_restituito and tenant.deposito_restituito > 0:
             esiste = Receivable.objects.filter(
                 assignment__tenant=tenant,
-                causale=Receivable.Causale.CAPARRA,
+                causale=Receivable.Causale.DEPOSITO,
                 importo_dovuto__lt=0,
             ).exists()
             ultimo = tenant.assignments.order_by("-valid_from", "-id").first()

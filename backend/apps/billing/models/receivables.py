@@ -19,7 +19,7 @@ class Receivable(TimestampedModel):
         AFFITTO = "affitto", "Affitto"
         UTENZE = "utenze", "Utenze"
         EXTRA = "extra", "Extra"
-        CAPARRA = "caparra", "Caparra"
+        DEPOSITO = "deposito", "Deposito"
         REGISTRAZIONE = "registrazione", "Registrazione contratto"
 
     assignment = models.ForeignKey(

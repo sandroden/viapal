@@ -781,7 +781,7 @@ class TestTenantSituazione:
         resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/situazione/?anno=abc")
         assert resp.status_code == 400
 
-    def test_situazione_caparra_assente_se_contratto_attivo(
+    def test_situazione_deposito_assente_se_contratto_attivo(
         self, client_prop, tenant_1, assignment_1
     ):
         tenant_1.deposito_versato = Decimal("1500")
@@ -790,10 +790,10 @@ class TestTenantSituazione:
         resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/situazione/?anno=2026")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["caparra"]["righe"] == []
-        assert data["caparra"]["dovuto_anno"] == 0.0
+        assert data["deposito"]["righe"] == []
+        assert data["deposito"]["dovuto_anno"] == 0.0
 
-    def test_situazione_caparra_presente_dopo_restituzione(
+    def test_situazione_deposito_presente_dopo_restituzione(
         self, client_prop, tenant_1, assignment_1
     ):
         tenant_1.deposito_versato = Decimal("1500")
@@ -805,9 +805,9 @@ class TestTenantSituazione:
         assert resp.status_code == 200
         data = resp.json()
         # Solo la restituzione cade nell'anno 2026 (il versamento è del 2024).
-        assert len(data["caparra"]["righe"]) == 1
-        assert data["caparra"]["righe"][0]["importo"] == -1500.0
-        assert data["caparra"]["dovuto_anno"] == -1500.0
+        assert len(data["deposito"]["righe"]) == 1
+        assert data["deposito"]["righe"][0]["importo"] == -1500.0
+        assert data["deposito"]["dovuto_anno"] == -1500.0
         assert data["totali_anno"]["dovuto"] == -1500.0
 
 

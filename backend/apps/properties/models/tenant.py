@@ -78,7 +78,7 @@ class TenantProfile(TimestampedModel):
         decimal_places=2,
         default=Decimal("0"),
         verbose_name="deposito versato",
-        help_text="Caparra versata dall'inquilino. Vale per l'intero rapporto, "
+        help_text="Deposito versato dall'inquilino. Vale per l'intero rapporto, "
         "anche se l'inquilino cambia stanza o contratto.",
     )
     data_versamento_deposito = models.DateField(

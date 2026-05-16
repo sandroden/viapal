@@ -1,11 +1,11 @@
 """Signals dell'app properties.
 
-Genera automaticamente i Receivable di causale CAPARRA quando viene valorizzata
-la caparra su TenantProfile (versamento) o la sua restituzione. Idempotente:
+Genera automaticamente i Receivable di causale DEPOSITO quando viene valorizzato
+il deposito su TenantProfile (versamento) o la sua restituzione. Idempotente:
 salvando lo stesso TenantProfile più volte non duplica i Receivable.
 
 La generazione scatta anche al post_save di RoomAssignment per gestire il caso
-"tenant creato con caparra ma senza ancora alcun assignment" (rare ma possibile
+"tenant creato con deposito ma senza ancora alcun assignment" (rare ma possibile
 in fase di setup iniziale).
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ from .models import RoomAssignment, TenantProfile
 log = logging.getLogger(__name__)
 
 
-def _crea_caparra_versamento(tenant: TenantProfile) -> None:
+def _crea_deposito_versamento(tenant: TenantProfile) -> None:
     if tenant.deposito_versato is None or tenant.deposito_versato <= Decimal("0"):
         return
 
@@ -30,7 +30,7 @@ def _crea_caparra_versamento(tenant: TenantProfile) -> None:
 
     esiste = Receivable.objects.filter(
         assignment__tenant=tenant,
-        causale=Receivable.Causale.CAPARRA,
+        causale=Receivable.Causale.DEPOSITO,
         importo_dovuto__gt=0,
     ).exists()
     if esiste:
@@ -39,7 +39,7 @@ def _crea_caparra_versamento(tenant: TenantProfile) -> None:
     primo = tenant.assignments.order_by("valid_from", "id").first()
     if primo is None:
         log.info(
-            "Caparra versata per tenant %s ma nessun RoomAssignment: "
+            "Deposito versato per tenant %s ma nessun RoomAssignment: "
             "Receivable verrà generato al primo assignment.",
             tenant.pk,
         )
@@ -48,8 +48,8 @@ def _crea_caparra_versamento(tenant: TenantProfile) -> None:
     data_evento = tenant.data_versamento_deposito or primo.valid_from
     Receivable.objects.create(
         assignment=primo,
-        causale=Receivable.Causale.CAPARRA,
-        descrizione="Caparra (versamento)",
+        causale=Receivable.Causale.DEPOSITO,
+        descrizione="Deposito (versamento)",
         competenza_da=data_evento,
         competenza_a=None,
         scadenza=data_evento,
@@ -58,7 +58,7 @@ def _crea_caparra_versamento(tenant: TenantProfile) -> None:
     )
 
 
-def _crea_caparra_restituzione(tenant: TenantProfile) -> None:
+def _crea_deposito_restituzione(tenant: TenantProfile) -> None:
     if tenant.deposito_restituito is None or tenant.deposito_restituito <= Decimal("0"):
         return
 
@@ -66,7 +66,7 @@ def _crea_caparra_restituzione(tenant: TenantProfile) -> None:
 
     esiste = Receivable.objects.filter(
         assignment__tenant=tenant,
-        causale=Receivable.Causale.CAPARRA,
+        causale=Receivable.Causale.DEPOSITO,
         importo_dovuto__lt=0,
     ).exists()
     if esiste:
@@ -75,7 +75,7 @@ def _crea_caparra_restituzione(tenant: TenantProfile) -> None:
     ultimo = tenant.assignments.order_by("-valid_from", "-id").first()
     if ultimo is None:
         log.info(
-            "Caparra restituita per tenant %s ma nessun RoomAssignment.",
+            "Deposito restituito per tenant %s ma nessun RoomAssignment.",
             tenant.pk,
         )
         return
@@ -87,8 +87,8 @@ def _crea_caparra_restituzione(tenant: TenantProfile) -> None:
     )
     Receivable.objects.create(
         assignment=ultimo,
-        causale=Receivable.Causale.CAPARRA,
-        descrizione="Caparra (restituzione)",
+        causale=Receivable.Causale.DEPOSITO,
+        descrizione="Deposito (restituzione)",
         competenza_da=data_evento,
         competenza_a=None,
         scadenza=data_evento,
@@ -177,18 +177,18 @@ def _crea_costo_cessione(assignment: RoomAssignment) -> None:
 
 
 @receiver(post_save, sender=TenantProfile)
-def genera_receivable_caparra_da_tenant(sender, instance, **kwargs):
-    _crea_caparra_versamento(instance)
-    _crea_caparra_restituzione(instance)
+def genera_receivable_deposito_da_tenant(sender, instance, **kwargs):
+    _crea_deposito_versamento(instance)
+    _crea_deposito_restituzione(instance)
 
 
 @receiver(post_save, sender=RoomAssignment)
-def genera_receivable_caparra_da_assignment(sender, instance, created, **kwargs):
-    """Recupera il caso in cui il tenant aveva già caparra valorizzata
+def genera_receivable_deposito_da_assignment(sender, instance, created, **kwargs):
+    """Recupera il caso in cui il tenant aveva già deposito valorizzato
     al momento della creazione del primo assignment."""
     if created:
-        _crea_caparra_versamento(instance.tenant)
-        _crea_caparra_restituzione(instance.tenant)
+        _crea_deposito_versamento(instance.tenant)
+        _crea_deposito_restituzione(instance.tenant)
     # Il costo di cessione va valutato anche sugli update: spesso viene
     # valorizzato a mano dopo aver creato l'assegnazione.
     _crea_costo_cessione(instance)

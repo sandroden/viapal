@@ -153,7 +153,7 @@ import { useFormatoData } from 'src/composables/useFormatoData';
 import { useAuthStore } from 'stores/auth';
 import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
 
-type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'caparra';
+type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'deposito';
 
 interface ReceivableRiga {
   id: number;
@@ -246,13 +246,13 @@ const ETICHETTE: Record<CausaleReceivable, string> = {
   affitto: 'Affitto',
   utenze: 'Utenze',
   extra: 'Extra',
-  caparra: 'Caparra',
+  deposito: 'Deposito',
 };
 const ICONE: Record<CausaleReceivable, string> = {
   affitto: 'home',
   utenze: 'bolt',
   extra: 'receipt',
-  caparra: 'savings',
+  deposito: 'savings',
 };
 function etichettaPerCausale(c: CausaleReceivable): string {
   return ETICHETTE[c] ?? c;
@@ -461,7 +461,7 @@ async function dopoSalvataggio(): Promise<void> {
 .vp-p-di__chip--c-extra {
   color: var(--vp-terra, #b56a3b);
 }
-.vp-p-di__chip--c-caparra {
+.vp-p-di__chip--c-deposito {
   color: var(--vp-ink-3);
 }
 .vp-p-di__link-inq {

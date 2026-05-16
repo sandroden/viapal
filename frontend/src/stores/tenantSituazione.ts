@@ -57,7 +57,7 @@ export interface ExtraRiga {
   bank_account_destinazione_id: number | null;
 }
 
-export interface CaparraRiga {
+export interface DepositoRiga {
   id: number;
   data: string;
   descrizione: string;
@@ -111,11 +111,11 @@ export interface TenantSituazione {
     saldo: number;
     righe: ExtraRiga[];
   };
-  caparra: {
+  deposito: {
     dovuto_anno: number;
     pagato_anno: number;
     saldo: number;
-    righe: CaparraRiga[];
+    righe: DepositoRiga[];
   };
   totali_anno: {
     dovuto: number;

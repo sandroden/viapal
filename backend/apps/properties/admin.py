@@ -160,14 +160,14 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
                 "note_pagamento",
             ),
         }),
-        ("Deposito (caparra)", {
+        ("Deposito", {
             "fields": (
                 ("deposito_versato", "data_versamento_deposito"),
                 ("deposito_restituito", "data_restituzione_deposito"),
             ),
             "description": (
                 "Versando un valore in 'deposito versato' viene creato "
-                "automaticamente un Receivable CAPARRA legato al primo "
+                "automaticamente un Receivable DEPOSITO legato al primo "
                 "RoomAssignment del tenant. La restituzione (anche solo "
                 "contabile, per saldare l'ultima rata) genera un secondo "
                 "Receivable con importo negativo legato all'ultimo "
@@ -179,7 +179,7 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
     tabs = (
         ("Anagrafica", {"items": ["Anagrafica"]}),
         ("Pagamenti e deposito", {
-            "items": ["Pagamenti", "Deposito (caparra)"],
+            "items": ["Pagamenti", "Deposito"],
             "active": True,
         }),
         ("Assegnazione stanze", {"items": [RoomAssignmentInlineForTenant]}),

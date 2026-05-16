@@ -36,7 +36,7 @@ TIPO_PER_CAUSALE = {
 }
 
 # Causali "di gestione" mostrate nelle dashboard rendita/pagamenti.
-# CAPARRA è esclusa: i depositi cauzionali non sono entrate operative.
+# DEPOSITO è escluso: i depositi cauzionali non sono entrate operative.
 CAUSALI_OPERATIVE = (
     Receivable.Causale.AFFITTO,
     Receivable.Causale.UTENZE,
@@ -778,25 +778,25 @@ class TenantSituazioneView(APIView):
             if r.importo_pagato:
                 extra_pagato += r.importo_pagato
 
-        # Caparra dell'anno: esposta solo dopo la chiusura (data di restituzione
+        # Deposito dell'anno: esposto solo dopo la chiusura (data di restituzione
         # valorizzata). Senza, il versamento incassato in passato apparirebbe come
         # credito permanente dell'inquilino.
-        caparra_righe: list[dict] = []
-        caparra_dovuto = Decimal("0")
-        caparra_pagato = Decimal("0")
-        caparra_qs_list: list[Receivable] = []
+        deposito_righe: list[dict] = []
+        deposito_dovuto = Decimal("0")
+        deposito_pagato = Decimal("0")
+        deposito_qs_list: list[Receivable] = []
         if tenant.data_restituzione_deposito:
-            caparra_qs = (
+            deposito_qs = (
                 Receivable.objects.filter(
                     assignment__tenant=tenant,
-                    causale=Receivable.Causale.CAPARRA,
+                    causale=Receivable.Causale.DEPOSITO,
                     competenza_da__year=anno,
                 )
                 .order_by("competenza_da")
             )
-            caparra_qs_list = list(caparra_qs)
-            for r in caparra_qs_list:
-                caparra_righe.append({
+            deposito_qs_list = list(deposito_qs)
+            for r in deposito_qs_list:
+                deposito_righe.append({
                     "id": r.id,
                     "data": r.competenza_da.isoformat(),
                     "descrizione": r.descrizione or r.get_causale_display(),
@@ -807,9 +807,9 @@ class TenantSituazioneView(APIView):
                     "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
                     "bank_account_destinazione_id": r.bank_account_destinazione_id,
                 })
-                caparra_dovuto += r.importo_dovuto
+                deposito_dovuto += r.importo_dovuto
                 if r.importo_pagato:
-                    caparra_pagato += r.importo_pagato
+                    deposito_pagato += r.importo_pagato
 
         # Ritardo medio: tutti i Receivable dell'anno con scadenza valida.
         # Pagati: ritardo storico (data_pagamento - scadenza).
@@ -828,15 +828,15 @@ class TenantSituazioneView(APIView):
             else 0.0
         )
 
-        totale_dovuto = rent_dovuto + utility_dovuto + extra_totale + caparra_dovuto
-        totale_pagato = rent_pagato + utility_pagato + extra_pagato + caparra_pagato
+        totale_dovuto = rent_dovuto + utility_dovuto + extra_totale + deposito_dovuto
+        totale_pagato = rent_pagato + utility_pagato + extra_pagato + deposito_pagato
 
         # Saldi "globali" allineati alla colonna Saldo della lista inquilini:
-        # somma su tutti i Receivable !CAPARRA, filtrati per competenza_da__year
+        # somma su tutti i Receivable !DEPOSITO, filtrati per competenza_da__year
         # (anno selezionato) o senza filtro (cumulativo).
         receivable_base = (
             Receivable.objects.filter(assignment__tenant=tenant)
-            .exclude(causale=Receivable.Causale.CAPARRA)
+            .exclude(causale=Receivable.Causale.DEPOSITO)
         )
         agg_anno = receivable_base.filter(competenza_da__year=anno).aggregate(
             dovuto=Coalesce(Sum("importo_dovuto"), Decimal("0")),
@@ -914,11 +914,11 @@ class TenantSituazioneView(APIView):
                 "saldo": float(extra_pagato - extra_totale),
                 "righe": extra_righe,
             },
-            "caparra": {
-                "dovuto_anno": float(caparra_dovuto),
-                "pagato_anno": float(caparra_pagato),
-                "saldo": float(caparra_pagato - caparra_dovuto),
-                "righe": caparra_righe,
+            "deposito": {
+                "dovuto_anno": float(deposito_dovuto),
+                "pagato_anno": float(deposito_pagato),
+                "saldo": float(deposito_pagato - deposito_dovuto),
+                "righe": deposito_righe,
             },
             "totali_anno": {
                 "dovuto": float(totale_dovuto),

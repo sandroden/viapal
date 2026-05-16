@@ -104,7 +104,7 @@ class TenantProfileViewSet(ReadOnlyModelViewSet):
         base_qs = (
             Receivable.objects
             .filter(assignment__tenant_id__in=tenant_ids)
-            .exclude(causale=Receivable.Causale.CAPARRA)
+            .exclude(causale=Receivable.Causale.DEPOSITO)
         )
 
         agg_totale = base_qs.values("assignment__tenant_id").annotate(

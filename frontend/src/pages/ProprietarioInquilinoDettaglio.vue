@@ -124,10 +124,10 @@
                           <span class="vp-mono">{{ formattaEuro(situazione.extra.totale_anno) }}</span>
                         </q-item-section>
                       </q-item>
-                      <q-item v-if="situazione.caparra && situazione.caparra.righe.length">
-                        <q-item-section>Caparra</q-item-section>
+                      <q-item v-if="situazione.deposito && situazione.deposito.righe.length">
+                        <q-item-section>Deposito</q-item-section>
                         <q-item-section side>
-                          <span class="vp-mono">{{ formattaEuro(situazione.caparra.dovuto_anno) }}</span>
+                          <span class="vp-mono">{{ formattaEuro(situazione.deposito.dovuto_anno) }}</span>
                         </q-item-section>
                       </q-item>
                       <q-separator spaced />
@@ -140,8 +140,8 @@
                     </q-list>
                     <div class="vp-p-id__popup-nota">
                       Comprende affitti, utenze (luce, gas, TARI) e addebiti extra
-                      (es. conguaglio condominiale). La caparra è inclusa solo
-                      dopo la restituzione.
+                      (es. conguaglio condominiale). Il deposito è incluso
+                      solo dopo la restituzione.
                     </div>
                   </q-card-section>
                 </q-card>
@@ -494,7 +494,7 @@
 
             <q-card flat bordered class="vp-p-id__card-info">
               <q-card-section>
-                <div class="vp-eyebrow">Deposito (caparra)</div>
+                <div class="vp-eyebrow">Deposito</div>
                 <q-list dense>
                   <q-item>
                     <q-item-section>
@@ -640,7 +640,7 @@ import type { SemaforoLivello } from 'src/types/semaforo';
 import EmptyState from 'src/components/EmptyState.vue';
 import RegistraPagamentoDialog from 'src/components/RegistraPagamentoDialog.vue';
 
-type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'caparra';
+type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'deposito';
 
 interface ReceivableInput {
   id: number;
@@ -655,13 +655,13 @@ interface ReceivableInput {
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
-type TipoPagamento = 'rent' | 'utility' | 'extra' | 'caparra';
+type TipoPagamento = 'rent' | 'utility' | 'extra' | 'deposito';
 
 const TIPO_TO_CAUSALE: Record<TipoPagamento, CausaleReceivable> = {
   rent: 'affitto',
   utility: 'utenze',
   extra: 'extra',
-  caparra: 'caparra',
+  deposito: 'deposito',
 };
 
 interface RigaPagamento {
@@ -703,7 +703,7 @@ function parseTab(v: unknown): 'pagamenti' | 'profilo' {
 }
 function parseTipo(v: unknown): FiltroTipo {
   const s = Array.isArray(v) ? v[0] : v;
-  if (s === 'rent' || s === 'utility' || s === 'extra' || s === 'caparra') return s;
+  if (s === 'rent' || s === 'utility' || s === 'extra' || s === 'deposito') return s;
   return 'all';
 }
 
@@ -724,15 +724,15 @@ const opzioniTipo = [
   { label: 'Affitto', value: 'rent' as const },
   { label: 'Utenze', value: 'utility' as const },
   { label: 'Extra', value: 'extra' as const },
-  { label: 'Caparra', value: 'caparra' as const },
+  { label: 'Deposito', value: 'deposito' as const },
 ];
 
 const situazione = computed(() => store.get(tenantId.value, annoSelezionato.value));
 
-// Riga Receivable di restituzione caparra (importo negativo). Esposta dal
+// Riga Receivable di restituzione deposito (importo negativo). Esposta dal
 // backend solo quando data_restituzione_deposito è valorizzata.
 const rigaRestituzione = computed(() => {
-  const righe = situazione.value?.caparra?.righe ?? [];
+  const righe = situazione.value?.deposito?.righe ?? [];
   return righe.find((r) => r.importo < 0) ?? null;
 });
 // "Effettuata" = il Receivable di restituzione risulta pagato. Altrimenti
@@ -809,10 +809,10 @@ const righePagamenti = computed<RigaPagamento[]>(() => {
       bank_account_destinazione_id: e.bank_account_destinazione_id,
     });
   }
-  for (const c of situazione.value.caparra?.righe ?? []) {
+  for (const c of situazione.value.deposito?.righe ?? []) {
     out.push({
-      rowKey: `caparra-${c.id}`,
-      tipo: 'caparra',
+      rowKey: `deposito-${c.id}`,
+      tipo: 'deposito',
       descrizione: c.descrizione,
       importo_dovuto: c.importo,
       importo_pagato: c.importo_pagato ?? 0,
@@ -974,13 +974,13 @@ const ETICHETTE_TIPO: Record<TipoPagamento, string> = {
   rent: 'Affitto',
   utility: 'Utenze',
   extra: 'Extra',
-  caparra: 'Caparra',
+  deposito: 'Deposito',
 };
 const ICONE_TIPO: Record<TipoPagamento, string> = {
   rent: 'home',
   utility: 'bolt',
   extra: 'receipt',
-  caparra: 'savings',
+  deposito: 'savings',
 };
 function etichettaPerTipo(t: TipoPagamento): string {
   return ETICHETTE_TIPO[t];
@@ -1185,7 +1185,7 @@ const contoDiDefaultUtente = computed(
 .vp-p-id__chip--c-extra {
   color: var(--vp-terra, #b56a3b);
 }
-.vp-p-id__chip--c-caparra {
+.vp-p-id__chip--c-deposito {
   color: var(--vp-ink-2, #5b6470);
 }
 .vp-p-id__causale-icon {

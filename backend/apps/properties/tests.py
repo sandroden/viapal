@@ -299,13 +299,13 @@ class TestOwnerBankAccount:
 
 
 # ---------------------------------------------------------------------------
-# Test signal caparra → Receivable
+# Test signal deposito → Receivable
 # ---------------------------------------------------------------------------
 
 
-class TestCaparraSignal:
-    """Verifica che il signal generi i Receivable CAPARRA con idempotenza
-    e che il caso Arun (più assignment, una sola caparra) non duplichi."""
+class TestDepositoSignal:
+    """Verifica che il signal generi i Receivable DEPOSITO con idempotenza
+    e che il caso Arun (più assignment, una sola deposito) non duplichi."""
 
     @pytest.fixture
     def tenant_con_room(self, db, tenant, room):
@@ -326,13 +326,13 @@ class TestCaparraSignal:
 
         recs = Receivable.objects.filter(
             assignment__tenant=tenant_con_room,
-            causale=Receivable.Causale.CAPARRA,
+            causale=Receivable.Causale.DEPOSITO,
         )
         assert recs.count() == 1
         r = recs.get()
         assert r.importo_dovuto == Decimal("900")
         assert r.scadenza == datetime.date(2024, 9, 1)
-        assert r.descrizione == "Caparra (versamento)"
+        assert r.descrizione == "Deposito (versamento)"
 
     def test_restituzione_genera_receivable_negativo(self, tenant_con_room):
         from billing.models import Receivable
@@ -344,12 +344,12 @@ class TestCaparraSignal:
 
         positivo = Receivable.objects.get(
             assignment__tenant=tenant_con_room,
-            causale=Receivable.Causale.CAPARRA,
+            causale=Receivable.Causale.DEPOSITO,
             importo_dovuto__gt=0,
         )
         negativo = Receivable.objects.get(
             assignment__tenant=tenant_con_room,
-            causale=Receivable.Causale.CAPARRA,
+            causale=Receivable.Causale.DEPOSITO,
             importo_dovuto__lt=0,
         )
         assert positivo.importo_dovuto == Decimal("900")
@@ -368,24 +368,24 @@ class TestCaparraSignal:
         assert (
             Receivable.objects.filter(
                 assignment__tenant=tenant_con_room,
-                causale=Receivable.Causale.CAPARRA,
+                causale=Receivable.Causale.DEPOSITO,
             ).count()
             == 1
         )
 
-    def test_caso_arun_piu_assignment_una_caparra(self, db, tenant, room):
-        """Tenant con 3 RoomAssignment consecutivi: una sola caparra."""
+    def test_caso_arun_piu_assignment_una_deposito(self, db, tenant, room):
+        """Tenant con 3 RoomAssignment consecutivi: una sola deposito."""
         from billing.models import Receivable
 
         room_2 = Room.objects.create(nome="Camera 2", ordinamento=2)
-        # Caparra impostata sul tenant.
+        # Deposito impostata sul tenant.
         tenant.deposito_versato = Decimal("900")
         tenant.data_versamento_deposito = datetime.date(2024, 9, 1)
         tenant.save()
         # Nessun assignment ancora → nessun Receivable.
         assert (
             Receivable.objects.filter(
-                assignment__tenant=tenant, causale=Receivable.Causale.CAPARRA
+                assignment__tenant=tenant, causale=Receivable.Causale.DEPOSITO
             ).count()
             == 0
         )
@@ -398,7 +398,7 @@ class TestCaparraSignal:
             valid_to=datetime.date(2025, 2, 28),
             canone_mensile=Decimal("450"),
         )
-        # Secondo assignment: cambia stanza. Caparra invariata.
+        # Secondo assignment: cambia stanza. Deposito invariata.
         RoomAssignment.objects.create(
             room=room_2,
             tenant=tenant,
@@ -415,7 +415,7 @@ class TestCaparraSignal:
         )
 
         recs = Receivable.objects.filter(
-            assignment__tenant=tenant, causale=Receivable.Causale.CAPARRA
+            assignment__tenant=tenant, causale=Receivable.Causale.DEPOSITO
         )
         assert recs.count() == 1
         # Legato al primo assignment.
@@ -429,7 +429,7 @@ class TestCaparraSignal:
         tenant.save()  # non deve sollevare; non crea nulla.
         assert (
             Receivable.objects.filter(
-                causale=Receivable.Causale.CAPARRA
+                causale=Receivable.Causale.DEPOSITO
             ).count()
             == 0
         )
@@ -459,7 +459,7 @@ class TestCaparraSignal:
 
         negativo = Receivable.objects.get(
             assignment__tenant=tenant,
-            causale=Receivable.Causale.CAPARRA,
+            causale=Receivable.Causale.DEPOSITO,
             importo_dovuto__lt=0,
         )
         assert negativo.assignment_id == ultimo.id
@@ -481,7 +481,7 @@ class TestCaparraSignal:
 
         negativo = Receivable.objects.get(
             assignment__tenant=tenant,
-            causale=Receivable.Causale.CAPARRA,
+            causale=Receivable.Causale.DEPOSITO,
             importo_dovuto__lt=0,
         )
         assert negativo.scadenza == ultimo.valid_to

@@ -90,7 +90,7 @@ import { api } from 'boot/axios';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import type { BankAccountInfo } from 'stores/auth';
 
-export type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'caparra';
+export type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'deposito';
 
 export interface ReceivableInput {
   id: number;
@@ -138,7 +138,7 @@ const CAUSALE_LABEL: Record<CausaleReceivable, string> = {
   affitto: 'Affitto',
   utenze: 'Utenze',
   extra: 'Extra',
-  caparra: 'Caparra',
+  deposito: 'Deposito',
 };
 const MESI_ABBR = [
   '',
