@@ -31,6 +31,7 @@ from billing.models import (
     UtilityChargePeriod,
 )
 from billing.serializers import (
+    BankTransactionBulkImportInputSerializer,
     BankTransactionSerializer,
     ExpenseCategorySerializer,
     ExpenseSerializer,
@@ -730,4 +731,136 @@ class RegistraPagamentoReceivableView(APIView):
         return Response(
             {"bank_transaction": bt_data, "receivable": rec_data},
             status=status.HTTP_201_CREATED,
+        )
+
+
+class BankTransactionBulkImportView(APIView):
+    """POST /api/v1/bank-transactions/bulk-import/
+
+    Caricamento **idempotente** di righe di estratto conto.
+
+    Chiave naturale: ``(owner_account, data, importo)``. Per ogni chiave le
+    righe in arrivo vengono appaiate *in ordine* con le ``BankTransaction``
+    già presenti sul conto:
+
+    - riga senza corrispondente nel DB        → **creata**;
+    - corrispondente con stessa descrizione    → **invariata** (idempotente);
+    - corrispondente con descrizione diversa   → la descrizione della banca
+      diventa quella ufficiale; la precedente (es. inserita a mano dal
+      proprietario col dettaglio scritto dall'inquilino) viene preservata in
+      ``note`` come riga ``Precedente: …`` → **aggiornata**;
+    - ``BankTransaction`` in più rispetto alle righe in arrivo → lasciate
+      intatte (mai cancellate) → conteggiate come ``extra_db``.
+
+    Rilanciare lo stesso file non crea duplicati e non ri-accoda le note
+    (la riga ``Precedente: …`` viene aggiunta una sola volta).
+
+    Auth: ``IsProprietario`` (i superuser passano). ``BasicAuthentication`` è
+    abilitata di proposito così lo script client può usare HTTP Basic senza
+    gestire il CSRF della sessione.
+    """
+
+    permission_classes = [IsProprietario]
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
+
+    PREFISSO_NOTA = "Precedente: "
+
+    def post(self, request):
+        serializer = BankTransactionBulkImportInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        account = serializer.validated_data["owner_account"]
+        dry_run = serializer.validated_data["dry_run"]
+        movimenti = serializer.validated_data["movimenti"]
+
+        from collections import defaultdict
+
+        # Righe in arrivo raggruppate per (data, importo), ordine preservato.
+        per_chiave: dict = defaultdict(list)
+        for m in movimenti:
+            per_chiave[(m["data"], m["importo"])].append(m["descrizione"] or "")
+
+        # BT esistenti sul conto per quelle date/importi, in ordine di id.
+        date = {d for (d, _i) in per_chiave}
+        importi = {i for (_d, i) in per_chiave}
+        esistenti: dict = defaultdict(list)
+        qs = (
+            BankTransaction.objects.filter(
+                owner_account=account, data__in=date, importo__in=importi
+            ).order_by("id")
+        )
+        for bt in qs:
+            k = (bt.data, bt.importo)
+            if k in per_chiave:
+                esistenti[k].append(bt)
+
+        creati = aggiornati = invariati = extra_db = 0
+        dettaglio: list = []
+
+        with transaction.atomic():
+            for (data_k, importo_k), descrizioni in per_chiave.items():
+                bt_list = esistenti.get((data_k, importo_k), [])
+                for idx, nuova_descr in enumerate(descrizioni):
+                    if idx < len(bt_list):
+                        bt = bt_list[idx]
+                        if bt.descrizione == nuova_descr:
+                            invariati += 1
+                            continue
+                        vecchia = (bt.descrizione or "").strip()
+                        riga_nota = f"{self.PREFISSO_NOTA}{vecchia}"
+                        if vecchia and riga_nota not in (bt.note or ""):
+                            bt.note = (
+                                f"{bt.note}\n{riga_nota}".strip()
+                                if bt.note
+                                else riga_nota
+                            )
+                        bt.descrizione = nuova_descr
+                        bt.save()
+                        aggiornati += 1
+                        dettaglio.append(
+                            {
+                                "azione": "aggiornato",
+                                "id": bt.id,
+                                "data": str(data_k),
+                                "importo": str(importo_k),
+                                "descrizione_prima": vecchia,
+                                "descrizione_dopo": nuova_descr,
+                            }
+                        )
+                    else:
+                        bt = BankTransaction(
+                            data=data_k,
+                            importo=importo_k,
+                            descrizione=nuova_descr,
+                            owner_account=account,
+                            note="",
+                        )
+                        bt.save()
+                        creati += 1
+                        dettaglio.append(
+                            {
+                                "azione": "creato",
+                                "id": bt.id,
+                                "data": str(data_k),
+                                "importo": str(importo_k),
+                                "descrizione_dopo": nuova_descr,
+                            }
+                        )
+                if len(bt_list) > len(descrizioni):
+                    extra_db += len(bt_list) - len(descrizioni)
+
+            if dry_run:
+                transaction.set_rollback(True)
+
+        return Response(
+            {
+                "owner_account": account.id,
+                "dry_run": dry_run,
+                "totale_input": len(movimenti),
+                "creati": creati,
+                "aggiornati": aggiornati,
+                "invariati": invariati,
+                "extra_db": extra_db,
+                "dettaglio": dettaglio,
+            },
+            status=status.HTTP_200_OK,
         )

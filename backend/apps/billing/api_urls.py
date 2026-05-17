@@ -5,6 +5,7 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from billing.views import (
+    BankTransactionBulkImportView,
     BankTransactionViewSet,
     ExpenseCategoryViewSet,
     ExpenseViewSet,
@@ -29,7 +30,15 @@ router.register(r"extra-charges", ExtraChargeViewSet, basename="extra-charge")
 router.register(r"bank-transactions", BankTransactionViewSet, basename="bank-transaction")
 router.register(r"receivables", ReceivableViewSet, basename="receivable")
 
-urlpatterns = router.urls + [
+urlpatterns = [
+    # Prima del router: altrimenti la regex detail `bank-transactions/<pk>/`
+    # cattura "bulk-import" come pk.
+    path(
+        "bank-transactions/bulk-import/",
+        BankTransactionBulkImportView.as_view(),
+        name="bank-transaction-bulk-import",
+    ),
+] + router.urls + [
     path(
         "reconciliations/",
         ReconciliationBulkView.as_view(),

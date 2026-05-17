@@ -535,3 +535,38 @@ class RegistraPagamentoInputSerializer(serializers.Serializer):
         if not acct.attivo:
             raise serializers.ValidationError("Il conto selezionato non è attivo.")
         return acct
+
+
+class BankMovimentoSerializer(serializers.Serializer):
+    """Una riga di estratto conto da importare (vedi bulk-import).
+
+    ``importo`` è già col segno (positivo = entrata, negativo = uscita),
+    coerente con ``BankTransaction.importo``.
+    """
+
+    data = serializers.DateField()
+    importo = serializers.DecimalField(max_digits=10, decimal_places=2)
+    descrizione = serializers.CharField(
+        allow_blank=True, trim_whitespace=False, default=""
+    )
+
+
+class BankTransactionBulkImportInputSerializer(serializers.Serializer):
+    """Input per POST /api/v1/bank-transactions/bulk-import/."""
+
+    owner_account = serializers.IntegerField()
+    dry_run = serializers.BooleanField(default=False)
+    movimenti = BankMovimentoSerializer(many=True)
+
+    def validate_owner_account(self, value):
+        from properties.models import OwnerBankAccount
+
+        try:
+            return OwnerBankAccount.objects.get(pk=value)
+        except OwnerBankAccount.DoesNotExist:
+            raise serializers.ValidationError("Conto inesistente.")
+
+    def validate_movimenti(self, value):
+        if not value:
+            raise serializers.ValidationError("Nessun movimento da importare.")
+        return value
