@@ -61,11 +61,11 @@ PATTERN_UTENZE = (
 )
 # Esclusioni: GSE (incentivi fotovoltaico) e Cernusco (contributo affido) non
 # c'entrano con l'affitto; FUEL/PETROL/DISTRIBUTORE sono carburante; RIVOLTA
-# (Rivolta Adriana) è donazione di famiglia; E.ON ENERGIA è l'utenza personale
-# di Sandro, non dell'immobile.
+# (Rivolta Adriana) e DENTELLA PIETRO sono movimenti di famiglia; E.ON ENERGIA
+# è l'utenza personale di Sandro, non dell'immobile.
 PATTERN_ESCLUDI = (
     r"GSE|GESTORE DEI SERVIZI ENERGETICI|CERNUSCO|FUEL|PETROL|DISTRIBUTORE|"
-    r"RIVOLTA|E\.?\s?ON ENERGIA"
+    r"RIVOLTA|E\.?\s?ON ENERGIA|DENTELLA PIETRO"
 )
 
 
