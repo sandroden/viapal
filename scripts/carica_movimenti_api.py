@@ -16,6 +16,18 @@ Chiama POST /api/v1/bank-transactions/bulk-import/ con HTTP Basic.
 descrizione della banca diventa quella ufficiale e la precedente viene
 preservata in `note` come riga "Precedente: …".
 
+Di default applica un **filtro pertinenza affitto**: tiene solo i
+bonifici in ENTRATA e le USCITE verso le utenze gas/luce, scartando
+ciò che matcha la regex `--escludi` (default GSE|Cernusco|carburanti).
+Usa `--dump-esclusi scarti.csv` per vedere cosa viene tolto e
+raffinare `--escludi`; `--no-filtro` carica tutto.
+
+Uso (locale, anteprima filtro senza scrivere):
+  uv run scripts/carica_movimenti_api.py \\
+      --csv dati/movimenti-sandro-storico-2022-2023.csv \\
+      --owner-account 14 --base-url http://localhost:8000 \\
+      --dry-run --dump-esclusi /tmp/scarti.csv
+
 Uso (locale):
   uv run scripts/carica_movimenti_api.py \\
       --csv dati/movimenti-sandro-storico-2022-2023.csv \\
@@ -28,10 +40,45 @@ Online (quando pronto, conto Sandro/Alessandro = 14):
 """
 import argparse
 import csv
+import re
 import sys
+from collections import Counter
 from decimal import Decimal, InvalidOperation
 
 import requests
+
+# --- Filtro pertinenza affitto (default, raffinabili da CLI) -------------
+# Teniamo SOLO:
+#   • ENTRATE che sono bonifici  (affitti / quote utenze versate dagli inquilini)
+#   • USCITE verso le utenze gas/luce (addebiti al fornitore energia)
+# e scartiamo comunque ciò che matcha PATTERN_ESCLUDI.
+PATTERN_BONIFICO = r"BON\.DA|BONIFICO"
+PATTERN_UTENZE = (
+    r"E\.?\s?ON ENERGIA|ENEL ENERGIA|ENEL ?ENERGIA|EDISON|PLENITUDE|"
+    r"ACEA ENERGIA|A2A ENERGIA|\bIREN\b|SORGENIA|HERA COMM|SERVIZIO ELETTRICO"
+)
+# Esclusioni: GSE (incentivi fotovoltaico) e Cernusco (contributo affido) non
+# c'entrano con l'affitto; FUEL/PETROL/DISTRIBUTORE sono carburante, non utenze.
+PATTERN_ESCLUDI = (
+    r"GSE|GESTORE DEI SERVIZI ENERGETICI|CERNUSCO|FUEL|PETROL|DISTRIBUTORE"
+)
+
+
+def filtra(mov: dict, pat_bonifico, pat_utenze, pat_escludi) -> tuple[bool, str]:
+    """Ritorna (tieni, motivo). ``motivo`` spiega perché è scartato/tenuto."""
+    descr = mov["descrizione"]
+    importo = Decimal(mov["importo"])
+    if pat_escludi.search(descr):
+        return False, "escluso (pattern esclusione)"
+    if importo > 0:
+        if pat_bonifico.search(descr):
+            return True, "tenuto: bonifico in entrata"
+        return False, "scartato: entrata non-bonifico"
+    if importo < 0:
+        if pat_utenze.search(descr):
+            return True, "tenuto: uscita utenza energia"
+        return False, "scartato: uscita non-utenza"
+    return False, "scartato: importo zero"
 
 
 def leggi_csv(path: str) -> list[dict]:
@@ -78,12 +125,59 @@ def main() -> int:
         action="store_true",
         help="Il server calcola tutto ma fa rollback: non scrive nulla.",
     )
+    ap.add_argument(
+        "--no-filtro",
+        action="store_true",
+        help="Carica TUTTE le righe (disattiva il filtro pertinenza affitto).",
+    )
+    ap.add_argument(
+        "--escludi",
+        default=PATTERN_ESCLUDI,
+        help=f"Regex (case-insensitive) di esclusione. Default: {PATTERN_ESCLUDI!r}",
+    )
+    ap.add_argument(
+        "--pattern-utenze",
+        default=PATTERN_UTENZE,
+        help="Regex fornitori energia per le uscite da tenere.",
+    )
+    ap.add_argument(
+        "--dump-esclusi",
+        metavar="FILE.csv",
+        help="Scrive le righe scartate (con motivo) per ispezione/raffinamento.",
+    )
     args = ap.parse_args()
 
     mov = leggi_csv(args.csv)
     if not mov:
         print("Nessun movimento valido nel CSV.")
         return 1
+
+    if not args.no_filtro:
+        pat_b = re.compile(PATTERN_BONIFICO, re.I)
+        pat_u = re.compile(args.pattern_utenze, re.I)
+        pat_e = re.compile(args.escludi, re.I)
+        tenuti, esclusi, motivi = [], [], Counter()
+        for m in mov:
+            ok, motivo = filtra(m, pat_b, pat_u, pat_e)
+            motivi[motivo] += 1
+            (tenuti if ok else esclusi).append({**m, "_motivo": motivo})
+        print(f"\nFiltro pertinenza affitto ({len(mov)} righe lette):")
+        for motivo, n in sorted(motivi.items(), key=lambda x: -x[1]):
+            segno = "✓" if motivo.startswith("tenuto") else "✗"
+            print(f"  {segno} {motivo}: {n}")
+        print(f"  → {len(tenuti)} righe da caricare, {len(esclusi)} scartate")
+        if args.dump_esclusi:
+            with open(args.dump_esclusi, "w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(
+                    f, fieldnames=["data", "importo", "descrizione", "_motivo"]
+                )
+                w.writeheader()
+                w.writerows(esclusi)
+            print(f"  scartate scritte in {args.dump_esclusi}")
+        mov = [{k: v for k, v in m.items() if k != "_motivo"} for m in tenuti]
+        if not mov:
+            print("Nessuna riga supera il filtro.")
+            return 1
 
     url = args.base_url.rstrip("/") + "/api/v1/bank-transactions/bulk-import/"
     print(
