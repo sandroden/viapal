@@ -1,0 +1,46 @@
+# -*- mode: sh -*-
+
+# La password deve essere memorizzata in .pgpass sul server remoto
+# es.::
+# echo localhost:5432:dbname:dbuser:pass  >> /root/.pgpass
+# chmod 600 /root/.pgpass
+## Postgresql
+APP_HOST=root@mio3.e-den.it
+DB_HOST=localhost   # as seen from APP_HOST
+DB_NAME=viapal
+DB_USER=viapal
+
+## Sqlite
+#DB_PATH=/path/to/remote/db
+
+## Local admin/thunder
+RESET_USER=admin            # normalmente admin o thunder, la password verrà chiesta interattivamente
+
+# PORTE
+REMOTE_PORT=5433
+LOCAL_PORT=5434
+# LOCAL_CLUSTER=9.5/main
+# REMOTE_CLUSTER=9.5/main
+
+LOCAL_DB_NAME=viapal
+# LOCAL_HOST=localhost   # decommentare se si vuole usare -h localhost
+# LOCAL_DB_USER=         # idem
+# PG_ADMIN_USER=postgres    # You may write it in ~/.config/jmb.conf
+# DROP_DB_CMD="sudo -u sandro dropdb -p $LOCAL_PORT "
+# CREATE_DB_CMD="sudo -u sandro createdb -O $LOCAL_DB_USER  -p $LOCAL_PORT "
+# PRESERVE_OWNERSHIP=1
+## se occorre creare un tunnel
+# TNL_PORT=1999
+# TNL_HOST=root@fw-thunder   # End point del tunnel, es.L il firewall
+# TNL_REMOTE_PORT=22  # porta da usare dall'host per raggiungere il server
+# REMOTE_HOST=10.0.0.1
+
+# La script comporrà:
+# ssh $TNL_HOST -fNL $TNL_PORT:$REMOTE_HOST:22
+
+
+# Posizione dei media nell'host remoto
+# REMOTE_MEDIA=/home/www/test.prj.it/web/media
+LOCAL_MEDIA=web  # non web/media!!!
+LOCAL_SQL_FILE=
+# CUSTOM_SCRIPT=
