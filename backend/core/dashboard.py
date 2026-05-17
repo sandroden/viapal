@@ -198,6 +198,14 @@ class ViapalIndexDashboard(Dashboard):
             )
         )
 
+        # Gestione utenti e permessi (auth: User, Group)
+        self.children.append(
+            modules.AppList(
+                title="Gestione utenti",
+                models=("django.contrib.auth.*",),
+            )
+        )
+
         # LinkList — strumenti rapidi
         self.children.append(
             modules.LinkList(
