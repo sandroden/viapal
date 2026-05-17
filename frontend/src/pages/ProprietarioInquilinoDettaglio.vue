@@ -188,6 +188,16 @@
       >
         <q-tab name="pagamenti" label="Pagamenti" />
         <q-tab name="profilo" label="Profilo & contratto" />
+        <q-route-tab
+          name="rendiconto"
+          label="Rendiconto"
+          icon="description"
+          inline-label
+          :to="{
+            name: 'p-inquilino-rendiconto',
+            params: { id: tenantId },
+          }"
+        />
       </q-tabs>
 
       <q-tab-panels v-model="tabAttivo" animated class="vp-p-id__panels">
@@ -1187,6 +1197,15 @@ const contoDiDefaultUtente = computed(
 .vp-p-id__tabs {
   border-bottom: 1px solid var(--vp-paper-3);
   margin-bottom: var(--vp-gap-3);
+}
+/* icona del tab "Rendiconto" inline col testo (non impilata sopra) */
+.vp-p-id__tabs :deep(.q-tab__content) {
+  flex-direction: row;
+  gap: 6px;
+}
+.vp-p-id__tabs :deep(.q-tab__icon) {
+  font-size: 18px;
+  margin: 0;
 }
 .vp-p-id__panels {
   background: transparent;
