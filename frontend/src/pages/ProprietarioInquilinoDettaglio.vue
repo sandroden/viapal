@@ -302,17 +302,21 @@
                   class="vp-p-id__stato-click"
                   @click="aprireRegistraPagamento(props.row)"
                 >
-                  <SemaforoBadge
-                    :livello="livelloStato(props.row.stato, props.row.giorni_ritardo)"
-                    :label="props.row.stato"
+                  <StatoPagamentoBadge
+                    :importo-dovuto="props.row.importo_dovuto"
+                    :importo-pagato="props.row.importo_pagato"
+                    :stato="props.row.stato"
+                    :giorni-ritardo="props.row.giorni_ritardo"
                   />
                   <q-icon name="payments" size="14px" class="vp-p-id__stato-icon" />
                   <q-tooltip>Registra pagamento</q-tooltip>
                 </span>
-                <SemaforoBadge
+                <StatoPagamentoBadge
                   v-else
-                  :livello="livelloStato(props.row.stato, props.row.giorni_ritardo)"
-                  :label="props.row.stato"
+                  :importo-dovuto="props.row.importo_dovuto"
+                  :importo-pagato="props.row.importo_pagato"
+                  :stato="props.row.stato"
+                  :giorni-ritardo="props.row.giorni_ritardo"
                 />
               </q-td>
             </template>
@@ -671,8 +675,7 @@ import { useTenantsStore, type Tenant } from 'stores/tenants';
 import { useAuthStore } from 'stores/auth';
 import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
 import KpiCard from 'src/components/KpiCard.vue';
-import SemaforoBadge from 'src/components/SemaforoBadge.vue';
-import type { SemaforoLivello } from 'src/types/semaforo';
+import StatoPagamentoBadge from 'src/components/StatoPagamentoBadge.vue';
 import EmptyState from 'src/components/EmptyState.vue';
 import RegistraPagamentoDialog from 'src/components/RegistraPagamentoDialog.vue';
 
@@ -1035,14 +1038,6 @@ function etichettaPerTipo(t: TipoPagamento): string {
 }
 function iconaPerTipo(t: TipoPagamento): string {
   return ICONE_TIPO[t];
-}
-
-function livelloStato(stato: string, giorni_ritardo: number): SemaforoLivello {
-  if (stato === 'pagato') return 'salvia';
-  if (giorni_ritardo > 7) return 'argilla_scuro';
-  if (giorni_ritardo > 0) return 'argilla_chiaro';
-  if (giorni_ritardo > -7) return 'miele';
-  return 'salvia';
 }
 
 // --- Registra pagamento (modale su righe in stato atteso) -----------------

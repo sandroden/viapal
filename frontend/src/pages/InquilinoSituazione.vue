@@ -213,9 +213,11 @@
             </template>
             <template #body-cell-stato="props">
               <q-td :props="props">
-                <SemaforoBadge
-                  :livello="livelloStato(props.row.stato, props.row.giorni_ritardo)"
-                  :label="props.row.stato"
+                <StatoPagamentoBadge
+                  :importo-dovuto="props.row.importo_dovuto"
+                  :importo-pagato="props.row.importo_pagato"
+                  :stato="props.row.stato"
+                  :giorni-ritardo="props.row.giorni_ritardo"
                 />
               </q-td>
             </template>
@@ -238,9 +240,11 @@
                       />
                       <span>{{ props.row.descrizione }}</span>
                     </div>
-                    <SemaforoBadge
-                      :livello="livelloStato(props.row.stato, props.row.giorni_ritardo)"
-                      :label="props.row.stato"
+                    <StatoPagamentoBadge
+                      :importo-dovuto="props.row.importo_dovuto"
+                      :importo-pagato="props.row.importo_pagato"
+                      :stato="props.row.stato"
+                      :giorni-ritardo="props.row.giorni_ritardo"
                     />
                   </q-card-section>
                   <q-separator />
@@ -575,9 +579,8 @@ import { useTenantSituazioneStore } from 'stores/tenantSituazione';
 import { useDashboardStore } from 'stores/dashboard';
 import { useAuthStore } from 'stores/auth';
 import KpiCard from 'src/components/KpiCard.vue';
-import SemaforoBadge from 'src/components/SemaforoBadge.vue';
+import StatoPagamentoBadge from 'src/components/StatoPagamentoBadge.vue';
 import EmptyState from 'src/components/EmptyState.vue';
-import type { SemaforoLivello } from 'src/types/semaforo';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
@@ -804,14 +807,6 @@ function iconaPerTipo(t: TipoPagamento): string {
 function iconaTipoPer(t: FiltroTipo): string {
   if (t === 'all') return 'category';
   return ICONE_TIPO[t];
-}
-
-function livelloStato(stato: string, giorni_ritardo: number): SemaforoLivello {
-  if (stato === 'pagato') return 'salvia';
-  if (giorni_ritardo > 7) return 'argilla_scuro';
-  if (giorni_ritardo > 0) return 'argilla_chiaro';
-  if (giorni_ritardo > -7) return 'miele';
-  return 'salvia';
 }
 
 function giorniRitardo(scadenza: string): number {
