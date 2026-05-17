@@ -29,6 +29,12 @@
           to="/i/situazione"
         />
         <q-route-tab
+          name="rendiconto"
+          icon="description"
+          label="Rendiconto"
+          to="/i/rendiconto"
+        />
+        <q-route-tab
           name="pagamenti"
           icon="receipt_long"
           label="Pagamenti"

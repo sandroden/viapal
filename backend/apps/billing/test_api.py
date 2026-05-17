@@ -839,9 +839,15 @@ class TestTenantSituazione:
 
 
 class TestRendiconto:
-    def test_inquilino_403(self, client_inq_1, tenant_1):
+    def test_inquilino_accede_al_proprio(self, client_inq_1, tenant_1):
         resp = client_inq_1.get(
             f"/api/v1/tenants/{tenant_1.id}/rendiconto/"
+        )
+        assert resp.status_code == 200
+
+    def test_inquilino_non_accede_ad_altri_403(self, client_inq_1, tenant_2):
+        resp = client_inq_1.get(
+            f"/api/v1/tenants/{tenant_2.id}/rendiconto/"
         )
         assert resp.status_code == 403
 

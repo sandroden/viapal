@@ -1099,10 +1099,11 @@ class RendicontoView(APIView):
     dell'inquilino, raggruppati per causale, con differenze per riga,
     imputazioni dei bonifici (ledger), parziali per anno e chiusura del
     deposito. Pensato per essere consegnato alla restituzione.
-    Riservato ai proprietari.
+    Accessibile ai proprietari (qualunque inquilino) e all'inquilino
+    stesso (solo il proprio profilo).
     """
 
-    permission_classes = [IsProprietario]
+    permission_classes = [IsAuthenticated]
 
     _SEZIONI = (
         (Receivable.Causale.AFFITTO, "Affitti"),
@@ -1117,6 +1118,16 @@ class RendicontoView(APIView):
             tenant = TenantProfile.objects.select_related("user").get(pk=tenant_id)
         except TenantProfile.DoesNotExist:
             return Response({"detail": "Inquilino non trovato."}, status=404)
+
+        user = request.user
+        is_proprietario = (
+            user.is_superuser
+            or user.groups.filter(name="proprietari").exists()
+        )
+        if not is_proprietario and tenant.user_id != user.id:
+            return Response(
+                {"detail": "Puoi accedere solo ai tuoi dati."}, status=403
+            )
 
         assignments = list(
             RoomAssignment.objects.filter(tenant=tenant).order_by("valid_from")
