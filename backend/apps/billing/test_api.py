@@ -781,9 +781,28 @@ class TestTenantSituazione:
         resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/situazione/?anno=abc")
         assert resp.status_code == 400
 
-    def test_situazione_deposito_assente_se_contratto_attivo(
+    def test_situazione_versamento_deposito_sempre_visibile(
         self, client_prop, tenant_1, assignment_1
     ):
+        # Senza data di restituzione il versamento compare comunque nel suo
+        # anno di competenza, ma NON entra nei totali dell'anno.
+        tenant_1.deposito_versato = Decimal("1500")
+        tenant_1.data_versamento_deposito = datetime.date(2024, 9, 1)
+        tenant_1.save()
+        resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/situazione/?anno=2024")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["deposito"]["righe"]) == 1
+        assert data["deposito"]["righe"][0]["importo"] == 1500.0
+        assert data["deposito"]["dovuto_anno"] == 1500.0
+        # Il deposito è escluso dai totali dell'anno.
+        assert data["totali_anno"]["dovuto"] == 0.0
+
+    def test_situazione_restituzione_nascosta_senza_data(
+        self, client_prop, tenant_1, assignment_1
+    ):
+        # Versamento 2024, nessuna data di restituzione: nel 2026 non c'è
+        # nessuna riga deposito (la restituzione non è ancora contabilizzata).
         tenant_1.deposito_versato = Decimal("1500")
         tenant_1.data_versamento_deposito = datetime.date(2024, 9, 1)
         tenant_1.save()
@@ -808,7 +827,8 @@ class TestTenantSituazione:
         assert len(data["deposito"]["righe"]) == 1
         assert data["deposito"]["righe"][0]["importo"] == -1500.0
         assert data["deposito"]["dovuto_anno"] == -1500.0
-        assert data["totali_anno"]["dovuto"] == -1500.0
+        # Il deposito (anche la restituzione) è escluso dai totali dell'anno.
+        assert data["totali_anno"]["dovuto"] == 0.0
 
 
 class TestRendiconto:

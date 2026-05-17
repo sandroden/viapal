@@ -785,38 +785,39 @@ class TenantSituazioneView(APIView):
             if r.importo_pagato:
                 extra_pagato += r.importo_pagato
 
-        # Deposito dell'anno: esposto solo dopo la chiusura (data di restituzione
-        # valorizzata). Senza, il versamento incassato in passato apparirebbe come
-        # credito permanente dell'inquilino.
+        # Deposito dell'anno: il versamento è sempre esposto. La riga di
+        # restituzione (importo negativo) compare solo dopo la chiusura
+        # (``data_restituzione_prevista`` valorizzata). Il deposito NON entra
+        # nei totali dovuto/pagato dell'anno (vedi più sotto), coerente con
+        # ``saldi`` che già esclude la causale DEPOSITO.
         deposito_righe: list[dict] = []
         deposito_dovuto = Decimal("0")
         deposito_pagato = Decimal("0")
-        deposito_qs_list: list[Receivable] = []
-        if tenant.data_restituzione_prevista:
-            deposito_qs = (
-                Receivable.objects.filter(
-                    assignment__tenant=tenant,
-                    causale=Receivable.Causale.DEPOSITO,
-                    competenza_da__year=anno,
-                )
-                .order_by("competenza_da")
-            )
-            deposito_qs_list = list(deposito_qs)
-            for r in deposito_qs_list:
-                deposito_righe.append({
-                    "id": r.id,
-                    "data": r.competenza_da.isoformat(),
-                    "descrizione": r.descrizione or r.get_causale_display(),
-                    "importo": float(r.importo_dovuto),
-                    "importo_pagato": float(r.importo_pagato or 0),
-                    "scadenza": r.scadenza.isoformat() if r.scadenza else None,
-                    "stato": r.stato,
-                    "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
-                    "bank_account_destinazione_id": r.bank_account_destinazione_id,
-                })
-                deposito_dovuto += r.importo_dovuto
-                if r.importo_pagato:
-                    deposito_pagato += r.importo_pagato
+        deposito_qs = Receivable.objects.filter(
+            assignment__tenant=tenant,
+            causale=Receivable.Causale.DEPOSITO,
+            competenza_da__year=anno,
+        )
+        if not tenant.data_restituzione_prevista:
+            # Senza data di restituzione mostriamo solo il versamento
+            # (importo positivo), mai la restituzione.
+            deposito_qs = deposito_qs.filter(importo_dovuto__gt=0)
+        deposito_qs = deposito_qs.order_by("competenza_da")
+        for r in deposito_qs:
+            deposito_righe.append({
+                "id": r.id,
+                "data": r.competenza_da.isoformat(),
+                "descrizione": r.descrizione or r.get_causale_display(),
+                "importo": float(r.importo_dovuto),
+                "importo_pagato": float(r.importo_pagato or 0),
+                "scadenza": r.scadenza.isoformat() if r.scadenza else None,
+                "stato": r.stato,
+                "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
+                "bank_account_destinazione_id": r.bank_account_destinazione_id,
+            })
+            deposito_dovuto += r.importo_dovuto
+            if r.importo_pagato:
+                deposito_pagato += r.importo_pagato
 
         # Ritardo medio: tutti i Receivable dell'anno con scadenza valida.
         # Pagati: ritardo storico (data_pagamento - scadenza).
@@ -835,8 +836,10 @@ class TenantSituazioneView(APIView):
             else 0.0
         )
 
-        totale_dovuto = rent_dovuto + utility_dovuto + extra_totale + deposito_dovuto
-        totale_pagato = rent_pagato + utility_pagato + extra_pagato + deposito_pagato
+        # Il deposito è escluso dai totali dell'anno: è un movimento
+        # cauzionale, non una partita di competenza, e ``saldi`` lo esclude già.
+        totale_dovuto = rent_dovuto + utility_dovuto + extra_totale
+        totale_pagato = rent_pagato + utility_pagato + extra_pagato
 
         # Saldi "globali" = sbilancio reale (saldo-imputazioni + resti dei
         # bonifici), coerente con il rendiconto. ``saldi.anno`` è lo
