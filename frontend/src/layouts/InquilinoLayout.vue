@@ -23,6 +23,12 @@
       >
         <q-route-tab name="home" icon="home" label="Home" to="/i/" exact />
         <q-route-tab
+          name="situazione"
+          icon="account_balance"
+          label="Situazione"
+          to="/i/situazione"
+        />
+        <q-route-tab
           name="pagamenti"
           icon="receipt_long"
           label="Pagamenti"

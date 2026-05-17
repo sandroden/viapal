@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
-from rest_framework.permissions import IsAuthenticated  # noqa: F401
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -635,10 +635,11 @@ class TenantSituazioneView(APIView):
 
     Riepilogo completo per un inquilino: anagrafica, assignment storici,
     affitti, utenze (con voci dettagliate) e addebiti extra dell'anno.
-    Riservato ai proprietari.
+    Accessibile ai proprietari (qualunque inquilino) e all'inquilino stesso
+    (solo il proprio profilo).
     """
 
-    permission_classes = [IsProprietario]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, tenant_id: int):
         oggi = datetime.date.today()
@@ -654,6 +655,16 @@ class TenantSituazioneView(APIView):
         except TenantProfile.DoesNotExist:
             return Response(
                 {"detail": "Inquilino non trovato."}, status=404
+            )
+
+        user = request.user
+        is_proprietario = (
+            user.is_superuser
+            or user.groups.filter(name="proprietari").exists()
+        )
+        if not is_proprietario and tenant.user_id != user.id:
+            return Response(
+                {"detail": "Puoi accedere solo ai tuoi dati."}, status=403
             )
 
         assignments_qs = (

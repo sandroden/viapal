@@ -83,6 +83,11 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: '', name: 'i-home', component: () => import('pages/InquilinoHome.vue') },
       {
+        path: 'situazione',
+        name: 'i-situazione',
+        component: () => import('pages/InquilinoSituazione.vue'),
+      },
+      {
         path: 'paga/:tipo/:id',
         name: 'i-paga',
         component: () => import('pages/InquilinoPaga.vue'),

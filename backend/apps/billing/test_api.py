@@ -769,8 +769,15 @@ class TestTenantSituazione:
         assert data["rent"]["dovuto_anno"] == 0.0
         assert data["rent"]["righe"] == []
 
-    def test_situazione_inquilino_403(self, client_inq_1, tenant_1):
+    def test_situazione_inquilino_accede_al_proprio(self, client_inq_1, tenant_1):
         resp = client_inq_1.get(f"/api/v1/tenants/{tenant_1.id}/situazione/")
+        assert resp.status_code == 200
+        assert resp.json()["tenant"]["id"] == tenant_1.id
+
+    def test_situazione_inquilino_non_accede_ad_altri_403(
+        self, client_inq_1, tenant_2
+    ):
+        resp = client_inq_1.get(f"/api/v1/tenants/{tenant_2.id}/situazione/")
         assert resp.status_code == 403
 
     def test_situazione_tenant_inesistente_404(self, client_prop):
