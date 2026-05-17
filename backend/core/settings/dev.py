@@ -31,3 +31,6 @@ SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
 # CSRF cookie leggibile da JS per inviarlo con XSRF-TOKEN nelle richieste API
 CSRF_COOKIE_HTTPONLY = False
+
+# Admin tinto di rosso + badge "LOCALE": inconfondibile rispetto al remoto
+ADMIN_TOOLS_THEMING_CSS = 'viapal/admin/dashboard-dev.css'

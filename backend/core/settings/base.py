@@ -173,4 +173,12 @@ ROLE_INQUILINI = 'inquilini'
 # l'autodiscover() che usa il modulo `imp` (rimosso in Python 3.12+).
 ADMIN_TOOLS_INDEX_DASHBOARD = 'core.dashboard.ViapalIndexDashboard'
 ADMIN_TOOLS_APP_INDEX_DASHBOARD = 'core.dashboard.ViapalAppIndexDashboard'
+
+# Ambiente corrente (dev/staging/production), derivato da $ENV.
+# Usato per differenziare visivamente admin e frontend ed evitare di
+# operare su produzione pensando di essere in locale.
+ENVIRONMENT = os.environ.get('ENV') or 'dev'
+
+# CSS theming admin: di default quello "pulito" (produzione).
+# dev.py / staging.py lo sovrascrivono con una variante colorata.
 ADMIN_TOOLS_THEMING_CSS = 'viapal/admin/dashboard.css'

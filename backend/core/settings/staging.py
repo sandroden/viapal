@@ -7,6 +7,9 @@ ALLOWED_HOSTS = [
     # Aggiungi qui i domini di staging
 ]
 
+# Admin tinto di ambra + badge "STAGING": distinto sia da locale sia da prod
+ADMIN_TOOLS_THEMING_CSS = 'viapal/admin/dashboard-staging.css'
+
 # Database PostgreSQL per staging
 # DATABASES = {
 #     'default': {

@@ -5,6 +5,16 @@ from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import RedirectView
 
+# Header admin con l'ambiente: in produzione resta pulito, altrove segnala
+# a chiare lettere dove si sta operando.
+if settings.ENVIRONMENT == 'production':
+    _admin_label = 'Viapal'
+else:
+    _admin_label = f'Viapal — {settings.ENVIRONMENT.upper()}'
+admin.site.site_header = _admin_label
+admin.site.site_title = _admin_label  # finisce nel <title> del tab
+admin.site.index_title = 'Amministrazione'
+
 api_v1_patterns = [
     path("", include("properties.api_urls")),
     path("", include("billing.api_urls")),

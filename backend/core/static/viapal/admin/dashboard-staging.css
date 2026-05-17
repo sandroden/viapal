@@ -1,0 +1,37 @@
+/* Theming admin per ENV=staging.
+   Colorazione ambra: distinta sia dal locale (rosso) sia dalla
+   produzione (neutro). */
+
+@import url("dashboard.css");
+
+#header {
+  background: #ef6c00;
+  background-image: none;
+}
+#header,
+#header a:link,
+#header a:visited,
+#branding h1,
+#branding h1 a:link,
+#branding h1 a:visited,
+#user-tools,
+#user-tools a:link,
+#user-tools a:visited {
+  color: #ffffff !important;
+}
+
+body::after {
+  content: "STAGING";
+  position: fixed;
+  top: 8px;
+  right: 12px;
+  z-index: 100000;
+  background: #ffffff;
+  color: #ef6c00;
+  font: bold 11px/1 sans-serif;
+  letter-spacing: 1px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
