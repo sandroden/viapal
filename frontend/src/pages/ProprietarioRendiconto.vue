@@ -113,6 +113,28 @@
                   </span>
                 </td>
               </tr>
+              <tr
+                v-for="(a, j) in r.allocazioni.filter(
+                  (x) => Math.abs(x.resto) >= 0.005,
+                )"
+                :key="`r-${i}-${j}`"
+                class="vp-rd__resto-row"
+              >
+                <td></td>
+                <td>
+                  ↳ versato non imputato
+                  <small>(bonifico {{ formattaData(a.data) }})</small>
+                </td>
+                <td></td>
+                <td></td>
+                <td
+                  class="vp-rd__c-num vp-mono"
+                  :class="diffClass(a.resto)"
+                >
+                  {{ formattaEuro(a.resto) }}
+                </td>
+                <td></td>
+              </tr>
             </template>
           </tbody>
           <tfoot>
@@ -184,6 +206,28 @@
                   </span>
                 </td>
               </tr>
+              <tr
+                v-for="(a, j) in r.allocazioni.filter(
+                  (x) => Math.abs(x.resto) >= 0.005,
+                )"
+                :key="`r-${i}-${j}`"
+                class="vp-rd__resto-row"
+              >
+                <td></td>
+                <td>
+                  ↳ versato non imputato
+                  <small>(bonifico {{ formattaData(a.data) }})</small>
+                </td>
+                <td></td>
+                <td></td>
+                <td
+                  class="vp-rd__c-num vp-mono"
+                  :class="diffClass(a.resto)"
+                >
+                  {{ formattaEuro(a.resto) }}
+                </td>
+                <td></td>
+              </tr>
             </template>
           </tbody>
           <tfoot>
@@ -193,9 +237,24 @@
               <td class="vp-rd__c-num vp-mono">{{ formattaEuro(g.pagato) }}</td>
               <td
                 class="vp-rd__c-num vp-mono"
-                :class="diffClass(g.pagato - g.dovuto)"
+                :class="diffClass(totDiffGruppo(g))"
               >
-                {{ formattaEuro(g.pagato - g.dovuto) }}
+                {{ formattaEuro(totDiffGruppo(g)) }}
+              </td>
+              <td></td>
+            </tr>
+            <tr
+              v-if="parzialeByAnno.get(g.anno)"
+              class="vp-rd__quad vp-rd__quad--prog"
+            >
+              <td colspan="4">
+                <strong>Saldo progressivo a fine {{ g.anno }}</strong>
+              </td>
+              <td
+                class="vp-rd__c-num vp-mono"
+                :class="diffClass(parzialeByAnno.get(g.anno)!.saldo_progressivo)"
+              >
+                {{ formattaEuro(parzialeByAnno.get(g.anno)!.saldo_progressivo) }}
               </td>
               <td></td>
             </tr>
@@ -209,17 +268,39 @@
           <span class="vp-mono">{{ formattaEuro(rendiconto.totali.dovuto) }}</span>
         </div>
         <div class="vp-rd__tot-row">
-          <span>Totale pagato</span>
+          <span>Totale pagato (imputato)</span>
           <span class="vp-mono">{{ formattaEuro(rendiconto.totali.pagato) }}</span>
+        </div>
+        <div
+          v-if="Math.abs(rendiconto.totali.resto) >= 0.01"
+          class="vp-rd__tot-row"
+        >
+          <span>
+            Versato non imputato (resti bonifici)
+          </span>
+          <span class="vp-mono">{{ formattaEuro(rendiconto.totali.resto) }}</span>
         </div>
         <div class="vp-rd__tot-row vp-rd__tot-row--saldo">
           <span>
-            Saldo
+            Sbilancio reale
             <small>
-              ({{ rendiconto.totali.saldo >= 0 ? 'a favore inquilino' : 'a debito inquilino' }})
+              ({{ rendiconto.totali.sbilancio_reale >= 0
+                ? 'a favore inquilino' : 'a debito inquilino' }})
             </small>
           </span>
-          <span class="vp-mono">{{ formattaEuro(rendiconto.totali.saldo) }}</span>
+          <span class="vp-mono">
+            {{ formattaEuro(rendiconto.totali.sbilancio_reale) }}
+          </span>
+        </div>
+        <div class="vp-rd__tot-row vp-rd__tot-nota">
+          <span>
+            <small>
+              di cui ancora da riconciliare (saldo-imputazioni):
+            </small>
+          </span>
+          <span class="vp-mono">
+            <small>{{ formattaEuro(rendiconto.totali.saldo) }}</small>
+          </span>
         </div>
       </section>
 
@@ -234,7 +315,9 @@
               <th>Anno</th>
               <th class="vp-rd__c-num">Dovuto</th>
               <th class="vp-rd__c-num">Pagato</th>
-              <th class="vp-rd__c-num">Saldo</th>
+              <th class="vp-rd__c-num">Resto</th>
+              <th class="vp-rd__c-num">Saldo anno</th>
+              <th class="vp-rd__c-num">Progressivo</th>
             </tr>
           </thead>
           <tbody>
@@ -242,8 +325,17 @@
               <td>{{ pa.anno }}</td>
               <td class="vp-rd__c-num vp-mono">{{ formattaEuro(pa.dovuto) }}</td>
               <td class="vp-rd__c-num vp-mono">{{ formattaEuro(pa.pagato) }}</td>
-              <td class="vp-rd__c-num vp-mono" :class="diffClass(pa.saldo)">
-                {{ formattaEuro(pa.saldo) }}
+              <td class="vp-rd__c-num vp-mono" :class="diffClass(pa.resto)">
+                {{ formattaEuro(pa.resto) }}
+              </td>
+              <td class="vp-rd__c-num vp-mono" :class="diffClass(pa.saldo_anno)">
+                {{ formattaEuro(pa.saldo_anno) }}
+              </td>
+              <td
+                class="vp-rd__c-num vp-mono"
+                :class="diffClass(pa.saldo_progressivo)"
+              >
+                {{ formattaEuro(pa.saldo_progressivo) }}
               </td>
             </tr>
           </tbody>
@@ -252,8 +344,15 @@
               <td><strong>Totale</strong></td>
               <td class="vp-rd__c-num vp-mono">{{ formattaEuro(rendiconto.totali.dovuto) }}</td>
               <td class="vp-rd__c-num vp-mono">{{ formattaEuro(rendiconto.totali.pagato) }}</td>
-              <td class="vp-rd__c-num vp-mono" :class="diffClass(rendiconto.totali.saldo)">
-                {{ formattaEuro(rendiconto.totali.saldo) }}
+              <td class="vp-rd__c-num vp-mono" :class="diffClass(rendiconto.totali.resto)">
+                {{ formattaEuro(rendiconto.totali.resto) }}
+              </td>
+              <td
+                class="vp-rd__c-num vp-mono"
+                :class="diffClass(rendiconto.totali.sbilancio_reale)"
+                colspan="2"
+              >
+                {{ formattaEuro(rendiconto.totali.sbilancio_reale) }}
               </td>
             </tr>
           </tfoot>
@@ -264,12 +363,24 @@
         v-if="rendiconto.versamenti.length"
         class="vp-rd__sez"
       >
-        <h2 class="vp-rd__sez-tit">Versamenti e imputazioni</h2>
-        <p class="vp-rd__legenda">
-          <span class="vp-rd__star">*</span> il bonifico ha coperto anche
-          altre voci: qui sotto la ripartizione completa di ogni versamento.
-        </p>
-        <table class="vp-rd__tab">
+        <button
+          type="button"
+          class="vp-rd__expander"
+          :aria-expanded="mostraVersamenti"
+          @click="mostraVersamenti = !mostraVersamenti"
+        >
+          <span class="vp-rd__expander-ic">
+            {{ mostraVersamenti ? '▾' : '▸' }}
+          </span>
+          Versamenti e imputazioni
+          <small>(dettaglio completo di ogni bonifico)</small>
+        </button>
+        <div v-show="mostraVersamenti">
+          <p class="vp-rd__legenda">
+            <span class="vp-rd__star">*</span> il bonifico ha coperto anche
+            altre voci: qui sotto la ripartizione completa di ogni versamento.
+          </p>
+          <table class="vp-rd__tab">
           <tbody>
             <template
               v-for="(v, i) in rendiconto.versamenti"
@@ -299,7 +410,8 @@
               </td>
             </tr>
           </tfoot>
-        </table>
+          </table>
+        </div>
       </section>
 
       <section class="vp-rd__dep">
@@ -321,8 +433,10 @@
           <span class="vp-mono">{{ formattaEuro(rendiconto.deposito.da_restituire) }}</span>
         </div>
         <div class="vp-rd__tot-row">
-          <span>Saldo inquilino</span>
-          <span class="vp-mono">{{ formattaEuro(rendiconto.totali.saldo) }}</span>
+          <span>Sbilancio inquilino <small>(versato − dovuto)</small></span>
+          <span class="vp-mono">
+            {{ formattaEuro(rendiconto.totali.sbilancio_reale) }}
+          </span>
         </div>
         <div class="vp-rd__tot-row vp-rd__tot-row--saldo">
           <span>
@@ -372,6 +486,7 @@ import {
   useRendicontoStore,
   type RendicontoRiga,
   type RendicontoSezione,
+  type RendicontoParzialeAnno,
 } from 'stores/rendiconto';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
@@ -393,7 +508,10 @@ interface GruppoAnno {
   pagato: number;
 }
 
-const vista = ref<'causale' | 'cronologica'>('causale');
+const vista = ref<'causale' | 'cronologica'>('cronologica');
+// Dettaglio versamenti: chiuso di default (troppe info scoraggiano);
+// forzato aperto in stampa per non perdere informazioni sul documento.
+const mostraVersamenti = ref(false);
 
 // Vista cronologica: tutte le voci non-deposito unite e ordinate per data,
 // raggruppate per anno con totali parziali a fine anno.
@@ -418,6 +536,15 @@ const cronologico = computed<GruppoAnno[]>(() => {
     cur.pagato += row.pagato;
   }
   return gruppi;
+});
+
+// Mappa anno → parziale, per agganciare saldo/resto/progressivo ai
+// gruppi cronologici (le righe sono raggruppate FE-side per data).
+const parzialeByAnno = computed<Map<number, RendicontoParzialeAnno>>(() => {
+  const m = new Map<number, RendicontoParzialeAnno>();
+  const r = rendiconto.value;
+  if (r) for (const pa of r.parziali_anno) m.set(pa.anno, pa);
+  return m;
 });
 
 const linkDettaglio = computed(() => ({
@@ -450,40 +577,57 @@ function diffClass(v: number): string {
   if (v > 0) return 'vp-rd__diff--pos';
   return '';
 }
-// Affitti: diff raggruppata per mese (valorizzata solo sull'ultima riga
-// del mese). Altre causali: diff per riga.
-function diffRiga(sez: RendicontoSezione, r: RendicontoRiga): number | null {
-  return sez.causale === 'affitto' ? r.diff_mese : r.diff;
+// Differenza ONESTA della voce = pagato − dovuto. Il resto dei bonifici
+// NON entra qui: è una riga propria (vp-rd__resto-row) sotto il bonifico.
+function diffRiga(_sez: RendicontoSezione, r: RendicontoRiga): number | null {
+  return r.diff;
 }
 function diffRow(r: RigaCron): number | null {
-  return r.causale === 'affitto' ? r.diff_mese : r.diff;
+  return r.diff;
 }
-// Differenze sotto 1 € non vengono mostrate (arrotondamenti/centesimi
-// di riparto): non aggiungono informazione e sporcano la lettura.
+// Niente più soglia <1 €: il numero si mostra sempre (anche i centesimi),
+// '—' solo quando è esattamente zero o assente.
 function formattaDiff(v: number | null): string {
-  if (v === null || Math.abs(v) < 1) return '—';
+  if (v === null || v === 0) return '—';
   return formattaEuro(v);
 }
+// Totale colonna di una sezione/gruppo = Σ diff voci + Σ resti bonifici:
+// è esattamente ciò che si vede scorrendo la colonna Differenza.
+function sommaResti(righe: { allocazioni: { resto: number }[] }[]): number {
+  return righe.reduce(
+    (s, r) => s + r.allocazioni.reduce((t, a) => t + (a.resto || 0), 0),
+    0,
+  );
+}
 function diffSez(sez: RendicontoSezione): number {
-  if (sez.causale === 'affitto') {
-    return sez.righe.reduce((s, r) => s + (r.diff_mese ?? 0), 0);
-  }
-  return sez.saldo;
+  return sez.righe.reduce((s, r) => s + (r.diff ?? 0), 0)
+    + sommaResti(sez.righe);
+}
+function totDiffGruppo(g: GruppoAnno): number {
+  return g.righe.reduce((s, r) => s + (r.diff ?? 0), 0)
+    + sommaResti(g.righe);
 }
 
 function stampa(): void {
+  mostraVersamenti.value = true;
   window.print();
+}
+
+function onBeforePrint(): void {
+  mostraVersamenti.value = true;
 }
 
 onMounted(() => {
   // Attiva il print-mode "documento": nasconde header/drawer dell'app
   // in stampa (CSS globale su body.vp-print-doc).
   document.body.classList.add('vp-print-doc');
+  window.addEventListener('beforeprint', onBeforePrint);
   void store.load(tenantId.value);
 });
 
 onBeforeUnmount(() => {
   document.body.classList.remove('vp-print-doc');
+  window.removeEventListener('beforeprint', onBeforePrint);
 });
 </script>
 
@@ -603,6 +747,51 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--vp-paper-3);
   margin-top: var(--vp-gap-1);
   padding-top: var(--vp-gap-2);
+}
+.vp-rd__tot-nota {
+  color: var(--vp-ink-3);
+  padding-top: 0;
+}
+.vp-rd__quad td {
+  border-top: 1px solid var(--vp-paper-3);
+  color: var(--vp-ink-2, inherit);
+}
+.vp-rd__quad--prog td {
+  border-top: 2px solid var(--vp-ink);
+  font-size: var(--vp-text-md);
+}
+.vp-rd__resto-row td {
+  border-bottom: 1px solid var(--vp-paper-3);
+  padding-top: 0;
+  color: var(--vp-ink-3);
+  font-size: var(--vp-text-sm);
+}
+.vp-rd__resto-row small {
+  color: var(--vp-ink-3);
+}
+.vp-rd__expander {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: var(--vp-gap-2) 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--vp-text-lg, 18px);
+  font-weight: 700;
+  color: var(--vp-ink);
+  text-align: left;
+}
+.vp-rd__expander small {
+  font-weight: 400;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-ink-3);
+}
+.vp-rd__expander-ic {
+  font-size: var(--vp-text-sm);
+  color: var(--vp-ink-3);
 }
 .vp-rd__warn {
   color: var(--vp-terra, #b56a3b);

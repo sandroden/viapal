@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from accounts.permissions import IsInquilino, IsProprietario
 from billing._dates import format_mese, format_mese_anno
 from billing.models import (
+    BankTransaction,
     BankTransactionAllocation,
     Receivable,
     StatoPagamento,
@@ -837,23 +838,35 @@ class TenantSituazioneView(APIView):
         totale_dovuto = rent_dovuto + utility_dovuto + extra_totale + deposito_dovuto
         totale_pagato = rent_pagato + utility_pagato + extra_pagato + deposito_pagato
 
-        # Saldi "globali" allineati alla colonna Saldo della lista inquilini:
-        # somma su tutti i Receivable !DEPOSITO, filtrati per competenza_da__year
-        # (anno selezionato) o senza filtro (cumulativo).
+        # Saldi "globali" = sbilancio reale (saldo-imputazioni + resti dei
+        # bonifici), coerente con il rendiconto. ``saldi.anno`` è lo
+        # sbilancio dell'anno selezionato; ``saldi.totale`` è il
+        # progressivo cumulato *fino a quell'anno* (non conosce il futuro:
+        # nella pagina del 2025 non entrano i movimenti del 2026).
         receivable_base = (
             Receivable.objects.filter(assignment__tenant=tenant)
             .exclude(causale=Receivable.Causale.DEPOSITO)
         )
-        agg_anno = receivable_base.filter(competenza_da__year=anno).aggregate(
-            dovuto=Coalesce(Sum("importo_dovuto"), Decimal("0")),
-            pagato=Coalesce(Sum("importo_pagato"), Decimal("0")),
+        dovuto_pagato_anno: dict[int, list] = {}
+        for row in (
+            receivable_base.values("competenza_da__year").annotate(
+                d=Coalesce(Sum("importo_dovuto"), Decimal("0")),
+                p=Coalesce(Sum("importo_pagato"), Decimal("0")),
+            )
+        ):
+            y = row["competenza_da__year"] or 0
+            dovuto_pagato_anno[y] = [row["d"], row["p"]]
+        per_anno_sit, _ = _sbilancio_progressivo(
+            dovuto_pagato_anno, _resti_per_anno(tenant)
         )
-        agg_totale = receivable_base.aggregate(
-            dovuto=Coalesce(Sum("importo_dovuto"), Decimal("0")),
-            pagato=Coalesce(Sum("importo_pagato"), Decimal("0")),
+        ent_anno = next(
+            (x for x in per_anno_sit if x["anno"] == anno), None
         )
-        saldo_anno_globale = float(agg_anno["pagato"] - agg_anno["dovuto"])
-        saldo_totale_globale = float(agg_totale["pagato"] - agg_totale["dovuto"])
+        saldo_anno_globale = ent_anno["saldo_anno"] if ent_anno else 0.0
+        saldo_totale_globale = 0.0
+        for x in per_anno_sit:
+            if x["anno"] <= anno:
+                saldo_totale_globale = x["saldo_progressivo"]
 
         # Quota condominio: dal contratto attivo
         contract_attivo = (
@@ -972,6 +985,98 @@ def _descr_rendiconto(r: Receivable):
     return (r.descrizione or r.get_causale_display(), r.competenza_da)
 
 
+def _resti_per_anno(tenant) -> dict[int, Decimal]:
+    """Resti dei bonifici dell'inquilino, per anno (data del bonifico).
+
+    Un bonifico è "dell'inquilino" se ha almeno un'allocazione su un suo
+    Receivable non-DEPOSITO. Il *resto* è ``importo bonifico − somma di
+    TUTTE le sue allocazioni`` (incluse quote finite su altre causali o
+    sul deposito): è denaro versato e mai imputato a nulla.
+
+    La sola differenza ``imputato − dovuto`` per riga perde questi resti
+    (un bonifico che copre *di più* alloca solo fino al dovuto e
+    l'eccedenza non diventa mai un saldo positivo). Vanno riaggiunti per
+    ottenere lo sbilancio reale ``versato − dovuto``.
+    """
+    bt_ids = list(
+        BankTransactionAllocation.objects.filter(
+            receivable__assignment__tenant=tenant
+        )
+        .exclude(receivable__causale=Receivable.Causale.DEPOSITO)
+        .values_list("bank_transaction_id", flat=True)
+        .distinct()
+    )
+    if not bt_ids:
+        return {}
+    tot_alloc = dict(
+        BankTransactionAllocation.objects.filter(
+            bank_transaction_id__in=bt_ids
+        )
+        .values_list("bank_transaction_id")
+        .annotate(t=Coalesce(Sum("importo"), Decimal("0")))
+        .values_list("bank_transaction_id", "t")
+    )
+    resti: dict[int, Decimal] = {}
+    for bt in BankTransaction.objects.filter(id__in=bt_ids).only(
+        "id", "data", "importo"
+    ):
+        resto = bt.importo - tot_alloc.get(bt.id, Decimal("0"))
+        if resto:
+            resti[bt.data.year] = resti.get(bt.data.year, Decimal("0")) + resto
+    return resti
+
+
+def _sbilancio_progressivo(
+    dovuto_pagato: dict[int, list], resti: dict[int, Decimal]
+):
+    """Sbilancio reale per anno + progressivo cronologico.
+
+    ``dovuto_pagato`` = {anno: [dovuto, pagato_imputato]} per i Receivable
+    non-DEPOSITO; ``resti`` = output di :func:`_resti_per_anno`.
+
+    Ritorna ``(per_anno, totale)``:
+
+    * ``per_anno`` lista ordinata di dict con ``anno, dovuto, pagato,
+      saldo`` (= pagato−dovuto, saldo-imputazioni, nota tecnica),
+      ``resto``, ``saldo_anno`` (= saldo + resto, sbilancio reale
+      dell'anno) e ``saldo_progressivo`` (cumulato cronologico, "fino a
+      fine quell'anno" — non conosce il futuro).
+    * ``totale`` dict con ``dovuto, pagato, resto, saldo`` e
+      ``sbilancio_reale`` (= ultimo progressivo = Σversato − Σdovuto, al
+      netto di quote imputate fuori scope come il deposito).
+    """
+    anni = sorted(set(dovuto_pagato) | set(resti))
+    per_anno = []
+    tot_d = tot_p = tot_r = Decimal("0")
+    prog = Decimal("0")
+    for anno in anni:
+        d, p = dovuto_pagato.get(anno, [Decimal("0"), Decimal("0")])
+        r = resti.get(anno, Decimal("0"))
+        saldo = p - d
+        saldo_anno = saldo + r
+        prog += saldo_anno
+        tot_d += d
+        tot_p += p
+        tot_r += r
+        per_anno.append({
+            "anno": anno,
+            "dovuto": float(d),
+            "pagato": float(p),
+            "saldo": float(saldo),
+            "resto": float(r),
+            "saldo_anno": float(saldo_anno),
+            "saldo_progressivo": float(prog),
+        })
+    totale = {
+        "dovuto": float(tot_d),
+        "pagato": float(tot_p),
+        "resto": float(tot_r),
+        "saldo": float(tot_p - tot_d),
+        "sbilancio_reale": float(tot_p - tot_d + tot_r),
+    }
+    return per_anno, totale
+
+
 class RendicontoView(APIView):
     """
     GET /api/v1/tenants/<tenant_id>/rendiconto/
@@ -1027,8 +1132,50 @@ class RendicontoView(APIView):
         for a in allocs:
             alloc_per_receivable.setdefault(a.receivable_id, []).append(a)
 
+        # Resto di ogni bonifico = importo − Σ TUTTE le sue allocazioni
+        # (anche su altre causali/inquilini/deposito): denaro versato e
+        # mai imputato. Lo attribuiamo alla riga "portante" del bonifico
+        # (quella con l'allocazione più grande fra i Receivable mostrati)
+        # così la differenza resta tracciabile sulla riga invece di
+        # comparire come totale misterioso a fine anno.
+        bt_lordo: dict[int, Decimal] = {}
+        bt_quota_max: dict[int, tuple] = {}  # bt_id -> (importo, receivable_id)
+        for a in allocs:
+            bt_lordo[a.bank_transaction_id] = a.bank_transaction.importo
+            cur = bt_quota_max.get(a.bank_transaction_id)
+            if cur is None or a.importo > cur[0]:
+                bt_quota_max[a.bank_transaction_id] = (a.importo, a.receivable_id)
+        bt_total_alloc = (
+            dict(
+                BankTransactionAllocation.objects.filter(
+                    bank_transaction_id__in=list(bt_lordo)
+                )
+                .values_list("bank_transaction_id")
+                .annotate(t=Coalesce(Sum("importo"), Decimal("0")))
+                .values_list("bank_transaction_id", "t")
+            )
+            if bt_lordo
+            else {}
+        )
+        # resto per bonifico (mostrato come riga propria sotto il bonifico
+        # portante) e aggregato per riga portante (per i totali d'anno).
+        resto_bt: dict[int, Decimal] = {}
+        carrier_bt: dict[int, int] = {}
+        resto_riga: dict[int, Decimal] = {}
+        for bt_id, lordo in bt_lordo.items():
+            resto = lordo - bt_total_alloc.get(bt_id, Decimal("0"))
+            if not resto:
+                continue
+            carrier = bt_quota_max[bt_id][1]
+            resto_bt[bt_id] = resto
+            carrier_bt[bt_id] = carrier
+            resto_riga[carrier] = resto_riga.get(carrier, Decimal("0")) + resto
+
         # parziali per anno (senza deposito): anno della "data" della riga
         parziali: dict[int, list[Decimal]] = {}
+        # resti per anno, attribuiti all'anno della riga portante (così la
+        # colonna Differenza mostrata somma esattamente al Saldo dell'anno)
+        resti_anno: dict[int, Decimal] = {}
 
         sezioni = []
         tot_dovuto = Decimal("0")
@@ -1061,9 +1208,18 @@ class RendicontoView(APIView):
                         # bonifico "split": ha coperto più del solo importo
                         # imputato a questa riga (eccedenza andata altrove).
                         "split": a.bank_transaction.importo != a.importo,
+                        # resto del bonifico (denaro versato e mai imputato):
+                        # valorizzato solo sulla riga portante, mostrato
+                        # come riga propria sotto il bonifico.
+                        "resto": float(
+                            resto_bt[a.bank_transaction_id]
+                            if carrier_bt.get(a.bank_transaction_id) == r.id
+                            else 0
+                        ),
                     }
                     for a in righe_alloc
                 ]
+                resto_r = resto_riga.get(r.id, Decimal("0"))
                 mese = f"{data.year:04d}-{data.month:02d}" if data else None
                 righe.append({
                     "data": data.isoformat() if data else None,
@@ -1072,6 +1228,9 @@ class RendicontoView(APIView):
                     "descrizione": descr,
                     "dovuto": float(dovuto),
                     "pagato": float(pagato),
+                    # Differenza ONESTA della voce: solo pagato − dovuto.
+                    # Il resto dei bonifici è una riga propria (vedi
+                    # allocazioni[].resto), non inquina la voce.
                     "diff": float(pagato - dovuto),
                     # Valorizzata solo per gli affitti, solo sull'ultima riga
                     "diff_mese": None,
@@ -1097,6 +1256,10 @@ class RendicontoView(APIView):
                     )
                     acc[0] += dovuto
                     acc[1] += pagato
+                    if resto_r:
+                        resti_anno[data.year] = (
+                            resti_anno.get(data.year, Decimal("0")) + resto_r
+                        )
             if not righe:
                 continue
             if causale == Receivable.Causale.AFFITTO:
@@ -1135,15 +1298,12 @@ class RendicontoView(APIView):
 
         saldo = tot_pagato - tot_dovuto
 
-        parziali_anno = [
-            {
-                "anno": anno,
-                "dovuto": float(d),
-                "pagato": float(p),
-                "saldo": float(p - d),
-            }
-            for anno, (d, p) in sorted(parziali.items())
-        ]
+        # Sbilancio reale = saldo-imputazioni + resti dei bonifici (denaro
+        # versato e mai imputato a nulla). È il numero che dice davvero
+        # "chi deve a chi"; il saldo-imputazioni resta come nota tecnica
+        # ("quanto c'è ancora da riconciliare").
+        parziali_anno, sbil_tot = _sbilancio_progressivo(parziali, resti_anno)
+        sbilancio_reale = Decimal(str(sbil_tot["sbilancio_reale"]))
 
         # --- Ledger: versamenti (bonifici) e loro imputazioni ---
         versamenti_map: dict[int, dict] = {}
@@ -1189,7 +1349,11 @@ class RendicontoView(APIView):
             riga_restituzione
             and riga_restituzione.stato == StatoPagamento.PAGATO
         )
-        netto = Decimal("0") if restituito_effettivo else (da_restituire + saldo)
+        netto = (
+            Decimal("0")
+            if restituito_effettivo
+            else (da_restituire + sbilancio_reale)
+        )
         residuo_debito = -netto if (not restituito_effettivo and netto < 0) else Decimal("0")
 
         deposito_movimenti = [
@@ -1217,6 +1381,8 @@ class RendicontoView(APIView):
                 "dovuto": float(tot_dovuto),
                 "pagato": float(tot_pagato),
                 "saldo": float(saldo),
+                "resto": sbil_tot["resto"],
+                "sbilancio_reale": sbil_tot["sbilancio_reale"],
             },
             "parziali_anno": parziali_anno,
             "versamenti": versamenti,

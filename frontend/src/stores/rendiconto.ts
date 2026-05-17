@@ -8,6 +8,9 @@ export interface RendicontoAllocazione {
   bonifico_totale: number;
   quota: number;
   split: boolean;
+  // resto del bonifico (versato e mai imputato): valorizzato solo
+  // sulla riga portante, mostrato come riga propria sotto il bonifico
+  resto: number;
 }
 
 export interface RendicontoRiga {
@@ -17,6 +20,7 @@ export interface RendicontoRiga {
   descrizione: string;
   dovuto: number;
   pagato: number;
+  // differenza ONESTA della voce = pagato − dovuto
   diff: number;
   diff_mese: number | null;
   nota: NotaRiga;
@@ -29,7 +33,14 @@ export interface RendicontoParzialeAnno {
   anno: number;
   dovuto: number;
   pagato: number;
+  // saldo-imputazioni (pagato − dovuto): nota tecnica "da riconciliare"
   saldo: number;
+  // resti dei bonifici dell'anno (versato e mai imputato a nulla)
+  resto: number;
+  // sbilancio reale dell'anno = saldo + resto
+  saldo_anno: number;
+  // progressivo cumulato cronologico (fino a fine quell'anno)
+  saldo_progressivo: number;
 }
 
 export interface RendicontoImputazione {
@@ -73,7 +84,13 @@ export interface Rendiconto {
   periodo: { da: string | null; a: string | null };
   emesso_il: string;
   sezioni: RendicontoSezione[];
-  totali: { dovuto: number; pagato: number; saldo: number };
+  totali: {
+    dovuto: number;
+    pagato: number;
+    saldo: number;
+    resto: number;
+    sbilancio_reale: number;
+  };
   parziali_anno: RendicontoParzialeAnno[];
   versamenti: RendicontoVersamento[];
   totale_versato: number;

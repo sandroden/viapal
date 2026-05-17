@@ -914,6 +914,91 @@ class TestRendiconto:
         assert pa2026 and pa2026[0]["dovuto"] == 450.0
         assert pa2026[0]["pagato"] == 450.0
 
+    def test_resto_bonifico_in_sbilancio_reale(
+        self, client_prop, tenant_1, assignment_1, rent_payment_1,
+        owner_account,
+    ):
+        """Un bonifico che copre *di più* (450 su affitto da 400, 400
+        imputati): i 50 di resto non vanno persi. Saldo-imputazioni = 0,
+        ma sbilancio reale = +50, riportato per anno e nel progressivo."""
+        from billing.models import BankTransaction, BankTransactionAllocation
+
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 5, 10),
+            descrizione="Bonifico con resto",
+            importo=Decimal("450.00"),
+            owner_account=owner_account,
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=rent_payment_1,
+            importo=Decimal("400.00"),
+        )
+
+        resp = client_prop.get(
+            f"/api/v1/tenants/{tenant_1.id}/rendiconto/"
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+
+        # saldo-imputazioni nullo (400 imputati su 400 dovuti)
+        assert data["totali"]["saldo"] == 0.0
+        # i 50 di resto entrano nello sbilancio reale
+        assert data["totali"]["resto"] == 50.0
+        assert data["totali"]["sbilancio_reale"] == 50.0
+
+        pa = next(p for p in data["parziali_anno"] if p["anno"] == 2026)
+        assert pa["saldo"] == 0.0
+        assert pa["resto"] == 50.0
+        assert pa["saldo_anno"] == 50.0
+        assert pa["saldo_progressivo"] == 50.0
+
+        # La voce-receivable resta ONESTA: diff = pagato − dovuto = 0.
+        # Il resto è una riga propria sotto il bonifico portante
+        # (allocazioni[].resto = +50), non inquina la differenza voce.
+        ra = next(
+            r for s in data["sezioni"] if s["causale"] == "affitto"
+            for r in s["righe"]
+        )
+        assert ra["diff"] == 0.0
+        assert "diff_tracc" not in ra
+        assert "resto" not in ra
+        assert ra["allocazioni"][0]["resto"] == 50.0
+        # Colonna a vista (diff voci + resti bonifici) = saldo dell'anno.
+        somma = 0.0
+        for s in data["sezioni"]:
+            for r in s["righe"]:
+                if r["data"] and r["data"][:4] == "2026":
+                    somma += r["diff"]
+                    somma += sum(a["resto"] for a in r["allocazioni"])
+        assert round(somma, 2) == pa["saldo_anno"]
+
+    def test_situazione_saldo_e_progressivo_reale(
+        self, client_prop, tenant_1, assignment_1, rent_payment_1,
+        owner_account,
+    ):
+        """``saldi.anno`` e ``saldi.totale`` del dettaglio inquilino usano
+        lo stesso sbilancio reale (con i resti) del rendiconto."""
+        from billing.models import BankTransaction, BankTransactionAllocation
+
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 5, 10),
+            descrizione="Bonifico con resto",
+            importo=Decimal("450.00"),
+            owner_account=owner_account,
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=rent_payment_1,
+            importo=Decimal("400.00"),
+        )
+
+        resp = client_prop.get(
+            f"/api/v1/tenants/{tenant_1.id}/situazione/?anno=2026"
+        )
+        assert resp.status_code == 200
+        saldi = resp.json()["saldi"]
+        assert saldi["anno"] == 50.0
+        assert saldi["totale"] == 50.0
+
     def test_override_importo_da_restituire(
         self, client_prop, tenant_1, assignment_1
     ):
