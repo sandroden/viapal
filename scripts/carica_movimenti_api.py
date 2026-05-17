@@ -53,14 +53,19 @@ import requests
 #   • USCITE verso le utenze gas/luce (addebiti al fornitore energia)
 # e scartiamo comunque ciò che matcha PATTERN_ESCLUDI.
 PATTERN_BONIFICO = r"BON\.DA|BONIFICO"
+# Fornitori energia dell'IMMOBILE affittato. NB: E.ON è il fornitore
+# personale di Sandro (casa sua), non dell'immobile → escluso più sotto.
 PATTERN_UTENZE = (
-    r"E\.?\s?ON ENERGIA|ENEL ENERGIA|ENEL ?ENERGIA|EDISON|PLENITUDE|"
+    r"ENEL ENERGIA|ENEL ?ENERGIA|EDISON|PLENITUDE|"
     r"ACEA ENERGIA|A2A ENERGIA|\bIREN\b|SORGENIA|HERA COMM|SERVIZIO ELETTRICO"
 )
 # Esclusioni: GSE (incentivi fotovoltaico) e Cernusco (contributo affido) non
-# c'entrano con l'affitto; FUEL/PETROL/DISTRIBUTORE sono carburante, non utenze.
+# c'entrano con l'affitto; FUEL/PETROL/DISTRIBUTORE sono carburante; RIVOLTA
+# (Rivolta Adriana) è donazione di famiglia; E.ON ENERGIA è l'utenza personale
+# di Sandro, non dell'immobile.
 PATTERN_ESCLUDI = (
-    r"GSE|GESTORE DEI SERVIZI ENERGETICI|CERNUSCO|FUEL|PETROL|DISTRIBUTORE"
+    r"GSE|GESTORE DEI SERVIZI ENERGETICI|CERNUSCO|FUEL|PETROL|DISTRIBUTORE|"
+    r"RIVOLTA|E\.?\s?ON ENERGIA"
 )
 
 
