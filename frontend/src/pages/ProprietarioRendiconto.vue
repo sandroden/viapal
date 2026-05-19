@@ -9,6 +9,16 @@
         :to="linkDettaglio"
       />
       <q-space />
+      <q-btn
+        :outline="!soloDifferenze"
+        :unelevated="soloDifferenze"
+        :color="soloDifferenze ? 'primary' : 'grey-7'"
+        no-caps
+        dense
+        icon="filter_alt"
+        :label="soloDifferenze ? 'Solo differenze' : 'Tutte le righe'"
+        @click="soloDifferenze = !soloDifferenze"
+      />
       <q-btn-toggle
         v-model="vista"
         no-caps
@@ -59,7 +69,7 @@
       </header>
 
       <section
-        v-for="sez in (vista === 'causale' ? rendiconto.sezioni : [])"
+        v-for="sez in sezioniVisibili"
         :key="sez.causale"
         class="vp-rd__sez"
       >
@@ -76,7 +86,7 @@
             </tr>
           </thead>
           <tbody>
-            <template v-for="(r, i) in sez.righe" :key="i">
+            <template v-for="(r, i) in filtraRighe(sez.righe)" :key="i">
               <tr>
                 <td class="vp-rd__c-data">{{ r.data ? formattaData(r.data) : '—' }}</td>
                 <td>{{ r.descrizione }}</td>
@@ -155,7 +165,7 @@
       </section>
 
       <section
-        v-for="g in (vista === 'cronologica' ? cronologico : [])"
+        v-for="g in cronologicoVisibile"
         :key="g.anno"
         class="vp-rd__sez vp-rd__anno"
       >
@@ -172,7 +182,7 @@
             </tr>
           </thead>
           <tbody>
-            <template v-for="(r, i) in g.righe" :key="i">
+            <template v-for="(r, i) in filtraRighe(g.righe)" :key="i">
               <tr>
                 <td class="vp-rd__c-data">{{ r.data ? formattaData(r.data) : '—' }}</td>
                 <td>{{ r.descrizione }}</td>
@@ -509,6 +519,37 @@ interface GruppoAnno {
 }
 
 const vista = ref<'causale' | 'cronologica'>('cronologica');
+// Filtro "solo differenze": mostra solo le righe che hanno qualcosa nella
+// colonna Differenza (diff ≠ 0 oppure un resto bonifico non trascurabile),
+// con le relative sottorighe. Utile per stampare i bonifici da cercare.
+const soloDifferenze = ref(false);
+
+function rigaHaDiff(r: {
+  diff: number;
+  allocazioni: { resto: number }[];
+}): boolean {
+  if ((r.diff || 0) !== 0) return true;
+  return r.allocazioni.some((a) => Math.abs(a.resto) >= 0.005);
+}
+function filtraRighe<T extends { diff: number; allocazioni: { resto: number }[] }>(
+  righe: T[],
+): T[] {
+  return soloDifferenze.value ? righe.filter(rigaHaDiff) : righe;
+}
+
+// Sezioni/anni visibili: nascondi del tutto quelli senza righe con
+// differenza quando il filtro è attivo. I totali restano quelli pieni.
+const sezioniVisibili = computed<RendicontoSezione[]>(() => {
+  const r = rendiconto.value;
+  if (!r || vista.value !== 'causale') return [];
+  if (!soloDifferenze.value) return r.sezioni;
+  return r.sezioni.filter((s) => s.righe.some(rigaHaDiff));
+});
+const cronologicoVisibile = computed<GruppoAnno[]>(() => {
+  if (vista.value !== 'cronologica') return [];
+  if (!soloDifferenze.value) return cronologico.value;
+  return cronologico.value.filter((g) => g.righe.some(rigaHaDiff));
+});
 // Dettaglio versamenti: chiuso di default (troppe info scoraggiano);
 // forzato aperto in stampa per non perdere informazioni sul documento.
 const mostraVersamenti = ref(false);
