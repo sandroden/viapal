@@ -298,12 +298,16 @@ class ExpenseSerializer(serializers.ModelSerializer):
         ]
 
     def get_file_pdf(self, obj):
-        bolletta = getattr(obj, "utility_bill", None)
-        if not bolletta or not bolletta.file_pdf:
-            return None
         # URL relativo (/media/...) → il frontend lo carica nella sua origine
         # via proxy, stesso-origin per l'iframe (no X-Frame-Options issue).
-        return bolletta.file_pdf.url
+        # Priorità alla bolletta utenze (PDF originale, immutabile); fallback
+        # all'allegato caricato a mano sulla Expense.
+        bolletta = getattr(obj, "utility_bill", None)
+        if bolletta and bolletta.file_pdf:
+            return bolletta.file_pdf.url
+        if obj.allegato:
+            return obj.allegato.url
+        return None
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
