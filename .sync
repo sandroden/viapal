@@ -40,7 +40,7 @@ LOCAL_DB_NAME=viapal
 
 
 # Posizione dei media nell'host remoto
-# REMOTE_MEDIA=/home/www/test.prj.it/web/media
-LOCAL_MEDIA=web  # non web/media!!!
+REMOTE_MEDIA=/home/docker/e-den/viapal/data/media
+LOCAL_MEDIA=backend
 LOCAL_SQL_FILE=
 # CUSTOM_SCRIPT=
