@@ -113,3 +113,22 @@ class TenantProfile(TimestampedModel):
 
     def __str__(self):
         return self.nominativo
+
+    @property
+    def periodo_occupazione(self):
+        """Intervallo coperto dalle assegnazioni stanza dell'inquilino.
+
+        Restituisce la prima data di ingresso e l'ultima data di fine
+        occupazione (es. ``01/07/2024 → 31/12/2025``). Se l'ultima
+        assegnazione è ancora aperta non viene mostrata alcuna data di
+        fine (es. ``01/07/2024 →``). Stringa vuota se non ci sono
+        assegnazioni.
+        """
+        assignments = list(self.assignments.order_by("valid_from"))
+        if not assignments:
+            return ""
+        inizio = assignments[0].valid_from
+        if assignments[-1].valid_to is None:
+            return f"{inizio:%d/%m/%Y} →"
+        fine = max(a.valid_to for a in assignments)
+        return f"{inizio:%d/%m/%Y} → {fine:%d/%m/%Y}"

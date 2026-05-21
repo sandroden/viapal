@@ -140,18 +140,18 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
     # 1100 (era 900): l'inline assegnazioni ha una colonna in più (costo cessione).
     modal_edit_width = 1100
     list_display = (
-        "get_modal_edit_icon", "nominativo", "codice_fiscale",
+        "get_modal_edit_icon", "nominativo", "periodo_occupazione",
         "giorno_pagamento_affitto", "ciclo_fatturazione",
         "deposito_versato", "deposito_da_restituire",
         "get_modal_delete_icon",
     )
-    search_fields = ("nominativo", "codice_fiscale", "user__username", "user__email")
+    search_fields = ("nominativo", "user__username", "user__email")
     list_filter = ("frequenza_conguagli", "ciclo_fatturazione")
     list_select_related = ("user",)
     inlines = (RoomAssignmentInlineForTenant,)
     fieldsets = (
         ("Anagrafica", {
-            "fields": ("user", "nominativo", "codice_fiscale", "telefono", "email_alt"),
+            "fields": ("user", "nominativo", "telefono", "email_alt"),
         }),
         ("Pagamenti", {
             "fields": (
