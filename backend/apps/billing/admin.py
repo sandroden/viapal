@@ -31,6 +31,31 @@ from .models import (
 )
 
 
+class _CleanAdvancedSearchLabelsMixin:
+    """jmb.filters concatena alle label custom un suffisso verbose
+    ("maggiore o uguale di", "minore o uguale di", "contiene"...). Quando la
+    label che abbiamo dichiarato contiene già il simbolo (es. "Importo >="),
+    quel suffisso diventa ridondante e prolisso. Questo mixin ripristina la
+    label esattamente come scritta in advanced_search_fields.
+    """
+
+    def get_filterset_class(self, request):
+        klass = super().get_filterset_class(request)
+        if klass is None:
+            return None
+        meta_labels = getattr(klass.Meta, "labels", {}) or {}
+        original_init = klass.__init__
+
+        def __init__(self, *args, **kwargs):
+            original_init(self, *args, **kwargs)
+            for field_name, custom_label in meta_labels.items():
+                if custom_label and field_name in self.form.fields:
+                    self.form.fields[field_name].label = custom_label
+
+        klass.__init__ = __init__
+        return klass
+
+
 # ---------------------------------------------------------------------------
 # Inlines
 # ---------------------------------------------------------------------------
@@ -186,7 +211,7 @@ class ExpenseCategoryAdmin(ModalEditMixin, JumboModelAdmin):
 
 
 @admin.register(Receivable)
-class ReceivableAdmin(ModalEditMixin, JumboModelAdmin):
+class ReceivableAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 1000
 
     def get_urls(self):
@@ -229,10 +254,15 @@ class ReceivableAdmin(ModalEditMixin, JumboModelAdmin):
          "assignment__room__nome__icontains:stanza",
          "descrizione__icontains:descrizione"),
         ("causale", "stato", "is_aggiustamento"),
-        ("scadenza__range", "scadenza__gte:scadenza ≥", "scadenza__lte:scadenza ≤"),
-        ("competenza_da__range", "competenza_da__gte:competenza ≥", "competenza_da__lte:competenza ≤"),
-        ("importo_dovuto__gte:dovuto ≥", "importo_dovuto__lte:dovuto ≤"),
-        ("data_pagamento__range", "incassato_da_owner:incassato da", "utility_period:periodo utenze"),
+        ("scadenza__range:Scadenza tra",
+         "scadenza__gte:Scadenza >=", "scadenza__lte:Scadenza <="),
+        ("competenza_da__range:Competenza tra",
+         "competenza_da__gte:Competenza >=", "competenza_da__lte:Competenza <="),
+        ("importo_dovuto:Importo =",
+         "importo_dovuto__gte:Importo >=", "importo_dovuto__lte:Importo <="),
+        ("data_pagamento__range:Pagamento tra",
+         "data_pagamento__gte:Pagamento >=", "data_pagamento__lte:Pagamento <=",
+         "incassato_da_owner:incassato da", "utility_period:periodo utenze"),
     )
 
     def lookup_allowed(self, lookup, value, request):
@@ -412,7 +442,7 @@ class ReceivableAdmin(ModalEditMixin, JumboModelAdmin):
 
 
 @admin.register(BankTransaction)
-class BankTransactionAdmin(ModalEditMixin, JumboModelAdmin):
+class BankTransactionAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 1000
 
     list_display = (
@@ -435,8 +465,8 @@ class BankTransactionAdmin(ModalEditMixin, JumboModelAdmin):
     inlines = (BankTransactionAllocationInline,)
     advanced_search_fields = (
         ("descrizione__icontains:descrizione", "note__icontains:note"),
-        ("data__range", "data__gte:dal", "data__lte:al"),
-        ("importo__gte:importo ≥", "importo__lte:importo ≤"),
+        ("data__range:Data tra", "data__gte:Data >=", "data__lte:Data <="),
+        ("importo:Importo =", "importo__gte:Importo >=", "importo__lte:Importo <="),
         ("owner_account:conto",),
     )
     fieldsets = (
@@ -492,7 +522,7 @@ class BankTransactionAdmin(ModalEditMixin, JumboModelAdmin):
 
 
 @admin.register(Expense)
-class ExpenseAdmin(ModalEditMixin, JumboModelAdmin):
+class ExpenseAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 900
     list_display = (
         "data", "category", "supplier", "importo",
@@ -510,8 +540,8 @@ class ExpenseAdmin(ModalEditMixin, JumboModelAdmin):
     ordering = ("-data",)
     advanced_search_fields = (
         ("descrizione__icontains:descrizione", "category", "supplier"),
-        ("data__range", "data__gte:dal", "data__lte:al"),
-        ("importo__gte:importo ≥", "importo__lte:importo ≤"),
+        ("data__range:Data tra", "data__gte:Data >=", "data__lte:Data <="),
+        ("importo:Importo =", "importo__gte:Importo >=", "importo__lte:Importo <="),
         ("anticipata_da_owner:anticipata da", "ripartibile_su_inquilini"),
     )
     fieldsets = (
@@ -613,7 +643,7 @@ def imposta_pagata_da_owner(modeladmin, request, queryset):
 
 
 @admin.register(UtilityBill)
-class UtilityBillAdmin(ModalEditMixin, JumboModelAdmin):
+class UtilityBillAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 900
     list_display = (
         "supplier", "prodotto", "periodo_da", "periodo_a",
@@ -639,9 +669,13 @@ class UtilityBillAdmin(ModalEditMixin, JumboModelAdmin):
     actions = (imposta_pagata_da_owner, sincronizza_expense_da_bollette)
     advanced_search_fields = (
         ("supplier", "prodotto", "numero_fattura__icontains:numero fattura"),
-        ("periodo_da__range", "periodo_da__gte:periodo dal ≥", "periodo_a__lte:periodo al ≤"),
-        ("data_emissione__range", "data_emissione__gte:emessa dal", "data_emissione__lte:emessa al"),
-        ("importo_totale__gte:importo ≥", "importo_totale__lte:importo ≤", "pagata_da_owner:pagata da"),
+        ("periodo_da__range:Periodo da tra",
+         "periodo_da__gte:Periodo da >=", "periodo_a__lte:Periodo a <="),
+        ("data_emissione__range:Emessa tra",
+         "data_emissione__gte:Emessa >=", "data_emissione__lte:Emessa <="),
+        ("importo_totale:Importo =",
+         "importo_totale__gte:Importo >=", "importo_totale__lte:Importo <=",
+         "pagata_da_owner:pagata da"),
     )
     fieldsets = (
         ("Bolletta", {
