@@ -82,6 +82,92 @@ AFFITTO_CORREZIONI = [
     ("Maria Severa", 2023, 12, "500", "foglio: 430 + 70"),
 ]
 
+# --- Fase 3: riconciliazione storica dal libro mano -----------------------
+# I Receivable affitto/deposito 2022-2023 restano `atteso` perché mancano le
+# BankTransaction. Sandro le ha dall'estratto conto reale (già importate);
+# Bruna no (estratto conto non disponibile) e diversi incassi 2022 sono
+# avvenuti in contanti. Qui le BankTransaction mancanti vengono *sintetizzate
+# dal libro mano* «conti 2023» e allocate ai Receivable, così passano a
+# `pagato`. Marcatore di idempotenza `[conti2023-bt …]` nel campo `note`
+# della BT: una seconda esecuzione aggiorna invece di duplicare.
+#
+# Riga: (tenant_key, anno, mese, tranches, fonte, nota)
+#   tranche = (owner_key, data_iso, importo) — un singolo movimento bancario.
+#   Più tranche = pagamento spezzato su conti diversi (es. Severa dic 2022,
+#   incassato in parte da Sandro e in parte da Fabio).
+# L'importo è canone + condominio come li registra il foglio: se diverge dal
+# dovuto del Receivable lo scarto viene *segnalato* (lo verifica Bruna), mai
+# corretto in automatico.
+MARKER_BT = "[conti2023-bt"
+MARKER_CORR_COND = "[conti2023-corr-condominio]"
+
+AFFITTO_FASE3 = [
+    ("Severa", 2022, 10, [("Bruna", "2022-11-01", "450")], "righe 8+9", ""),
+    ("Severa", 2022, 11, [("Alessandro", "2022-11-01", "450")], "righe 5+10",
+     "incasso in contanti da Sandro"),
+    ("Severa", 2022, 12, [("Alessandro", "2022-11-27", "250"),
+                          ("Fabio", "2022-11-27", "200")], "righe 25+26+27",
+     "incasso in contanti spezzato: Sandro 180+70 / Fabio 200"),
+    ("Severa", 2023, 1, [("Alessandro", "2023-01-28", "450")], "righe 53+54",
+     "incasso in contanti da Sandro"),
+    ("Severa", 2023, 2, [("Bruna", "2023-01-31", "450")], "righe 34+35", ""),
+    ("Severa", 2023, 3, [("Bruna", "2023-03-05", "510")], "righe 66+67", ""),
+    ("Severa", 2023, 4, [("Bruna", "2023-04-03", "510")], "righe 79+80", ""),
+    ("Severa", 2023, 5, [("Bruna", "2023-05-01", "510")], "righe 85+86", ""),
+    ("Severa", 2023, 6, [("Bruna", "2023-06-04", "510")], "righe 101+102", ""),
+    ("Severa", 2023, 7, [("Bruna", "2023-07-04", "510")], "righe 122+123", ""),
+    ("Severa", 2023, 8, [("Bruna", "2023-08-07", "510")], "righe 131+132", ""),
+    ("Severa", 2023, 9, [("Bruna", "2023-09-15", "500")], "righe 161+162", ""),
+    ("Severa", 2023, 10, [("Bruna", "2023-10-03", "500")], "righe 173+174", ""),
+    ("Severa", 2023, 11, [("Bruna", "2023-11-03", "500")], "righe 188+189", ""),
+    ("Severa", 2023, 12, [("Bruna", "2023-12-04", "500")], "righe 196+198/199/200",
+     "condominio = una delle 3 righe identiche 198-200"),
+    ("Alessandra", 2022, 10, [("Bruna", "2022-10-15", "200")], "righe 12+13",
+     "mezzo mese (ingresso 15/10)"),
+    ("Alessandra", 2022, 11, [("Alessandro", "2022-11-01", "330")], "riga 11",
+     "incasso in contanti da Sandro; condominio 70 non presente nel foglio"),
+    ("Alessandra", 2022, 12, [("Bruna", "2023-01-13", "400")], "righe 44+45",
+     "pagato 13/01/2023"),
+    ("Teo", 2023, 4, [("Bruna", "2023-04-06", "600")], "righe 82+84", ""),
+    ("Teo", 2023, 5, [("Bruna", "2023-05-07", "600")], "righe 92+93", ""),
+    ("Teo", 2023, 6, [], "—", "mese assente dal libro mano: nessun movimento"),
+    ("Teo", 2023, 7, [("Bruna", "2023-07-04", "600")], "righe 124+125", ""),
+    ("Teo", 2023, 8, [("Bruna", "2023-08-07", "600")], "righe 133+134", ""),
+    ("Eugenia", 2023, 9, [("Bruna", "2023-08-11", "530")], "riga 137",
+     "condominio non presente nel foglio"),
+    ("Eugenia", 2023, 10, [("Bruna", "2023-09-26", "670")], "righe 167+168",
+     "condominio anomalo 140 nel foglio (atteso 70)"),
+    ("Eugenia", 2023, 11, [("Bruna", "2023-11-06", "600")], "righe 191+192", ""),
+    ("Eugenia", 2023, 12, [("Bruna", "2023-12-04", "600")], "righe 195+198/199/200",
+     "condominio = una delle 3 righe identiche 198-200"),
+    ("Marianna", 2023, 10, [("Bruna", "2023-09-20", "600")], "righe 164+165", ""),
+    ("Marianna", 2023, 11, [("Bruna", "2023-11-02", "530")], "riga 186",
+     "condominio non presente nel foglio"),
+    ("Marianna", 2023, 12, [("Bruna", "2023-12-05", "600")], "righe 197+198/199/200",
+     "condominio = una delle 3 righe identiche 198-200"),
+]
+
+# Depositi versati (positivi) ancora `atteso`. Le restituzioni cauzione
+# (Receivable negativi) e le utenze restano da riconciliare a mano: il foglio
+# le registra in modo aggregato e non mappa 1:1 sui Receivable pro-rata.
+#   (tenant_key, tranches, fonte, nota)
+DEPOSITO_FASE3 = [
+    ("Junior", [("Bruna", "2023-02-21", "1170")], "riga 61", ""),
+    ("Teo", [("Bruna", "2023-04-06", "530")], "riga 83", ""),
+    ("Eugenia", [("Bruna", "2023-08-11", "530")], "riga 138", ""),
+    ("Marianna", [("Bruna", "2023-11-06", "600")], "righe 187+190",
+     "acconto 400 + saldo 200"),
+]
+
+# Scarti di 1€ tra le Expense rate condominio già a sistema e il libro mano
+# (vince il foglio). Match sulla descrizione *esatta* — esistono più "Nª rata"
+# su cicli condominiali diversi.  (descrizione, importo_atteso, corretto, fonte)
+CORREZIONI_CONDOMINIO = [
+    ("Condominio 2022/2023 — 3ª rata MAV", "1246", "1247", "foglio riga 73"),
+    ("Condominio 2022/2023 — 4ª rata MAV", "1209", "1210", "foglio riga 91"),
+    ("Condominio 2023/2024 — 1ª rata MAV", "1209", "1210", "foglio riga 210"),
+]
+
 
 class Command(BaseCommand):
     help = "Importa le spese proprietari (tipo a + IMU) dal tab «conti 2023» di Contabilità.xlsx."
@@ -91,8 +177,11 @@ class Command(BaseCommand):
         parser.add_argument("--tab", default="conti 2023", help="Nome del foglio (default: «conti 2023»).")
         parser.add_argument("--max-row", type=int, default=214,
                             help="Ultima riga del foglio da importare (default: 214).")
-        parser.add_argument("--fase", choices=["1", "2", "all"], default="all",
-                            help="1 = spese proprietari; 2 = affitti + cauzioni; all = entrambe.")
+        parser.add_argument("--fase", choices=["1", "2", "3", "all"], default="all",
+                            help="1 = spese proprietari; 2 = affitti + cauzioni "
+                                 "ricostruiti; 3 = riconciliazione storica dal "
+                                 "libro mano (BT sintetiche + correzioni); "
+                                 "all = tutte.")
         parser.add_argument("--dry-run", action="store_true", help="Non scrive nulla, mostra solo il parsing.")
 
     def handle(self, *args, **opts):
@@ -112,12 +201,14 @@ class Command(BaseCommand):
         dry_run = opts["dry_run"]
 
         fase = opts["fase"]
-        summary1 = summary2 = None
+        summary1 = summary2 = summary3 = None
         with transaction.atomic():
             if fase in ("1", "all"):
                 summary1 = self._import(wb[tab], max_row=opts["max_row"], dry_run=dry_run)
             if fase in ("2", "all"):
                 summary2 = self._fase2(dry_run=dry_run)
+            if fase in ("3", "all"):
+                summary3 = self._fase3(dry_run=dry_run)
             if dry_run:
                 self.stdout.write(self.style.WARNING("DRY-RUN: rollback transazione."))
                 transaction.set_rollback(True)
@@ -126,6 +217,8 @@ class Command(BaseCommand):
             self._report(summary1)
         if summary2:
             self._report_fase2(summary2)
+        if summary3:
+            self._report_fase3(summary3)
 
     # ------------------------------------------------------------------
     def _import(self, ws, *, max_row: int, dry_run: bool) -> dict:
@@ -405,6 +498,200 @@ class Command(BaseCommand):
                 "cau_rows": cau_rows, "warnings": warnings}
 
     # ------------------------------------------------------------------
+    # Fase 3 — riconciliazione storica: BT sintetiche dal libro mano
+    # ------------------------------------------------------------------
+    def _fase3(self, *, dry_run: bool) -> dict:
+        from datetime import date
+
+        from billing.models import Receivable
+
+        aff_rows: list[dict] = []
+        dep_rows: list[dict] = []
+        corr_rows: list[dict] = []
+        warnings: list[str] = []
+
+        # --- affitti ---
+        for tenant_key, anno, mese, tranches, fonte, nota in AFFITTO_FASE3:
+            rec = Receivable.objects.filter(
+                causale="affitto",
+                assignment__tenant__nominativo__icontains=tenant_key,
+                competenza_da=date(anno, mese, 1),
+            ).first()
+            if rec is None:
+                warnings.append(
+                    f"affitto {tenant_key} {anno}-{mese:02}: Receivable non trovato"
+                )
+                continue
+            key = f"affitto:{tenant_key}:{anno}-{mese:02}"
+            row = self._riconcilia_da_foglio(
+                rec, tranches, fonte, nota, "Affitto", key, dry_run
+            )
+            row.update(tenant=tenant_key, anno=anno, mese=mese)
+            aff_rows.append(row)
+
+        # --- depositi versati ---
+        for tenant_key, tranches, fonte, nota in DEPOSITO_FASE3:
+            rec = (
+                Receivable.objects.filter(
+                    causale="deposito",
+                    assignment__tenant__nominativo__icontains=tenant_key,
+                    importo_dovuto__gt=0,
+                    competenza_da__year__in=(2022, 2023),
+                )
+                .order_by("competenza_da")
+                .first()
+            )
+            if rec is None:
+                warnings.append(f"deposito {tenant_key}: Receivable non trovato")
+                continue
+            key = f"deposito:{tenant_key}"
+            row = self._riconcilia_da_foglio(
+                rec, tranches, fonte, nota, "Cauzione", key, dry_run
+            )
+            row.update(tenant=tenant_key)
+            dep_rows.append(row)
+
+        # --- correzioni rate condominio (+1€, vince il foglio) ---
+        from billing.models import Expense
+
+        for descr_esatta, vecchio_str, nuovo_str, fonte in CORREZIONI_CONDOMINIO:
+            match = Expense.objects.filter(
+                category__codice="condominio", descrizione=descr_esatta
+            )
+            if match.count() != 1:
+                warnings.append(
+                    f"correzione condominio «{descr_esatta}»: "
+                    f"{match.count()} Expense trovate (attesa 1) — salto"
+                )
+                continue
+            exp = match.first()
+            vecchio = exp.importo
+            nuovo = Decimal(nuovo_str)
+            atteso = Decimal(vecchio_str)
+            row = dict(descr=exp.descrizione, vecchio=vecchio, nuovo=nuovo, fonte=fonte)
+            if vecchio == nuovo:
+                row["stato"] = "già corretto"
+            elif vecchio != atteso:
+                row["stato"] = f"⚠ importo inatteso ({vecchio}) — non modifico"
+            else:
+                row["stato"] = "corretto"
+                if not dry_run:
+                    exp.importo = nuovo
+                    if MARKER_CORR_COND not in (exp.note or ""):
+                        exp.note = ((exp.note + " ") if exp.note else "") + (
+                            f"Importo corretto da Contabilità.xlsx «conti 2023» "
+                            f"({fonte}); era {vecchio}. {MARKER_CORR_COND}"
+                        )
+                    exp.save(update_fields=["importo", "note", "updated_at"])
+            corr_rows.append(row)
+
+        return {
+            "aff_rows": aff_rows,
+            "dep_rows": dep_rows,
+            "corr_rows": corr_rows,
+            "warnings": warnings,
+        }
+
+    def _riconcilia_da_foglio(
+        self, rec, tranches, fonte, nota, label, key, dry_run
+    ) -> dict:
+        """Sintetizza le BankTransaction del libro mano per un Receivable e le
+        alloca. Ritorna un dict descrittivo per il report."""
+        from datetime import date
+
+        from billing.models import BankTransaction, BankTransactionAllocation
+
+        dovuto = rec.importo_dovuto
+        info = dict(dovuto=dovuto, fonte=fonte, nota=nota, importo_bt=None)
+
+        # Già riconciliato da un movimento bancario reale (non sintetico): non
+        # tocco — l'estratto conto vince sul libro mano.
+        if rec.allocations.exclude(
+            bank_transaction__note__contains=MARKER_BT
+        ).exists():
+            info["stato"] = "già riconciliato da movimento reale — salto"
+            return info
+
+        if not tranches:
+            info["stato"] = "nessun movimento nel foglio — resta atteso"
+            info["importo_bt"] = Decimal("0")
+            return info
+
+        tenant_nom = rec.assignment.tenant.nominativo
+        importo_tot = sum((Decimal(t[2]) for t in tranches), Decimal("0"))
+        info["importo_bt"] = importo_tot
+
+        if dry_run:
+            if importo_tot + Decimal("1") >= dovuto:
+                info["stato"] = "creerò BT + allocazione → pagato"
+            else:
+                info["stato"] = (
+                    f"creerò BT parziale → scostamento (manca "
+                    f"{dovuto - importo_tot}€)"
+                )
+            return info
+
+        residuo = dovuto
+        for i, (owner_key, data_iso, importo_str) in enumerate(tranches):
+            account = self._owner_account(owner_key)
+            importo = Decimal(importo_str)
+            marker = f"{MARKER_BT} {key}#{i}]"
+            descrizione = (
+                f"{label} {tenant_nom} — da libro mano «conti 2023» ({fonte})"
+            )
+            note = (
+                f"Movimento ricostruito dal libro mano Contabilità.xlsx "
+                f"«conti 2023» ({fonte}). {nota} {marker}"
+            ).strip()
+            bt = BankTransaction.objects.filter(note__contains=marker).first()
+            if bt:
+                bt.data = date.fromisoformat(data_iso)
+                bt.importo = importo
+                bt.descrizione = descrizione
+                bt.owner_account = account
+                bt.note = note
+                bt.save()
+            else:
+                bt = BankTransaction.objects.create(
+                    data=date.fromisoformat(data_iso),
+                    importo=importo,
+                    descrizione=descrizione,
+                    owner_account=account,
+                    note=note,
+                )
+            quota = min(importo, residuo)
+            if quota > 0:
+                BankTransactionAllocation.objects.update_or_create(
+                    bank_transaction=bt,
+                    receivable=rec,
+                    defaults={"importo": quota},
+                )
+                residuo -= quota
+
+        rec.refresh_from_db()
+        if rec.stato == "pagato":
+            extra = importo_tot - dovuto
+            info["stato"] = "✓ pagato" + (
+                f" (residuo bonifico {extra}€)" if extra > 0 else ""
+            )
+        else:
+            info["stato"] = (
+                f"⚠ scostamento: foglio {importo_tot}€ < dovuto {dovuto}€ "
+                f"(manca {dovuto - importo_tot}€) — resta atteso"
+            )
+        return info
+
+    def _owner_account(self, keyword):
+        """OwnerBankAccount del proprietario individuato da ``keyword``."""
+        from properties.models import OwnerBankAccount
+
+        owner = self._owner(keyword)
+        acc = OwnerBankAccount.objects.filter(owner=owner).first()
+        if acc is None:
+            raise CommandError(f"OwnerBankAccount per «{keyword}» non trovato.")
+        return acc
+
+    # ------------------------------------------------------------------
     @staticmethod
     def _num(v):
         """Importo della cella: numero o stringa numerica (anche con virgola)."""
@@ -498,6 +785,54 @@ class Command(BaseCommand):
         for r in s["cau_rows"]:
             freccia = f"{r['vecchio']} → {r['nuovo']}" if r["cambia"] else f"{r['nuovo']} (invariata)"
             self.stdout.write(f"  {r['tenant']:<10} {freccia:<20} — {r['nota']}")
+
+        for w in s["warnings"]:
+            self.stdout.write(self.style.WARNING(f"  ⚠ {w}"))
+
+    def _report_fase3(self, s: dict):
+        self.stdout.write("")
+        self.stdout.write(self.style.MIGRATE_HEADING(
+            "=== Fase 3 — riconciliazione affitti dal libro mano «conti 2023» ==="))
+        tenant_corrente = None
+        n_pag = n_scost = n_skip = 0
+        for r in s["aff_rows"]:
+            if r["tenant"] != tenant_corrente:
+                tenant_corrente = r["tenant"]
+                self.stdout.write(f"  {tenant_corrente}:")
+            mese = f"{self._MESI[r['mese']]} {r['anno']}"
+            imp = f"{r['importo_bt']}€" if r["importo_bt"] is not None else "—"
+            self.stdout.write(
+                f"      {mese:<9} dovuto {r['dovuto']:>8}€  foglio {imp:<9} "
+                f"[{r['stato']}]"
+            )
+            if "pagato" in r["stato"]:
+                n_pag += 1
+            elif "salto" in r["stato"]:
+                n_skip += 1
+            else:
+                n_scost += 1
+        self.stdout.write(
+            f"  → affitti: {n_pag} riconciliati, {n_scost} da verificare, "
+            f"{n_skip} saltati (già a posto)"
+        )
+
+        self.stdout.write("")
+        self.stdout.write(self.style.MIGRATE_HEADING("=== Fase 3 — cauzioni ==="))
+        for r in s["dep_rows"]:
+            imp = f"{r['importo_bt']}€" if r["importo_bt"] is not None else "—"
+            self.stdout.write(
+                f"  {r['tenant']:<10} dovuto {r['dovuto']:>8}€  foglio {imp:<9} "
+                f"[{r['stato']}]"
+            )
+
+        self.stdout.write("")
+        self.stdout.write(self.style.MIGRATE_HEADING(
+            "=== Fase 3 — correzioni rate condominio (vince il foglio) ==="))
+        for r in s["corr_rows"]:
+            freccia = f"{r['vecchio']} → {r['nuovo']}"
+            self.stdout.write(
+                f"  {r['descr'][:44]:<44} {freccia:<16} [{r['stato']}]"
+            )
 
         for w in s["warnings"]:
             self.stdout.write(self.style.WARNING(f"  ⚠ {w}"))
