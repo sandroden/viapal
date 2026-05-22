@@ -168,6 +168,34 @@ CORREZIONI_CONDOMINIO = [
     ("Condominio 2023/2024 — 1ª rata MAV", "1209", "1210", "foglio riga 210"),
 ]
 
+# --- Fase 4: bollette utenze ----------------------------------------------
+# I PDF Edison `utenze-*edison.pdf` diventano UtilityBill (la cui post_save
+# genera l'Expense lato proprietario). I metadati primari vengono dal nome
+# file (`utenze-…-AAAA-MM-IMPORTO-edison.pdf`, prodotto + periodo + importo),
+# arricchiti dal testo del PDF quando leggibile (i 2 PDF 2022 sono scansioni).
+# La TARI (riga 121 del foglio) è una voce a sé → Expense categoria «tari».
+MARKER_TARI = "[conti2023-tari]"
+
+# Mesi italiani estesi — per il parsing dell'intestazione delle bollette Edison.
+MESI_IT = {
+    "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4, "maggio": 5,
+    "giugno": 6, "luglio": 7, "agosto": 8, "settembre": 9, "ottobre": 10,
+    "novembre": 11, "dicembre": 12,
+}
+
+# Bollette pagate da Bruna prima della voltura del contratto utenze a nome di
+# Sandro: la fattura non era intestata a lui, quindi non esiste un PDF. Vanno
+# a `UtilityBill` SENZA `pagata_da_owner` — così il signal non genera una
+# Expense lato proprietario (come da indicazione: «come UtilityBill, non come
+# Spese»). Il prodotto (luce/gas) non è determinabile dal libro mano: il foglio
+# le aggrega come «bollette». Marcatore = numero_fattura `conti2023-bolletta-rigaNN`.
+#   (riga, periodo_da, periodo_a, data_pagamento, importo, descr_foglio)
+BOLLETTE_FOGLIO = [
+    (81,  "2022-12-01", "2023-01-31", "2023-04-05", "208", "pagamento bollette dic/gen"),
+    (88,  "2023-02-01", "2023-02-28", "2023-04-15", "76",  "pagamento bollette febbraio"),
+    (103, "2023-03-01", "2023-04-30", "2023-06-05", "250", "pagamento bollette mar/apr"),
+]
+
 
 class Command(BaseCommand):
     help = "Importa le spese proprietari (tipo a + IMU) dal tab «conti 2023» di Contabilità.xlsx."
@@ -177,11 +205,15 @@ class Command(BaseCommand):
         parser.add_argument("--tab", default="conti 2023", help="Nome del foglio (default: «conti 2023»).")
         parser.add_argument("--max-row", type=int, default=214,
                             help="Ultima riga del foglio da importare (default: 214).")
-        parser.add_argument("--fase", choices=["1", "2", "3", "all"], default="all",
+        parser.add_argument("--fase", choices=["1", "2", "3", "4", "all"], default="all",
                             help="1 = spese proprietari; 2 = affitti + cauzioni "
                                  "ricostruiti; 3 = riconciliazione storica dal "
                                  "libro mano (BT sintetiche + correzioni); "
+                                 "4 = bollette (PDF Edison → UtilityBill + TARI); "
                                  "all = tutte.")
+        parser.add_argument("--bollette-dir", default=None,
+                            help="Cartella dei PDF utenze-*edison.pdf per la fase 4 "
+                                 "(default: la cartella del file .xlsx).")
         parser.add_argument("--dry-run", action="store_true", help="Non scrive nulla, mostra solo il parsing.")
 
     def handle(self, *args, **opts):
@@ -201,7 +233,8 @@ class Command(BaseCommand):
         dry_run = opts["dry_run"]
 
         fase = opts["fase"]
-        summary1 = summary2 = summary3 = None
+        bollette_dir = opts["bollette_dir"] or str(xlsx_path.parent)
+        summary1 = summary2 = summary3 = summary4 = None
         with transaction.atomic():
             if fase in ("1", "all"):
                 summary1 = self._import(wb[tab], max_row=opts["max_row"], dry_run=dry_run)
@@ -209,6 +242,8 @@ class Command(BaseCommand):
                 summary2 = self._fase2(dry_run=dry_run)
             if fase in ("3", "all"):
                 summary3 = self._fase3(dry_run=dry_run)
+            if fase in ("4", "all"):
+                summary4 = self._fase4(bollette_dir=bollette_dir, dry_run=dry_run)
             if dry_run:
                 self.stdout.write(self.style.WARNING("DRY-RUN: rollback transazione."))
                 transaction.set_rollback(True)
@@ -219,6 +254,8 @@ class Command(BaseCommand):
             self._report_fase2(summary2)
         if summary3:
             self._report_fase3(summary3)
+        if summary4:
+            self._report_fase4(summary4)
 
     # ------------------------------------------------------------------
     def _import(self, ws, *, max_row: int, dry_run: bool) -> dict:
@@ -690,6 +727,296 @@ class Command(BaseCommand):
         if acc is None:
             raise CommandError(f"OwnerBankAccount per «{keyword}» non trovato.")
         return acc
+
+    # ------------------------------------------------------------------
+    # Fase 4 — bollette utenze (PDF Edison → UtilityBill, TARI → Expense)
+    # ------------------------------------------------------------------
+    def _fase4(self, *, bollette_dir: str, dry_run: bool) -> dict:
+        from django.core.files import File
+        from django.db.models import Q
+
+        from billing.models import Supplier, UtilityBill
+
+        pdf_rows: list[dict] = []
+        warnings: list[str] = []
+        bdir = Path(bollette_dir).expanduser().resolve()
+        sandro = self._owner("Alessandro")
+
+        supplier = Supplier.objects.filter(nome__iexact="Edison Energia").first()
+        if supplier is None and not dry_run:
+            supplier = Supplier.objects.create(
+                nome="Edison Energia", tipo=Supplier.TipoFornitore.ENERGIA
+            )
+
+        pdfs = sorted(bdir.glob("utenze-*edison.pdf")) if bdir.is_dir() else []
+        if not pdfs:
+            warnings.append(f"nessun PDF «utenze-*edison.pdf» in {bdir}")
+
+        for path in pdfs:
+            meta = self._parse_bolletta_edison(path)
+            if meta is None:
+                warnings.append(f"{path.name}: nome file non interpretabile — salto")
+                continue
+            stem = path.stem
+
+            # Idempotenza: numero_fattura = nome file. Se non c'è, cerca una
+            # UtilityBill già a sistema per la stessa bolletta (stesso prodotto,
+            # anno e importo ~uguale) — sono le #144/#145/#147 importate prima
+            # con metadati grezzi: vanno aggiornate sul posto, non duplicate.
+            bill = UtilityBill.objects.filter(numero_fattura=stem).first()
+            if bill is None:
+                simili = [
+                    b
+                    for b in UtilityBill.objects.filter(
+                        prodotto=meta["prodotto"]
+                    ).filter(
+                        Q(periodo_da__year=meta["anno"])
+                        | Q(periodo_a__year=meta["anno"])
+                    )
+                    if abs(b.importo_totale - meta["importo_file"]) < Decimal("1")
+                ]
+                if len(simili) == 1:
+                    bill = simili[0]
+                elif len(simili) > 1:
+                    warnings.append(
+                        f"{stem}: {len(simili)} UtilityBill simili a sistema "
+                        f"(ID {[b.id for b in simili]}) — ne creo una nuova, verificare"
+                    )
+
+            # Importo: se il PDF non ha dato i centesimi ma la UB esistente sì
+            # (es. #144 = 51,61), conserva il valore più preciso già a sistema.
+            # Il nome file porta la parte intera dell'importo (51 ← 51,61).
+            importo = meta["importo"]
+            if (
+                bill is not None
+                and importo == meta["importo_file"]
+                and bill.importo_totale
+                and int(bill.importo_totale) == int(meta["importo_file"])
+            ):
+                importo = bill.importo_totale
+
+            azione = "aggiornata" if bill is not None else "creata"
+            row = dict(
+                nome=stem, prodotto=meta["prodotto"], periodo_da=meta["periodo_da"],
+                periodo_a=meta["periodo_a"], importo=importo,
+                importo_file=meta["importo_file"], fonte=meta["fonte"],
+                azione=azione, pre_id=(bill.id if bill is not None else None),
+            )
+            if dry_run:
+                pdf_rows.append(row)
+                continue
+
+            if bill is None:
+                bill = UtilityBill(numero_fattura=stem)
+            bill.numero_fattura = stem
+            bill.supplier = supplier
+            bill.prodotto = meta["prodotto"]
+            bill.data_emissione = meta["data_emissione"]
+            bill.periodo_da = meta["periodo_da"]
+            bill.periodo_a = meta["periodo_a"]
+            bill.importo_totale = importo
+            bill.pagata_da_owner = sandro
+            with path.open("rb") as fh:
+                bill.file_pdf.save(path.name, File(fh), save=False)
+            # Un solo save() → un solo post_save → una sola Expense generata.
+            bill.save()
+            row["pre_id"] = bill.id
+            pdf_rows.append(row)
+
+        foglio_rows = self._importa_bollette_foglio(dry_run)
+        tari = self._importa_tari(dry_run)
+        return {"pdf_rows": pdf_rows, "foglio_rows": foglio_rows, "tari": tari,
+                "warnings": warnings, "bdir": str(bdir)}
+
+    def _importa_bollette_foglio(self, dry_run: bool) -> list[dict]:
+        """Bollette pre-voltura registrate solo nel libro mano (nessun PDF):
+        UtilityBill senza `pagata_da_owner`, quindi senza Expense generata."""
+        from billing.models import Supplier, UtilityBill
+
+        rows: list[dict] = []
+        supplier = None
+        if not dry_run:
+            supplier, _ = Supplier.objects.get_or_create(
+                nome="Sconosciuto",
+                defaults={"tipo": Supplier.TipoFornitore.ALTRO},
+            )
+        for riga, pda, pa, dpag, imp, descr in BOLLETTE_FOGLIO:
+            nf = f"conti2023-bolletta-riga{riga}"
+            importo = Decimal(imp)
+            periodo_da = dt.date.fromisoformat(pda)
+            periodo_a = dt.date.fromisoformat(pa)
+            bill = UtilityBill.objects.filter(numero_fattura=nf).first()
+            row = dict(
+                riga=riga, periodo_da=periodo_da, periodo_a=periodo_a,
+                importo=importo, descr=descr,
+                stato=("aggiornata" if bill else "creata"),
+            )
+            if dry_run:
+                rows.append(row)
+                continue
+            note = (
+                f"Bolletta aggregata pagata da Bruna prima della voltura del "
+                f"contratto utenze a nome di Sandro: fattura non intestata a "
+                f"lui, nessun PDF. Importo dal libro mano «conti 2023» riga "
+                f"{riga} «{descr}», pagata il {dpag}. Prodotto (luce/gas) non "
+                f"determinabile dal libro mano."
+            )
+            if bill is None:
+                bill = UtilityBill(numero_fattura=nf)
+            bill.numero_fattura = nf
+            bill.supplier = supplier
+            bill.prodotto = UtilityBill.Prodotto.LUCE  # segnaposto: vedi note
+            bill.data_emissione = periodo_a
+            bill.periodo_da = periodo_da
+            bill.periodo_a = periodo_a
+            bill.importo_totale = importo
+            bill.pagata_da_owner = None  # nessuna Expense generata dal signal
+            bill.note = note
+            bill.save()
+            rows.append(row)
+        return rows
+
+    def _parse_bolletta_edison(self, path: Path) -> dict | None:
+        """Metadati di una bolletta Edison: dal nome file (sempre) arricchiti
+        dal testo del PDF quando leggibile (i PDF 2022 sono scansioni)."""
+        import subprocess
+
+        name = path.name
+        m_prod = re.search(r"(luce|gas)", name, re.IGNORECASE)
+        m_date = re.search(r"(\d{4})-(\d{2})-+(\d{1,4})", name)
+        if not (m_prod and m_date):
+            return None
+        prodotto = "luce" if m_prod.group(1).lower() == "luce" else "gas"
+        anno, mese = int(m_date.group(1)), int(m_date.group(2))
+        importo = Decimal(m_date.group(3))
+        importo_file = importo
+        periodo_da = dt.date(anno, mese, 1)
+        periodo_a = dt.date(anno, mese, calendar.monthrange(anno, mese)[1])
+        data_emissione = periodo_a
+        fonte = "nome file"
+
+        try:
+            txt = subprocess.run(
+                ["pdftotext", "-layout", str(path), "-"],
+                capture_output=True, text=True, timeout=30,
+            ).stdout
+        except (subprocess.SubprocessError, FileNotFoundError, OSError):
+            txt = ""
+
+        m = re.search(
+            r"MERCATO LIBERO\s+(\w+)\s+(\d{4})\s*-\s*(\w+)\s+(\d{4})", txt
+        )
+        if m:
+            m1 = MESI_IT.get(m.group(1).lower())
+            m2 = MESI_IT.get(m.group(3).lower())
+            if m1 and m2:
+                periodo_da = dt.date(int(m.group(2)), m1, 1)
+                periodo_a = dt.date(
+                    int(m.group(4)), m2, calendar.monthrange(int(m.group(4)), m2)[1]
+                )
+                fonte = "PDF"
+        m = re.search(
+            r"Bolletta N°\s*\d+\s*del\s+(\d{1,2})\s+(\w+)\s+(\d{4})", txt
+        )
+        if m:
+            mm = MESI_IT.get(m.group(2).lower())
+            if mm:
+                data_emissione = dt.date(int(m.group(3)), mm, int(m.group(1)))
+        m = re.search(r"([\d.]+,\d{2})\s+Totale bolletta", txt) or re.search(
+            r"Totale bolletta\s+([\d.]+,\d{2})", txt
+        )
+        if m:
+            val = Decimal(m.group(1).replace(".", "").replace(",", "."))
+            if abs(val - importo_file) <= 2:  # sanity-check contro il nome file
+                importo = val
+
+        return dict(
+            prodotto=prodotto, anno=anno, periodo_da=periodo_da, periodo_a=periodo_a,
+            data_emissione=data_emissione, importo=importo,
+            importo_file=importo_file, fonte=fonte,
+        )
+
+    def _importa_tari(self, dry_run: bool) -> dict:
+        """La TARI 2023 (riga 121 del foglio) come Expense categoria «tari»."""
+        from billing.models import Expense, ExpenseCategory
+
+        importo = Decimal("405")
+        bruna = self._owner("Bruna")
+        exp = Expense.objects.filter(note__contains=MARKER_TARI).first()
+        row = dict(importo=importo, stato="aggiornerò" if exp else "creerò")
+        if dry_run:
+            return row
+
+        cat = ExpenseCategory.objects.filter(codice="tari").first()
+        if cat is None:
+            cat = ExpenseCategory.objects.create(
+                codice="tari", nome="TARI", ripartibile_inquilini=True
+            )
+        defaults = dict(
+            data=dt.date(2023, 7, 1),
+            category=cat,
+            importo=importo,
+            descrizione="TARI 2023 — da libro mano «conti 2023» riga 121",
+            anticipata_da_owner=bruna,
+            ripartibile_su_inquilini=False,
+            note=f"Importato da Contabilità.xlsx «conti 2023» riga 121. {MARKER_TARI}",
+        )
+        if exp:
+            for k, v in defaults.items():
+                setattr(exp, k, v)
+            exp.save()
+            row["stato"] = "aggiornata"
+        else:
+            Expense.objects.create(**defaults)
+            row["stato"] = "creata"
+        return row
+
+    def _report_fase4(self, s: dict):
+        self.stdout.write("")
+        self.stdout.write(self.style.MIGRATE_HEADING(
+            "=== Fase 4 — bollette utenze (Edison) ==="))
+        self.stdout.write(f"  cartella PDF: {s['bdir']}")
+        tot = Decimal("0")
+        for r in s["pdf_rows"]:
+            tot += r["importo"]
+            avviso = ""
+            if r["importo"] != r["importo_file"]:
+                avviso = f" (nome file: {r['importo_file']})"
+            etichetta = r["azione"]
+            if r["azione"] == "aggiornata" and r["pre_id"] is not None:
+                etichetta = f"aggiornata #{r['pre_id']}"
+            self.stdout.write(
+                f"  {etichetta:<16} {r['prodotto']:<5} "
+                f"{r['periodo_da']} → {r['periodo_a']}  {r['importo']:>8}€"
+                f"{avviso}  [periodo da {r['fonte']}]  {r['nome']}"
+            )
+        self.stdout.write(f"  → {len(s['pdf_rows'])} bollette da PDF, totale {tot}€")
+
+        if s.get("foglio_rows"):
+            self.stdout.write("")
+            self.stdout.write(self.style.MIGRATE_HEADING(
+                "=== Fase 4 — bollette dal libro mano (pre-voltura, senza PDF) ==="))
+            tot_f = Decimal("0")
+            for r in s["foglio_rows"]:
+                tot_f += r["importo"]
+                self.stdout.write(
+                    f"  {r['stato']:<11} riga {r['riga']:<4} "
+                    f"{r['periodo_da']} → {r['periodo_a']}  {r['importo']:>8}€  "
+                    f"«{r['descr']}»"
+                )
+            self.stdout.write(
+                f"  → {len(s['foglio_rows'])} UtilityBill senza pagata_da_owner "
+                f"(niente Expense), totale {tot_f}€"
+            )
+
+        t = s["tari"]
+        self.stdout.write("")
+        self.stdout.write(
+            f"  TARI 2023 (libro mano riga 121): {t['importo']}€  [{t['stato']}] "
+            f"— affianca la «TARI 2023 (F24)» già a sistema"
+        )
+        for w in s["warnings"]:
+            self.stdout.write(self.style.WARNING(f"  ⚠ {w}"))
 
     # ------------------------------------------------------------------
     @staticmethod
