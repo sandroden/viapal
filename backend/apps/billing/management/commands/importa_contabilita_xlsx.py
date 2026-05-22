@@ -34,6 +34,54 @@ TIPO_FASE2 = {"x", "c", "b", "cauzione"}  # affitto/utenze/cauzioni — fase suc
 COL_USCITA_OWNER = {3: "Alessandro", 5: "Bruna", 7: "Fabio"}
 COL_ENTRATA = (2, 4, 6)
 
+# Marcatori di idempotenza nel campo note dei Receivable di fase 2.
+MARKER_AFFITTO = "[conti2023-affitto]"
+MARKER_CAUZIONE = "[conti2023-cauzione]"
+
+# --- Fase 2: ricostruzione affitti mancanti di Maria Severa e Teo ---------
+# Dovuto mensile = canone + quota condominio, letti dal foglio «conti 2023»
+# (il foglio fa fede). Curato a mano riga per riga: affitto storico una tantum.
+#   (tenant, anno, mese, dovuto, fonte righe foglio, nota)
+AFFITTO_RICOSTRUITO = [
+    ("Maria Severa", 2022, 10, "450", "riga 8",      "informale · 380 affitto + 70 condominio"),
+    ("Maria Severa", 2022, 11, "450", "riga 5",      "informale · 380 + 70"),
+    ("Maria Severa", 2022, 12, "450", "righe 26+27", "informale · 180+200 affitto + 70 condominio"),
+    ("Maria Severa", 2023, 1,  "450", "riga 53",     "informale · 380 + 70 (pagato 28/01)"),
+    ("Maria Severa", 2023, 2,  "450", "riga 35",     "informale · 380 + 70 (pagato 31/01, competenza febbraio)"),
+    ("Maria Severa", 2023, 3,  "510", "righe 66+67", "transizione · 430 + 80 (condominio con TARI)"),
+    ("Maria Severa", 2023, 4,  "510", "righe 79+80", "contrattualizzato · 430 + 80"),
+    ("Maria Severa", 2023, 5,  "510", "righe 85+86", "contrattualizzato · 430 + 80"),
+    ("Maria Severa", 2023, 6,  "510", "righe 101+102", "contrattualizzato · 430 + 80"),
+    ("Maria Severa", 2023, 7,  "510", "righe 122+123", "contrattualizzato · 430 + 80"),
+    ("Maria Severa", 2023, 8,  "510", "righe 131+132", "contrattualizzato · 430 + 80"),
+    ("Teo",          2023, 4,  "600", "righe 82+84", "contrattualizzato · 530 + 70"),
+    ("Teo",          2023, 5,  "600", "righe 92+93", "contrattualizzato · 530 + 70"),
+    ("Teo",          2023, 6,  "600", "—",           "MESE ASSENTE DAL FOGLIO: ricostruito da canone 530 + 70 — DA VERIFICARE"),
+    ("Teo",          2023, 7,  "600", "righe 124+125", "contrattualizzato · 530 + 70"),
+    ("Teo",          2023, 8,  "600", "righe 133+134", "contrattualizzato · 530 + 70"),
+    ("Alessandra",   2022, 10, "200", "riga 13",     "informale · 165 affitto + 35 condominio (mezzo mese, ingresso 15/10)"),
+    ("Alessandra",   2022, 11, "400", "riga 11",     "informale · 330 + 70"),
+    ("Alessandra",   2022, 12, "400", "riga 44",     "informale · 330 + 70 (pagato 13/01/2023)"),
+]
+
+# --- Fase 2: correzione cauzioni (il foglio fa fede) ----------------------
+#   (tenant, importo_corretto, nota)
+CAUZIONI_CORREZIONI = [
+    ("Eugenia",  "530", "foglio riga 138"),
+    ("Marianna", "600", "foglio righe 187+190 (acconto 400 + 200)"),
+]
+
+# --- Fase 2: correzione affitti già a sistema (il foglio fa fede) ----------
+# I Receivable affitto Severa set-dic 2023 sono a 520 ma il foglio dice 500
+# (430 + 70, c'è accordo di riduzione rispetto al canone ufficiale).
+#   (tenant, anno, mese, importo_corretto, nota)
+AFFITTO_CORREZIONI = [
+    ("Maria Severa", 2023, 9,  "500", "foglio: 430 + 70 (accordo riduzione vs canone ufficiale)"),
+    ("Maria Severa", 2023, 10, "500", "foglio: 430 + 70"),
+    ("Maria Severa", 2023, 11, "500", "foglio: 430 + 70"),
+    ("Maria Severa", 2023, 12, "500", "foglio: 430 + 70"),
+]
+
 
 class Command(BaseCommand):
     help = "Importa le spese proprietari (tipo a + IMU) dal tab «conti 2023» di Contabilità.xlsx."
@@ -43,6 +91,8 @@ class Command(BaseCommand):
         parser.add_argument("--tab", default="conti 2023", help="Nome del foglio (default: «conti 2023»).")
         parser.add_argument("--max-row", type=int, default=214,
                             help="Ultima riga del foglio da importare (default: 214).")
+        parser.add_argument("--fase", choices=["1", "2", "all"], default="all",
+                            help="1 = spese proprietari; 2 = affitti + cauzioni; all = entrambe.")
         parser.add_argument("--dry-run", action="store_true", help="Non scrive nulla, mostra solo il parsing.")
 
     def handle(self, *args, **opts):
@@ -61,13 +111,21 @@ class Command(BaseCommand):
             raise CommandError(f"Tab «{tab}» non trovato. Disponibili: {wb.sheetnames}")
         dry_run = opts["dry_run"]
 
+        fase = opts["fase"]
+        summary1 = summary2 = None
         with transaction.atomic():
-            summary = self._import(wb[tab], max_row=opts["max_row"], dry_run=dry_run)
+            if fase in ("1", "all"):
+                summary1 = self._import(wb[tab], max_row=opts["max_row"], dry_run=dry_run)
+            if fase in ("2", "all"):
+                summary2 = self._fase2(dry_run=dry_run)
             if dry_run:
                 self.stdout.write(self.style.WARNING("DRY-RUN: rollback transazione."))
                 transaction.set_rollback(True)
 
-        self._report(summary)
+        if summary1:
+            self._report(summary1)
+        if summary2:
+            self._report_fase2(summary2)
 
     # ------------------------------------------------------------------
     def _import(self, ws, *, max_row: int, dry_run: bool) -> dict:
@@ -224,6 +282,129 @@ class Command(BaseCommand):
                 return o
         raise CommandError(f"OwnerProfile per «{keyword}» non trovato.")
 
+    # ------------------------------------------------------------------
+    # Fase 2 — affitti mancanti + correzione cauzioni
+    # ------------------------------------------------------------------
+    def _fase2(self, *, dry_run: bool) -> dict:
+        import calendar
+        from datetime import date
+
+        from django.db.models import Q
+
+        from billing.models import Receivable
+        from properties.models import RoomAssignment, TenantProfile
+
+        aff_rows: list[dict] = []
+        corr_rows: list[dict] = []
+        cau_rows: list[dict] = []
+        warnings: list[str] = []
+
+        # --- affitti ---
+        for tenant_key, anno, mese, dovuto, fonte, nota in AFFITTO_RICOSTRUITO:
+            tenant = TenantProfile.objects.filter(nominativo__icontains=tenant_key).first()
+            if tenant is None:
+                warnings.append(f"affitto {tenant_key} {anno}-{mese:02}: inquilino non trovato")
+                continue
+            comp_da = date(anno, mese, 1)
+            comp_a = date(anno, mese, calendar.monthrange(anno, mese)[1])
+            scadenza = date(anno, mese, 6)
+            assignment = (
+                RoomAssignment.objects.filter(tenant=tenant, valid_from__lte=comp_a)
+                .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=comp_da))
+                .order_by("-valid_from").first()
+            )
+            if assignment is None:
+                warnings.append(
+                    f"affitto {tenant_key} {anno}-{mese:02}: RoomAssignment mancante"
+                )
+                continue
+            importo = Decimal(dovuto).quantize(Decimal("0.01"))
+            existing = Receivable.objects.filter(
+                causale="affitto", assignment=assignment,
+                competenza_da=comp_da, competenza_a=comp_a,
+            ).first()
+
+            if existing and MARKER_AFFITTO not in (existing.note or ""):
+                stato = "GIÀ PRESENTE (non importato da me) — non tocco"
+            else:
+                stato = "aggiorno" if existing else "creo"
+                if not dry_run:
+                    Receivable.objects.update_or_create(
+                        causale="affitto", assignment=assignment,
+                        competenza_da=comp_da, competenza_a=comp_a,
+                        defaults=dict(
+                            scadenza=scadenza,
+                            importo_dovuto=importo,
+                            note=f"Ricostruito da Contabilità.xlsx «conti 2023» "
+                                 f"({fonte}). {nota} {MARKER_AFFITTO}",
+                        ),
+                    )
+            aff_rows.append(dict(
+                tenant=tenant_key, anno=anno, mese=mese, importo=importo,
+                fonte=fonte, nota=nota, stato=stato,
+            ))
+
+        # --- correzione affitti già a sistema ---
+        for tenant_key, anno, mese, importo_str, nota in AFFITTO_CORREZIONI:
+            comp_da = date(anno, mese, 1)
+            rec = Receivable.objects.filter(
+                causale="affitto",
+                assignment__tenant__nominativo__icontains=tenant_key,
+                competenza_da=comp_da,
+            ).first()
+            if rec is None:
+                warnings.append(
+                    f"correzione affitto {tenant_key} {anno}-{mese:02}: Receivable non trovato"
+                )
+                continue
+            nuovo = Decimal(importo_str).quantize(Decimal("0.01"))
+            vecchio = rec.importo_dovuto
+            corr_rows.append(dict(
+                tenant=tenant_key, anno=anno, mese=mese,
+                vecchio=vecchio, nuovo=nuovo, nota=nota, cambia=(vecchio != nuovo),
+            ))
+            if not dry_run and vecchio != nuovo:
+                rec.importo_dovuto = nuovo
+                if MARKER_AFFITTO not in (rec.note or ""):
+                    rec.note = (rec.note + " " if rec.note else "") + (
+                        f"Importo corretto da Contabilità.xlsx «conti 2023» "
+                        f"({nota}); era {vecchio}. {MARKER_AFFITTO}"
+                    )
+                rec.save(update_fields=["importo_dovuto", "note"])
+
+        # --- cauzioni ---
+        for tenant_key, importo_str, nota in CAUZIONI_CORREZIONI:
+            dep = (
+                Receivable.objects.filter(
+                    causale="deposito",
+                    assignment__tenant__nominativo__icontains=tenant_key,
+                    competenza_da__year__lte=2023,
+                    importo_dovuto__gt=0,
+                )
+                .order_by("competenza_da").first()
+            )
+            if dep is None:
+                warnings.append(f"cauzione {tenant_key}: Receivable deposito 2023 non trovato")
+                continue
+            nuovo = Decimal(importo_str).quantize(Decimal("0.01"))
+            vecchio = dep.importo_dovuto
+            cau_rows.append(dict(
+                tenant=tenant_key, vecchio=vecchio, nuovo=nuovo, nota=nota,
+                cambia=(vecchio != nuovo),
+            ))
+            if not dry_run and vecchio != nuovo:
+                dep.importo_dovuto = nuovo
+                if MARKER_CAUZIONE not in (dep.note or ""):
+                    dep.note = (dep.note + " " if dep.note else "") + (
+                        f"Importo corretto da Contabilità.xlsx «conti 2023» "
+                        f"({nota}); era {vecchio}. {MARKER_CAUZIONE}"
+                    )
+                dep.save(update_fields=["importo_dovuto", "note"])
+
+        return {"aff_rows": aff_rows, "corr_rows": corr_rows,
+                "cau_rows": cau_rows, "warnings": warnings}
+
+    # ------------------------------------------------------------------
     @staticmethod
     def _num(v):
         """Importo della cella: numero o stringa numerica (anche con virgola)."""
@@ -277,6 +458,47 @@ class Command(BaseCommand):
             self.stdout.write("  Righe saltate (per fase/tipo):")
             for k, v in sorted(s["skip_buckets"].items()):
                 self.stdout.write(f"      {v:>3} × {k}")
+        for w in s["warnings"]:
+            self.stdout.write(self.style.WARNING(f"  ⚠ {w}"))
+
+    _MESI = ("", "gen", "feb", "mar", "apr", "mag", "giu",
+             "lug", "ago", "set", "ott", "nov", "dic")
+
+    def _report_fase2(self, s: dict):
+        self.stdout.write("")
+        self.stdout.write(self.style.MIGRATE_HEADING(
+            "=== Fase 2 — affitti ricostruiti «conti 2023» ==="))
+        tenant_corrente = None
+        tot = Decimal("0")
+        for r in s["aff_rows"]:
+            if r["tenant"] != tenant_corrente:
+                tenant_corrente = r["tenant"]
+                self.stdout.write(f"  {tenant_corrente}:")
+            mese = f"{self._MESI[r['mese']]} {r['anno']}"
+            self.stdout.write(
+                f"      {mese:<9} {r['importo']:>8}€  [{r['stato']:<38}] "
+                f"{r['fonte']:<16} — {r['nota']}"
+            )
+            if "creo" in r["stato"] or "aggiorno" in r["stato"]:
+                tot += r["importo"]
+        self.stdout.write(f"  Totale affitti creati/aggiornati: {tot}€")
+
+        if s["corr_rows"]:
+            self.stdout.write("")
+            self.stdout.write(self.style.MIGRATE_HEADING(
+                "=== Fase 2 — correzione affitti già a sistema ==="))
+            for r in s["corr_rows"]:
+                mese = f"{self._MESI[r['mese']]} {r['anno']}"
+                freccia = (f"{r['vecchio']} → {r['nuovo']}" if r["cambia"]
+                           else f"{r['nuovo']} (invariato)")
+                self.stdout.write(f"  {r['tenant']:<14} {mese:<9} {freccia:<18} — {r['nota']}")
+
+        self.stdout.write("")
+        self.stdout.write(self.style.MIGRATE_HEADING("=== Fase 2 — cauzioni ==="))
+        for r in s["cau_rows"]:
+            freccia = f"{r['vecchio']} → {r['nuovo']}" if r["cambia"] else f"{r['nuovo']} (invariata)"
+            self.stdout.write(f"  {r['tenant']:<10} {freccia:<20} — {r['nota']}")
+
         for w in s["warnings"]:
             self.stdout.write(self.style.WARNING(f"  ⚠ {w}"))
 
