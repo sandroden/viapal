@@ -31,7 +31,14 @@ _SOGLIA = Decimal("1.00")
 
 def _riallinea_receivable(receivable_id: int) -> None:
     """Ricalcola stato/data_pagamento/importo_pagato/incassato_da_owner del
-    Receivable a partire dalle sue allocations attuali."""
+    Receivable a partire dalle sue allocations attuali.
+
+    Logica segno-aware: per i Receivable di restituzione caparra
+    (``importo_dovuto < 0``) anche le allocations sono negative, perché legate
+    a BT in uscita (bonifico dal proprietario all'inquilino). La chiusura
+    avviene quando la somma allocata, in valore assoluto, copre il dovuto e
+    i segni concordano.
+    """
     from billing.models import Receivable
 
     try:
@@ -44,31 +51,34 @@ def _riallinea_receivable(receivable_id: int) -> None:
     )
     tot = agg["tot"] or Decimal("0")
     data_max = agg["data_max"]
+    dovuto = r.importo_dovuto
 
-    if tot <= 0:
-        r.stato = StatoPagamento.ATTESO
-        r.data_pagamento = None
-        r.importo_pagato = None
-        r.incassato_da_owner = None
-    elif tot + _SOGLIA >= r.importo_dovuto:
-        r.stato = StatoPagamento.PAGATO
-        r.data_pagamento = data_max
-        r.importo_pagato = tot
+    def _set_incassato_da_owner():
         ultima = r.allocations.order_by("-bank_transaction__data").select_related(
             "bank_transaction__owner_account"
         ).first()
         if ultima:
             r.incassato_da_owner_id = ultima.bank_transaction.owner_account.owner_id
+
+    segni_discordi = (tot > 0 and dovuto < 0) or (tot < 0 and dovuto > 0)
+    if tot == 0 or segni_discordi:
+        # Nessuna allocazione utile o allocazioni con segno opposto al dovuto:
+        # consideriamo il Receivable non coperto.
+        r.stato = StatoPagamento.ATTESO
+        r.data_pagamento = None
+        r.importo_pagato = None
+        r.incassato_da_owner = None
+    elif abs(tot) + _SOGLIA >= abs(dovuto):
+        r.stato = StatoPagamento.PAGATO
+        r.data_pagamento = data_max
+        r.importo_pagato = tot
+        _set_incassato_da_owner()
     else:
         # Pagamento parziale: lasciamo stato ATTESO ma teniamo traccia.
         r.stato = StatoPagamento.ATTESO
         r.data_pagamento = data_max
         r.importo_pagato = tot
-        ultima = r.allocations.order_by("-bank_transaction__data").select_related(
-            "bank_transaction__owner_account"
-        ).first()
-        if ultima:
-            r.incassato_da_owner_id = ultima.bank_transaction.owner_account.owner_id
+        _set_incassato_da_owner()
 
     r.save(
         update_fields=[

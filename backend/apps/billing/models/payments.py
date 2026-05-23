@@ -21,23 +21,38 @@ class StatoPagamento(models.TextChoices):
 
 
 class BankTransactionQuerySet(models.QuerySet):
-    """Helper per filtrare le BT per stato di riconciliazione."""
+    """Helper per filtrare le BT per stato di riconciliazione.
+
+    Segno-aware: una BT è riconciliata quando ``Sum(allocations.importo)``
+    copre ``importo`` con il segno corretto. Per le entrate (>0) significa
+    ``alloc >= importo``; per le uscite (<0) — bonifici di restituzione
+    caparra — significa ``alloc <= importo`` (entrambi negativi).
+    """
 
     def annotate_riconciliazione(self):
         return self.annotate(_importo_allocato=Sum("allocations__importo"))
 
     def non_riconciliate(self):
-        """BT con somma allocations < importo (entrate non completamente
-        riconciliate). Le uscite (importo ≤ 0) sono escluse: non c'è nulla
-        da riconciliare con un Receivable."""
-        return self.annotate_riconciliazione().filter(importo__gt=0).filter(
+        """BT non ancora completamente coperte da allocations.
+
+        Include entrate (importo>0) con allocato<importo e uscite (importo<0)
+        con allocato>importo (cioè: meno negativo del dovuto). Esclude le BT
+        con importo nullo: non c'è nulla da riconciliare.
+        """
+        qs = self.annotate_riconciliazione().exclude(importo=0)
+        return qs.filter(
             models.Q(_importo_allocato__isnull=True)
-            | models.Q(_importo_allocato__lt=models.F("importo"))
+            | models.Q(importo__gt=0, _importo_allocato__lt=models.F("importo"))
+            | models.Q(importo__lt=0, _importo_allocato__gt=models.F("importo"))
         )
 
     def riconciliate(self):
-        return self.annotate_riconciliazione().filter(
-            _importo_allocato=models.F("importo")
+        """BT con allocazione che copre l'importo (segno-aware)."""
+        qs = self.annotate_riconciliazione()
+        return qs.filter(
+            models.Q(importo__gt=0, _importo_allocato__gte=models.F("importo"))
+            | models.Q(importo__lt=0, _importo_allocato__lte=models.F("importo"))
+            | models.Q(importo=0)
         )
 
 
@@ -92,21 +107,26 @@ class BankTransaction(TimestampedModel):
     @property
     def is_riconciliato(self) -> bool:
         """``True`` se l'importo della BT è completamente coperto dalle sue
-        allocations. Una BT non riconciliata è candidata al matching."""
-        if self.importo <= 0:
-            return True  # uscite: non riconciliabili con Receivable
-        return self.importo_allocato >= self.importo
+        allocations (segno-aware). BT con ``importo == 0`` sono trattate come
+        riconciliate (nulla da abbinare)."""
+        if self.importo == 0:
+            return True
+        if self.importo > 0:
+            return self.importo_allocato >= self.importo
+        # Uscita: allocato e importo sono entrambi negativi (o allocato è
+        # ancora 0 se non riconciliata).
+        return self.importo_allocato <= self.importo
 
     @property
     def residuo(self) -> Decimal:
         """Importo del bonifico non ancora attribuito a un Receivable.
 
-        Positivo = soldi del bonifico non legati a nessun addebito (es.
-        sopra-pagamento, spese non modellate). Zero = riconciliato pieno.
-        Negativo non dovrebbe mai succedere (allocato > importo): se accade
-        c'è un'incoerenza nei dati.
+        Conserva il segno della BT: per entrate è positivo (soldi non
+        ancora abbinati a un addebito), per uscite è negativo (uscita non
+        ancora abbinata a un Receivable di restituzione). Zero = riconciliato
+        pieno.
         """
-        if self.importo <= 0:
+        if self.importo == 0:
             return Decimal("0")
         return self.importo - self.importo_allocato
 
@@ -114,16 +134,16 @@ class BankTransaction(TimestampedModel):
     def stato_riconciliazione(self) -> str:
         """Tre livelli: ``"pieno"``, ``"parziale"``, ``"vuoto"``.
 
-        - **pieno**: tutto l'importo della BT è coperto da allocations.
-        - **parziale**: almeno un'allocation, ma con residuo > 0
-          (sopra-pagamento o spese non modellate).
+        - **pieno**: tutto l'importo della BT è coperto da allocations
+          (entrate o uscite, segno-aware).
+        - **parziale**: almeno un'allocation, ma con residuo non nullo.
         - **vuoto**: nessuna allocation.
         """
-        if self.importo <= 0:
+        if self.importo == 0:
             return "pieno"
         allocato = self.importo_allocato
-        if allocato >= self.importo:
-            return "pieno"
-        if allocato > 0:
-            return "parziale"
-        return "vuoto"
+        if allocato == 0:
+            return "vuoto"
+        if self.importo > 0:
+            return "pieno" if allocato >= self.importo else "parziale"
+        return "pieno" if allocato <= self.importo else "parziale"

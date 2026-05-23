@@ -475,11 +475,20 @@ class ReceivableViewSet(ReadOnlyModelViewSet):
             qs = qs.filter(stato__in=[s.strip() for s in stato.split(",") if s.strip()])
 
         riconciliato = params.get("riconciliato", "all")
+        # Segno-aware: per Receivable positivi "riconciliato" significa
+        # alloc>=importo_dovuto; per Receivable negativi (restituzione
+        # caparra) significa alloc<=importo_dovuto (entrambi negativi).
         if riconciliato == "true":
-            qs = qs.filter(_alloc__gte=F("importo_dovuto"))
+            qs = qs.filter(
+                Q(importo_dovuto__gt=0, _alloc__gte=F("importo_dovuto"))
+                | Q(importo_dovuto__lt=0, _alloc__lte=F("importo_dovuto"))
+                | Q(importo_dovuto=0)
+            )
         elif riconciliato == "false":
             qs = qs.filter(
-                Q(_alloc__isnull=True) | Q(_alloc__lt=F("importo_dovuto"))
+                Q(_alloc__isnull=True)
+                | Q(importo_dovuto__gt=0, _alloc__lt=F("importo_dovuto"))
+                | Q(importo_dovuto__lt=0, _alloc__gt=F("importo_dovuto"))
             )
 
         data_da = params.get("data_da")
@@ -558,9 +567,9 @@ class ReconciliationBulkView(APIView):
                     {"detail": f"BT {bt_id} non in replace_for_transactions."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            if importo <= 0:
+            if importo == 0:
                 return Response(
-                    {"detail": "Gli importi delle allocations devono essere > 0."},
+                    {"detail": "Gli importi delle allocations devono essere ≠ 0."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             normalizzati.append((bt_id, rec_id, importo))
@@ -574,9 +583,37 @@ class ReconciliationBulkView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
+        # Validazione segno-aware: allocation, BT e Receivable devono avere
+        # lo stesso segno. Solo combinazioni omogenee (tutto positivo = incasso,
+        # tutto negativo = restituzione caparra) sono ammesse.
+        receivables_map = {
+            r.pk: r for r in Receivable.objects.filter(
+                pk__in={rec_id for _, rec_id, _ in normalizzati}
+            )
+        }
+        for bt_id, rec_id, importo in normalizzati:
+            bt = bts[bt_id]
+            rec = receivables_map.get(rec_id)
+            if rec is None:
+                continue  # gestito sotto come "Receivable inesistente"
+            segni = {1 if x > 0 else -1 for x in (importo, bt.importo, rec.importo_dovuto) if x != 0}
+            if len(segni) > 1:
+                return Response(
+                    {
+                        "detail": (
+                            f"Segni discordi su item (BT {bt_id} importo {bt.importo}, "
+                            f"Receivable {rec_id} dovuto {rec.importo_dovuto}, alloc {importo})."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         for bt_id, somma in somme_per_bt.items():
             limite = bts[bt_id].importo
-            if somma > limite + self._TOLLERANZA:
+            # Per BT in uscita (limite<0) la somma allocata "supera" il limite
+            # quando è più negativa (es. somma=-1000 vs limite=-900). Confronto
+            # in valore assoluto con tolleranza.
+            if abs(somma) > abs(limite) + self._TOLLERANZA:
                 return Response(
                     {
                         "detail": (
@@ -588,10 +625,7 @@ class ReconciliationBulkView(APIView):
 
         receivable_ids = {rec_id for _, rec_id, _ in normalizzati}
         if receivable_ids:
-            esistenti = set(
-                Receivable.objects.filter(pk__in=receivable_ids).values_list("pk", flat=True)
-            )
-            mancanti = receivable_ids - esistenti
+            mancanti = receivable_ids - set(receivables_map.keys())
             if mancanti:
                 return Response(
                     {"detail": f"Receivable inesistenti: {sorted(mancanti)}."},
@@ -677,6 +711,15 @@ class RegistraPagamentoReceivableView(APIView):
         if receivable.stato == StatoPagamento.PAGATO:
             return Response(
                 {"detail": "Receivable già pagato."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # Questo endpoint registra solo pagamenti in entrata (BT positiva).
+        # Le restituzioni caparra (Receivable < 0) vanno riconciliate dalla
+        # pagina di riconciliazione con la BT di uscita.
+        if receivable.importo_dovuto < 0:
+            return Response(
+                {"detail": "Receivable a importo negativo: riconcilia dalla pagina dedicata."},
                 status=status.HTTP_409_CONFLICT,
             )
 

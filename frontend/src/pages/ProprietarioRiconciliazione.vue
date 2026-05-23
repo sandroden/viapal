@@ -222,7 +222,7 @@
                 <span v-if="bt.is_inter_owner" class="vp-p-rec__chip vp-p-rec__chip--inter-owner">
                   inter-owner
                 </span>
-                <span v-if="Number(bt.residuo) > 0" class="vp-mono">
+                <span v-if="Number(bt.residuo) !== 0" class="vp-mono">
                   residuo: {{ formattaEuro(bt.residuo) }}
                 </span>
                 <q-btn
@@ -538,7 +538,9 @@
             <td
               class="text-right vp-mono text-bold"
               :class="{
-                'text-negative': r.residuo < -0.01,
+                'text-negative':
+                  (r.importo >= 0 && r.residuo < -0.01)
+                  || (r.importo < 0 && r.residuo > 0.01),
                 'text-positive': Math.abs(r.residuo) <= 0.01,
               }"
             >
@@ -867,7 +869,14 @@ const receivablesVisibili = computed<ReceivableFE[]>(() => {
 });
 
 function receivableCompleto(r: ReceivableFE): boolean {
-  return Number(r.importo_allocato) + 0.01 >= Number(r.importo_dovuto);
+  // Segno-aware: per Receivable positivi serve allocato ≥ dovuto; per
+  // negativi (restituzione caparra) serve allocato ≤ dovuto (entrambi
+  // negativi). Confronto in valore assoluto con tolleranza.
+  const dovuto = Number(r.importo_dovuto);
+  const allocato = Number(r.importo_allocato) || 0;
+  if (dovuto === 0) return true;
+  if (Math.sign(dovuto) !== Math.sign(allocato) && allocato !== 0) return false;
+  return Math.abs(allocato) + 0.01 >= Math.abs(dovuto);
 }
 
 const btFuoriFiltro = computed(() =>
@@ -912,9 +921,21 @@ const salvaAbilitato = computed(() => {
   // Caso "scollega": nessuna allocazione, ma BT esplicitamente selezionate →
   // salvataggio cancella le allocations esistenti sul backend.
   if (allocazioni.value.length === 0) return btEsplicite.size > 0;
-  // Tutte le BT selezionate non devono essere sovra-allocate.
-  return riepilogoBt.value.every((r) => r.residuo >= -0.01)
-    && allocazioni.value.every((a) => a.importo > 0);
+  // Tutte le BT selezionate non devono essere sovra-allocate. residuo è
+  // calcolato come `bt.importo - somma(alloc.importo)`: per BT positive
+  // residuo deve restare >= -0.01, per BT negative deve restare <= +0.01
+  // (entrambi: |somma(alloc)| <= |bt.importo|).
+  const tutteBtOk = riepilogoBt.value.every((r) => {
+    if (r.importo >= 0) return r.residuo >= -0.01;
+    return r.residuo <= 0.01;
+  });
+  // Concordia di segno BT/allocation.
+  const tutteAllocOk = allocazioni.value.every((a) => {
+    if (a.bt_importo > 0) return a.importo > 0;
+    if (a.bt_importo < 0) return a.importo < 0;
+    return a.importo !== 0;
+  });
+  return tutteBtOk && tutteAllocOk;
 });
 
 function caricaAllocazioniEsistenti(bt: BankTransactionFE) {
@@ -1037,22 +1058,42 @@ function toggleReceivable(r: ReceivableFE) {
 }
 
 function aggiungiAllocazione(r: ReceivableFE) {
-  // Sceglie la BT selezionata col residuo maggiore.
+  // Segno-aware: per Receivable positivi cerchiamo BT positive con residuo
+  // positivo; per Receivable negativi (restituzione caparra) BT negative
+  // con residuo negativo. Scegliamo quella col residuo di |valore| maggiore.
+  const dovuto = Number(r.importo_dovuto);
+  const segnoDovuto = Math.sign(dovuto);
   const candidate = riepilogoBt.value
-    .filter((b) => b.residuo > 0.005)
-    .sort((a, b) => b.residuo - a.residuo);
+    .filter((b) => {
+      if (segnoDovuto > 0) return b.residuo > 0.005;
+      if (segnoDovuto < 0) return b.residuo < -0.005;
+      return false;
+    })
+    .sort((a, b) => Math.abs(b.residuo) - Math.abs(a.residuo));
   const target = candidate[0];
   if (!target) {
     Notify.create({
       type: 'warning',
-      message: 'Le BT selezionate sono già completamente allocate.',
+      message:
+        segnoDovuto < 0
+          ? 'Nessuna BT in uscita compatibile selezionata.'
+          : 'Le BT selezionate sono già completamente allocate.',
     });
     return;
   }
-  const dovuto = Number(r.importo_dovuto);
   const allocato = Number(r.importo_allocato);
-  const residuoRec = Math.max(dovuto - allocato, 0);
-  const importo = Math.min(target.residuo, residuoRec || target.residuo);
+  // Residuo dell'addebito col segno corretto (≥0 per dovuto>0, ≤0 per dovuto<0).
+  const residuoRecRaw = dovuto - allocato;
+  const residuoRec =
+    segnoDovuto >= 0
+      ? Math.max(residuoRecRaw, 0)
+      : Math.min(residuoRecRaw, 0);
+  // Quota da allocare: la minore in valore assoluto tra residuo BT e residuo Rec.
+  const quotaAbs = Math.min(
+    Math.abs(target.residuo),
+    residuoRec === 0 ? Math.abs(target.residuo) : Math.abs(residuoRec),
+  );
+  const importo = segnoDovuto < 0 ? -quotaAbs : quotaAbs;
   const bt = store.bts.find((b) => b.id === target.bt_id)!;
   allocazioni.value.push({
     bt_id: target.bt_id,
@@ -1150,10 +1191,16 @@ function iconaCausalePer(c: string): string {
 }
 
 function coperturaClass(r: ReceivableFE): string {
+  // Segno-aware: per dovuto<0 (restituzione caparra) allocato deve essere
+  // <= dovuto (cioè più negativo o uguale).
   const allocato = Number(r.importo_allocato) || 0;
   const dovuto = Number(r.importo_dovuto);
-  if (allocato + 0.01 >= dovuto) return 'vp-p-rec__cop--pieno';
-  if (allocato > 0.005) return 'vp-p-rec__cop--parziale';
+  if (dovuto === 0) return 'vp-p-rec__cop--pieno';
+  const stessoSegno = Math.sign(allocato) === Math.sign(dovuto) || allocato === 0;
+  if (stessoSegno && Math.abs(allocato) + 0.01 >= Math.abs(dovuto)) {
+    return 'vp-p-rec__cop--pieno';
+  }
+  if (Math.abs(allocato) > 0.005) return 'vp-p-rec__cop--parziale';
   return 'vp-p-rec__cop--vuoto';
 }
 

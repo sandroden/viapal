@@ -1257,6 +1257,107 @@ class TestReconciliationBulk:
         )
         assert resp.status_code == 400
 
+    def test_restituzione_caparra(self, client_prop, owner_account, assignment_1):
+        """Receivable DEPOSITO negativo + BT uscita negativa + allocation
+        negativa → stato PAGATO. Caso restituzione caparra."""
+        from billing.models import BankTransaction
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 6, 30),
+            descrizione="Restituzione caparra inquilino X",
+            importo=Decimal("-900.00"),
+            owner_account=owner_account,
+        )
+        receivable_dep = Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.DEPOSITO,
+            descrizione="Deposito (restituzione)",
+            competenza_da=datetime.date(2026, 6, 30),
+            scadenza=datetime.date(2026, 6, 30),
+            importo_dovuto=Decimal("-900.00"),
+            stato=StatoPagamento.ATTESO,
+        )
+        resp = client_prop.post(
+            self.URL,
+            {
+                "replace_for_transactions": [bt.id],
+                "items": [
+                    {
+                        "bank_transaction": bt.id,
+                        "receivable": receivable_dep.id,
+                        "importo": "-900.00",
+                    },
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        receivable_dep.refresh_from_db()
+        assert receivable_dep.stato == StatoPagamento.PAGATO
+        assert receivable_dep.importo_pagato == Decimal("-900.00")
+        assert receivable_dep.data_pagamento == datetime.date(2026, 6, 30)
+
+    def test_segni_discordi_400(self, client_prop, bank_tx_400, assignment_1):
+        """BT in entrata (+400) non può saldare un Receivable negativo."""
+        receivable_neg = Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.DEPOSITO,
+            descrizione="Deposito (restituzione)",
+            competenza_da=datetime.date(2026, 6, 30),
+            scadenza=datetime.date(2026, 6, 30),
+            importo_dovuto=Decimal("-400.00"),
+            stato=StatoPagamento.ATTESO,
+        )
+        resp = client_prop.post(
+            self.URL,
+            {
+                "replace_for_transactions": [bank_tx_400.id],
+                "items": [
+                    {
+                        "bank_transaction": bank_tx_400.id,
+                        "receivable": receivable_neg.id,
+                        "importo": "400.00",
+                    },
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert b"Segni discordi" in resp.content
+
+    def test_restituzione_supera_BT(self, client_prop, owner_account, assignment_1):
+        """Allocation -1000 su BT -900 deve fallire: |alloc|>|BT|."""
+        from billing.models import BankTransaction
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 6, 30),
+            descrizione="Restituzione",
+            importo=Decimal("-900.00"),
+            owner_account=owner_account,
+        )
+        receivable_dep = Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.DEPOSITO,
+            descrizione="Deposito (restituzione)",
+            competenza_da=datetime.date(2026, 6, 30),
+            scadenza=datetime.date(2026, 6, 30),
+            importo_dovuto=Decimal("-1000.00"),
+            stato=StatoPagamento.ATTESO,
+        )
+        resp = client_prop.post(
+            self.URL,
+            {
+                "replace_for_transactions": [bt.id],
+                "items": [
+                    {
+                        "bank_transaction": bt.id,
+                        "receivable": receivable_dep.id,
+                        "importo": "-1000.00",
+                    },
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+
 
 class TestBankTransactionFiltri:
     def test_filtro_tenant_match_descrizione(
