@@ -525,7 +525,7 @@ class BankTransactionAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, Jumb
 class ExpenseAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 900
     list_display = (
-        "data", "category", "supplier", "importo",
+        "data", "category", "descrizione", "importo",
         "anticipata_da_owner", "ripartibile_su_inquilini",
         "bolletta_pdf_link",
         "get_modal_edit_icon", "get_modal_delete_icon",
