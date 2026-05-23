@@ -148,7 +148,7 @@ AFFITTO_FASE3 = [
 ]
 
 # Depositi versati (positivi) ancora `atteso`. Le restituzioni cauzione
-# (Receivable negativi) e le utenze restano da riconciliare a mano: il foglio
+# (Receivable negativi) restano da riconciliare a mano: il foglio
 # le registra in modo aggregato e non mappa 1:1 sui Receivable pro-rata.
 #   (tenant_key, tranches, fonte, nota)
 DEPOSITO_FASE3 = [
@@ -157,6 +157,31 @@ DEPOSITO_FASE3 = [
     ("Eugenia", [("Bruna", "2023-08-11", "530")], "riga 138", ""),
     ("Marianna", [("Bruna", "2023-11-06", "600")], "righe 187+190",
      "acconto 400 + saldo 200"),
+]
+
+# Utenze 2023 di Maria Severa pagate in contanti (a Sandro o Bruna), tracciate
+# solo sul libro mano. I Receivable causale=`utenze` esistono e sono `atteso`
+# perché non esiste un movimento bancario reale: qui sintetizziamo la BT dal
+# libro mano e la allochiamo (stesso meccanismo di AFFITTO_FASE3).
+# Gli importi del foglio non sempre combaciano col dovuto pro-rata calcolato in
+# app — gli scostamenti vengono segnalati ma non corretti (vince il foglio).
+#   (tenant_key, anno, mese_competenza_da, tranches, fonte, nota)
+UTENZE_FASE3 = [
+    ("Severa", 2023, 2,
+     [("Alessandro", "2023-01-28", "90")], "riga 55",
+     "Utenze Maria Severa — incasso cash Sandro; 90€ del foglio > 51,24€ pro-rata"),
+    ("Severa", 2023, 3,
+     [("Bruna", "2023-06-06", "79")], "riga 104",
+     "rimborso bollette severa — manca ~26,53€ rispetto al dovuto pro-rata"),
+    ("Severa", 2023, 5,
+     [("Bruna", "2023-09-05", "85.53")], "riga 158",
+     "bollette Severa + tari — manca ~20€ rispetto al dovuto pro-rata"),
+    ("Severa", 2023, 7,
+     [("Bruna", "2023-10-03", "93")], "riga 175",
+     "luce, gas e Tari Severa — importo combacia"),
+    ("Severa", 2023, 9,
+     [("Bruna", "2023-12-05", "73.81")], "riga 203",
+     "utenze Severa — importo combacia"),
 ]
 
 # Scarti di 1€ tra le Expense rate condominio già a sistema e il libro mano
@@ -544,6 +569,7 @@ class Command(BaseCommand):
 
         aff_rows: list[dict] = []
         dep_rows: list[dict] = []
+        ute_rows: list[dict] = []
         corr_rows: list[dict] = []
         warnings: list[str] = []
 
@@ -588,6 +614,25 @@ class Command(BaseCommand):
             row.update(tenant=tenant_key)
             dep_rows.append(row)
 
+        # --- utenze 2023 pagate cash (libro mano) ---
+        for tenant_key, anno, mese, tranches, fonte, nota in UTENZE_FASE3:
+            rec = Receivable.objects.filter(
+                causale="utenze",
+                assignment__tenant__nominativo__icontains=tenant_key,
+                competenza_da=date(anno, mese, 1),
+            ).first()
+            if rec is None:
+                warnings.append(
+                    f"utenze {tenant_key} {anno}-{mese:02}: Receivable non trovato"
+                )
+                continue
+            key = f"utenze:{tenant_key}:{anno}-{mese:02}"
+            row = self._riconcilia_da_foglio(
+                rec, tranches, fonte, nota, "Utenze", key, dry_run
+            )
+            row.update(tenant=tenant_key, anno=anno, mese=mese)
+            ute_rows.append(row)
+
         # --- correzioni rate condominio (+1€, vince il foglio) ---
         from billing.models import Expense
 
@@ -625,6 +670,7 @@ class Command(BaseCommand):
         return {
             "aff_rows": aff_rows,
             "dep_rows": dep_rows,
+            "ute_rows": ute_rows,
             "corr_rows": corr_rows,
             "warnings": warnings,
         }
@@ -1150,6 +1196,33 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"  {r['tenant']:<10} dovuto {r['dovuto']:>8}€  foglio {imp:<9} "
                 f"[{r['stato']}]"
+            )
+
+        self.stdout.write("")
+        self.stdout.write(self.style.MIGRATE_HEADING(
+            "=== Fase 3 — utenze cash dal libro mano «conti 2023» ==="))
+        tenant_corrente = None
+        n_pag = n_scost = n_skip = 0
+        for r in s.get("ute_rows", []):
+            if r["tenant"] != tenant_corrente:
+                tenant_corrente = r["tenant"]
+                self.stdout.write(f"  {tenant_corrente}:")
+            mese = f"{self._MESI[r['mese']]} {r['anno']}"
+            imp = f"{r['importo_bt']}€" if r["importo_bt"] is not None else "—"
+            self.stdout.write(
+                f"      {mese:<9} dovuto {r['dovuto']:>8}€  foglio {imp:<9} "
+                f"[{r['stato']}]"
+            )
+            if "pagato" in r["stato"]:
+                n_pag += 1
+            elif "salto" in r["stato"]:
+                n_skip += 1
+            else:
+                n_scost += 1
+        if s.get("ute_rows"):
+            self.stdout.write(
+                f"  → utenze: {n_pag} riconciliate, {n_scost} da verificare, "
+                f"{n_skip} saltate (già a posto)"
             )
 
         self.stdout.write("")
