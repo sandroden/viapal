@@ -1759,3 +1759,56 @@ class TestExpenseCategoryEndpoint:
     def test_negato_per_inquilino(self, client_inq_1, categorie):
         resp = client_inq_1.get(self.URL)
         assert resp.status_code == 403
+
+
+class TestTenantListSaldi:
+    """``/api/v1/tenants/`` espone ``saldo`` (anno) e ``saldo_totale`` agli
+    proprietari. Devono coincidere con ``saldi.anno`` / ``saldi.totale`` del
+    dettaglio inquilino (sbilancio reale: imputazioni + resti dei bonifici)."""
+
+    def test_saldo_lista_include_resto_bonifico(
+        self, client_prop, tenant_1, assignment_1, rent_payment_1, owner_account,
+    ):
+        from billing.models import BankTransaction, BankTransactionAllocation
+
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 5, 10),
+            descrizione="Bonifico con resto",
+            importo=Decimal("450.00"),
+            owner_account=owner_account,
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=rent_payment_1,
+            importo=Decimal("400.00"),
+        )
+
+        resp = client_prop.get("/api/v1/tenants/?anno=2026")
+        assert resp.status_code == 200
+        riga = next(r for r in resp.json() if r["id"] == tenant_1.id)
+        # Saldo-imputazioni puro = 0 (400 imputati su 400). I 50 di resto
+        # devono entrare nello sbilancio reale.
+        assert riga["saldo"] == 50.0
+        assert riga["saldo_totale"] == 50.0
+
+    def test_saldo_totale_senza_anno_e_totale_complessivo(
+        self, client_prop, tenant_1, assignment_1, rent_payment_1, owner_account,
+    ):
+        from billing.models import BankTransaction, BankTransactionAllocation
+
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 5, 10),
+            descrizione="Bonifico con resto",
+            importo=Decimal("450.00"),
+            owner_account=owner_account,
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=rent_payment_1,
+            importo=Decimal("400.00"),
+        )
+
+        resp = client_prop.get("/api/v1/tenants/?solo_attivi=0")
+        assert resp.status_code == 200
+        riga = next(r for r in resp.json() if r["id"] == tenant_1.id)
+        # Senza filtro anno la colonna saldo_totale è il totale complessivo.
+        assert riga["saldo_totale"] == 50.0
+        assert riga["saldo"] is None

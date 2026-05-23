@@ -92,44 +92,60 @@ class TenantProfileViewSet(ReadOnlyModelViewSet):
         if not is_proprietario:
             return ctx
 
+        from billing.dashboard_views import _resti_per_anno, _sbilancio_progressivo
         from billing.models import Receivable
 
-        tenant_ids = list(self.filter_queryset(self.get_queryset()).values_list("id", flat=True))
-        if not tenant_ids:
+        anno_filtro = getattr(self, "_anno_filtro", None)
+        tenants = list(self.filter_queryset(self.get_queryset()))
+        if not tenants:
             ctx["saldi_totali"] = {}
-            if getattr(self, "_anno_filtro", None) is not None:
+            if anno_filtro is not None:
                 ctx["saldi_anno"] = {}
             return ctx
 
+        tenant_ids = [t.id for t in tenants]
         base_qs = (
             Receivable.objects
             .filter(assignment__tenant_id__in=tenant_ids)
             .exclude(causale=Receivable.Causale.DEPOSITO)
         )
 
-        agg_totale = base_qs.values("assignment__tenant_id").annotate(
-            dovuto=Coalesce(Sum("importo_dovuto"), Decimal("0")),
-            pagato=Coalesce(Sum("importo_pagato"), Decimal("0")),
-        )
-        ctx["saldi_totali"] = {
-            row["assignment__tenant_id"]: float(row["pagato"] - row["dovuto"])
-            for row in agg_totale
-        }
+        # Dovuto/pagato per (tenant, anno di competenza) in un colpo solo.
+        dovuto_pagato: dict[int, dict[int, list]] = {}
+        for row in base_qs.values(
+            "assignment__tenant_id", "competenza_da__year"
+        ).annotate(
+            d=Coalesce(Sum("importo_dovuto"), Decimal("0")),
+            p=Coalesce(Sum("importo_pagato"), Decimal("0")),
+        ):
+            t = row["assignment__tenant_id"]
+            y = row["competenza_da__year"] or 0
+            dovuto_pagato.setdefault(t, {})[y] = [row["d"], row["p"]]
 
-        anno = getattr(self, "_anno_filtro", None)
-        if anno is not None:
-            agg_anno = (
-                base_qs.filter(competenza_da__year=anno)
-                .values("assignment__tenant_id")
-                .annotate(
-                    dovuto=Coalesce(Sum("importo_dovuto"), Decimal("0")),
-                    pagato=Coalesce(Sum("importo_pagato"), Decimal("0")),
-                )
+        # Sbilancio reale (= pagato − dovuto + resti dei bonifici) per ogni
+        # inquilino. Coerente con TenantSituazioneView: ``saldo_totale`` è il
+        # progressivo cumulato fino all'anno selezionato (non conosce il
+        # futuro); senza filtro anno è il totale complessivo.
+        saldi_totali: dict[int, float] = {}
+        saldi_anno: dict[int, float] = {}
+        for t in tenants:
+            per_anno, totale = _sbilancio_progressivo(
+                dovuto_pagato.get(t.id, {}), _resti_per_anno(t)
             )
-            ctx["saldi_anno"] = {
-                row["assignment__tenant_id"]: float(row["pagato"] - row["dovuto"])
-                for row in agg_anno
-            }
+            if anno_filtro is not None:
+                prog = 0.0
+                for x in per_anno:
+                    if x["anno"] <= anno_filtro:
+                        prog = x["saldo_progressivo"]
+                saldi_totali[t.id] = prog
+                ent = next((x for x in per_anno if x["anno"] == anno_filtro), None)
+                saldi_anno[t.id] = ent["saldo_anno"] if ent else 0.0
+            else:
+                saldi_totali[t.id] = totale["sbilancio_reale"]
+
+        ctx["saldi_totali"] = saldi_totali
+        if anno_filtro is not None:
+            ctx["saldi_anno"] = saldi_anno
         return ctx
 
 
