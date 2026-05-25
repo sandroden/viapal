@@ -1602,6 +1602,89 @@ class TestRegistraPagamentoReceivable:
         extra_charge_1.refresh_from_db()
         assert extra_charge_1.stato == StatoPagamento.PAGATO
 
+    # Restituzione deposito: BT in uscita (importo negativo) → allocation
+    # negativa sul Receivable a importo_dovuto negativo.
+    @pytest.fixture
+    def receivable_deposito_neg(self, db, assignment_1):
+        return Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.DEPOSITO,
+            descrizione="Deposito (restituzione)",
+            competenza_da=datetime.date(2026, 5, 15),
+            scadenza=datetime.date(2026, 5, 15),
+            importo_dovuto=Decimal("-1060.00"),
+            stato=StatoPagamento.ATTESO,
+        )
+
+    def test_restituzione_deposito_pagamento_parziale(
+        self, client_prop, receivable_deposito_neg, owner_account
+    ):
+        """|importo| < |residuo|: alloca tutto l'importo, Receivable resta ATTESO."""
+        resp = client_prop.post(
+            self._url(receivable_deposito_neg.id),
+            {
+                "data": "2026-05-25",
+                "importo": "-986.04",
+                "owner_account": owner_account.id,
+                "descrizione": "Restituzione deposito Eshani",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        receivable_deposito_neg.refresh_from_db()
+        assert receivable_deposito_neg.importo_pagato == Decimal("-986.04")
+        assert receivable_deposito_neg.stato == StatoPagamento.ATTESO
+        body = resp.json()
+        assert body["bank_transaction"]["importo"] == "-986.04"
+
+    def test_restituzione_deposito_saldo_pieno(
+        self, client_prop, receivable_deposito_neg, owner_account
+    ):
+        resp = client_prop.post(
+            self._url(receivable_deposito_neg.id),
+            {
+                "data": "2026-05-25",
+                "importo": "-1060.00",
+                "owner_account": owner_account.id,
+                "descrizione": "Restituzione deposito",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        receivable_deposito_neg.refresh_from_db()
+        assert receivable_deposito_neg.stato == StatoPagamento.PAGATO
+        assert receivable_deposito_neg.importo_pagato == Decimal("-1060.00")
+
+    def test_segno_importo_positivo_su_deposito_400(
+        self, client_prop, receivable_deposito_neg, owner_account
+    ):
+        """Receivable a dovuto negativo: importo positivo è incoerente."""
+        resp = client_prop.post(
+            self._url(receivable_deposito_neg.id),
+            {
+                "data": "2026-05-25",
+                "importo": "100.00",
+                "owner_account": owner_account.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_segno_importo_negativo_su_affitto_400(
+        self, client_prop, rent_payment_1, owner_account
+    ):
+        """Receivable a dovuto positivo: importo negativo è incoerente."""
+        resp = client_prop.post(
+            self._url(rent_payment_1.id),
+            {
+                "data": "2026-05-25",
+                "importo": "-100.00",
+                "owner_account": owner_account.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+
 
 # ---------------------------------------------------------------------------
 # Test ExpenseSerializer: creazione contestuale BankTransaction in uscita

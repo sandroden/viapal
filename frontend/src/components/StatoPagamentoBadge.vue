@@ -36,8 +36,16 @@ const props = withDefaults(
 
 const { formattaEuro } = useFormatoEuro();
 
-const dovuto = computed(() => Number(props.importoDovuto) || 0);
-const pagato = computed(() => Math.max(0, Number(props.importoPagato) || 0));
+// Lavoriamo in modulo: i Receivable di restituzione deposito hanno
+// dovuto e pagato negativi, ma la lettura "pagato X di Y" è la stessa.
+const dovuto = computed(() => Math.abs(Number(props.importoDovuto) || 0));
+const pagato = computed(() => {
+  const p = Number(props.importoPagato) || 0;
+  const d = Number(props.importoDovuto) || 0;
+  // Allocazioni con segno opposto al dovuto non contano come pagato.
+  if (d < 0) return p < 0 ? -p : 0;
+  return p > 0 ? p : 0;
+});
 const ammanco = computed(() => dovuto.value - pagato.value);
 
 const perc = computed(() => {
@@ -93,17 +101,22 @@ const etichetta = computed(() => {
   return props.stato.replace(/_/g, ' ');
 });
 
+const restituzione = computed(() => Number(props.importoDovuto) < 0);
+
 const descrizione = computed(() => {
+  const verbo = restituzione.value ? 'Restituito' : 'Pagato';
   if (categoria.value === 'parziale') {
-    return `Pagato ${formattaEuro(pagato.value)} di ${formattaEuro(dovuto.value)} · manca ${formattaEuro(ammanco.value)}`;
+    return `${verbo} ${formattaEuro(pagato.value)} di ${formattaEuro(dovuto.value)} · manca ${formattaEuro(ammanco.value)}`;
   }
   if (categoria.value === 'pagato') {
     if (restoTrascurabile.value) {
-      return `Considerato pagato — resto di ${formattaEuro(ammanco.value)} non versato`;
+      return `Considerato ${verbo.toLowerCase()} — resto di ${formattaEuro(ammanco.value)} non versato`;
     }
-    return `Pagato ${formattaEuro(pagato.value)}`;
+    return `${verbo} ${formattaEuro(pagato.value)}`;
   }
-  const base = `Da incassare ${formattaEuro(dovuto.value)}`;
+  const base = restituzione.value
+    ? `Da restituire ${formattaEuro(dovuto.value)}`
+    : `Da incassare ${formattaEuro(dovuto.value)}`;
   const g = props.giorniRitardo;
   if (g > 0) return `${base} · ${g} g di ritardo`;
   if (g < 0) return `${base} · ${Math.abs(g)} g alla scadenza`;

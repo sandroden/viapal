@@ -512,11 +512,12 @@ class ReceivableForReconcileSerializer(serializers.ModelSerializer):
 class RegistraPagamentoInputSerializer(serializers.Serializer):
     """Input per POST /api/v1/receivables/{id}/registra-pagamento/.
 
-    Riceve i dati di un bonifico in entrata appena ricevuto dal proprietario e
-    li trasforma in BankTransaction + BankTransactionAllocation legate al
-    Receivable corrente. Validazioni dell'`owner_account` (deve essere attivo)
-    e dell'`importo` (positivo) sono qui; il fatto che il Receivable non sia
-    già PAGATO è verificato dalla view perché dipende dall'istanza caricata.
+    Riceve i dati di un bonifico (in entrata o in uscita) e li trasforma in
+    BankTransaction + BankTransactionAllocation legate al Receivable corrente.
+    Per i Receivable a importo positivo (affitti, utenze, extra) l'importo
+    deve essere positivo; per quelli a importo negativo (restituzione deposito)
+    l'importo deve essere negativo. La coerenza dei segni è verificata dalla
+    view perché dipende dall'istanza caricata.
     """
 
     data = serializers.DateField()
@@ -526,8 +527,8 @@ class RegistraPagamentoInputSerializer(serializers.Serializer):
     note = serializers.CharField(allow_blank=True, required=False, default="")
 
     def validate_importo(self, value):
-        if value <= 0:
-            raise serializers.ValidationError("L'importo deve essere positivo.")
+        if value == 0:
+            raise serializers.ValidationError("L'importo non può essere zero.")
         return value
 
     def validate_owner_account(self, value):

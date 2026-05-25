@@ -714,15 +714,6 @@ class RegistraPagamentoReceivableView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        # Questo endpoint registra solo pagamenti in entrata (BT positiva).
-        # Le restituzioni caparra (Receivable < 0) vanno riconciliate dalla
-        # pagina di riconciliazione con la BT di uscita.
-        if receivable.importo_dovuto < 0:
-            return Response(
-                {"detail": "Receivable a importo negativo: riconcilia dalla pagina dedicata."},
-                status=status.HTTP_409_CONFLICT,
-            )
-
         serializer = RegistraPagamentoInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         v = serializer.validated_data
@@ -731,13 +722,23 @@ class RegistraPagamentoReceivableView(APIView):
             receivable.allocations.aggregate(tot=Sum("importo"))["tot"] or Decimal("0")
         )
         residuo = receivable.importo_dovuto - allocato_attuale
-        if residuo <= 0:
+        # Invariante: BT/allocation/Receivable hanno tutti lo stesso segno.
+        # Receivable > 0 → residuo > 0, importo > 0 (entrata).
+        # Receivable < 0 (restituzione deposito) → residuo < 0, importo < 0 (uscita).
+        if residuo == 0:
             return Response(
                 {"detail": "Receivable già completamente allocato."},
                 status=status.HTTP_409_CONFLICT,
             )
+        if (residuo > 0) != (v["importo"] > 0):
+            atteso = "positivo" if residuo > 0 else "negativo"
+            return Response(
+                {"detail": f"L'importo deve essere {atteso} (coerente col dovuto)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        quota = min(v["importo"], residuo)
+        # |quota| = min(|importo|, |residuo|), preservando il segno del residuo.
+        quota = v["importo"] if abs(v["importo"]) <= abs(residuo) else residuo
 
         with transaction.atomic():
             bt = BankTransaction.objects.create(

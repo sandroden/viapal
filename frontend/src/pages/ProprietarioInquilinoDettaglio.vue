@@ -284,7 +284,7 @@
             <template #body-cell-importo_pagato="props">
               <q-td :props="props">
                 {{
-                  props.row.importo_pagato > 0
+                  props.row.importo_pagato
                     ? formattaEuro(props.row.importo_pagato)
                     : '—'
                 }}

@@ -75,7 +75,7 @@
           label="Registra"
           no-caps
           :loading="salvando"
-          :disable="!form.owner_account || !form.importo || form.importo <= 0"
+          :disable="!form.owner_account || !importoValido"
           @click="salva"
         />
       </q-card-actions>
@@ -124,7 +124,12 @@ const aperto = computed({
 
 const residuo = computed(() => {
   const d = props.receivable.importo_dovuto - props.receivable.importo_pagato;
-  return d > 0 ? d : props.receivable.importo_dovuto;
+  // se dovuto>0 → residuo positivo restante; se dovuto<0 (restituzione
+  // deposito) → residuo negativo; in entrambi i casi fallback su dovuto.
+  if (props.receivable.importo_dovuto >= 0) {
+    return d > 0 ? d : props.receivable.importo_dovuto;
+  }
+  return d < 0 ? d : props.receivable.importo_dovuto;
 });
 
 const opzioniConti = computed(() =>
@@ -210,6 +215,13 @@ const form = reactive<FormPagamento>({
 const salvando = ref(false);
 const errore = ref('');
 
+const importoValido = computed(() => {
+  const imp = form.importo;
+  if (!imp || Number.isNaN(imp)) return false;
+  // segno coerente col dovuto (restituzione deposito: dovuto<0 → importo<0)
+  return props.receivable.importo_dovuto >= 0 ? imp > 0 : imp < 0;
+});
+
 watch(
   () => props.modelValue,
   (apertoNuovo) => {
@@ -234,8 +246,11 @@ async function salva() {
     errore.value = 'Seleziona un conto destinazione.';
     return;
   }
-  if (!form.importo || form.importo <= 0) {
-    errore.value = "L'importo deve essere maggiore di zero.";
+  if (!importoValido.value) {
+    errore.value =
+      props.receivable.importo_dovuto < 0
+        ? "L'importo deve essere negativo (restituzione)."
+        : "L'importo deve essere maggiore di zero.";
     return;
   }
   salvando.value = true;
