@@ -608,6 +608,18 @@
                 </template>
 
                 <q-btn
+                  v-if="puoCrearePrevisionale"
+                  flat
+                  dense
+                  no-caps
+                  size="sm"
+                  color="primary"
+                  icon="bolt"
+                  label="Crea addebito previsionale utenze"
+                  class="vp-p-id__rendiconto-btn"
+                  @click="dialogPrevisionale = true"
+                />
+                <q-btn
                   flat
                   dense
                   no-caps
@@ -663,6 +675,15 @@
       :default-owner-account-id="contoDiDefaultUtente"
       @saved="dopoSalvataggioPagamento"
     />
+
+    <PrevisionaleUtenzeDialog
+      v-if="assignmentAttivoId"
+      v-model="dialogPrevisionale"
+      :tenant-id="tenantId"
+      :assignment-id="assignmentAttivoId"
+      :data-target="situazione?.tenant?.data_restituzione_prevista ?? null"
+      @saved="dopoSalvataggioPagamento"
+    />
   </q-page>
 </template>
 
@@ -678,6 +699,7 @@ import KpiCard from 'src/components/KpiCard.vue';
 import StatoPagamentoBadge from 'src/components/StatoPagamentoBadge.vue';
 import EmptyState from 'src/components/EmptyState.vue';
 import RegistraPagamentoDialog from 'src/components/RegistraPagamentoDialog.vue';
+import PrevisionaleUtenzeDialog from 'src/components/PrevisionaleUtenzeDialog.vue';
 
 type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'deposito';
 
@@ -1048,6 +1070,22 @@ const tenantCorrente = computed(() => situazione.value?.tenant ?? null);
 
 const dialogPagamento = ref(false);
 const receivableSelezionato = ref<ReceivableInput | null>(null);
+
+const dialogPrevisionale = ref(false);
+// Mostra il bottone solo quando ha senso: c'è una data di restituzione
+// prevista e c'è almeno un assignment attivo a cui collegare il Receivable.
+const assignmentAttivoId = computed<number | null>(() => {
+  const list = situazione.value?.assignments ?? [];
+  if (!list.length) return null;
+  // L'ordinamento backend è -valid_from: il primo è il più recente.
+  return list[0]?.id ?? null;
+});
+const puoCrearePrevisionale = computed(
+  () =>
+    !!situazione.value?.tenant?.data_restituzione_prevista &&
+    !restituzioneEffettuata.value &&
+    assignmentAttivoId.value !== null,
+);
 
 function aprireRegistraPagamento(riga: RigaPagamento): void {
   if (riga.stato === 'pagato') return;

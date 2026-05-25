@@ -514,6 +514,18 @@
                 input-class="text-right vp-mono"
                 style="max-width: 130px; display: inline-block"
               />
+              <q-btn
+                v-if="puoEstendereAlDovuto(a)"
+                flat
+                dense
+                round
+                icon="straighten"
+                size="sm"
+                color="primary"
+                @click="estendiAlDovuto(a)"
+              >
+                <q-tooltip>Porta l'importo al dovuto del Receivable</q-tooltip>
+              </q-btn>
             </td>
             <td class="text-right">
               <q-btn
@@ -921,18 +933,21 @@ const salvaAbilitato = computed(() => {
   // Caso "scollega": nessuna allocazione, ma BT esplicitamente selezionate →
   // salvataggio cancella le allocations esistenti sul backend.
   if (allocazioni.value.length === 0) return btEsplicite.size > 0;
-  // Tutte le BT selezionate non devono essere sovra-allocate. residuo è
-  // calcolato come `bt.importo - somma(alloc.importo)`: per BT positive
-  // residuo deve restare >= -0.01, per BT negative deve restare <= +0.01
-  // (entrambi: |somma(alloc)| <= |bt.importo|).
+  // Invariante per ogni BT: somma algebrica delle allocations dello stesso
+  // segno della BT (o nulla) e |Σ| ≤ |BT.importo|. Allocations miste sono
+  // permesse purché la somma rispetti questi vincoli.
   const tutteBtOk = riepilogoBt.value.every((r) => {
+    const somma = Number(r.importo) - Number(r.residuo);
+    if (r.importo > 0 && somma < -0.01) return false;
+    if (r.importo < 0 && somma > 0.01) return false;
     if (r.importo >= 0) return r.residuo >= -0.01;
     return r.residuo <= 0.01;
   });
-  // Concordia di segno BT/allocation.
+  // Per ogni allocation: il segno deve concordare col Receivable a cui è
+  // legata (l'invariante BT↔alloc è stata rilassata, quella alloc↔Rec resta).
   const tutteAllocOk = allocazioni.value.every((a) => {
-    if (a.bt_importo > 0) return a.importo > 0;
-    if (a.bt_importo < 0) return a.importo < 0;
+    if (a.rec_dovuto > 0) return a.importo > 0;
+    if (a.rec_dovuto < 0) return a.importo < 0;
     return a.importo !== 0;
   });
   return tutteBtOk && tutteAllocOk;
@@ -1058,29 +1073,32 @@ function toggleReceivable(r: ReceivableFE) {
 }
 
 function aggiungiAllocazione(r: ReceivableFE) {
-  // Segno-aware: per Receivable positivi cerchiamo BT positive con residuo
-  // positivo; per Receivable negativi (restituzione caparra) BT negative
-  // con residuo negativo. Scegliamo quella col residuo di |valore| maggiore.
+  // Le allocations devono avere lo stesso segno del Receivable a cui sono
+  // legate (invariante alloc↔Rec). Il segno della BT può differire: questo
+  // serve al pattern "restituzione deposito + previsionale utenze" dove una
+  // BT in uscita copre un Rec negativo e uno positivo nella stessa BT.
   const dovuto = Number(r.importo_dovuto);
   const segnoDovuto = Math.sign(dovuto);
-  const candidate = riepilogoBt.value
-    .filter((b) => {
-      if (segnoDovuto > 0) return b.residuo > 0.005;
-      if (segnoDovuto < 0) return b.residuo < -0.005;
-      return false;
-    })
-    .sort((a, b) => Math.abs(b.residuo) - Math.abs(a.residuo));
-  const target = candidate[0];
-  if (!target) {
+  if (riepilogoBt.value.length === 0) {
     Notify.create({
       type: 'warning',
-      message:
-        segnoDovuto < 0
-          ? 'Nessuna BT in uscita compatibile selezionata.'
-          : 'Le BT selezionate sono già completamente allocate.',
+      message: 'Seleziona prima una transazione bancaria.',
     });
     return;
   }
+  // Scegliamo la BT con più capacità residua nel verso del Rec: per Rec
+  // positivo preferiamo BT con `residuo` algebrico più alto (più positivo),
+  // per Rec negativo quelle con residuo più basso (più negativo). Se nessuna
+  // BT ha residuo nel verso giusto, prendiamo quella con maggior capacità
+  // totale (|importo|) — utile per il pattern misto.
+  const ordinate = [...riepilogoBt.value].sort((a, b) =>
+    segnoDovuto >= 0 ? b.residuo - a.residuo : a.residuo - b.residuo,
+  );
+  const target =
+    ordinate.find((b) =>
+      segnoDovuto > 0 ? b.residuo > 0.005 : b.residuo < -0.005,
+    ) ?? ordinate[0];
+  if (!target) return;
   const allocato = Number(r.importo_allocato);
   // Residuo dell'addebito col segno corretto (≥0 per dovuto>0, ≤0 per dovuto<0).
   const residuoRecRaw = dovuto - allocato;
@@ -1088,10 +1106,11 @@ function aggiungiAllocazione(r: ReceivableFE) {
     segnoDovuto >= 0
       ? Math.max(residuoRecRaw, 0)
       : Math.min(residuoRecRaw, 0);
-  // Quota da allocare: la minore in valore assoluto tra residuo BT e residuo Rec.
+  // Quota da allocare: il residuo intero del Rec, capped a |BT.importo| per
+  // evitare proposte assurde quando il segno è discorde rispetto alla BT.
   const quotaAbs = Math.min(
-    Math.abs(target.residuo),
-    residuoRec === 0 ? Math.abs(target.residuo) : Math.abs(residuoRec),
+    Math.abs(target.importo),
+    Math.abs(residuoRec) || Math.abs(target.importo),
   );
   const importo = segnoDovuto < 0 ? -quotaAbs : quotaAbs;
   const bt = store.bts.find((b) => b.id === target.bt_id)!;
@@ -1118,6 +1137,17 @@ function pulisciBtAuto() {
       btSelezionate.delete(id);
     }
   }
+}
+
+function puoEstendereAlDovuto(a: Allocazione): boolean {
+  // Mostra il bottone solo se l'importo allocato corrente è ancora "lontano"
+  // dal dovuto del Rec (in valore assoluto, oltre 1 €).
+  if (!a.rec_dovuto) return false;
+  return Math.abs(Math.abs(a.rec_dovuto) - Math.abs(a.importo)) > 1;
+}
+
+function estendiAlDovuto(a: Allocazione) {
+  a.importo = Number(a.rec_dovuto.toFixed(2));
 }
 
 function rimuoviAllocazione(a: Allocazione) {

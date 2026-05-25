@@ -1297,7 +1297,7 @@ class TestReconciliationBulk:
         assert receivable_dep.data_pagamento == datetime.date(2026, 6, 30)
 
     def test_segni_discordi_400(self, client_prop, bank_tx_400, assignment_1):
-        """BT in entrata (+400) non può saldare un Receivable negativo."""
+        """alloc(+400) su Receivable -400 → segno discorde alloc/Receivable."""
         receivable_neg = Receivable.objects.create(
             assignment=assignment_1,
             causale=Receivable.Causale.DEPOSITO,
@@ -1322,7 +1322,103 @@ class TestReconciliationBulk:
             format="json",
         )
         assert resp.status_code == 400
-        assert b"Segni discordi" in resp.content
+        assert b"Segno discorde" in resp.content
+
+    def test_bt_uscita_allocations_miste(
+        self, client_prop, owner_account, assignment_1
+    ):
+        """BT -984 con alloc -1060 (Rec restituzione) + alloc +76 (Rec
+        previsionale utenze): somma algebrica -984 = BT.importo, OK."""
+        from billing.models import BankTransaction
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 5, 25),
+            descrizione="Restituzione deposito Eshani (al netto)",
+            importo=Decimal("-984.00"),
+            owner_account=owner_account,
+        )
+        rec_restituzione = Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.DEPOSITO,
+            descrizione="Deposito (restituzione)",
+            competenza_da=datetime.date(2026, 5, 25),
+            scadenza=datetime.date(2026, 5, 25),
+            importo_dovuto=Decimal("-1060.00"),
+            stato=StatoPagamento.ATTESO,
+        )
+        rec_previsionale = Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.EXTRA,
+            descrizione="Previsionale utenze (uscita)",
+            competenza_da=datetime.date(2026, 5, 25),
+            scadenza=datetime.date(2026, 5, 25),
+            importo_dovuto=Decimal("76.00"),
+            stato=StatoPagamento.ATTESO,
+        )
+        resp = client_prop.post(
+            self.URL,
+            {
+                "replace_for_transactions": [bt.id],
+                "items": [
+                    {
+                        "bank_transaction": bt.id,
+                        "receivable": rec_restituzione.id,
+                        "importo": "-1060.00",
+                    },
+                    {
+                        "bank_transaction": bt.id,
+                        "receivable": rec_previsionale.id,
+                        "importo": "76.00",
+                    },
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        rec_restituzione.refresh_from_db()
+        rec_previsionale.refresh_from_db()
+        assert rec_restituzione.stato == StatoPagamento.PAGATO
+        assert rec_restituzione.importo_pagato == Decimal("-1060.00")
+        assert rec_previsionale.stato == StatoPagamento.PAGATO
+        assert rec_previsionale.importo_pagato == Decimal("76.00")
+
+    def test_bt_somma_alloc_segno_opposto_400(
+        self, client_prop, owner_account, assignment_1
+    ):
+        """BT -100 con somma allocazioni netta +50: somma di segno opposto
+        alla BT non ha senso (es. due alloc +30 e +20 verso Rec positivi).
+        """
+        from billing.models import BankTransaction
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 5, 25),
+            descrizione="BT uscita",
+            importo=Decimal("-100.00"),
+            owner_account=owner_account,
+        )
+        rec_pos = Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.EXTRA,
+            descrizione="Extra inquilino",
+            competenza_da=datetime.date(2026, 5, 25),
+            scadenza=datetime.date(2026, 5, 25),
+            importo_dovuto=Decimal("50.00"),
+            stato=StatoPagamento.ATTESO,
+        )
+        resp = client_prop.post(
+            self.URL,
+            {
+                "replace_for_transactions": [bt.id],
+                "items": [
+                    {
+                        "bank_transaction": bt.id,
+                        "receivable": rec_pos.id,
+                        "importo": "50.00",
+                    },
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert b"segno opposto" in resp.content
 
     def test_restituzione_supera_BT(self, client_prop, owner_account, assignment_1):
         """Allocation -1000 su BT -900 deve fallire: |alloc|>|BT|."""

@@ -1427,3 +1427,122 @@ class RendicontoView(APIView):
                 "movimenti": deposito_movimenti,
             },
         })
+
+
+# ---------------------------------------------------------------------------
+# Stima previsionale utenze (per restituzione deposito)
+# ---------------------------------------------------------------------------
+
+
+class PrevisionaleUtenzeView(APIView):
+    """
+    GET /api/v1/tenants/<tenant_id>/previsionale-utenze/?data_target=YYYY-MM-DD
+
+    Calcola una stima dell'importo da addebitare a un inquilino per utenze
+    consumate dopo l'ultimo periodo utenze fatturato e prima della
+    restituzione del deposito.
+
+    L'algoritmo:
+      1. Trova gli ultimi N=2 Receivable utenze del tenant con
+         giorni_presenza valorizzato → ricava una media giornaliera.
+      2. Usa come ``data_da`` la fine dell'ultimo periodo utenze conosciuto.
+      3. Usa come ``data_a`` il parametro ``data_target`` se fornito,
+         altrimenti tenant.data_restituzione_prevista, altrimenti oggi.
+      4. Importo stimato = media giornaliera × giorni nell'intervallo.
+
+    Il FE può ritoccare l'importo proposto prima di creare il Receivable.
+    """
+
+    permission_classes = [IsProprietario]
+
+    def get(self, request, tenant_id: int):
+        try:
+            tenant = TenantProfile.objects.get(pk=tenant_id)
+        except TenantProfile.DoesNotExist:
+            return Response({"detail": "Inquilino non trovato."}, status=404)
+
+        oggi = datetime.date.today()
+        data_target_raw = request.query_params.get("data_target")
+        if data_target_raw:
+            try:
+                data_target = datetime.date.fromisoformat(data_target_raw)
+            except ValueError:
+                return Response(
+                    {"detail": "data_target non valida (ISO YYYY-MM-DD)."},
+                    status=400,
+                )
+        elif tenant.data_restituzione_prevista:
+            data_target = tenant.data_restituzione_prevista
+        else:
+            data_target = oggi
+
+        utenze_recenti = list(
+            Receivable.objects.filter(
+                assignment__tenant=tenant,
+                causale=Receivable.Causale.UTENZE,
+                giorni_presenza__gt=0,
+            )
+            .select_related("utility_period")
+            .order_by("-utility_period__periodo_a")[:2]
+        )
+        if not utenze_recenti:
+            return Response(
+                {
+                    "detail": (
+                        "Nessuna utenza pregressa disponibile per la stima."
+                    )
+                },
+                status=409,
+            )
+
+        tot_importo = sum(
+            (r.importo_dovuto for r in utenze_recenti), Decimal("0")
+        )
+        tot_giorni = sum(r.giorni_presenza or 0 for r in utenze_recenti)
+        if tot_giorni == 0:
+            return Response(
+                {"detail": "giorni_presenza nulli sui Receivable di riferimento."},
+                status=409,
+            )
+        media_giornaliera = (tot_importo / Decimal(tot_giorni)).quantize(
+            Decimal("0.01")
+        )
+
+        ultimo_periodo = utenze_recenti[0].utility_period
+        data_da = ultimo_periodo.periodo_a if ultimo_periodo else None
+        if data_da is None or data_da >= data_target:
+            return Response(
+                {
+                    "detail": (
+                        f"Data inizio stima ({data_da}) non precede target "
+                        f"({data_target}): nessuna utenza prevedibile."
+                    )
+                },
+                status=409,
+            )
+        # giorni dopo periodo_a fino a data_target inclusa.
+        giorni = (data_target - data_da).days
+        importo_stimato = (media_giornaliera * Decimal(giorni)).quantize(
+            Decimal("0.01")
+        )
+
+        return Response({
+            "tenant_id": tenant.id,
+            "data_da": data_da.isoformat(),
+            "data_a": data_target.isoformat(),
+            "giorni": giorni,
+            "media_giornaliera": float(media_giornaliera),
+            "importo_stimato": float(importo_stimato),
+            "basato_su": [
+                {
+                    "receivable_id": r.id,
+                    "periodo_da": r.utility_period.periodo_da.isoformat()
+                    if r.utility_period else None,
+                    "periodo_a": r.utility_period.periodo_a.isoformat()
+                    if r.utility_period else None,
+                    "importo_dovuto": float(r.importo_dovuto),
+                    "giorni_presenza": r.giorni_presenza,
+                }
+                for r in utenze_recenti
+            ],
+        })

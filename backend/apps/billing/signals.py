@@ -33,11 +33,12 @@ def _riallinea_receivable(receivable_id: int) -> None:
     """Ricalcola stato/data_pagamento/importo_pagato/incassato_da_owner del
     Receivable a partire dalle sue allocations attuali.
 
-    Logica segno-aware: per i Receivable di restituzione caparra
-    (``importo_dovuto < 0``) anche le allocations sono negative, perché legate
-    a BT in uscita (bonifico dal proprietario all'inquilino). La chiusura
-    avviene quando la somma allocata, in valore assoluto, copre il dovuto e
-    i segni concordano.
+    Logica segno-aware: l'invariante è ``sign(alloc.importo) ==
+    sign(Receivable.importo_dovuto)``. La chiusura avviene quando la somma
+    delle allocations (con segno) copre il dovuto in valore assoluto.
+    Le allocations sulla stessa BT possono avere segni discordi tra loro
+    (es. restituzione deposito con trattenuta utenze), ma per ogni singolo
+    Receivable concordano col dovuto.
     """
     from billing.models import Receivable
 

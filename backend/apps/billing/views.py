@@ -583,26 +583,29 @@ class ReconciliationBulkView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-        # Validazione segno-aware: allocation, BT e Receivable devono avere
-        # lo stesso segno. Solo combinazioni omogenee (tutto positivo = incasso,
-        # tutto negativo = restituzione caparra) sono ammesse.
+        # Invariante segno-aware (rilassata): l'unica regola assoluta è
+        # ``sign(allocation.importo) == sign(receivable.importo_dovuto)``.
+        # Il segno della BT può differire da quello delle singole allocations
+        # (es. restituzione caparra con trattenuta per utenze previsionali:
+        # BT -984 ↔ alloc -1060 sul Rec restituzione + alloc +76 sul Rec
+        # previsionale utenze; somma algebrica -984 = BT.importo).
         receivables_map = {
             r.pk: r for r in Receivable.objects.filter(
                 pk__in={rec_id for _, rec_id, _ in normalizzati}
             )
         }
         for bt_id, rec_id, importo in normalizzati:
-            bt = bts[bt_id]
             rec = receivables_map.get(rec_id)
             if rec is None:
                 continue  # gestito sotto come "Receivable inesistente"
-            segni = {1 if x > 0 else -1 for x in (importo, bt.importo, rec.importo_dovuto) if x != 0}
-            if len(segni) > 1:
+            if rec.importo_dovuto != 0 and (
+                (importo > 0) != (rec.importo_dovuto > 0)
+            ):
                 return Response(
                     {
                         "detail": (
-                            f"Segni discordi su item (BT {bt_id} importo {bt.importo}, "
-                            f"Receivable {rec_id} dovuto {rec.importo_dovuto}, alloc {importo})."
+                            f"Segno discorde alloc/Receivable (Receivable {rec_id} "
+                            f"dovuto {rec.importo_dovuto}, alloc {importo})."
                         )
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -610,9 +613,19 @@ class ReconciliationBulkView(APIView):
 
         for bt_id, somma in somme_per_bt.items():
             limite = bts[bt_id].importo
-            # Per BT in uscita (limite<0) la somma allocata "supera" il limite
-            # quando è più negativa (es. somma=-1000 vs limite=-900). Confronto
-            # in valore assoluto con tolleranza.
+            # La somma algebrica delle allocations deve (a) andare nello
+            # stesso verso della BT (entrata o uscita) e (b) non eccedere
+            # |BT.importo|. Una somma di segno opposto alla BT non ha senso.
+            if limite != 0 and somma != 0 and (somma > 0) != (limite > 0):
+                return Response(
+                    {
+                        "detail": (
+                            f"Somma allocazioni ({somma}) di segno opposto alla "
+                            f"BT {bt_id} ({limite})."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if abs(somma) > abs(limite) + self._TOLLERANZA:
                 return Response(
                     {

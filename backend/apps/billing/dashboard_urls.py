@@ -7,6 +7,7 @@ from billing.dashboard_views import (
     BilancioOwnerDettaglioView,
     DashboardInquilinoView,
     DashboardProprietarioView,
+    PrevisionaleUtenzeView,
     QuadroAnnualeView,
     RendicontoView,
     TenantSituazioneView,
@@ -30,5 +31,10 @@ urlpatterns = [
         "tenants/<int:tenant_id>/rendiconto/",
         RendicontoView.as_view(),
         name="tenant-rendiconto",
+    ),
+    path(
+        "tenants/<int:tenant_id>/previsionale-utenze/",
+        PrevisionaleUtenzeView.as_view(),
+        name="tenant-previsionale-utenze",
     ),
 ]
