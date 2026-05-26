@@ -207,7 +207,9 @@ watch(
 watch(
   annoSelezionato,
   (a) => {
-    void store.fetchTenantsAnno(a);
+    // force=true: rientrando in pagina dopo aver registrato pagamenti o
+    // ribilanciato riconciliazioni vogliamo vedere subito i saldi nuovi.
+    void store.fetchTenantsAnno(a, true);
     aggiornaQuery();
   },
   { immediate: true },

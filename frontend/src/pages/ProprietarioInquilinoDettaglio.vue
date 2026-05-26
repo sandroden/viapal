@@ -297,27 +297,37 @@
             </template>
             <template #body-cell-stato="props">
               <q-td :props="props">
-                <span
-                  v-if="props.row.stato !== 'pagato'"
-                  class="vp-p-id__stato-click"
-                  @click="aprireRegistraPagamento(props.row)"
-                >
+                <span class="vp-p-id__stato-wrap">
+                  <span
+                    v-if="props.row.stato !== 'pagato'"
+                    class="vp-p-id__stato-click"
+                    @click="aprireRegistraPagamento(props.row)"
+                  >
+                    <StatoPagamentoBadge
+                      :importo-dovuto="props.row.importo_dovuto"
+                      :importo-pagato="props.row.importo_pagato"
+                      :stato="props.row.stato"
+                      :giorni-ritardo="props.row.giorni_ritardo"
+                    />
+                    <q-icon name="payments" size="14px" class="vp-p-id__stato-icon" />
+                    <q-tooltip>Registra pagamento</q-tooltip>
+                  </span>
                   <StatoPagamentoBadge
+                    v-else
                     :importo-dovuto="props.row.importo_dovuto"
                     :importo-pagato="props.row.importo_pagato"
                     :stato="props.row.stato"
                     :giorni-ritardo="props.row.giorni_ritardo"
                   />
-                  <q-icon name="payments" size="14px" class="vp-p-id__stato-icon" />
-                  <q-tooltip>Registra pagamento</q-tooltip>
+                  <q-icon
+                    name="swap_horiz"
+                    size="14px"
+                    class="vp-p-id__stato-icon vp-p-id__stato-icon--link"
+                    @click.stop="vaiARiconciliazione"
+                  >
+                    <q-tooltip>Apri riconciliazione (tenant + anno pre-filtrati)</q-tooltip>
+                  </q-icon>
                 </span>
-                <StatoPagamentoBadge
-                  v-else
-                  :importo-dovuto="props.row.importo_dovuto"
-                  :importo-pagato="props.row.importo_pagato"
-                  :stato="props.row.stato"
-                  :giorni-ritardo="props.row.giorni_ritardo"
-                />
               </q-td>
             </template>
             <template #body-cell-data_pagamento="props">
@@ -1008,11 +1018,24 @@ function vaiInquilinoSuccessivo(): void {
 }
 
 onMounted(() => {
-  void store.loadSituazione(tenantId.value, annoSelezionato.value);
+  // force=true così, rientrando in pagina dopo aver modificato
+  // riconciliazioni/pagamenti altrove, vediamo subito lo stato aggiornato.
+  void store.loadSituazione(tenantId.value, annoSelezionato.value, true);
   void tenantsStore.fetchTenantsAnno(annoSelezionato.value);
   void contiStore.ensureLoaded();
   aggiornaQuery();
 });
+
+function vaiARiconciliazione(): void {
+  void router.push({
+    path: '/p/riconciliazione',
+    query: {
+      tenant: String(tenantId.value),
+      anno: String(annoSelezionato.value),
+      riconciliato: 'all',
+    },
+  });
+}
 
 watch(tenantId, (id) => {
   if (id) {
@@ -1352,6 +1375,11 @@ const contoDiDefaultUtente = computed(
 .vp-p-id__card-info--full {
   grid-column: 1 / -1;
 }
+.vp-p-id__stato-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-gap-1);
+}
 .vp-p-id__stato-click {
   display: inline-flex;
   align-items: center;
@@ -1371,5 +1399,15 @@ const contoDiDefaultUtente = computed(
 .vp-p-id__stato-click:hover .vp-p-id__stato-icon {
   opacity: 1;
   color: var(--vp-salvia, #4f6e3f);
+}
+.vp-p-id__stato-icon--link {
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+.vp-p-id__stato-icon--link:hover {
+  opacity: 1;
+  color: var(--vp-terra, #b56a3b);
+  background: var(--vp-paper-2, rgba(0, 0, 0, 0.04));
 }
 </style>

@@ -574,6 +574,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { Notify } from 'quasar';
 import { useRiconciliazioneStore, type BankTransactionFE, type ReceivableFE } from 'stores/riconciliazione';
 import { useTenantsStore, type Tenant } from 'stores/tenants';
@@ -1257,8 +1258,28 @@ async function ricarica() {
   ]);
 }
 
+const route = useRoute();
+
 onMounted(async () => {
   await tenantsStore.fetchTenants(false);
+  // Pre-filtri da query string: ?tenant=<id>&anno=YYYY&riconciliato=all|true|false.
+  // Usati dalle scorciatoie da altre pagine (dettaglio inquilino).
+  const tenantQ = Number(route.query.tenant);
+  if (Number.isFinite(tenantQ) && tenantQ > 0) {
+    filtroTenant.value = tenantQ;
+    // Esplicitamente NON attiviamo mostraTuttiInquilini: con la scorciatoia
+    // vogliamo proprio filtrare BT+Receivable sul tenant.
+    mostraTuttiInquilini.value = false;
+  }
+  const annoQ = Number(route.query.anno);
+  if (Number.isFinite(annoQ) && annoQ > 2000) {
+    filtroDataDa.value = `${annoQ}-01-01`;
+    filtroDataA.value = `${annoQ}-12-31`;
+  }
+  const riconciliatoQ = route.query.riconciliato;
+  if (riconciliatoQ === 'all' || riconciliatoQ === 'true' || riconciliatoQ === 'false') {
+    filtroRiconciliato.value = riconciliatoQ;
+  }
   await ricarica();
 });
 
