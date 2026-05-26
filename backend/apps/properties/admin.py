@@ -4,7 +4,11 @@ Admin Django per l'app properties.
 Gestisce proprietari, quote di proprietà, conti bancari,
 stanze, contratto e assegnazioni stanze.
 """
-from django.contrib import admin
+from io import StringIO
+
+from django.contrib import admin, messages
+from django.core.management import call_command
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
 from jmb.jadmin import JumboModelAdmin, ModalEditMixin
@@ -184,6 +188,48 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
         }),
         ("Assegnazione stanze", {"items": [RoomAssignmentInlineForTenant]}),
     )
+    actions = ["salda_con_resti_dry_run", "salda_con_resti_apply"]
+
+    def _run_salda_con_resti(self, request, queryset, *, apply: bool):
+        if queryset.count() != 1:
+            self.message_user(
+                request,
+                "Seleziona un solo inquilino per volta.",
+                level=messages.ERROR,
+            )
+            return
+        tenant = queryset.first()
+        out = StringIO()
+        kwargs = {"tenant": tenant.id, "stdout": out}
+        if apply:
+            kwargs["apply"] = True
+        try:
+            call_command("salda_con_resti", **kwargs)
+        except Exception as e:  # noqa: BLE001
+            self.message_user(
+                request, f"Errore: {e}", level=messages.ERROR
+            )
+            return
+        self.message_user(
+            request,
+            format_html(
+                "<pre style='white-space:pre-wrap;margin:0'>{}</pre>",
+                out.getvalue(),
+            ),
+            level=messages.SUCCESS if apply else messages.INFO,
+        )
+
+    @admin.action(description="Salda con resti (dry-run)")
+    def salda_con_resti_dry_run(self, request, queryset):
+        """Mostra il piano di allocations FIFO dei resti bonifici sugli
+        scoperti dell'inquilino. Non scrive nel DB."""
+        self._run_salda_con_resti(request, queryset, apply=False)
+
+    @admin.action(description="Salda con resti — APPLY (scrive nel DB)")
+    def salda_con_resti_apply(self, request, queryset):
+        """Esegue le allocations FIFO dei resti bonifici sugli scoperti
+        dell'inquilino. Scrive nel DB."""
+        self._run_salda_con_resti(request, queryset, apply=True)
 
 
 # ---------------------------------------------------------------------------
