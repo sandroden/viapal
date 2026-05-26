@@ -352,11 +352,15 @@ class DashboardProprietarioView(APIView):
         if is_storico:
             ritardi_qs = scadenza_qs = Receivable.objects.none()
         else:
+            # Ritardo = fatto temporale (scadenza passata) su Receivable non
+            # ancora chiusi. Escludiamo PAGATO e INSOLUTO (insoluti storici
+            # che non beccheremo più: non vogliamo ingolfare la dashboard).
             ritardi_qs = (
                 Receivable.objects.filter(
-                    stato__in=[StatoPagamento.IN_RITARDO, StatoPagamento.INSOLUTO],
+                    scadenza__lt=oggi,
                     causale__in=CAUSALI_OPERATIVE,
                 )
+                .exclude(stato__in=[StatoPagamento.PAGATO, StatoPagamento.INSOLUTO])
                 .select_related(
                     "assignment__tenant", "assignment__room", "utility_period"
                 )

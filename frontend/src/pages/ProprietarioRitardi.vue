@@ -16,10 +16,34 @@
       />
     </header>
 
+    <div class="vp-p-rit__filtri">
+      <q-btn-toggle
+        v-model="filtroStato"
+        :options="filtroStatoOptions"
+        no-caps
+        unelevated
+        toggle-color="primary"
+      />
+      <q-select
+        v-model="filtroInquilino"
+        :options="filtroInquilinoOptions"
+        label="Inquilino"
+        dense
+        outlined
+        emit-value
+        map-options
+        class="vp-p-rit__filtro-inq"
+      />
+      <q-space />
+      <span class="vp-p-rit__totali-label">
+        {{ ritardiFiltrati.length }} di {{ ritardi.length }}
+      </span>
+    </div>
+
     <q-table
       flat
       bordered
-      :rows="ritardi"
+      :rows="ritardiFiltrati"
       :columns="colonne"
       row-key="rowKey"
       :pagination="paginazione"
@@ -27,6 +51,17 @@
       no-data-label="Nessun pagamento in ritardo"
       class="vp-p-rit__table"
     >
+      <template #body-cell-tenant="props">
+        <q-td :props="props">
+          <a
+            href="#"
+            class="vp-p-rit__tenant-link"
+            @click.prevent="filtraInquilino(props.row.tenant)"
+          >
+            {{ props.row.tenant }}
+          </a>
+        </q-td>
+      </template>
       <template #body-cell-importo="props">
         <q-td :props="props">
           <span class="vp-mono">{{ formattaEuro(props.row.importo) }}</span>
@@ -37,12 +72,24 @@
           {{ formattaData(props.row.scadenza) }}
         </q-td>
       </template>
-      <template #body-cell-semaforo="props">
+      <template #body-cell-giorni_ritardo="props">
         <q-td :props="props">
           <SemaforoBadge
             :livello="livelloDaGiorni(props.row.giorni_ritardo)"
             :giorni-ritardo="props.row.giorni_ritardo"
           />
+        </q-td>
+      </template>
+      <template #body-cell-stato="props">
+        <q-td :props="props">
+          <q-chip
+            dense
+            :color="coloreStato(props.row.stato)"
+            :text-color="textColorStato(props.row.stato)"
+            :icon="iconaStato(props.row.stato)"
+          >
+            {{ labelStato(props.row.stato) }}
+          </q-chip>
         </q-td>
       </template>
       <template #body-cell-azioni="props">
@@ -64,7 +111,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import type { QTableProps } from 'quasar';
 import { Notify } from 'quasar';
 import { useDashboardStore, type ProprietarioRiga } from 'stores/dashboard';
@@ -84,12 +131,41 @@ const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
 const processing = reactive<Record<string, boolean>>({});
 
+const filtroStato = ref<string>('tutti');
+const filtroInquilino = ref<string>('tutti');
+
+const filtroStatoOptions = [
+  { label: 'Tutti', value: 'tutti' },
+  { label: 'Atteso', value: 'atteso' },
+  { label: 'Dichiarato', value: 'dichiarato' },
+  { label: 'In ritardo', value: 'in_ritardo' },
+];
+
 const ritardi = computed<RigaTabella[]>(() =>
   (store.proprietarioData?.ritardi ?? []).map((r) => ({
     ...r,
     rowKey: `${r.tipo}-${r.id}`,
   })),
 );
+
+const filtroInquilinoOptions = computed(() => {
+  const nomi = Array.from(new Set(ritardi.value.map((r) => r.tenant))).sort();
+  return [
+    { label: 'Tutti', value: 'tutti' },
+    ...nomi.map((n) => ({ label: n, value: n })),
+  ];
+});
+
+const ritardiFiltrati = computed<RigaTabella[]>(() => {
+  let righe = ritardi.value;
+  if (filtroStato.value !== 'tutti') {
+    righe = righe.filter((r) => r.stato === filtroStato.value);
+  }
+  if (filtroInquilino.value !== 'tutti') {
+    righe = righe.filter((r) => r.tenant === filtroInquilino.value);
+  }
+  return righe;
+});
 
 const colonne: QTableProps['columns'] = [
   { name: 'tenant', label: 'Inquilino', field: 'tenant', align: 'left', sortable: true },
@@ -121,7 +197,7 @@ const colonne: QTableProps['columns'] = [
     align: 'right',
     sortable: true,
   },
-  { name: 'semaforo', label: 'Stato', field: 'giorni_ritardo', align: 'center' },
+  { name: 'stato', label: 'Stato', field: 'stato', align: 'center', sortable: true },
   { name: 'azioni', label: 'Azioni', field: 'tipo', align: 'right' },
 ];
 
@@ -148,6 +224,35 @@ function livelloDaGiorni(g: number): SemaforoLivello {
   if (g > 0) return 'argilla_chiaro';
   if (g > -7) return 'miele';
   return 'salvia';
+}
+
+function labelStato(stato: string): string {
+  if (stato === 'dichiarato') return 'Da confermare';
+  if (stato === 'in_ritardo') return 'In ritardo';
+  if (stato === 'atteso') return 'Atteso';
+  return stato;
+}
+
+function coloreStato(stato: string): string {
+  if (stato === 'dichiarato') return 'amber-2';
+  if (stato === 'in_ritardo') return 'red-1';
+  return 'grey-3';
+}
+
+function textColorStato(stato: string): string {
+  if (stato === 'dichiarato') return 'amber-9';
+  if (stato === 'in_ritardo') return 'red-9';
+  return 'grey-9';
+}
+
+function iconaStato(stato: string): string {
+  if (stato === 'dichiarato') return 'hourglass_top';
+  if (stato === 'in_ritardo') return 'priority_high';
+  return 'schedule';
+}
+
+function filtraInquilino(nome: string) {
+  filtroInquilino.value = nome;
 }
 
 async function conferma(row: RigaTabella) {
@@ -179,8 +284,31 @@ async function conferma(row: RigaTabella) {
   font-size: var(--vp-text-2xl);
   margin: var(--vp-gap-1) 0 0;
 }
+.vp-p-rit__filtri {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-gap-3);
+  margin-bottom: var(--vp-gap-3);
+  flex-wrap: wrap;
+}
+.vp-p-rit__filtro-inq {
+  min-width: 220px;
+}
+.vp-p-rit__totali-label {
+  color: var(--vp-ink-3);
+  font-size: var(--vp-text-sm);
+}
 .vp-p-rit__table {
   background: var(--vp-cream);
   border-color: var(--vp-paper-3) !important;
+}
+.vp-p-rit__tenant-link {
+  color: var(--vp-terra-deep);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--vp-paper-3);
+  cursor: pointer;
+}
+.vp-p-rit__tenant-link:hover {
+  border-bottom-color: var(--vp-terra-deep);
 }
 </style>
