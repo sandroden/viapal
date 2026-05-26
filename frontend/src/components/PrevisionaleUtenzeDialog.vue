@@ -203,13 +203,16 @@ async function salva() {
   salvando.value = true;
   errore.value = '';
   try {
-    await api.post('/api/v1/extra-charges/', {
-      assignment: props.assignmentId,
-      data: stima.value.data_a,
-      scadenza: stima.value.data_a,
-      descrizione: descrizione.value || 'Previsionale utenze',
-      importo: importo.value.toFixed(2),
-    });
+    await api.post(
+      `/api/v1/tenants/${props.tenantId}/previsionale-utenze/`,
+      {
+        assignment: props.assignmentId,
+        data_da: stima.value.data_da,
+        data_a: stima.value.data_a,
+        importo: importo.value.toFixed(2),
+        descrizione: descrizione.value || undefined,
+      },
+    );
     Notify.create({
       type: 'positive',
       message: 'Addebito previsionale creato.',

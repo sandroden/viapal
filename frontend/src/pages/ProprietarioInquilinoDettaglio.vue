@@ -620,6 +620,18 @@
                   @click="dialogPrevisionale = true"
                 />
                 <q-btn
+                  v-if="previsionaleApertoId"
+                  flat
+                  dense
+                  no-caps
+                  size="sm"
+                  color="primary"
+                  icon="balance"
+                  label="Conguaglia previsionale con utenze reali"
+                  class="vp-p-id__rendiconto-btn"
+                  @click="dialogConguaglio = true"
+                />
+                <q-btn
                   flat
                   dense
                   no-caps
@@ -684,6 +696,14 @@
       :data-target="situazione?.tenant?.data_restituzione_prevista ?? null"
       @saved="dopoSalvataggioPagamento"
     />
+
+    <ConguagliaPrevisionaleDialog
+      v-if="previsionaleApertoId"
+      v-model="dialogConguaglio"
+      :tenant-id="tenantId"
+      :previsionale-id="previsionaleApertoId"
+      @saved="dopoSalvataggioPagamento"
+    />
   </q-page>
 </template>
 
@@ -700,6 +720,7 @@ import StatoPagamentoBadge from 'src/components/StatoPagamentoBadge.vue';
 import EmptyState from 'src/components/EmptyState.vue';
 import RegistraPagamentoDialog from 'src/components/RegistraPagamentoDialog.vue';
 import PrevisionaleUtenzeDialog from 'src/components/PrevisionaleUtenzeDialog.vue';
+import ConguagliaPrevisionaleDialog from 'src/components/ConguagliaPrevisionaleDialog.vue';
 
 type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'deposito';
 
@@ -1072,6 +1093,7 @@ const dialogPagamento = ref(false);
 const receivableSelezionato = ref<ReceivableInput | null>(null);
 
 const dialogPrevisionale = ref(false);
+const dialogConguaglio = ref(false);
 // Mostra il bottone solo quando ha senso: c'è una data di restituzione
 // prevista e c'è almeno un assignment attivo a cui collegare il Receivable.
 const assignmentAttivoId = computed<number | null>(() => {
@@ -1080,11 +1102,25 @@ const assignmentAttivoId = computed<number | null>(() => {
   // L'ordinamento backend è -valid_from: il primo è il più recente.
   return list[0]?.id ?? null;
 });
+
+// Cerca un Receivable EXTRA marcato come previsionale e non ancora
+// conguagliato. Usa la situazione dell'anno corrente; in futuro si potrebbe
+// estendere su più anni se necessario.
+const previsionaleApertoId = computed<number | null>(() => {
+  const righe = situazione.value?.extra?.righe ?? [];
+  const aperto = righe.find(
+    (r: { is_previsionale?: boolean; previsionale_conguagliato?: boolean; id: number }) =>
+      r.is_previsionale && !r.previsionale_conguagliato,
+  );
+  return aperto?.id ?? null;
+});
+
 const puoCrearePrevisionale = computed(
   () =>
     !!situazione.value?.tenant?.data_restituzione_prevista &&
     !restituzioneEffettuata.value &&
-    assignmentAttivoId.value !== null,
+    assignmentAttivoId.value !== null &&
+    previsionaleApertoId.value === null,
 );
 
 function aprireRegistraPagamento(riga: RigaPagamento): void {

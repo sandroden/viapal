@@ -1991,3 +1991,135 @@ class TestTenantListSaldi:
         # Senza filtro anno la colonna saldo_totale è il totale complessivo.
         assert riga["saldo_totale"] == 50.0
         assert riga["saldo"] is None
+
+
+class TestPrevisionaleEConguaglio:
+    """Flusso: creazione previsionale utenze → conguaglio con utenze reali."""
+
+    def _crea_previsionale(self, client_prop, tenant_1, assignment_1):
+        return client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/previsionale-utenze/",
+            {
+                "assignment": assignment_1.id,
+                "data_da": "2026-04-30",
+                "data_a": "2026-05-15",
+                "importo": "80.00",
+            },
+            format="json",
+        )
+
+    def test_post_crea_previsionale_marcato(
+        self, client_prop, tenant_1, assignment_1
+    ):
+        resp = self._crea_previsionale(client_prop, tenant_1, assignment_1)
+        assert resp.status_code == 201, resp.content
+        body = resp.json()
+        rec = Receivable.objects.get(pk=body["id"])
+        assert rec.causale == Receivable.Causale.EXTRA
+        assert rec.competenza_da == datetime.date(2026, 4, 30)
+        assert rec.competenza_a == datetime.date(2026, 5, 15)
+        assert rec.importo_dovuto == Decimal("80.00")
+        assert "previsionale_utenze" in (rec.note or "")
+
+    def test_post_previsionale_data_a_uguale_da_400(
+        self, client_prop, tenant_1, assignment_1
+    ):
+        resp = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/previsionale-utenze/",
+            {
+                "assignment": assignment_1.id,
+                "data_da": "2026-05-15",
+                "data_a": "2026-05-15",
+                "importo": "50",
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_conguaglio_anteprima_e_creazione(
+        self, client_prop, tenant_1, assignment_1, charge_1, period
+    ):
+        # charge_1 ha utility_period = period (apr 2026), importo 45, giorni
+        # presenza 30. Sovrapposizione col previsionale (30/4 → 15/5):
+        # solo il giorno 30/4 ricade nel periodo del previsionale.
+        prev_resp = self._crea_previsionale(client_prop, tenant_1, assignment_1)
+        assert prev_resp.status_code == 201
+        prev_id = prev_resp.json()["id"]
+
+        # Anteprima (GET)
+        ant_resp = client_prop.get(
+            f"/api/v1/tenants/{tenant_1.id}/conguaglia-previsionale/?previsionale_id={prev_id}"
+        )
+        assert ant_resp.status_code == 200, ant_resp.content
+        ant = ant_resp.json()
+        assert ant["previsionale_id"] == prev_id
+        assert ant["previsionale_importo"] == 80.0
+        assert len(ant["utenze_reali"]) == 1
+        # 1 giorno sovrapposto su 30 totali → 45 * 1/30 = 1.50
+        assert ant["utenze_reali"][0]["giorni_sovrapposti"] == 1
+        assert ant["utenze_reali"][0]["quota_nel_periodo"] == 1.50
+        assert ant["somma_utenze_reali"] == 1.50
+        assert ant["rettifica_proposta"] == -1.50
+        assert ant["netto_a_favore_inquilino"] == 78.50
+
+        # Salva conguaglio (POST)
+        post_resp = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/conguaglia-previsionale/",
+            {"previsionale_id": prev_id},
+            format="json",
+        )
+        assert post_resp.status_code == 201, post_resp.content
+        body = post_resp.json()
+        rett = Receivable.objects.get(pk=body["rettifica_id"])
+        assert rett.causale == Receivable.Causale.EXTRA
+        assert rett.importo_dovuto == Decimal("-1.50")
+        assert f"conguaglio_previsionale:{prev_id}" in (rett.note or "")
+        # Previsionale marcato come conguagliato
+        prev = Receivable.objects.get(pk=prev_id)
+        assert "conguaglio_previsionale" in (prev.note or "")
+
+    def test_conguaglio_rifiuta_se_gia_conguagliato(
+        self, client_prop, tenant_1, assignment_1, charge_1
+    ):
+        prev_id = self._crea_previsionale(
+            client_prop, tenant_1, assignment_1
+        ).json()["id"]
+        ok = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/conguaglia-previsionale/",
+            {"previsionale_id": prev_id},
+            format="json",
+        )
+        assert ok.status_code == 201
+        ko = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/conguaglia-previsionale/",
+            {"previsionale_id": prev_id},
+            format="json",
+        )
+        assert ko.status_code == 409
+        assert b"gi\xc3\xa0 conguagliato" in ko.content
+
+    def test_conguaglio_su_non_previsionale_400(
+        self, client_prop, tenant_1, extra_charge_1
+    ):
+        """Un Receivable extra qualsiasi (non marcato previsionale) non è
+        conguagliabile."""
+        resp = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/conguaglia-previsionale/",
+            {"previsionale_id": extra_charge_1.id},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_conguaglio_nessuna_utenza_409(
+        self, client_prop, tenant_1, assignment_1
+    ):
+        """Se non ci sono utenze nel periodo, niente da conguagliare."""
+        prev_id = self._crea_previsionale(
+            client_prop, tenant_1, assignment_1
+        ).json()["id"]
+        resp = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/conguaglia-previsionale/",
+            {"previsionale_id": prev_id},
+            format="json",
+        )
+        assert resp.status_code == 409
