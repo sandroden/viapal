@@ -111,7 +111,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import type { QTableProps } from 'quasar';
 import { Notify } from 'quasar';
 import { useDashboardStore, type ProprietarioRiga } from 'stores/dashboard';
@@ -211,8 +211,19 @@ const oggi = new Date();
 const annoCorrente = oggi.getFullYear();
 const meseCorrente = oggi.getMonth() + 1;
 
+function handleEsc(e: KeyboardEvent) {
+  if (e.key === 'Escape' && filtroInquilino.value !== 'tutti') {
+    filtroInquilino.value = 'tutti';
+  }
+}
+
 onMounted(() => {
   void store.loadProprietario(annoCorrente, meseCorrente);
+  window.addEventListener('keydown', handleEsc);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEsc);
 });
 
 function ricarica() {
