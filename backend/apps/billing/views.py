@@ -185,11 +185,136 @@ class ExtraChargeViewSet(_ReceivableMixin, ModelViewSet):
 
 
 class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
-    """Periodi utenze. Solo proprietari."""
+    """Periodi utenze. Solo proprietari.
+
+    Oltre a lista/dettaglio espone il flusso di **emissione utenze**:
+
+    - ``GET  per-mese?anno=&mese=`` : trova-o-crea il periodo del mese e ne
+      riporta la completezza (luce/gas/tari presenti).
+    - ``GET  {id}/anteprima``       : dry-run della ripartizione (conto per
+      inquilino), nessuna scrittura.
+    - ``POST {id}/emetti``          : persiste i Receivable utenze e porta il
+      periodo a stato 'inviato'.
+    """
 
     serializer_class = UtilityChargePeriodSerializer
     permission_classes = [IsProprietario]
     queryset = UtilityChargePeriod.objects.all().order_by("-periodo_da")
+
+    def _completezza(self, period) -> dict:
+        """Quali voci sono presenti per il periodo (hint rapido pre-calcolo).
+
+        ``completo`` = c'è almeno una bolletta luce e una gas che si
+        sovrappongono al periodo: solo allora il conteggio ha senso (la TARI è
+        un costo fisso che si ribalta da sé).
+        """
+        from billing.models import AnnualUtilityCost
+
+        bills = UtilityBill.objects.filter(
+            periodo_da__lte=period.periodo_a,
+            periodo_a__gte=period.periodo_da,
+        )
+        has_luce = bills.filter(prodotto=UtilityBill.Prodotto.LUCE).exists()
+        has_gas = bills.filter(prodotto=UtilityBill.Prodotto.GAS).exists()
+        has_tari = (
+            AnnualUtilityCost.objects.filter(
+                voce=AnnualUtilityCost.VoceAnnuale.TARI,
+                valid_from__lte=period.periodo_a,
+            )
+            .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=period.periodo_da))
+            .exists()
+        )
+        return {
+            "luce": has_luce,
+            "gas": has_gas,
+            "tari": has_tari,
+            "completo": has_luce and has_gas,
+        }
+
+    @action(detail=False, methods=["get"], url_path="per-mese")
+    def per_mese(self, request):
+        """Trova o crea il periodo utenze del mese (``anno`` e ``mese`` in query)."""
+        import calendar
+
+        try:
+            anno = int(request.query_params["anno"])
+            mese = int(request.query_params["mese"])
+        except (KeyError, ValueError, TypeError):
+            return Response(
+                {"detail": "Parametri 'anno' e 'mese' obbligatori (interi)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not (1 <= mese <= 12):
+            return Response(
+                {"detail": "Mese fuori range (1-12)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        primo = datetime.date(anno, mese, 1)
+        ultimo = datetime.date(anno, mese, calendar.monthrange(anno, mese)[1])
+
+        # periodo esistente che copre (anche parzialmente) il mese richiesto:
+        # evita di creare doppioni su periodi bimestrali già presenti.
+        period = (
+            UtilityChargePeriod.objects.filter(
+                periodo_da__lte=ultimo, periodo_a__gte=primo
+            )
+            .order_by("periodo_da")
+            .first()
+        )
+        created = False
+        if period is None:
+            period = UtilityChargePeriod.objects.create(
+                periodo_da=primo, periodo_a=ultimo
+            )
+            created = True
+
+        return Response(
+            {
+                "period": self.get_serializer(period).data,
+                "created": created,
+                "completezza": self._completezza(period),
+            }
+        )
+
+    @action(detail=True, methods=["get"], url_path="anteprima")
+    def anteprima(self, request, pk=None):
+        """Dry-run della ripartizione: conto per inquilino, nessuna scrittura."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        period = self.get_object()
+        risultato = calcola_conguaglio_periodo(period.id, persist=False)
+        risultato["completezza"] = self._completezza(period)
+        return Response(risultato)
+
+    @action(detail=True, methods=["post"], url_path="emetti")
+    def emetti(self, request, pk=None):
+        """Persiste i Receivable utenze e porta il periodo a 'inviato'."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        period = self.get_object()
+        comp = self._completezza(period)
+        if not comp["completo"]:
+            return Response(
+                {
+                    "detail": "Periodo incompleto: servono almeno una bolletta "
+                    "luce e una gas prima di emettere.",
+                    "completezza": comp,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        risultato = calcola_conguaglio_periodo(period.id, persist=True)
+
+        period.refresh_from_db()
+        if period.stato != UtilityChargePeriod.StatoPeriodo.INVIATO:
+            period.stato = UtilityChargePeriod.StatoPeriodo.INVIATO
+            if not period.data_invio:
+                period.data_invio = datetime.date.today()
+            period.save(update_fields=["stato", "data_invio"])
+
+        risultato["period"] = self.get_serializer(period).data
+        return Response(risultato)
 
 
 class UtilityBillViewSet(ModelViewSet):
