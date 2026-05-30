@@ -166,15 +166,6 @@
                   {{ euro(store.anteprima.totale_periodo) }}
                 </td>
               </tr>
-              <tr class="vp-tot-persona">
-                <td class="text-left text-weight-bold">
-                  Totale per persona
-                  <span class="vp-muted">
-                    ({{ store.anteprima.quote.length }} inquilini)
-                  </span>
-                </td>
-                <td class="text-right text-weight-bold">{{ totalePerPersona }}</td>
-              </tr>
             </tfoot>
           </q-markup-table>
         </q-card-section>
@@ -349,22 +340,6 @@ const vociPeriodo = computed(() => {
   }));
 });
 
-const totalePerPersona = computed(() => {
-  const a = store.anteprima;
-  if (!a || !a.quote.length) return '—';
-  const quote = a.quote.map((q) =>
-    typeof q.quota === 'string' ? parseFloat(q.quota) : q.quota,
-  );
-  // Se tutti pagano uguale (stessi giorni) mostro la quota effettiva
-  // addebitata; altrimenti la media (i singoli importi sono in tabella).
-  const tutteUguali = quote.every((v) => Math.abs(v - (quote[0] ?? 0)) < 0.005);
-  if (tutteUguali) return euro(quote[0]);
-  const tot = typeof a.totale_periodo === 'string'
-    ? parseFloat(a.totale_periodo)
-    : a.totale_periodo;
-  return euro(tot / a.quote.length);
-});
-
 function euro(v: number | string | null | undefined): string {
   const n = typeof v === 'string' ? parseFloat(v) : v ?? 0;
   if (!n) return '—';
@@ -530,10 +505,6 @@ onMounted(() => {
 }
 .vp-tot td {
   border-top: 2px solid var(--vp-paper-3, #e0d8cf);
-}
-.vp-tot-persona td {
-  color: var(--vp-terra-deep, #9b5a3a);
-  font-size: 15px;
 }
 .vp-banner-error {
   background: #fdecea;
