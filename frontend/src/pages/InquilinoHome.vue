@@ -22,6 +22,9 @@
             {{ daPagare.length }}
             {{ daPagare.length === 1 ? 'pagamento' : 'pagamenti' }} aperti
           </h2>
+          <p v-if="numParziali > 0" class="vp-i-home__nota-parziali">
+            di cui {{ numParziali }} {{ numParziali === 1 ? 'già pagato' : 'già pagati' }} in parte
+          </p>
         </div>
         <q-btn
           flat
@@ -104,6 +107,7 @@ const saluto = computed(() =>
   auth.user?.first_name?.trim() || auth.user?.username || 'Inquilino',
 );
 const daPagare = computed(() => store.inquilinoData?.da_pagare ?? []);
+const numParziali = computed(() => daPagare.value.filter((x) => x.parziale).length);
 const ultimiPagamenti = computed(() => store.inquilinoData?.ultimi_pagamenti ?? []);
 const stanzaCorrente = computed(() => store.inquilinoData?.stanza_corrente ?? null);
 
@@ -148,6 +152,11 @@ function ricarica() {
   margin: 4px 0 0;
   font-size: var(--vp-text-xl);
   color: var(--vp-ink);
+}
+.vp-i-home__nota-parziali {
+  margin: 2px 0 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-sage-deep);
 }
 .vp-i-home__lista {
   display: grid;

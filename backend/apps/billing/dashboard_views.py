@@ -84,11 +84,18 @@ def _descrizione_receivable(r: Receivable) -> str:
 
 def _build_item_da_pagare(r: Receivable, oggi: datetime.date) -> dict:
     giorni = _giorni_ritardo(r.scadenza, oggi)
+    dovuto = r.importo_dovuto
+    pagato = r.importo_pagato or Decimal("0")
     return {
         "tipo": TIPO_PER_CAUSALE[r.causale],
         "id": r.id,
         "descrizione": _descrizione_receivable(r),
-        "importo": float(r.importo_dovuto),
+        # `importo` resta il dovuto pieno per retrocompatibilità FE.
+        "importo": float(dovuto),
+        "importo_dovuto": float(dovuto),
+        "importo_pagato": float(pagato),
+        "residuo": float(dovuto - pagato),
+        "parziale": bool(0 < pagato < dovuto),
         "scadenza": r.scadenza.isoformat(),
         "stato": r.stato,
         "giorni_ritardo": giorni,

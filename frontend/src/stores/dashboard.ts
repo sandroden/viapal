@@ -9,6 +9,10 @@ export interface DaPagareItem {
   id: number;
   descrizione: string;
   importo: number;
+  importo_dovuto: number;
+  importo_pagato: number;
+  residuo: number;
+  parziale: boolean;
   scadenza: string;
   stato: string;
   giorni_ritardo: number;

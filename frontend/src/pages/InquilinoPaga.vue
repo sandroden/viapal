@@ -14,7 +14,14 @@
             Scadenza: {{ formattaData(item.scadenza) }}
           </div>
         </div>
-        <div class="vp-i-paga__importo vp-display">{{ formattaEuro(item.importo) }}</div>
+        <div class="vp-i-paga__importo-wrap">
+          <div class="vp-eyebrow">{{ item.parziale ? 'Resto da saldare' : 'Importo' }}</div>
+          <div class="vp-i-paga__importo vp-display">{{ formattaEuro(item.residuo) }}</div>
+        </div>
+      </div>
+      <div v-if="item.parziale" class="vp-i-paga__versato">
+        Già versato <span class="vp-mono">{{ formattaEuro(item.importo_pagato) }}</span>
+        di <span class="vp-mono">{{ formattaEuro(item.importo_dovuto) }}</span>
       </div>
     </q-card>
 
@@ -126,7 +133,7 @@ const errore = ref<string>('');
 
 onMounted(async () => {
   if (!dashboard.inquilinoData) await dashboard.loadInquilino();
-  if (item.value) importo.value = item.value.importo;
+  if (item.value) importo.value = item.value.residuo;
 });
 
 async function conferma() {
@@ -189,10 +196,20 @@ function indietro() {
   font-size: var(--vp-text-sm);
   margin-top: 4px;
 }
+.vp-i-paga__importo-wrap {
+  text-align: right;
+}
 .vp-i-paga__importo {
   font-size: var(--vp-text-2xl);
   color: var(--vp-terra-deep);
   font-variant-numeric: tabular-nums;
+}
+.vp-i-paga__versato {
+  margin-top: var(--vp-gap-3);
+  padding-top: var(--vp-gap-3);
+  border-top: 1px solid var(--vp-paper-3);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-ink-3);
 }
 .vp-i-paga__azioni {
   display: flex;

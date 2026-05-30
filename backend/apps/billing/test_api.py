@@ -441,6 +441,27 @@ class TestDashboardInquilino:
             assert "semaforo" in item
             assert item["semaforo"] in ("salvia", "miele", "argilla_chiaro", "argilla_scuro")
 
+    def test_da_pagare_espone_dovuto_pagato_residuo(
+        self, client_inq_1, tenant_1, rent_payment_1
+    ):
+        """Ogni voce 'da pagare' espone dovuto/pagato/residuo/parziale."""
+        resp = client_inq_1.get("/api/v1/dashboard/inquilino/")
+        item = resp.json()["da_pagare"][0]
+        assert item["importo_dovuto"] == 400.0
+        assert item["importo_pagato"] == 0.0
+        assert item["residuo"] == 400.0
+        assert item["parziale"] is False
+
+    def test_da_pagare_parziale(self, client_inq_1, tenant_1, rent_payment_1):
+        """Un addebito con versamento parziale espone residuo e flag parziale."""
+        rent_payment_1.importo_pagato = Decimal("250")
+        rent_payment_1.save(update_fields=["importo_pagato"])
+        resp = client_inq_1.get("/api/v1/dashboard/inquilino/")
+        item = resp.json()["da_pagare"][0]
+        assert item["importo_pagato"] == 250.0
+        assert item["residuo"] == 150.0
+        assert item["parziale"] is True
+
     def test_proprietario_non_accede(self, client_prop):
         resp = client_prop.get("/api/v1/dashboard/inquilino/")
         assert resp.status_code == 403
