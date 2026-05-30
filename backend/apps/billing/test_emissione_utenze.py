@@ -22,7 +22,7 @@ def _proprietario():
     return user
 
 
-def _assignment_attivo():
+def _assignment_attivo(email="mario@example.com"):
     """Inquilino con assegnazione stanza attiva da inizio 2024 (no scadenza).
 
     Allineato alle fixture del conftest: ``Room`` senza ``Building`` né
@@ -31,7 +31,9 @@ def _assignment_attivo():
     from properties.models import Room, RoomAssignment, TenantProfile
 
     room = Room.objects.create(nome="Camera Emissione", ordinamento=30)
-    tenant_user = User.objects.create_user(username="tenant_em", password="x")
+    tenant_user = User.objects.create_user(
+        username="tenant_em", password="x", email=email
+    )
     tenant = TenantProfile.objects.create(
         user=tenant_user, nominativo="Mario Rossi", giorno_pagamento_affitto=1
     )
@@ -141,3 +143,67 @@ class TestAnteprimaEmetti:
         resp = c.post(f"/api/v1/utility-periods/{pid}/emetti/")
         assert resp.status_code == 400
         assert resp.json()["completezza"]["completo"] is False
+
+
+def _setup_emesso(c, email="mario@example.com", mese=6):
+    """Crea inquilino+bollette, trova il periodo del mese e lo emette."""
+    _assignment_attivo(email=email)
+    _bolletta("luce", "100.00", datetime.date(2025, mese, 1), datetime.date(2025, mese, 28))
+    _bolletta("gas", "60.00", datetime.date(2025, mese, 1), datetime.date(2025, mese, 28))
+    pid = c.get(
+        "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": mese}
+    ).json()["period"]["id"]
+    c.post(f"/api/v1/utility-periods/{pid}/emetti/")
+    return pid
+
+
+class TestInvioAvvisi:
+    def test_dry_run_non_invia(self, mailoutbox):
+        c = _client()
+        pid = _setup_emesso(c)
+        resp = c.post(
+            f"/api/v1/utility-periods/{pid}/invia-avvisi/",
+            {"dry_run": True},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        body = resp.json()
+        assert body["dry_run"] is True
+        assert body["totale"] == 1
+        assert body["inviati"] == 0
+        avviso = body["avvisi"][0]
+        assert avviso["esito"] == "anteprima"
+        assert "conguaglio utenze" in avviso["oggetto"]
+        assert "Mario Rossi" in avviso["corpo"]
+        assert len(mailoutbox) == 0
+
+    def test_invio_reale(self, mailoutbox):
+        from notifications.models import Notification
+
+        c = _client()
+        pid = _setup_emesso(c)
+        resp = c.post(
+            f"/api/v1/utility-periods/{pid}/invia-avvisi/",
+            {"dry_run": False},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        body = resp.json()
+        assert body["inviati"] == 1
+        assert body["errori"] == 0
+        assert len(mailoutbox) == 1
+        assert mailoutbox[0].to == ["mario@example.com"]
+        assert Notification.objects.filter(inviata_at__isnull=False).count() == 1
+
+    def test_senza_email(self, mailoutbox):
+        c = _client()
+        pid = _setup_emesso(c, email="")
+        resp = c.post(
+            f"/api/v1/utility-periods/{pid}/invia-avvisi/",
+            {"dry_run": False},
+            format="json",
+        )
+        body = resp.json()
+        assert body["inviati"] == 0
+        assert body["senza_email"] == ["Mario Rossi"]
+        assert len(mailoutbox) == 0

@@ -316,6 +316,21 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
         risultato["period"] = self.get_serializer(period).data
         return Response(risultato)
 
+    @action(detail=True, methods=["post"], url_path="invia-avvisi")
+    def invia_avvisi(self, request, pk=None):
+        """Invia (o simula con ``dry_run``) gli avvisi utenze agli inquilini.
+
+        Body JSON: ``{"dry_run": true|false}`` (default ``true``).
+        Con ``dry_run`` mostra il testo esatto delle email senza inviare nulla,
+        così lo si approva prima dell'invio reale.
+        """
+        from billing.calc.avvisi import invia_avvisi_utenze
+
+        period = self.get_object()
+        dry_run = bool(request.data.get("dry_run", True))
+        risultato = invia_avvisi_utenze(period, dry_run=dry_run)
+        return Response(risultato)
+
 
 class UtilityBillViewSet(ModelViewSet):
     """Bollette utenze. Solo proprietari.
