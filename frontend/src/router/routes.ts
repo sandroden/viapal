@@ -71,6 +71,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/ProprietarioSaldiFratelli.vue'),
       },
       {
+        path: 'utenze',
+        name: 'p-utenze',
+        component: () => import('pages/ProprietarioUtenze.vue'),
+      },
+      {
         path: ':catchAll(.*)*',
         component: () => import('pages/ErrorNotFound.vue'),
       },

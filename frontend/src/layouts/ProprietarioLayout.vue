@@ -72,6 +72,7 @@ const vociMenu = [
   { to: '/p/inquilini', label: 'Inquilini', icon: 'group' },
   { to: '/p/quadro-annuale', label: 'Quadro annuale', icon: 'table_view' },
   { to: '/p/spese', label: 'Spese', icon: 'shopping_cart' },
+  { to: '/p/utenze', label: 'Utenze', icon: 'bolt' },
   { to: '/p/riconciliazione', label: 'Riconciliazione', icon: 'compare_arrows' },
   { to: '/p/saldi-fratelli', label: 'Saldi fratelli', icon: 'account_balance' },
   { to: '/p/quick-add', label: 'Aggiungi rapida', icon: 'add_circle' },
