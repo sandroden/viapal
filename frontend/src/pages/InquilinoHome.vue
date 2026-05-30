@@ -25,6 +25,10 @@
           <p v-if="numParziali > 0" class="vp-i-home__nota-parziali">
             di cui {{ numParziali }} {{ numParziali === 1 ? 'già pagato' : 'già pagati' }} in parte
           </p>
+          <router-link v-if="daPagare.length > 0" to="/i/rendiconto" class="vp-i-home__link-rendiconto">
+            Vedi il rendiconto dettagliato
+            <q-icon name="arrow_forward" size="14px" />
+          </router-link>
         </div>
         <q-btn
           flat
@@ -48,9 +52,20 @@
         />
       </div>
 
-      <div v-else class="vp-i-home__lista">
-        <PagamentoCard v-for="item in daPagare" :key="`${item.tipo}-${item.id}`" :item="item" />
-      </div>
+      <template v-else>
+        <aside class="vp-i-home__saldo">
+          <div class="vp-i-home__saldo-eyebrow">Per pareggiare tutto</div>
+          <div class="vp-i-home__saldo-importo vp-display">{{ formattaEuro(totaleDaSaldare) }}</div>
+          <p class="vp-i-home__saldo-testo">
+            Vi chiediamo gentilmente di verificare se ci sono errori nei conteggi e
+            segnalarceli, oppure saldare la differenza.
+          </p>
+        </aside>
+
+        <div class="vp-i-home__lista">
+          <PagamentoCard v-for="item in daPagare" :key="`${item.tipo}-${item.id}`" :item="item" />
+        </div>
+      </template>
     </section>
 
     <section class="vp-i-home__section">
@@ -108,6 +123,9 @@ const saluto = computed(() =>
 );
 const daPagare = computed(() => store.inquilinoData?.da_pagare ?? []);
 const numParziali = computed(() => daPagare.value.filter((x) => x.parziale).length);
+const totaleDaSaldare = computed(() =>
+  daPagare.value.reduce((somma, x) => somma + x.residuo, 0),
+);
 const ultimiPagamenti = computed(() => store.inquilinoData?.ultimi_pagamenti ?? []);
 const stanzaCorrente = computed(() => store.inquilinoData?.stanza_corrente ?? null);
 
@@ -157,6 +175,44 @@ function ricarica() {
   margin: 2px 0 0;
   font-size: var(--vp-text-sm);
   color: var(--vp-sage-deep);
+}
+.vp-i-home__link-rendiconto {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: var(--vp-gap-2);
+  font-size: var(--vp-text-sm);
+  font-weight: 500;
+  color: var(--vp-terra-deep);
+  text-decoration: none;
+}
+.vp-i-home__link-rendiconto:hover {
+  text-decoration: underline;
+}
+.vp-i-home__saldo {
+  margin-bottom: var(--vp-gap-4);
+  padding: var(--vp-gap-4) var(--vp-gap-5);
+  background: var(--vp-sage-deep);
+  color: var(--vp-cream);
+  border-radius: var(--vp-r-lg);
+  box-shadow: var(--vp-shadow-1);
+}
+.vp-i-home__saldo-eyebrow {
+  font-size: var(--vp-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.8;
+}
+.vp-i-home__saldo-importo {
+  font-size: var(--vp-text-3xl);
+  margin: 2px 0 var(--vp-gap-2);
+  font-variant-numeric: tabular-nums;
+}
+.vp-i-home__saldo-testo {
+  margin: 0;
+  font-size: var(--vp-text-sm);
+  line-height: 1.5;
+  opacity: 0.92;
 }
 .vp-i-home__lista {
   display: grid;
