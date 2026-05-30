@@ -9,7 +9,9 @@
     </q-header>
 
     <q-page-container>
-      <router-view />
+      <div class="vp-i-shell">
+        <router-view />
+      </div>
     </q-page-container>
 
     <q-footer class="vp-bottom-nav">
@@ -62,6 +64,11 @@ async function logout() {
 </script>
 
 <style scoped>
+.vp-i-shell {
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+}
 .vp-header {
   background: var(--vp-sage-deep);
   color: var(--vp-cream);

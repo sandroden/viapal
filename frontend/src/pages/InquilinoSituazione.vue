@@ -901,7 +901,7 @@ function annoSuccessivo() {
 }
 .vp-i-sit__kpi {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--vp-gap-3);
   margin-bottom: var(--vp-gap-5);
 }
@@ -960,7 +960,7 @@ function annoSuccessivo() {
 }
 .vp-i-sit__griglia {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: 1fr;
   gap: var(--vp-gap-3);
 }
 .vp-i-sit__card-info {

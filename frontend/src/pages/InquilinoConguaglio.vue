@@ -131,7 +131,7 @@ function indietro() {
 }
 .vp-i-cong__griglia {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--vp-gap-4);
 }
 .vp-i-cong__azioni {
