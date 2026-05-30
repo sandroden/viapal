@@ -89,9 +89,48 @@ class TestPerMese:
         assert first.json()["period"]["id"] == second.json()["period"]["id"]
 
     def test_parametri_mancanti(self):
+        # 'mese' senza 'anno' è un input parziale invalido
         c = _client()
-        resp = c.get("/api/v1/utility-periods/per-mese/", {"anno": 2025})
+        resp = c.get("/api/v1/utility-periods/per-mese/", {"mese": 6})
         assert resp.status_code == 400
+
+    def test_default_senza_parametri_mese_corrente_se_vuoto(self):
+        # nessun addebito utenze esistente -> default = mese corrente
+        c = _client()
+        resp = c.get("/api/v1/utility-periods/per-mese/")
+        assert resp.status_code == 200, resp.content
+        oggi = datetime.date.today()
+        assert resp.json()["anno"] == oggi.year
+        assert resp.json()["mese"] == oggi.month
+
+    def test_default_mese_successivo_allultimo_emesso(self):
+        # emette giugno 2025 -> il default deve proporre luglio 2025
+        _assignment_attivo()
+        _bolletta("luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        _bolletta("gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        c = _client()
+        pid = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
+        ).json()["period"]["id"]
+        c.post(f"/api/v1/utility-periods/{pid}/emetti/")
+
+        resp = c.get("/api/v1/utility-periods/per-mese/")
+        assert resp.json()["anno"] == 2025
+        assert resp.json()["mese"] == 7
+
+    def test_default_dicembre_passa_a_gennaio_successivo(self):
+        _assignment_attivo()
+        _bolletta("luce", "100.00", datetime.date(2025, 12, 1), datetime.date(2025, 12, 31))
+        _bolletta("gas", "60.00", datetime.date(2025, 12, 1), datetime.date(2025, 12, 31))
+        c = _client()
+        pid = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 12}
+        ).json()["period"]["id"]
+        c.post(f"/api/v1/utility-periods/{pid}/emetti/")
+
+        resp = c.get("/api/v1/utility-periods/per-mese/")
+        assert resp.json()["anno"] == 2026
+        assert resp.json()["mese"] == 1
 
 
 class TestAnteprimaEmetti:
@@ -110,10 +149,16 @@ class TestAnteprimaEmetti:
 
         ant = c.get(f"/api/v1/utility-periods/{pid}/anteprima/")
         assert ant.status_code == 200, ant.content
-        quote = ant.json()["quote"]
+        body_ant = ant.json()
+        quote = body_ant["quote"]
         assert len(quote) == 1
         assert quote[0]["tenant_nominativo"] == "Mario Rossi"
         assert Decimal(str(quote[0]["quota"])) > 0
+
+        # i totali per voce espongono luce + gas (le 3 righe del riepilogo)
+        tpv = body_ant["totali_per_voce"]
+        assert Decimal(str(tpv["luce"])) > 0
+        assert Decimal(str(tpv["gas"])) > 0
 
     def test_emetti_crea_receivable_e_inviato(self):
         from billing.models import Receivable

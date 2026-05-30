@@ -231,19 +231,51 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
             "completo": has_luce and has_gas,
         }
 
+    def _mese_default(self) -> tuple[int, int]:
+        """Mese di partenza proposto: il successivo all'ultimo periodo con
+        addebiti utenze effettivamente emessi.
+
+        Se non esiste alcun Receivable utenze, fallback al mese corrente.
+        """
+        ultimo = (
+            Receivable.objects.filter(
+                causale=Receivable.Causale.UTENZE,
+                utility_period__isnull=False,
+            )
+            .select_related("utility_period")
+            .order_by("-utility_period__periodo_a")
+            .first()
+        )
+        if ultimo is None:
+            oggi = datetime.date.today()
+            return oggi.year, oggi.month
+        base = ultimo.utility_period.periodo_a
+        anno = base.year + (1 if base.month == 12 else 0)
+        mese = 1 if base.month == 12 else base.month + 1
+        return anno, mese
+
     @action(detail=False, methods=["get"], url_path="per-mese")
     def per_mese(self, request):
-        """Trova o crea il periodo utenze del mese (``anno`` e ``mese`` in query)."""
+        """Trova o crea il periodo utenze del mese.
+
+        ``anno`` e ``mese`` sono opzionali: se omessi, si usa il mese
+        successivo all'ultimo periodo con addebiti utenze emessi.
+        """
         import calendar
 
-        try:
-            anno = int(request.query_params["anno"])
-            mese = int(request.query_params["mese"])
-        except (KeyError, ValueError, TypeError):
-            return Response(
-                {"detail": "Parametri 'anno' e 'mese' obbligatori (interi)."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        ha_anno = "anno" in request.query_params
+        ha_mese = "mese" in request.query_params
+        if not ha_anno and not ha_mese:
+            anno, mese = self._mese_default()
+        else:
+            try:
+                anno = int(request.query_params["anno"])
+                mese = int(request.query_params["mese"])
+            except (KeyError, ValueError, TypeError):
+                return Response(
+                    {"detail": "Parametri 'anno' e 'mese' obbligatori (interi)."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         if not (1 <= mese <= 12):
             return Response(
                 {"detail": "Mese fuori range (1-12)."},
@@ -274,6 +306,8 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
                 "period": self.get_serializer(period).data,
                 "created": created,
                 "completezza": self._completezza(period),
+                "anno": anno,
+                "mese": mese,
             }
         )
 

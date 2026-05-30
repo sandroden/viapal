@@ -28,6 +28,8 @@ export interface PerMeseResponse {
   period: PeriodFE;
   created: boolean;
   completezza: Completezza;
+  anno: number;
+  mese: number;
 }
 
 export interface QuotaInquilino {
@@ -159,20 +161,23 @@ export const useUtenzeStore = defineStore('utenze', {
       }
     },
 
-    async perMese(anno: number, mese: number): Promise<void> {
+    async perMese(anno?: number, mese?: number): Promise<PerMeseResponse | null> {
       this.loading = true;
       this.errore = null;
       this.anteprima = null;
       this.invio = null;
       try {
+        const params = anno && mese ? { anno, mese } : {};
         const { data } = await api.get<PerMeseResponse>(
           '/api/v1/utility-periods/per-mese/',
-          { params: { anno, mese } },
+          { params },
         );
         this.period = data.period;
         this.completezza = data.completezza;
+        return data;
       } catch (e: unknown) {
         this.errore = messaggioErrore(e, 'Errore ricerca periodo');
+        return null;
       } finally {
         this.loading = false;
       }

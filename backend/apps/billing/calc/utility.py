@@ -33,81 +33,34 @@ def _arrotonda(valore: Decimal) -> Decimal:
     return valore.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def _sottrai_intervalli(
-    intervalli: list[tuple[date, date]],
-    da_togliere: list[tuple[date, date]],
-) -> list[tuple[date, date]]:
-    """Sottrae `da_togliere` da `intervalli`. Intervalli inclusivi a entrambi gli estremi."""
-    risultato = list(intervalli)
-    for t_da, t_a in da_togliere:
-        nuovi: list[tuple[date, date]] = []
-        for s, e in risultato:
-            # Nessuna intersezione
-            if t_a < s or t_da > e:
-                nuovi.append((s, e))
-                continue
-            # Parte a sinistra di t_da
-            if s < t_da:
-                nuovi.append((s, t_da - timedelta(days=1)))
-            # Parte a destra di t_a
-            if e > t_a:
-                nuovi.append((t_a + timedelta(days=1), e))
-        risultato = nuovi
-    return risultato
-
-
-def _giorni_in_intervalli(intervalli: list[tuple[date, date]]) -> int:
-    return sum((e - s).days + 1 for s, e in intervalli)
-
-
 def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list]:
     """Decide quali UtilityBill contribuiscono a `period` e con quale importo.
 
+    Regola **semplice e locale**: un periodo prende solo le bollette il cui
+    intervallo ``[periodo_da, periodo_a]`` si sovrappone al periodo, in pro-rata
+    sui giorni di sovrapposizione fra bolletta e periodo. Una bolletta non
+    finisce mai su un mese che non copre: niente "ribaltamento" di bollette in
+    ritardo su mesi futuri, e il calcolo di un periodo NON dipende da quali
+    altri periodi esistono o sono chiusi. Una bolletta che copre N mesi viene
+    ripartita su quei mesi: la somma delle quote = importo della bolletta.
+
     Restituisce ``(contributi_per_voce, bollette_utilizzate)``:
-      - ``contributi_per_voce``: dict ``{"luce": Decimal, "gas": Decimal}`` con i totali
-        attribuiti al periodo.
-      - ``bollette_utilizzate``: lista di ``UtilityBill`` da agganciare alla M2M
-        ``period.utility_bills`` (segna le bollette come "consumate" dal periodo).
+      - ``contributi_per_voce``: ``{"luce": Decimal, "gas": Decimal}`` per il periodo.
+      - ``bollette_utilizzate``: bollette da agganciare alla M2M ``utility_bills``.
 
-    Regole (vedi conversazione 2026-05-13):
-
-    1. Una bolletta "consumata" da un altro periodo `inviato` (cioè presente nella
-       sua M2M ``utility_bills``) **non rientra** nel calcolo. Garantisce che una
-       volta chiuso un periodo, le bollette che ha addebitato non vengano
-       ri-addebitate altrove.
-    2. La bolletta si attribuisce in pro-rata sui giorni di intersezione tra il
-       suo ``[periodo_da, periodo_a]`` e ``period``, **dopo aver troncato** le
-       porzioni che cadono in altri periodi ``inviato``. Cioè le porzioni di
-       bolletta che riferiscono a un periodo già chiuso ma non lo hanno
-       addebitato (es. fornitore che etichetta gen-apr quando gen-feb era già
-       stato fatturato con un'altra bolletta) si comprimono sui giorni
-       rimanenti.
-    3. Se il "range effettivo" della bolletta si svuota (cade interamente in
-       periodi chiusi), la bolletta viene **ribaltata interamente** sul primo
-       periodo bozza con ``periodo_da >= bill.data_emissione``. È il caso del
-       conguaglio retroattivo che arriva dopo che il bimestre era già stato
-       chiuso: invece di sparire, l'importo viene addebitato al periodo
-       successivo ancora aperto.
-
-    Override manuale (pin via M2M)
-    ------------------------------
-    Le decisioni storiche dell'utente non sono sempre derivabili da regole
-    semplici (es. fornitore con etichetta "gen-apr" che in realtà significa
-    "mar-apr" perché gen-feb era stato già fatturato altrove). Per questo, se
-    ``period.utility_bills`` è già popolata, il calcolo entra in **modalità
-    pinning**: ogni bolletta agganciata contribuisce per l'importo intero al
-    periodo, ignorando l'algoritmo automatico. Sull'admin l'utente popola la
-    M2M con un widget filter_horizontal.
+    Override manuale (pinning): se ``period.utility_bills`` è già popolata, quelle
+    bollette valgono per l'importo intero (verità manuale, no pro-rata). Le
+    bollette già pinnate da un altro periodo ``inviato`` sono escluse, per non
+    riconteggiare una bolletta già attribuita altrove.
     """
     from billing.models import UtilityBill, UtilityChargePeriod
 
     P_da: date = period.periodo_da
     P_a: date = period.periodo_a
     INVIATO = UtilityChargePeriod.StatoPeriodo.INVIATO
-    BOZZA = UtilityChargePeriod.StatoPeriodo.BOZZA
 
     # Modalità pinning: la M2M è "verità manuale". Se popolata, ogni bolletta
-    # agganciata cade intera sul periodo (no pro-rata, no ribaltamento).
+    # agganciata cade intera sul periodo (no pro-rata).
     pinned = list(period.utility_bills.filter(prodotto__in=VOCI_FATTURABILI))
     if pinned:
         contributi: dict[str, Decimal] = {}
@@ -117,120 +70,70 @@ def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list]:
             )
         return contributi, pinned
 
-    # Periodi inviato (≠ corrente), per troncare i range bolletta
-    closed_qs = UtilityChargePeriod.objects.filter(stato=INVIATO).exclude(pk=period.pk)
-    closed_intervals: list[tuple[date, date]] = [
-        (pd, pa) for pd, pa in closed_qs.values_list("periodo_da", "periodo_a")
-    ]
-
-    # ID bollette già consumate da altri periodi inviato (escluse dal calcolo)
+    # Bollette già consumate (M2M) da un altro periodo inviato: escluse, per non
+    # riconteggiare una bolletta che un altro periodo ha già pinnato.
     consumed_ids = set(
         UtilityBill.objects.filter(periods__stato=INVIATO)
         .exclude(periods__pk=period.pk)
         .values_list("pk", flat=True)
     )
 
-    # Per il ribaltamento delle bollette "stranded": il primo bozza con
-    # periodo_da >= data_emissione. Calcoliamo solo se serve.
-    def _primo_bozza_dopo(d: date):
-        return (
-            UtilityChargePeriod.objects.filter(stato=BOZZA, periodo_da__gte=d)
-            .order_by("periodo_da")
-            .first()
-        )
-
     contributi: dict[str, Decimal] = {}
     bollette_usate: list = []
 
-    bills = UtilityBill.objects.filter(
-        prodotto__in=VOCI_FATTURABILI,
-        periodo_da__lte=P_a,  # bollette iniziate prima della fine di P
-    ).exclude(pk__in=consumed_ids)
+    # Solo le bollette che si sovrappongono al periodo:
+    # periodo_da <= P_a AND periodo_a >= P_da.
+    bills = (
+        UtilityBill.objects.filter(
+            prodotto__in=VOCI_FATTURABILI,
+            periodo_da__lte=P_a,
+            periodo_a__gte=P_da,
+        )
+        .exclude(pk__in=consumed_ids)
+    )
 
     for bill in bills:
-        effective = _sottrai_intervalli(
-            [(bill.periodo_da, bill.periodo_a)], closed_intervals
-        )
-        giorni_effective = _giorni_in_intervalli(effective)
-        giorni_in_P = sum(
-            _giorni_intersezione(s, e, P_da, P_a) for s, e in effective
-        )
-
-        if giorni_effective > 0 and giorni_in_P > 0:
+        giorni_bolletta = (bill.periodo_a - bill.periodo_da).days + 1
+        giorni_in_P = _giorni_intersezione(bill.periodo_da, bill.periodo_a, P_da, P_a)
+        if giorni_in_P <= 0 or giorni_bolletta <= 0:
+            continue
+        if giorni_in_P >= giorni_bolletta:
+            quota = bill.importo_totale  # bolletta interamente dentro il periodo
+        else:
             quota = (
-                bill.importo_totale * Decimal(giorni_in_P) / Decimal(giorni_effective)
+                bill.importo_totale * Decimal(giorni_in_P) / Decimal(giorni_bolletta)
             )
-            contributi[bill.prodotto] = (
-                contributi.get(bill.prodotto, Decimal("0.00")) + quota
-            )
-            bollette_usate.append(bill)
-        elif giorni_effective == 0:
-            # Bolletta interamente in periodi chiusi: ribalta sul primo bozza
-            # successivo all'emissione, se è proprio `period`.
-            target = _primo_bozza_dopo(bill.data_emissione)
-            if target is None:
-                # Nessun bozza ≥ data_emissione: fallback sul bozza più recente.
-                target = (
-                    UtilityChargePeriod.objects.filter(stato=BOZZA)
-                    .order_by("-periodo_da")
-                    .first()
-                )
-            if target is not None and target.pk == period.pk:
-                contributi[bill.prodotto] = (
-                    contributi.get(bill.prodotto, Decimal("0.00")) + bill.importo_totale
-                )
-                bollette_usate.append(bill)
-        # else: giorni_effective > 0 ma giorni_in_P == 0 → bolletta riguarda
-        # altri periodi bozza, non contribuisce a `period`.
+        contributi[bill.prodotto] = (
+            contributi.get(bill.prodotto, Decimal("0.00")) + quota
+        )
+        bollette_usate.append(bill)
 
     return contributi, bollette_usate
 
 
-def _periodi_attivi_in_range(periodo_da: date, periodo_a: date) -> list[tuple[date, date]]:
-    """Ritorna `[(da, a), ...]` per i ``UtilityChargePeriod`` nel range
-    ``[periodo_da, periodo_a]`` che hanno almeno una bolletta luce/gas
-    (cioè quelli che producono effettivamente Receivable).
+def _mesi_coperti(da: date, a: date) -> int:
+    """Numero di mesi calendario toccati dall'intervallo ``[da, a]`` inclusivo.
 
-    Usato come denominatore per la distribuzione di costi annuali (TARI):
-    serve sapere quali periodi ricevono Receivable per ripartire la quota
-    annua solo fra essi (vedi razionale sotto).
+    Un periodo mensile (es. 1-30 apr) → 1; un bimestrale (1 gen - 28 feb) → 2.
     """
-    from billing.models import UtilityBill, UtilityChargePeriod
-
-    periodi = UtilityChargePeriod.objects.filter(
-        periodo_da__lte=periodo_a,
-        periodo_a__gte=periodo_da,
-    )
-    attivi: list[tuple[date, date]] = []
-    for p in periodi:
-        ha_bollette = UtilityBill.objects.filter(
-            periodo_da__lte=p.periodo_a,
-            periodo_a__gte=p.periodo_da,
-            prodotto__in=VOCI_FATTURABILI,
-        ).exists()
-        if ha_bollette:
-            attivi.append((p.periodo_da, p.periodo_a))
-    return attivi
+    if a < da:
+        return 0
+    return (a.year - da.year) * 12 + (a.month - da.month) + 1
 
 
 def _raccoglie_voci_annual(periodo_da: date, periodo_a: date) -> dict[str, Decimal]:
     """
-    Calcola la quota TARI (AnnualUtilityCost) per il periodo corrente,
-    distribuita sui ``UtilityChargePeriod`` attivi (= con bollette luce/gas)
-    nello stesso intervallo di validità.
+    Calcola la quota TARI (AnnualUtilityCost) per il periodo corrente.
 
-    Formula:
-        quota = importo_annuale × giorni_periodo_corrente / sum_giorni_periodi_attivi
+    Regola (scelta Sandro 2026-05-31): la TARI annua è **1/12 al mese**, fissa,
+    indipendente dai giorni del mese e da quanti altri periodi esistono. Un
+    periodo che copre N mesi prende N/12 dell'importo annuale; la somma sui 12
+    mesi dell'anno fa esattamente l'importo annuale.
 
-    Razionale: la TARI annua va ripartita solo fra i periodi che producono
-    Receivable. Se in un anno emetti 6 conguagli bimestrali ognuno prende
-    ~1/6, se ne emetti 12 mensili ognuno prende ~1/12, se mixato la
-    proporzionalità ai giorni distribuisce correttamente. Periodi senza
-    bollette luce/gas (skippati dal calcolo upstream) non concorrono al
-    denominatore: la loro quota viene redistribuita sugli altri.
+        quota = importo_annuale / 12 × mesi_coperti_dal_periodo
 
-    Fallback: se nessun periodo attivo è trovato (caso degenere), si torna
-    alla vecchia formula con denominatore 365 per non bloccare il calcolo.
+    Il calcolo è **locale al periodo**: non dipende da quali altri periodi sono
+    stati creati o emessi (coerente con l'attribuzione delle bollette).
     """
     from billing.models import AnnualUtilityCost
 
@@ -248,28 +151,15 @@ def _raccoglie_voci_annual(periodo_da: date, periodo_a: date) -> dict[str, Decim
 
     for ac in annual_costs:
         ac_to = ac.valid_to if ac.valid_to else date(9999, 12, 31)
-        giorni_periodo_corrente = _giorni_intersezione(
-            periodo_da, periodo_a, ac.valid_from, ac_to
-        )
-        if giorni_periodo_corrente <= 0:
+        # Mesi del periodo che cadono nella validità di questo costo annuale.
+        inizio = max(periodo_da, ac.valid_from)
+        fine = min(periodo_a, ac_to)
+        mesi = _mesi_coperti(inizio, fine)
+        if mesi <= 0:
             continue
 
-        # Denominatore: somma giorni dei periodi attivi nel range di validità di ac
-        attivi = _periodi_attivi_in_range(ac.valid_from, ac_to)
-        sum_giorni_attivi = sum(
-            _giorni_intersezione(p_da, p_a, ac.valid_from, ac_to)
-            for p_da, p_a in attivi
-        )
-
-        if sum_giorni_attivi > 0:
-            quota = ac.importo_annuale * Decimal(giorni_periodo_corrente) / Decimal(
-                sum_giorni_attivi
-            )
-        else:
-            quota = ac.importo_annuale * Decimal(giorni_periodo_corrente) / Decimal(365)
-
-        voce = ac.voce
-        totali[voce] = totali.get(voce, Decimal("0.00")) + quota
+        quota = ac.importo_annuale / Decimal(12) * Decimal(mesi)
+        totali[ac.voce] = totali.get(ac.voce, Decimal("0.00")) + quota
 
     return totali
 
@@ -288,7 +178,7 @@ def calcola_conguaglio_periodo(
     2. Trova UtilityBill collegate (supplier in [energia, gas]) il cui
        periodo principale (= data_emissione per default) cade nel periodo.
     3. Calcola quota TARI: per ogni AnnualUtilityCost attivo nel periodo,
-       quota = importo_annuale * giorni_intersezione / 365
+       quota = importo_annuale / 12 * mesi_coperti_dal_periodo
     4. Per ogni RoomAssignment overlap col periodo, calcola
        giorni_presenza = giorni di intersezione
     5. sum_giorni = somma giorni_presenza di tutti gli assignment

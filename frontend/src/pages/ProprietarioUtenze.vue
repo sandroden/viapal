@@ -140,39 +140,66 @@
         />
       </q-card-section>
 
-      <q-card-section v-if="store.anteprima" class="q-pa-none">
-        <q-markup-table flat dense wrap-cells>
-          <thead>
-            <tr>
-              <th class="text-left">Inquilino</th>
-              <th class="text-right">Giorni</th>
-              <th class="text-right">Luce</th>
-              <th class="text-right">Gas</th>
-              <th class="text-right">TARI</th>
-              <th class="text-right">Quota</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="q in store.anteprima.quote" :key="q.assignment_id">
-              <td class="text-left">{{ q.tenant_nominativo }}</td>
-              <td class="text-right">{{ q.giorni_presenza }}</td>
-              <td class="text-right">{{ euro(q.dettaglio.luce) }}</td>
-              <td class="text-right">{{ euro(q.dettaglio.gas) }}</td>
-              <td class="text-right">{{ euro(q.dettaglio.tari) }}</td>
-              <td class="text-right text-weight-bold">{{ euro(q.quota) }}</td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr>
-              <td class="text-left text-weight-bold">Totale periodo</td>
-              <td colspan="4"></td>
-              <td class="text-right text-weight-bold">
-                {{ euro(store.anteprima.totale_periodo) }}
-              </td>
-            </tr>
-          </tfoot>
-        </q-markup-table>
-      </q-card-section>
+      <template v-if="store.anteprima">
+        <!-- Le tre voci del periodo: luce, gas, TARI -> totale -> per persona -->
+        <q-card-section>
+          <div class="vp-sub">Di cosa si compone</div>
+          <q-markup-table flat dense wrap-cells class="vp-tbl">
+            <thead>
+              <tr>
+                <th class="text-left">Voce</th>
+                <th class="text-right">Importo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="v in vociPeriodo" :key="v.key">
+                <td class="text-left">
+                  <q-badge :color="voceColor(v.key)" :label="v.label" />
+                </td>
+                <td class="text-right">{{ euro(v.importo) }}</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr class="vp-tot">
+                <td class="text-left text-weight-bold">Totale periodo</td>
+                <td class="text-right text-weight-bold">
+                  {{ euro(store.anteprima.totale_periodo) }}
+                </td>
+              </tr>
+              <tr class="vp-tot-persona">
+                <td class="text-left text-weight-bold">
+                  Totale per persona
+                  <span class="vp-muted">
+                    ({{ store.anteprima.quote.length }} inquilini)
+                  </span>
+                </td>
+                <td class="text-right text-weight-bold">{{ totalePerPersona }}</td>
+              </tr>
+            </tfoot>
+          </q-markup-table>
+        </q-card-section>
+
+        <!-- Quote per inquilino: solo nome, giorni, quota -->
+        <q-card-section>
+          <div class="vp-sub">Quota per inquilino</div>
+          <q-markup-table flat dense wrap-cells class="vp-tbl">
+            <thead>
+              <tr>
+                <th class="text-left">Inquilino</th>
+                <th class="text-right">Giorni</th>
+                <th class="text-right">Quota</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="q in store.anteprima.quote" :key="q.assignment_id">
+                <td class="text-left">{{ q.tenant_nominativo }}</td>
+                <td class="text-right">{{ q.giorni_presenza }}</td>
+                <td class="text-right text-weight-bold">{{ euro(q.quota) }}</td>
+              </tr>
+            </tbody>
+          </q-markup-table>
+        </q-card-section>
+      </template>
 
       <q-card-actions v-if="store.anteprima && store.anteprima.quote.length" align="right">
         <q-chip
@@ -305,6 +332,39 @@ const statoColor = computed(() =>
   store.period?.stato === 'inviato' ? 'positive' : 'grey-6',
 );
 
+const VOCI_LABEL: Record<string, string> = {
+  luce: 'Luce',
+  gas: 'Gas',
+  tari: 'TARI',
+  altro: 'Altro',
+};
+const VOCI_ORDINE = ['luce', 'gas', 'tari', 'altro'];
+
+const vociPeriodo = computed(() => {
+  const tpv = store.anteprima?.totali_per_voce ?? {};
+  return VOCI_ORDINE.filter((k) => k in tpv).map((k) => ({
+    key: k,
+    label: VOCI_LABEL[k] ?? k,
+    importo: tpv[k],
+  }));
+});
+
+const totalePerPersona = computed(() => {
+  const a = store.anteprima;
+  if (!a || !a.quote.length) return '—';
+  const quote = a.quote.map((q) =>
+    typeof q.quota === 'string' ? parseFloat(q.quota) : q.quota,
+  );
+  // Se tutti pagano uguale (stessi giorni) mostro la quota effettiva
+  // addebitata; altrimenti la media (i singoli importi sono in tabella).
+  const tutteUguali = quote.every((v) => Math.abs(v - (quote[0] ?? 0)) < 0.005);
+  if (tutteUguali) return euro(quote[0]);
+  const tot = typeof a.totale_periodo === 'string'
+    ? parseFloat(a.totale_periodo)
+    : a.totale_periodo;
+  return euro(tot / a.quote.length);
+});
+
 function euro(v: number | string | null | undefined): string {
   const n = typeof v === 'string' ? parseFloat(v) : v ?? 0;
   if (!n) return '—';
@@ -312,6 +372,13 @@ function euro(v: number | string | null | undefined): string {
     style: 'currency',
     currency: 'EUR',
   }).format(n);
+}
+
+function voceColor(tipo: string): string {
+  if (tipo === 'luce') return 'amber-7';
+  if (tipo === 'gas') return 'blue-grey-6';
+  if (tipo === 'tari') return 'green-7';
+  return 'grey-6';
 }
 
 function esitoColor(esito?: string): string {
@@ -334,6 +401,15 @@ async function onUpload(): Promise<void> {
 
 async function onPerMese(): Promise<void> {
   await store.perMese(anno.value, mese.value);
+}
+
+async function caricaMesePredefinito(): Promise<void> {
+  // Default backend: mese successivo all'ultimo periodo con addebiti emessi.
+  const res = await store.perMese();
+  if (res) {
+    anno.value = res.anno;
+    mese.value = res.mese;
+  }
 }
 
 async function onEmetti(): Promise<void> {
@@ -376,6 +452,7 @@ onMounted(() => {
       ownerId.value = store.owners[0]?.id ?? null;
     }
   });
+  void caricaMesePredefinito();
 });
 </script>
 
@@ -438,6 +515,25 @@ onMounted(() => {
   margin-top: 8px;
   color: var(--vp-ink-3, #888);
   font-size: 13px;
+}
+.vp-sub {
+  font-weight: 600;
+  color: var(--vp-ink-2, #555);
+  margin-bottom: 6px;
+}
+.vp-tbl {
+  background: transparent;
+}
+.vp-muted {
+  color: var(--vp-ink-3, #888);
+  font-size: 13px;
+}
+.vp-tot td {
+  border-top: 2px solid var(--vp-paper-3, #e0d8cf);
+}
+.vp-tot-persona td {
+  color: var(--vp-terra-deep, #9b5a3a);
+  font-size: 15px;
 }
 .vp-banner-error {
   background: #fdecea;

@@ -318,9 +318,8 @@ class TestStanzaVuota:
 
 
 class TestTARIProRata:
-    """TARI 510€/anno; un solo periodo attivo nell'anno → tutta la TARI annua
-    viene caricata su quel periodo (denominatore = giorni dei periodi attivi).
-    """
+    """TARI 510€/anno; un periodo mensile riceve 1/12 dell'annua (= 42.50),
+    indipendente dai giorni del mese e dagli altri periodi."""
 
     @pytest.fixture
     def setup_tari(self, db, make_assignment, supplier_luce, owner):
@@ -360,9 +359,9 @@ class TestTARIProRata:
         risultato = calcola_conguaglio_periodo(period.pk)
 
         totale_tari = risultato["totali_per_voce"].get("tari", Decimal("0.00"))
-        # 510 × 30 / 30 = 510 (tutto sul singolo periodo attivo)
-        assert totale_tari == Decimal("510.00"), (
-            f"TARI atteso 510.00, trovato {totale_tari}"
+        # 1/12 al mese: 510 / 12 = 42.50 (un mese)
+        assert totale_tari == Decimal("42.50"), (
+            f"TARI atteso 42.50, trovato {totale_tari}"
         )
 
     def test_tari_distribuita_equamente(self, setup_tari):
@@ -382,10 +381,8 @@ class TestTARIProRata:
 
 
 class TestTARIDistribuzioneAnnua:
-    """La TARI annua si distribuisce sui ``UtilityChargePeriod`` con bollette
-    luce/gas, proporzionalmente ai loro giorni. La cadenza dei periodi
-    (mensile / bimestrale / mix) è gestita automaticamente dal denominatore
-    (= somma giorni periodi attivi)."""
+    """La TARI annua è 1/12 al mese: un periodo che copre N mesi prende N/12
+    dell'annua. La somma sui 12 mesi dell'anno fa esattamente l'annua."""
 
     def _crea_periodo_con_bolletta(self, periodo_da, periodo_a, supplier_luce, owner, n=1):
         period = UtilityChargePeriod.objects.create(
@@ -429,12 +426,11 @@ class TestTARIDistribuzioneAnnua:
         # Almeno un assignment per coprire tutto l'anno
         make_assignment(valid_from=datetime.date(2026, 1, 1))
 
-        # Verifica giugno (30 gg): TARI = 1200 × 30 / 365 = 98.63
+        # 1/12 al mese: 1200 / 12 = 100.00 per ogni mese (giugno e luglio)
         ris_giu = calcola_conguaglio_periodo(periodi[5].pk)
-        assert ris_giu["totali_per_voce"]["tari"] == Decimal("98.63")
-        # Verifica luglio (31 gg): TARI = 1200 × 31 / 365 = 101.92
+        assert ris_giu["totali_per_voce"]["tari"] == Decimal("100.00")
         ris_lug = calcola_conguaglio_periodo(periodi[6].pk)
-        assert ris_lug["totali_per_voce"]["tari"] == Decimal("101.92")
+        assert ris_lug["totali_per_voce"]["tari"] == Decimal("100.00")
 
         # Somma su tutti i 12 periodi ≈ 1200 (entro arrotondamenti)
         somma = sum(
@@ -472,10 +468,9 @@ class TestTARIDistribuzioneAnnua:
         ]
         make_assignment(valid_from=datetime.date(2024, 1, 1))
 
-        # Ogni bimestre: 450 × giorni / 366 (anno bisestile, sum=366)
-        # Nota: sum_giorni_attivi = 60+61+61+62+61+61 = 366
+        # 1/12 al mese: un bimestre = 450 / 12 × 2 = 75.00
         ris_genfeb = calcola_conguaglio_periodo(periodi[0].pk)
-        assert ris_genfeb["totali_per_voce"]["tari"] == Decimal("73.77"), (
+        assert ris_genfeb["totali_per_voce"]["tari"] == Decimal("75.00"), (
             f"trovato {ris_genfeb['totali_per_voce']['tari']}"
         )
 
@@ -522,48 +517,44 @@ class TestTARIDistribuzioneAnnua:
             mensili.append(p)
         make_assignment(valid_from=datetime.date(2025, 1, 1))
 
-        # sum_giorni = 59+61 + 31+30+31+31+30+31+30+31 = 365 (esatto!)
-        # Bimestrale gen-feb: 365 × 59 / 365 = 59.00
+        # 1/12 al mese: bimestre = 365/12×2 = 60.83; mensile = 365/12 = 30.42
         ris_bim1 = calcola_conguaglio_periodo(bim1.pk)
-        assert ris_bim1["totali_per_voce"]["tari"] == Decimal("59.00")
-        # Mensile maggio (31 gg): 365 × 31 / 365 = 31.00
+        assert ris_bim1["totali_per_voce"]["tari"] == Decimal("60.83")
         ris_mag = calcola_conguaglio_periodo(mensili[0].pk)
-        assert ris_mag["totali_per_voce"]["tari"] == Decimal("31.00")
+        assert ris_mag["totali_per_voce"]["tari"] == Decimal("30.42")
 
         # Bimestrale prende ~2× di un mensile
         assert ris_bim1["totali_per_voce"]["tari"] > Decimal("1.8") * ris_mag["totali_per_voce"]["tari"]
 
-    def test_periodo_senza_bollette_non_riceve_tari(
+    def test_periodo_mensile_prende_un_dodicesimo(
         self, db, make_assignment, supplier_luce, owner
     ):
-        """Un ``UtilityChargePeriod`` senza bollette luce/gas viene saltato:
-        la sua TARI viene redistribuita sugli altri periodi attivi."""
+        """La TARI del mese è 1/12 dell'annua, indipendente da quanti altri
+        periodi esistono o se hanno bollette."""
         from billing.calc.utility import calcola_conguaglio_periodo
 
         AnnualUtilityCost.objects.create(
             voce="tari",
             anno=2026,
-            importo_annuale=Decimal("100.00"),
+            importo_annuale=Decimal("120.00"),
             valid_from=datetime.date(2026, 1, 1),
             valid_to=datetime.date(2026, 12, 31),
         )
-        # Periodo senza bollette (sarà skippato)
+        # Periodo senza bollette: non influenza il calcolo di febbraio
         UtilityChargePeriod.objects.create(
             periodo_da=datetime.date(2026, 1, 1),
             periodo_a=datetime.date(2026, 1, 31),
             criterio_ripartizione="pro_rata_giorni",
         )
-        # Periodo CON bollette
         attivo = self._crea_periodo_con_bolletta(
             datetime.date(2026, 2, 1), datetime.date(2026, 2, 28),
             supplier_luce, owner,
         )
         make_assignment(valid_from=datetime.date(2026, 1, 1))
 
-        # Solo il periodo attivo conta nel denominatore (28 giorni)
-        # quindi tutta la TARI 100€ va su febbraio: 100 × 28 / 28 = 100
+        # Febbraio (1 mese): 120 / 12 = 10.00, a prescindere dagli altri periodi
         ris = calcola_conguaglio_periodo(attivo.pk)
-        assert ris["totali_per_voce"]["tari"] == Decimal("100.00")
+        assert ris["totali_per_voce"]["tari"] == Decimal("10.00")
 
     def test_uscita_meta_mese_con_tari(
         self, db, make_assignment, supplier_luce, owner
@@ -1019,26 +1010,24 @@ class TestAttribuzioneBolletta:
         assert ris["totali_per_voce"].get("luce", Decimal("0")) == Decimal("0")
         assert ris["totali_per_voce"]["gas"] == Decimal("22.37")
 
-    def test_troncamento_porzione_in_periodo_inviato(
+    def test_bolletta_multi_mese_prorata_sul_periodo(
         self, db, make_assignment, supplier_luce, owner
     ):
-        """Bolletta etichettata gen-apr (120gg), periodo gen-feb già `inviato`:
-        la porzione gen-feb si comprime, l'intero importo va sul periodo
-        mar-apr (61gg)."""
+        """Bolletta gen-apr (120gg): il periodo mar-apr (61gg) prende solo la
+        sua fetta del range bolletta, a prescindere da altri periodi (anche se
+        gen-feb è chiuso). quota = 120 × 61 / 120 = 61.00."""
         from billing.calc.utility import calcola_conguaglio_periodo
 
-        # gen-feb chiuso
-        gen_feb = UtilityChargePeriod.objects.create(
+        # gen-feb chiuso: NON deve influenzare il calcolo di mar-apr
+        UtilityChargePeriod.objects.create(
             periodo_da=datetime.date(2025, 1, 1),
             periodo_a=datetime.date(2025, 2, 28),
             stato=UtilityChargePeriod.StatoPeriodo.INVIATO,
         )
-        # mar-apr in calcolo
         mar_apr = UtilityChargePeriod.objects.create(
             periodo_da=datetime.date(2025, 3, 1),
             periodo_a=datetime.date(2025, 4, 30),
         )
-        # Bolletta gen-apr che arriva durante mar-apr
         UtilityBill.objects.create(
             supplier=supplier_luce,
             prodotto="luce",
@@ -1052,35 +1041,25 @@ class TestAttribuzioneBolletta:
         make_assignment(valid_from=datetime.date(2025, 1, 1))
 
         ris = calcola_conguaglio_periodo(mar_apr.pk)
-        # gen-feb è chiuso → range effettivo = mar-apr (61gg). Tutta sul periodo.
-        assert ris["totali_per_voce"]["luce"] == Decimal("120.00"), (
-            f"Atteso 120.00 (tutta la bolletta), trovato {ris['totali_per_voce']['luce']}"
+        # 120 × 61 / 120 = 61.00 (la fetta mar-apr della bolletta gen-apr).
+        assert ris["totali_per_voce"]["luce"] == Decimal("61.00"), (
+            f"Atteso 61.00, trovato {ris['totali_per_voce']['luce']}"
         )
 
-    def test_ribaltamento_su_successivo_se_tutto_in_chiusi(
+    def test_bolletta_non_finisce_su_mese_che_non_copre(
         self, db, make_assignment, supplier_luce, owner
     ):
-        """Bolletta che cade interamente in periodi `inviato`: viene
-        ribaltata sul primo periodo bozza con periodo_da ≥ data_emissione."""
+        """Niente ribaltamento: una bolletta che riguarda mesi passati NON
+        contribuisce a maggio, anche se emessa a maggio e anche se maggio è
+        l'unico periodo aperto. Ogni bolletta resta sui mesi che copre."""
         from billing.calc.utility import calcola_conguaglio_periodo
 
-        # gen-feb e mar-apr entrambi chiusi
-        UtilityChargePeriod.objects.create(
-            periodo_da=datetime.date(2025, 1, 1),
-            periodo_a=datetime.date(2025, 2, 28),
-            stato=UtilityChargePeriod.StatoPeriodo.INVIATO,
-        )
-        UtilityChargePeriod.objects.create(
-            periodo_da=datetime.date(2025, 3, 1),
-            periodo_a=datetime.date(2025, 4, 30),
-            stato=UtilityChargePeriod.StatoPeriodo.INVIATO,
-        )
         # maggio in calcolo (bozza)
         mag = UtilityChargePeriod.objects.create(
             periodo_da=datetime.date(2025, 5, 1),
             periodo_a=datetime.date(2025, 5, 31),
         )
-        # Bolletta gen-apr emessa a maggio: range tutto in chiusi → ribalta su maggio
+        # Bolletta gen-apr emessa a maggio: NON copre maggio → non contribuisce
         UtilityBill.objects.create(
             supplier=supplier_luce,
             prodotto="luce",
@@ -1105,9 +1084,9 @@ class TestAttribuzioneBolletta:
         make_assignment(valid_from=datetime.date(2025, 1, 1))
 
         ris = calcola_conguaglio_periodo(mag.pk)
-        # 156.49 (mag) + 111.21 (ribaltata) = 267.70
-        assert ris["totali_per_voce"]["luce"] == Decimal("267.70"), (
-            f"Atteso 267.70, trovato {ris['totali_per_voce']['luce']}"
+        # Solo la bolletta di maggio: la gen-apr non tocca maggio.
+        assert ris["totali_per_voce"]["luce"] == Decimal("156.49"), (
+            f"Atteso 156.49 (solo maggio), trovato {ris['totali_per_voce']['luce']}"
         )
 
     def test_bolletta_consumata_da_periodo_inviato_non_riconta(
