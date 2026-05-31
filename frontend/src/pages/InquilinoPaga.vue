@@ -2,8 +2,8 @@
   <q-page padding class="vp-i-paga">
     <q-btn flat icon="arrow_back" label="Indietro" no-caps color="primary" @click="indietro" />
 
-    <div class="vp-eyebrow q-mt-md">Dichiara pagamento</div>
-    <h1 class="vp-display vp-i-paga__titolo">Ho pagato</h1>
+    <div class="vp-eyebrow q-mt-md">{{ soloDichiara ? 'Comunica pagamento' : 'Pagamento' }}</div>
+    <h1 class="vp-display vp-i-paga__titolo">{{ soloDichiara ? 'Ho già pagato' : 'Paga' }}</h1>
 
     <q-card v-if="item" class="vp-i-paga__riepilogo q-mb-md">
       <div class="vp-i-paga__head">
@@ -26,16 +26,21 @@
     </q-card>
 
     <QrBonifico
-      v-if="item?.pagamento"
+      v-if="item?.pagamento && !soloDichiara"
       :pagamento="item.pagamento"
       :importo="importo"
       class="q-mb-md"
     />
 
-    <q-banner v-else-if="item" class="vp-i-paga__no-conto q-mb-md" rounded>
+    <q-banner v-else-if="item && !item.pagamento && !soloDichiara" class="vp-i-paga__no-conto q-mb-md" rounded>
       <template #avatar><q-icon name="info" color="grey-7" /></template>
       Per questo pagamento chiedi i dati del bonifico al proprietario.
     </q-banner>
+
+    <div v-if="!soloDichiara" class="vp-i-paga__dichiara-head">
+      <div class="vp-eyebrow">Hai già pagato?</div>
+      <p class="vp-i-paga__dichiara-hint">Comunicaci gli estremi così aggiorniamo la tua situazione.</p>
+    </div>
 
     <q-form class="q-gutter-md" @submit.prevent="conferma">
       <q-input
@@ -104,6 +109,7 @@ import { Notify } from 'quasar';
 const route = useRoute();
 const router = useRouter();
 const dashboard = useDashboardStore();
+const soloDichiara = computed(() => route.query.dichiara === '1');
 const payments = usePaymentsStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
@@ -221,6 +227,14 @@ function indietro() {
   margin-top: var(--vp-gap-3);
   padding-top: var(--vp-gap-3);
   border-top: 1px solid var(--vp-paper-3);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-ink-3);
+}
+.vp-i-paga__dichiara-head {
+  margin-bottom: var(--vp-gap-2);
+}
+.vp-i-paga__dichiara-hint {
+  margin: 2px 0 0;
   font-size: var(--vp-text-sm);
   color: var(--vp-ink-3);
 }
