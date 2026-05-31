@@ -4,6 +4,13 @@ import type { SemaforoLivello } from 'src/types/semaforo';
 
 export type TipoPagamento = 'rent' | 'utility_charge' | 'extra';
 
+export interface DatiPagamento {
+  beneficiario: string;
+  iban: string;
+  banca: string;
+  causale: string;
+}
+
 export interface DaPagareItem {
   tipo: TipoPagamento;
   id: number;
@@ -17,6 +24,7 @@ export interface DaPagareItem {
   stato: string;
   giorni_ritardo: number;
   semaforo: SemaforoLivello;
+  pagamento: DatiPagamento | null;
 }
 
 export interface UltimoPagamento {

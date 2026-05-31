@@ -25,6 +25,58 @@
       </div>
     </q-card>
 
+    <q-card v-if="item?.pagamento" class="vp-i-paga__bonifico q-mb-md">
+      <div class="vp-eyebrow">Paga con bonifico</div>
+      <p class="vp-i-paga__bonifico-hint">
+        Inquadra il QR con l'app della tua banca: il bonifico si precompila con importo e causale.
+      </p>
+
+      <div class="vp-i-paga__qr-wrap">
+        <img v-if="qrDataUrl" :src="qrDataUrl" alt="QR bonifico" class="vp-i-paga__qr" />
+      </div>
+
+      <div class="vp-i-paga__dati">
+        <div class="vp-i-paga__dato">
+          <span class="vp-i-paga__dato-lbl">Beneficiario</span>
+          <span>{{ item.pagamento.beneficiario }}</span>
+        </div>
+        <div class="vp-i-paga__dato">
+          <span class="vp-i-paga__dato-lbl">IBAN</span>
+          <span class="vp-mono vp-i-paga__iban">{{ item.pagamento.iban }}</span>
+        </div>
+        <div class="vp-i-paga__dato">
+          <span class="vp-i-paga__dato-lbl">Causale</span>
+          <span>{{ item.pagamento.causale }}</span>
+        </div>
+      </div>
+
+      <div class="vp-i-paga__copia">
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="primary"
+          icon="content_copy"
+          label="Copia IBAN"
+          @click="copia(item.pagamento.iban, 'IBAN copiato')"
+        />
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="primary"
+          icon="content_copy"
+          label="Copia causale"
+          @click="copia(item.pagamento.causale, 'Causale copiata')"
+        />
+      </div>
+    </q-card>
+
+    <q-banner v-else-if="item" class="vp-i-paga__no-conto q-mb-md" rounded>
+      <template #avatar><q-icon name="info" color="grey-7" /></template>
+      Per questo pagamento chiedi i dati del bonifico al proprietario.
+    </q-banner>
+
     <q-form class="q-gutter-md" @submit.prevent="conferma">
       <q-input
         v-model.number="importo"
@@ -86,6 +138,7 @@ import { useDashboardStore, type DaPagareItem, type TipoPagamento } from 'stores
 import { usePaymentsStore } from 'stores/payments';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
+import { useEpcQr, type EpcDati } from 'src/composables/useEpcQr';
 import { Notify } from 'quasar';
 
 const route = useRoute();
@@ -124,6 +177,29 @@ const opzioniMetodo = [
 ];
 
 const importo = ref<number>(0);
+
+// QR EPC reattivo: l'importo segue il campo del form (default = residuo).
+const epcDati = computed<EpcDati | null>(() => {
+  const p = item.value?.pagamento;
+  if (!p) return null;
+  return {
+    beneficiario: p.beneficiario,
+    iban: p.iban,
+    causale: p.causale,
+    importo: importo.value || 0,
+  };
+});
+const { dataUrl: qrDataUrl } = useEpcQr(epcDati);
+
+async function copia(testo: string, msg: string) {
+  try {
+    await navigator.clipboard.writeText(testo);
+    Notify.create({ type: 'positive', message: msg, icon: 'check' });
+  } catch {
+    Notify.create({ type: 'warning', message: 'Copia non riuscita' });
+  }
+}
+
 const dataPagamento = ref<string>(new Date().toISOString().slice(0, 10));
 const metodo = ref<string>('bonifico');
 const riferimento = ref<string>('');
@@ -210,6 +286,60 @@ function indietro() {
   border-top: 1px solid var(--vp-paper-3);
   font-size: var(--vp-text-sm);
   color: var(--vp-ink-3);
+}
+.vp-i-paga__bonifico {
+  background: var(--vp-cream);
+  border: 1px solid var(--vp-paper-3);
+  border-radius: var(--vp-r-lg);
+  padding: var(--vp-gap-4);
+}
+.vp-i-paga__bonifico-hint {
+  margin: var(--vp-gap-1) 0 var(--vp-gap-3);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-ink-3);
+}
+.vp-i-paga__qr-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--vp-gap-3);
+}
+.vp-i-paga__qr {
+  width: 200px;
+  height: 200px;
+  border-radius: var(--vp-r-md);
+  background: #fff;
+  padding: var(--vp-gap-2);
+  box-shadow: var(--vp-shadow-1);
+}
+.vp-i-paga__dati {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-gap-2);
+  margin-bottom: var(--vp-gap-3);
+}
+.vp-i-paga__dato {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vp-i-paga__dato-lbl {
+  font-size: var(--vp-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vp-ink-3);
+}
+.vp-i-paga__iban {
+  word-break: break-all;
+}
+.vp-i-paga__copia {
+  display: flex;
+  gap: var(--vp-gap-2);
+  flex-wrap: wrap;
+}
+.vp-i-paga__no-conto {
+  background: var(--vp-paper-2, #f0ebe2);
+  color: var(--vp-ink-2);
+  font-size: var(--vp-text-sm);
 }
 .vp-i-paga__azioni {
   display: flex;
