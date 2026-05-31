@@ -462,6 +462,48 @@ class TestDashboardInquilino:
         assert item["residuo"] == 150.0
         assert item["parziale"] is True
 
+    def test_pagamento_none_senza_conto(self, client_inq_1, tenant_1, rent_payment_1):
+        """Senza proprietà/conto configurato il blocco pagamento è None."""
+        resp = client_inq_1.get("/api/v1/dashboard/inquilino/")
+        item = resp.json()["da_pagare"][0]
+        assert item["pagamento"] is None
+
+    def test_pagamento_qr_con_conto_valido(
+        self, client_inq_1, tenant_1, charge_1, room_1, owner_prop
+    ):
+        """Con proprietà + conto a IBAN valido, le utenze espongono i dati QR."""
+        from properties.models import OwnerBankAccount, Property
+
+        conto = OwnerBankAccount.objects.create(
+            owner=owner_prop, banca="Webank",
+            intestatario="Alessandro Dentella",
+            iban="IT72I0503401799000000081536",
+        )
+        prop = Property.objects.create(nome="Immobile Test", bank_account_utenze=conto)
+        room_1.property = prop
+        room_1.save(update_fields=["property"])
+
+        resp = client_inq_1.get("/api/v1/dashboard/inquilino/")
+        util = next(
+            i for i in resp.json()["da_pagare"] if i["tipo"] == "utility_charge"
+        )
+        assert util["pagamento"] is not None
+        assert util["pagamento"]["iban"] == "IT72I0503401799000000081536"
+        assert util["pagamento"]["beneficiario"] == "Alessandro Dentella"
+        assert tenant_1.nominativo in util["pagamento"]["causale"]
+
+
+def test_iban_valido():
+    """Validazione IBAN: reali validi, placeholder/checksum errati rifiutati."""
+    from billing._payments import iban_valido
+
+    assert iban_valido("IT72I0503401799000000081536")
+    assert iban_valido("IT72 I050 3401 7990 0000 0081 536")  # con spazi
+    assert not iban_valido(None)
+    assert not iban_valido("1234")
+    assert not iban_valido("BRUNA-PLACEHOLDER")
+    assert not iban_valido("IT00X0000000000000000000000")  # checksum errato
+
     def test_proprietario_non_accede(self, client_prop):
         resp = client_prop.get("/api/v1/dashboard/inquilino/")
         assert resp.status_code == 403

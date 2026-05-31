@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsInquilino, IsProprietario
 from billing._dates import format_mese, format_mese_anno
+from billing._payments import conto_per_receivable, iban_valido
 from billing.models import (
     BankTransaction,
     BankTransactionAllocation,
@@ -82,14 +83,33 @@ def _descrizione_receivable(r: Receivable) -> str:
     return r.descrizione or "Addebito extra"
 
 
+def _dati_pagamento(r: Receivable, descrizione: str) -> dict | None:
+    """Dati per bonifico/QR: beneficiario, IBAN, causale. None se non disponibili.
+
+    Esposto solo se il conto è risolvibile e l'IBAN è valido (no placeholder).
+    """
+    conto = conto_per_receivable(r)
+    if not conto or not iban_valido(conto.iban):
+        return None
+    nominativo = r.assignment.tenant.nominativo if r.assignment_id else ""
+    causale = f"{descrizione} - {nominativo}".strip(" -")[:140]
+    return {
+        "beneficiario": conto.intestatario,
+        "iban": conto.iban,
+        "banca": conto.banca,
+        "causale": causale,
+    }
+
+
 def _build_item_da_pagare(r: Receivable, oggi: datetime.date) -> dict:
     giorni = _giorni_ritardo(r.scadenza, oggi)
     dovuto = r.importo_dovuto
     pagato = r.importo_pagato or Decimal("0")
+    descrizione = _descrizione_receivable(r)
     return {
         "tipo": TIPO_PER_CAUSALE[r.causale],
         "id": r.id,
-        "descrizione": _descrizione_receivable(r),
+        "descrizione": descrizione,
         # `importo` resta il dovuto pieno per retrocompatibilità FE.
         "importo": float(dovuto),
         "importo_dovuto": float(dovuto),
@@ -100,6 +120,7 @@ def _build_item_da_pagare(r: Receivable, oggi: datetime.date) -> dict:
         "stato": r.stato,
         "giorni_ritardo": giorni,
         "semaforo": _calcola_semaforo(giorni),
+        "pagamento": _dati_pagamento(r, descrizione),
     }
 
 
@@ -148,7 +169,12 @@ class DashboardInquilinoView(APIView):
                 stato__in=STATI_DA_PAGARE,
                 causale__in=CAUSALI_OPERATIVE,
             )
-            .select_related("assignment__room", "utility_period")
+            .select_related(
+                "assignment__tenant",
+                "assignment__room__property__bank_account_utenze",
+                "assignment__bank_account_affitto",
+                "utility_period",
+            )
             .order_by("scadenza")
         )
 
