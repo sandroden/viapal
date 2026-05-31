@@ -34,8 +34,11 @@
         />
         <q-file
           v-model="filePdf"
-          label="Seleziona il PDF della bolletta"
+          label="Seleziona uno o più PDF (gas, luce…)"
           accept=".pdf"
+          multiple
+          append
+          use-chips
           outlined
           dense
           class="vp-field vp-field--grow"
@@ -45,21 +48,20 @@
         <q-btn
           color="primary"
           icon="cloud_upload"
-          label="Carica"
-          :disable="!filePdf || !ownerId"
+          :label="filePdf.length > 1 ? `Carica ${filePdf.length}` : 'Carica'"
+          :disable="!filePdf.length || !ownerId"
           :loading="store.loading"
           @click="onUpload"
         />
       </q-card-section>
-      <q-card-section v-if="store.ultimoUpload" class="vp-upload-ok">
-        <q-icon name="check_circle" color="positive" />
-        Caricata:
-        <strong>{{ store.ultimoUpload.prodotto }}</strong>
-        {{ store.ultimoUpload.importo_totale }}€ ·
-        {{ store.ultimoUpload.periodo_da }} → {{ store.ultimoUpload.periodo_a }}
-        <span v-if="store.ultimoUpload.consumo">
-          · {{ store.ultimoUpload.consumo }}
-        </span>
+      <q-card-section v-if="store.caricati.length" class="vp-upload-ok">
+        <div v-for="b in store.caricati" :key="b.id" class="vp-upload-row">
+          <q-icon name="check_circle" color="positive" />
+          <strong>{{ b.prodotto }}</strong>
+          {{ b.importo_totale }}€ ·
+          {{ b.periodo_da }} → {{ b.periodo_a }}
+          <span v-if="b.consumo">· {{ b.consumo }}</span>
+        </div>
       </q-card-section>
     </q-card>
 
@@ -300,7 +302,7 @@ const oggi = new Date();
 const mese = ref(oggi.getMonth() + 1);
 const anno = ref(oggi.getFullYear());
 const ownerId = ref<number | null>(null);
-const filePdf = ref<File | null>(null);
+const filePdf = ref<File[]>([]);
 
 const meseNomi = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -364,13 +366,24 @@ function esitoColor(esito?: string): string {
 }
 
 async function onUpload(): Promise<void> {
-  if (!filePdf.value || !ownerId.value) return;
-  const res = await store.caricaBolletta(filePdf.value, ownerId.value);
-  if (res) {
-    $q.notify({ type: 'positive', message: `Bolletta ${res.prodotto} caricata` });
-    filePdf.value = null;
-  } else if (store.errore) {
-    $q.notify({ type: 'negative', message: store.errore });
+  if (!filePdf.value.length || !ownerId.value) return;
+  let ok = 0;
+  const errori: string[] = [];
+  // Caricamento in sequenza: l'endpoint accetta un PDF per volta.
+  for (const file of filePdf.value) {
+    const res = await store.caricaBolletta(file, ownerId.value);
+    if (res) {
+      ok += 1;
+    } else {
+      errori.push(`${file.name}: ${store.errore ?? 'errore'}`);
+    }
+  }
+  filePdf.value = [];
+  if (ok) {
+    $q.notify({ type: 'positive', message: `${ok} bolletta/e caricate` });
+  }
+  if (errori.length) {
+    $q.notify({ type: 'negative', message: errori.join(' · '), timeout: 6000 });
   }
 }
 
@@ -417,8 +430,7 @@ async function inviaReale(): Promise<void> {
 
 function ricomincia(): void {
   store.reset();
-  store.ultimoUpload = null;
-  filePdf.value = null;
+  filePdf.value = [];
 }
 
 onMounted(() => {
@@ -471,6 +483,9 @@ onMounted(() => {
 }
 .vp-upload-ok {
   color: var(--vp-ink-2, #555);
+}
+.vp-upload-row {
+  padding: 2px 0;
 }
 .vp-period__info {
   display: flex;

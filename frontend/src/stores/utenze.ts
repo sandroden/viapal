@@ -109,7 +109,7 @@ interface State {
   completezza: Completezza | null;
   anteprima: AnteprimaResponse | null;
   invio: InvioAvvisiResponse | null;
-  ultimoUpload: BollettaFE | null;
+  caricati: BollettaFE[];
   loading: boolean;
   errore: string | null;
 }
@@ -126,7 +126,7 @@ export const useUtenzeStore = defineStore('utenze', {
     completezza: null,
     anteprima: null,
     invio: null,
-    ultimoUpload: null,
+    caricati: [],
     loading: false,
     errore: null,
   }),
@@ -151,7 +151,7 @@ export const useUtenzeStore = defineStore('utenze', {
         form.append('file_pdf', file);
         form.append('pagata_da_owner', String(ownerId));
         const { data } = await api.post<BollettaFE>('/api/v1/utility-bills/', form);
-        this.ultimoUpload = data;
+        this.caricati.push(data);
         return data;
       } catch (e: unknown) {
         this.errore = messaggioErrore(e, 'Errore caricamento bolletta');
@@ -243,6 +243,7 @@ export const useUtenzeStore = defineStore('utenze', {
       this.completezza = null;
       this.anteprima = null;
       this.invio = null;
+      this.caricati = [];
     },
   },
 });
