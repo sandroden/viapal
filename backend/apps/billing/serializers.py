@@ -142,6 +142,7 @@ class UtilityChargePeriodSerializer(serializers.ModelSerializer):
             "stato",
             "stato_display",
             "data_invio",
+            "avvisi_inviati_at",
             "note",
             "tot_luce",
             "tot_gas",

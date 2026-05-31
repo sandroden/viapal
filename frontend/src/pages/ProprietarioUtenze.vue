@@ -219,17 +219,20 @@
       <q-card-section class="vp-card__title">
         <q-icon name="mail" /> 4 · Avvisi agli inquilini
         <q-space />
-        <q-btn
-          color="primary"
-          outline
-          icon="visibility"
-          label="Anteprima avvisi"
-          :loading="store.loading"
-          @click="store.inviaAvvisi(true)"
+        <q-toggle
+          v-model="mostraAvvisi"
+          label="Mostra avvisi"
+          :disable="store.loading"
+          @update:model-value="onToggleAvvisi"
         />
       </q-card-section>
 
-      <q-card-section v-if="store.invio">
+      <q-card-section v-if="store.period.avvisi_inviati_at" class="vp-invio-data">
+        <q-icon name="schedule" size="18px" />
+        Avvisi inviati il <strong>{{ formatDateTime(store.period.avvisi_inviati_at) }}</strong>
+      </q-card-section>
+
+      <q-card-section v-if="mostraAvvisi && store.invio">
         <div class="vp-invio-summary">
           <q-chip dense color="grey-3">{{ store.invio.totale }} destinatari</q-chip>
           <q-chip v-if="store.invio.dry_run" dense color="amber-3">anteprima</q-chip>
@@ -277,11 +280,14 @@
         </q-list>
       </q-card-section>
 
-      <q-card-actions v-if="store.invio?.dry_run" align="right">
+      <q-card-actions
+        v-if="mostraAvvisi && store.invio && store.invio.totale"
+        align="right"
+      >
         <q-btn
           color="primary"
           icon="send"
-          label="Invia per davvero"
+          :label="store.period.avvisi_inviati_at ? 'Invia di nuovo' : 'Invia'"
           :loading="store.loading"
           @click="confermaInvio"
         />
@@ -303,6 +309,7 @@ const mese = ref(oggi.getMonth() + 1);
 const anno = ref(oggi.getFullYear());
 const ownerId = ref<number | null>(null);
 const filePdf = ref<File[]>([]);
+const mostraAvvisi = ref(false);
 
 const meseNomi = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -351,6 +358,23 @@ function euro(v: number | string | null | undefined): string {
   }).format(n);
 }
 
+function formatDateTime(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return new Intl.DateTimeFormat('it-IT', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(d);
+}
+
+async function onToggleAvvisi(val: boolean): Promise<void> {
+  // Aprendo il toggle si carica l'anteprima (dry-run): mostra il testo
+  // esatto delle email senza spedire nulla.
+  if (val) {
+    await store.inviaAvvisi(true);
+  }
+}
+
 function voceColor(tipo: string): string {
   if (tipo === 'luce') return 'amber-7';
   if (tipo === 'gas') return 'blue-grey-6';
@@ -393,11 +417,15 @@ async function onUpload(): Promise<void> {
 }
 
 async function onPerMese(): Promise<void> {
+  mostraAvvisi.value = false;
   await store.perMese(anno.value, mese.value);
 }
 
 async function caricaMesePredefinito(): Promise<void> {
-  // Default backend: mese successivo all'ultimo periodo con addebiti emessi.
+  // Default backend: primo mese con avvisi ancora da inviare (l'ultimo
+  // periodo con addebiti emessi ma non ancora notificato), altrimenti il
+  // mese successivo.
+  mostraAvvisi.value = false;
   const res = await store.perMese();
   if (res) {
     anno.value = res.anno;
@@ -413,9 +441,12 @@ async function onEmetti(): Promise<void> {
 }
 
 function confermaInvio(): void {
+  const giaInviati = !!store.period?.avvisi_inviati_at;
   $q.dialog({
-    title: 'Conferma invio',
-    message: `Invio reale delle email a ${store.invio?.totale ?? 0} inquilini. Procedere?`,
+    title: giaInviati ? 'Reinvio avvisi' : 'Conferma invio',
+    message:
+      `Invio reale delle email a ${store.invio?.totale ?? 0} inquilini.` +
+      (giaInviati ? ' Gli avvisi erano già stati inviati: procedere comunque?' : ' Procedere?'),
     cancel: true,
     persistent: true,
   }).onOk(() => {
@@ -436,6 +467,7 @@ async function inviaReale(): Promise<void> {
 function ricomincia(): void {
   store.reset();
   filePdf.value = [];
+  mostraAvvisi.value = false;
 }
 
 onMounted(() => {
@@ -531,6 +563,14 @@ onMounted(() => {
   background: #fdecea;
   color: #a3261d;
   margin-bottom: var(--vp-gap-3, 12px);
+}
+.vp-invio-data {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vp-ink-2, #555);
+  font-size: 13px;
+  padding-top: 0;
 }
 .vp-invio-summary {
   display: flex;

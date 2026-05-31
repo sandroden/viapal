@@ -10,6 +10,7 @@ export interface PeriodFE {
   stato: string;
   stato_display: string;
   data_invio: string | null;
+  avvisi_inviati_at: string | null;
   tot_luce: string;
   tot_gas: string;
   tot_tari: string;
@@ -69,6 +70,7 @@ export interface AvvisoFE {
   scadenza: string | null;
   oggetto: string;
   corpo: string;
+  corpo_html?: string;
   canale: string;
   esito?: string;
   errore?: string;
@@ -82,6 +84,7 @@ export interface InvioAvvisiResponse {
   inviati: number;
   errori: number;
   senza_email: string[];
+  avvisi_inviati_at: string | null;
   avvisi: AvvisoFE[];
 }
 
@@ -229,6 +232,11 @@ export const useUtenzeStore = defineStore('utenze', {
           { dry_run: dryRun },
         );
         this.invio = data;
+        // Invio reale: aggiorna la data sul periodo così la UI mostra subito
+        // "avvisi inviati il …" senza dover ricaricare.
+        if (!dryRun && this.period && data.avvisi_inviati_at) {
+          this.period.avvisi_inviati_at = data.avvisi_inviati_at;
+        }
         return data;
       } catch (e: unknown) {
         this.errore = messaggioErrore(e, 'Errore invio avvisi');

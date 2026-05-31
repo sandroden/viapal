@@ -164,6 +164,10 @@ DEFAULT_FROM_EMAIL = os.environ.get(
     'DEFAULT_FROM_EMAIL', 'Viapal <noreply@viapal.e-den.it>'
 )
 
+# URL base della PWA, usato per i link cliccabili nelle email agli inquilini.
+# In dev viene sovrascritto in local.py/dev.py con http://localhost:9000.
+APP_BASE_URL = os.environ.get('APP_BASE_URL', 'https://viapal.e-den.it')
+
 # allauth (login con username, no email verification per dev)
 ACCOUNT_EMAIL_VERIFICATION = 'none'
 ACCOUNT_LOGIN_METHODS = {'username'}

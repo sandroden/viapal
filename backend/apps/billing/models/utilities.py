@@ -228,6 +228,12 @@ class UtilityChargePeriod(TimestampedModel):
         blank=True,
         verbose_name="data invio",
     )
+    avvisi_inviati_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="avvisi inviati il",
+        help_text="Data/ora dell'ultimo invio reale degli avvisi agli inquilini.",
+    )
     note = models.TextField(
         blank=True,
         verbose_name="note",

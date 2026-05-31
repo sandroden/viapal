@@ -232,8 +232,13 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
         }
 
     def _mese_default(self) -> tuple[int, int]:
-        """Mese di partenza proposto: il successivo all'ultimo periodo con
-        addebiti utenze effettivamente emessi.
+        """Mese di partenza proposto, ragionando sugli **avvisi**.
+
+        Si guarda l'ultimo periodo con addebiti utenze emessi:
+
+        - se gli avvisi non sono ancora stati inviati (``avvisi_inviati_at``
+          nullo), si atterra su **quel** mese: c'è ancora lavoro da fare lì;
+        - altrimenti si propone il mese successivo (nuovo periodo da avviare).
 
         Se non esiste alcun Receivable utenze, fallback al mese corrente.
         """
@@ -249,7 +254,14 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
         if ultimo is None:
             oggi = datetime.date.today()
             return oggi.year, oggi.month
-        base = ultimo.utility_period.periodo_a
+
+        period = ultimo.utility_period
+        if period.avvisi_inviati_at is None:
+            # Addebito emesso ma avvisi non ancora inviati: si parte da qui.
+            return period.periodo_da.year, period.periodo_da.month
+
+        # Avvisi già inviati: si propone il mese successivo.
+        base = period.periodo_a
         anno = base.year + (1 if base.month == 12 else 0)
         mese = 1 if base.month == 12 else base.month + 1
         return anno, mese

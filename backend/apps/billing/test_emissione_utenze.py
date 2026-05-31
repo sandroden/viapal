@@ -103,8 +103,8 @@ class TestPerMese:
         assert resp.json()["anno"] == oggi.year
         assert resp.json()["mese"] == oggi.month
 
-    def test_default_mese_successivo_allultimo_emesso(self):
-        # emette giugno 2025 -> il default deve proporre luglio 2025
+    def test_default_resta_sul_mese_con_avvisi_pendenti(self):
+        # emette giugno 2025 ma NON invia gli avvisi -> il default resta giugno
         _assignment_attivo()
         _bolletta("luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
         _bolletta("gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
@@ -116,9 +116,29 @@ class TestPerMese:
 
         resp = c.get("/api/v1/utility-periods/per-mese/")
         assert resp.json()["anno"] == 2025
+        assert resp.json()["mese"] == 6
+
+    def test_default_mese_successivo_dopo_invio_avvisi(self):
+        # emessi gli addebiti e inviati gli avvisi -> il default propone luglio
+        _assignment_attivo()
+        _bolletta("luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        _bolletta("gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        c = _client()
+        pid = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
+        ).json()["period"]["id"]
+        c.post(f"/api/v1/utility-periods/{pid}/emetti/")
+        c.post(
+            f"/api/v1/utility-periods/{pid}/invia-avvisi/",
+            {"dry_run": False},
+            format="json",
+        )
+
+        resp = c.get("/api/v1/utility-periods/per-mese/")
+        assert resp.json()["anno"] == 2025
         assert resp.json()["mese"] == 7
 
-    def test_default_dicembre_passa_a_gennaio_successivo(self):
+    def test_default_dicembre_passa_a_gennaio_dopo_invio(self):
         _assignment_attivo()
         _bolletta("luce", "100.00", datetime.date(2025, 12, 1), datetime.date(2025, 12, 31))
         _bolletta("gas", "60.00", datetime.date(2025, 12, 1), datetime.date(2025, 12, 31))
@@ -127,6 +147,11 @@ class TestPerMese:
             "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 12}
         ).json()["period"]["id"]
         c.post(f"/api/v1/utility-periods/{pid}/emetti/")
+        c.post(
+            f"/api/v1/utility-periods/{pid}/invia-avvisi/",
+            {"dry_run": False},
+            format="json",
+        )
 
         resp = c.get("/api/v1/utility-periods/per-mese/")
         assert resp.json()["anno"] == 2026
@@ -236,8 +261,22 @@ class TestInvioAvvisi:
         body = resp.json()
         assert body["inviati"] == 1
         assert body["errori"] == 0
+        assert body["avvisi_inviati_at"] is not None
         assert len(mailoutbox) == 1
-        assert mailoutbox[0].to == ["mario@example.com"]
+        msg = mailoutbox[0]
+        assert msg.to == ["mario@example.com"]
+        # email multipart: deve avere l'alternativa HTML con link cliccabile
+        html = next(
+            (c for c, mime in (msg.alternatives or []) if mime == "text/html"), ""
+        )
+        assert html, "manca l'alternativa text/html"
+        assert "<a href=" in html
+        assert "/i/utenze/" in html
+        # il periodo ha registrato la data di invio degli avvisi
+        from billing.models import UtilityChargePeriod
+
+        period = UtilityChargePeriod.objects.get(pk=pid)
+        assert period.avvisi_inviati_at is not None
         assert Notification.objects.filter(inviata_at__isnull=False).count() == 1
 
     def test_senza_email(self, mailoutbox):
