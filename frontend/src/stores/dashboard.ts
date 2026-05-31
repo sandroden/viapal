@@ -63,10 +63,16 @@ export interface TenantInfo {
   [k: string]: unknown;
 }
 
+export interface SaldoTotale {
+  importo: number;
+  pagamento: DatiPagamento | null;
+}
+
 export interface InquilinoDashboardData {
   tenant: TenantInfo;
   stanza_corrente: StanzaCorrente | null;
   da_pagare: DaPagareItem[];
+  saldo_totale: SaldoTotale;
   ultimi_pagamenti: UltimoPagamento[];
 }
 

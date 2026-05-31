@@ -492,6 +492,12 @@ class TestDashboardInquilino:
         assert util["pagamento"]["beneficiario"] == "Alessandro Dentella"
         assert tenant_1.nominativo in util["pagamento"]["causale"]
 
+        # Saldo totale cumulativo: importo = somma residui, conto utenze immobile.
+        saldo = resp.json()["saldo_totale"]
+        assert saldo["importo"] > 0
+        assert saldo["pagamento"]["iban"] == "IT72I0503401799000000081536"
+        assert tenant_1.nominativo in saldo["pagamento"]["causale"]
+
 
 def test_iban_valido():
     """Validazione IBAN: reali validi, placeholder/checksum errati rifiutati."""

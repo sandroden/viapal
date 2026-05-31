@@ -146,7 +146,9 @@ class DashboardInquilinoView(APIView):
             )
 
         assignment_attivo = (
-            RoomAssignment.objects.select_related("room", "tenant")
+            RoomAssignment.objects.select_related(
+                "room__property__bank_account_utenze", "tenant"
+            )
             .filter(tenant=tenant, valid_from__lte=oggi)
             .filter(Q(valid_to__isnull=True) | Q(valid_to__gt=oggi))
             .first()
@@ -180,6 +182,21 @@ class DashboardInquilinoView(APIView):
 
         da_pagare = [_build_item_da_pagare(r, oggi) for r in da_pagare_qs]
 
+        # Saldo totale "per pareggiare": somma dei residui aperti, con un unico
+        # conto bonifico (quello utenze della proprietà) — un pagamento unico
+        # può accorpare causali diverse.
+        totale_residuo = sum(item["residuo"] for item in da_pagare)
+        saldo_totale = {"importo": float(totale_residuo), "pagamento": None}
+        prop = getattr(assignment_attivo.room, "property", None) if assignment_attivo else None
+        conto_cum = prop.bank_account_utenze if prop else None
+        if conto_cum and iban_valido(conto_cum.iban) and totale_residuo > 0:
+            saldo_totale["pagamento"] = {
+                "beneficiario": conto_cum.intestatario,
+                "iban": conto_cum.iban,
+                "banca": conto_cum.banca,
+                "causale": f"Saldo Viapal - {tenant.nominativo}"[:140],
+            }
+
         ultimi_pagati_qs = (
             Receivable.objects.filter(
                 assignment__in=assignments,
@@ -205,6 +222,7 @@ class DashboardInquilinoView(APIView):
             "tenant": TenantProfileSerializer(tenant).data,
             "stanza_corrente": stanza_corrente,
             "da_pagare": da_pagare,
+            "saldo_totale": saldo_totale,
             "ultimi_pagamenti": ultimi_pagamenti,
         })
 

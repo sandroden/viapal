@@ -60,6 +60,17 @@
             Vi chiediamo gentilmente di verificare se ci sono errori nei conteggi e
             segnalarceli, oppure saldare la differenza.
           </p>
+          <q-btn
+            v-if="saldoTotale?.pagamento"
+            unelevated
+            color="white"
+            text-color="primary"
+            no-caps
+            icon="qr_code_2"
+            label="Paga tutto con bonifico"
+            class="vp-i-home__saldo-btn"
+            @click="dialogQr = true"
+          />
         </aside>
 
         <div class="vp-i-home__lista">
@@ -100,16 +111,26 @@
         </q-item>
       </q-list>
     </section>
+
+    <q-dialog v-model="dialogQr">
+      <QrBonifico
+        v-if="saldoTotale?.pagamento"
+        :pagamento="saldoTotale.pagamento"
+        :importo="totaleDaSaldare"
+        class="vp-i-home__dialog-qr"
+      />
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useAuthStore } from 'stores/auth';
 import { useDashboardStore } from 'stores/dashboard';
 import PagamentoCard from 'src/components/PagamentoCard.vue';
 import SemaforoBadge from 'src/components/SemaforoBadge.vue';
 import EmptyState from 'src/components/EmptyState.vue';
+import QrBonifico from 'src/components/QrBonifico.vue';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
@@ -128,6 +149,8 @@ const totaleDaSaldare = computed(() =>
 );
 const ultimiPagamenti = computed(() => store.inquilinoData?.ultimi_pagamenti ?? []);
 const stanzaCorrente = computed(() => store.inquilinoData?.stanza_corrente ?? null);
+const saldoTotale = computed(() => store.inquilinoData?.saldo_totale ?? null);
+const dialogQr = ref(false);
 
 onMounted(() => {
   void store.loadInquilino();
@@ -213,6 +236,10 @@ function ricarica() {
   font-size: var(--vp-text-sm);
   line-height: 1.5;
   opacity: 0.92;
+}
+.vp-i-home__saldo-btn {
+  margin-top: var(--vp-gap-3);
+  font-weight: 600;
 }
 .vp-i-home__lista {
   display: grid;
