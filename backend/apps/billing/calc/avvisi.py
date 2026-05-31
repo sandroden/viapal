@@ -14,6 +14,7 @@ L'email viene spedita come **multipart text+html**: la versione HTML contiene
 un link cliccabile alla pagina dell'inquilino nell'app e il *conteggio* (la
 ripartizione luce/gas/TARI con i giorni di presenza).
 """
+from datetime import timedelta
 from decimal import Decimal
 from html import escape
 
@@ -34,7 +35,6 @@ DEFAULT_CORPO = (
     "Il tuo importo è di {{importo}} € (luce, gas e TARI ripartiti sui giorni "
     "di effettiva presenza).\n\n"
     "Dettaglio:\n{{conteggio}}\n\n"
-    "Scadenza del pagamento: {{scadenza}}.\n\n"
     "Vedi il dettaglio nell'app Viapal: {{link}}\n\n"
     "Grazie,\ni proprietari"
 )
@@ -49,7 +49,6 @@ DEFAULT_CORPO_HTML = (
     "effettiva presenza).</p>"
     "<p>Il tuo importo è di <strong>{{importo}} €</strong>.</p>"
     "{{conteggio_html}}"
-    "<p>Scadenza del pagamento: <strong>{{scadenza}}</strong>.</p>"
     '<p style="margin-top:20px">'
     '<a href="{{link}}" style="display:inline-block;background:#9b5a3a;'
     "color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;"
@@ -239,6 +238,10 @@ def invia_avvisi_utenze(period, dry_run: bool = False) -> dict:
     inviati = 0
     errori = 0
     senza_email = []
+    # La scadenza del pagamento è 2 settimane dall'avviso (non esplicitata
+    # nella mail): la fissiamo al momento dell'invio reale, sui Receivable
+    # effettivamente notificati.
+    nuova_scadenza = _now().date() + timedelta(days=14)
 
     # mappa receivable_id -> oggetto Receivable per il logging (GenericFK)
     receivables = {r.id: r for r in _receivables_periodo(period)}
@@ -263,6 +266,9 @@ def invia_avvisi_utenze(period, dry_run: bool = False) -> dict:
             msg.send(fail_silently=False)
             a["esito"] = "inviato"
             inviati += 1
+            if receivable is not None and receivable.scadenza != nuova_scadenza:
+                receivable.scadenza = nuova_scadenza
+                receivable.save(update_fields=["scadenza"])
             if user is not None:
                 Notification.objects.create(
                     user=user,

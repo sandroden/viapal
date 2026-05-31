@@ -272,11 +272,19 @@ class TestInvioAvvisi:
         assert html, "manca l'alternativa text/html"
         assert "<a href=" in html
         assert "/i/utenze/" in html
+        # la scadenza NON è esplicitata nella mail
+        assert "scadenza" not in msg.body.lower()
+        assert "scadenza" not in html.lower()
         # il periodo ha registrato la data di invio degli avvisi
-        from billing.models import UtilityChargePeriod
+        from billing.models import Receivable, UtilityChargePeriod
 
         period = UtilityChargePeriod.objects.get(pk=pid)
         assert period.avvisi_inviati_at is not None
+        # scadenza impostata a 2 settimane dall'avviso (oggi)
+        rec = Receivable.objects.get(
+            causale=Receivable.Causale.UTENZE, utility_period_id=pid
+        )
+        assert rec.scadenza == datetime.date.today() + datetime.timedelta(days=14)
         assert Notification.objects.filter(inviata_at__isnull=False).count() == 1
 
     def test_senza_email(self, mailoutbox):
