@@ -5,7 +5,7 @@ from .owner import (
     OwnershipShare,
     quote_attive_at,
 )
-from .property import Contract, Room, RoomAssignment
+from .property import Contract, Property, Room, RoomAssignment
 from .tenant import TenantProfile
 
 __all__ = [
@@ -14,6 +14,7 @@ __all__ = [
     "OwnershipShare",
     "OwnerBankAccount",
     "TenantProfile",
+    "Property",
     "Room",
     "Contract",
     "RoomAssignment",

@@ -5,13 +5,56 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from ._base import TimestampedModel
-from .owner import OwnerProfile
+from .owner import OwnerBankAccount, OwnerProfile
 from .tenant import TenantProfile
+
+
+class Property(TimestampedModel):
+    """Immobile/abitazione che raggruppa le stanze.
+
+    In ottica multi-immobile: ogni stanza appartiene a una Property, che porta
+    il conto di domiciliazione su cui confluiscono le utenze dell'abitazione.
+    """
+
+    nome = models.CharField(
+        max_length=120,
+        verbose_name="nome",
+    )
+    indirizzo = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="indirizzo",
+    )
+    bank_account_utenze = models.ForeignKey(
+        OwnerBankAccount,
+        on_delete=models.PROTECT,
+        related_name="properties_utenze",
+        null=True,
+        blank=True,
+        verbose_name="conto domiciliazione utenze",
+        help_text="Conto su cui gli inquilini versano le utenze/conguagli di questo immobile.",
+    )
+
+    class Meta:
+        verbose_name = "immobile"
+        verbose_name_plural = "immobili"
+        ordering = ["nome"]
+
+    def __str__(self):
+        return self.nome
 
 
 class Room(TimestampedModel):
     """Stanza affittabile dell'appartamento."""
 
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.PROTECT,
+        related_name="rooms",
+        null=True,
+        blank=True,
+        verbose_name="immobile",
+    )
     nome = models.CharField(
         max_length=100,
         verbose_name="nome",
@@ -140,6 +183,18 @@ class RoomAssignment(TimestampedModel):
         max_digits=10,
         decimal_places=2,
         verbose_name="canone mensile",
+    )
+    bank_account_affitto = models.ForeignKey(
+        OwnerBankAccount,
+        on_delete=models.PROTECT,
+        related_name="assignments_affitto",
+        null=True,
+        blank=True,
+        verbose_name="conto incasso affitto",
+        help_text=(
+            "Override: conto su cui versare l'affitto di questa assegnazione. "
+            "Se vuoto, si usa il conto della proprietà."
+        ),
     )
     costo_cessione = models.DecimalField(
         max_digits=10,

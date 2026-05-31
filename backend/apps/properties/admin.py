@@ -18,6 +18,7 @@ from .models import (
     OwnerBankAccount,
     OwnerProfile,
     OwnershipShare,
+    Property,
     Room,
     RoomAssignment,
     TenantProfile,
@@ -52,8 +53,11 @@ class RoomAssignmentInlineForTenant(admin.TabularInline):
 
     model = RoomAssignment
     extra = 0
-    fields = ("room", "valid_from", "valid_to", "canone_mensile", "costo_cessione")
-    autocomplete_fields = ("room",)
+    fields = (
+        "room", "valid_from", "valid_to", "canone_mensile",
+        "bank_account_affitto", "costo_cessione",
+    )
+    autocomplete_fields = ("room", "bank_account_affitto")
     ordering = ("-valid_from",)
     show_change_link = True
 
@@ -237,19 +241,37 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
 # ---------------------------------------------------------------------------
 
 
+@admin.register(Property)
+class PropertyAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 700
+    list_display = (
+        "nome", "indirizzo", "bank_account_utenze",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
+    search_fields = ("nome", "indirizzo")
+    autocomplete_fields = ("bank_account_utenze",)
+    fieldsets = (
+        ("Immobile", {
+            "fields": ("nome", "indirizzo", "bank_account_utenze"),
+        }),
+    )
+
+
 @admin.register(Room)
 class RoomAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 700
     list_display = (
-        "nome", "superficie_mq", "ordinamento",
+        "nome", "property", "superficie_mq", "ordinamento",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
     search_fields = ("nome",)
+    list_filter = ("property",)
+    autocomplete_fields = ("property",)
     ordering = ("ordinamento", "nome")
     inlines = (RoomAssignmentInlineForRoom,)
     fieldsets = (
         ("Stanza", {
-            "fields": ("nome", "superficie_mq", "ordinamento", "foto"),
+            "fields": ("property", "nome", "superficie_mq", "ordinamento", "foto"),
         }),
     )
 
@@ -317,14 +339,14 @@ class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
         "tenant__nominativo", "room__nome",
     )
     list_select_related = ("tenant", "room")
-    autocomplete_fields = ("tenant", "room")
+    autocomplete_fields = ("tenant", "room", "bank_account_affitto")
     ordering = ("-valid_from", "room__nome")
     fieldsets = (
         ("Periodo", {
             "fields": ("room", "tenant", "valid_from", "valid_to"),
         }),
         ("Economico", {
-            "fields": ("canone_mensile",),
+            "fields": ("canone_mensile", "bank_account_affitto"),
         }),
         ("Cessione", {
             "fields": ("costo_cessione", "data_atto_cessione"),
