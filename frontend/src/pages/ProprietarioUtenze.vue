@@ -1,7 +1,7 @@
 <template>
   <q-page class="vp-page">
     <div class="vp-page__head">
-      <h1 class="text-display vp-page__title">Utenze — emissione</h1>
+      <h1 class="vp-display vp-page__title">Utenze — emissione</h1>
       <q-btn
         flat
         dense
@@ -381,6 +381,11 @@ async function onUpload(): Promise<void> {
   filePdf.value = [];
   if (ok) {
     $q.notify({ type: 'positive', message: `${ok} bolletta/e caricate` });
+    // Rinfresca la completezza del periodo: i chip Luce/Gas/TARI si
+    // accendono subito senza dover ricaricare la pagina.
+    if (store.period) {
+      await store.perMese(anno.value, mese.value);
+    }
   }
   if (errori.length) {
     $q.notify({ type: 'negative', message: errori.join(' · '), timeout: 6000 });
@@ -457,6 +462,7 @@ onMounted(() => {
 }
 .vp-page__title {
   margin: 0;
+  font-size: var(--vp-text-2xl);
 }
 .vp-card {
   margin-bottom: var(--vp-gap-3, 12px);
