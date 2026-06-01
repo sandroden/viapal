@@ -107,7 +107,9 @@ def _dati_pagamento(r: Receivable, descrizione: str) -> dict | None:
     }
 
 
-def _build_item_da_pagare(r: Receivable, oggi: datetime.date) -> dict:
+def _build_item_da_pagare(
+    r: Receivable, oggi: datetime.date, allocazioni: list | None = None
+) -> dict:
     giorni = _giorni_ritardo(r.scadenza, oggi)
     dovuto = r.importo_dovuto
     pagato = r.importo_pagato or Decimal("0")
@@ -128,7 +130,28 @@ def _build_item_da_pagare(r: Receivable, oggi: datetime.date) -> dict:
         "giorni_ritardo": giorni,
         "semaforo": _calcola_semaforo(giorni),
         "pagamento": _dati_pagamento(r, descrizione),
+        # Bonifici che hanno coperto (in tutto o in parte) questa voce: data,
+        # quota imputata e importo lordo del bonifico. Alimenta il popup di
+        # dettaglio della home inquilino (utile sui pagamenti parziali).
+        "allocazioni": allocazioni or [],
     }
+
+
+def _alloc_per_receivable(receivables: list[Receivable]) -> dict[int, list]:
+    """Mappa receivable_id -> lista di allocazioni bonifico (ordinate per data)."""
+    alloc_map: dict[int, list] = {}
+    qs = (
+        BankTransactionAllocation.objects.filter(receivable__in=receivables)
+        .select_related("bank_transaction")
+        .order_by("bank_transaction__data", "id")
+    )
+    for a in qs:
+        alloc_map.setdefault(a.receivable_id, []).append({
+            "data": a.bank_transaction.data.isoformat(),
+            "quota": float(a.importo),
+            "bonifico_totale": float(a.bank_transaction.importo),
+        })
+    return alloc_map
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +210,12 @@ class DashboardInquilinoView(APIView):
             .order_by("scadenza")
         )
 
-        da_pagare = [_build_item_da_pagare(r, oggi) for r in da_pagare_qs]
+        da_pagare_list = list(da_pagare_qs)
+        alloc_map = _alloc_per_receivable(da_pagare_list)
+        da_pagare = [
+            _build_item_da_pagare(r, oggi, alloc_map.get(r.id, []))
+            for r in da_pagare_list
+        ]
 
         # Saldo totale "per pareggiare": somma dei residui aperti, con un unico
         # conto bonifico (quello utenze della proprietà) — un pagamento unico

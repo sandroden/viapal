@@ -11,6 +11,12 @@ export interface DatiPagamento {
   causale: string;
 }
 
+export interface AllocazioneBonifico {
+  data: string;
+  quota: number;
+  bonifico_totale: number;
+}
+
 export interface DaPagareItem {
   tipo: TipoPagamento;
   id: number;
@@ -26,6 +32,7 @@ export interface DaPagareItem {
   giorni_ritardo: number;
   semaforo: SemaforoLivello;
   pagamento: DatiPagamento | null;
+  allocazioni: AllocazioneBonifico[];
 }
 
 export interface UltimoPagamento {

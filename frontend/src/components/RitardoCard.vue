@@ -1,7 +1,14 @@
 <template>
   <div class="th-card" :class="[`th-card--${stacco}`, { 'th-card--sel': selected }]">
-    <div class="th-card__row" @click="emit('toggle')">
-      <ThCheck :on="selected" :size="20" />
+    <div class="th-card__row" @click="emit('dettaglio')">
+      <button
+        type="button"
+        class="th-card__check"
+        :aria-label="selected ? 'Deseleziona' : 'Seleziona'"
+        @click.stop="emit('toggle')"
+      >
+        <ThCheck :on="selected" :size="20" />
+      </button>
 
       <ThDonut v-if="item.parziale" :pct="pct" :size="38" :stroke="4" />
       <div v-else class="th-card__icona">
@@ -20,6 +27,7 @@
       </div>
 
       <div class="th-card__importo vp-mono">{{ formattaEuro(item.residuo) }}</div>
+      <q-icon name="chevron_right" size="20px" class="th-card__chevron" />
     </div>
 
     <div class="th-card__azioni">
@@ -52,7 +60,7 @@ const props = withDefaults(
   { showRitardo: false, stacco: 'forte' },
 );
 
-const emit = defineEmits<{ toggle: []; paga: []; hoPagato: [] }>();
+const emit = defineEmits<{ toggle: []; paga: []; hoPagato: []; dettaglio: [] }>();
 
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
@@ -104,6 +112,27 @@ const iconaTipo = computed(() => {
   gap: 12px;
   padding: 13px 14px;
   cursor: pointer;
+}
+.th-card__check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  margin: -6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.th-card__check:hover {
+  background: var(--vp-paper-2);
+}
+.th-card__chevron {
+  color: var(--vp-ink-4);
+  flex-shrink: 0;
+  margin-left: -4px;
 }
 .th-card__icona {
   width: 38px;

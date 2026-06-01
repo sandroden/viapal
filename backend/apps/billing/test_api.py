@@ -462,6 +462,41 @@ class TestDashboardInquilino:
         assert item["residuo"] == 150.0
         assert item["parziale"] is True
 
+    def test_da_pagare_allocazioni_vuote_default(
+        self, client_inq_1, tenant_1, rent_payment_1
+    ):
+        """Senza bonifici abbinati, ogni voce espone `allocazioni` come lista vuota."""
+        resp = client_inq_1.get("/api/v1/dashboard/inquilino/")
+        item = resp.json()["da_pagare"][0]
+        assert item["allocazioni"] == []
+
+    def test_da_pagare_allocazioni_da_bonifico(
+        self, client_inq_1, tenant_1, rent_payment_1, owner_account
+    ):
+        """Un bonifico parzialmente imputato compare in `allocazioni` con
+        data, quota e importo lordo del bonifico."""
+        from billing.models import BankTransaction, BankTransactionAllocation
+
+        rent_payment_1.importo_pagato = Decimal("250")
+        rent_payment_1.save(update_fields=["importo_pagato"])
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 5, 3),
+            descrizione="Bonifico inquilino",
+            importo=Decimal("300"),
+            owner_account=owner_account,
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=rent_payment_1, importo=Decimal("250")
+        )
+
+        resp = client_inq_1.get("/api/v1/dashboard/inquilino/")
+        item = resp.json()["da_pagare"][0]
+        assert len(item["allocazioni"]) == 1
+        alloc = item["allocazioni"][0]
+        assert alloc["data"] == "2026-05-03"
+        assert alloc["quota"] == 250.0
+        assert alloc["bonifico_totale"] == 300.0
+
     def test_pagamento_none_senza_conto(self, client_inq_1, tenant_1, rent_payment_1):
         """Senza proprietà/conto configurato il blocco pagamento è None."""
         resp = client_inq_1.get("/api/v1/dashboard/inquilino/")

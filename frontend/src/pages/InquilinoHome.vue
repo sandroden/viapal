@@ -46,6 +46,7 @@
           @toggle="toggle(item)"
           @paga="paga(item)"
           @ho-pagato="hoPagato(item)"
+          @dettaglio="apriDettaglio(item)"
         />
       </div>
 
@@ -94,6 +95,14 @@
         :importo="totaleSel"
       />
     </q-dialog>
+
+    <q-dialog v-model="dialogDettaglio">
+      <DettaglioPagamento
+        v-if="itemDettaglio"
+        :item="itemDettaglio"
+        @paga="paga(itemDettaglio)"
+      />
+    </q-dialog>
   </q-page>
 </template>
 
@@ -112,6 +121,7 @@ import RitardoCard from 'src/components/RitardoCard.vue';
 import ThCheck from 'src/components/ThCheck.vue';
 import EmptyState from 'src/components/EmptyState.vue';
 import QrBonifico from 'src/components/QrBonifico.vue';
+import DettaglioPagamento from 'src/components/DettaglioPagamento.vue';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 
 const auth = useAuthStore();
@@ -129,6 +139,8 @@ const numParziali = computed(() => daPagare.value.filter((x) => x.parziale).leng
 const chiave = (item: DaPagareItem) => `${item.tipo}-${item.id}`;
 const sel = ref<Set<string>>(new Set());
 const dialogQr = ref(false);
+const dialogDettaglio = ref(false);
+const itemDettaglio = ref<DaPagareItem | null>(null);
 
 const count = computed(() => sel.value.size);
 const allOn = computed(
@@ -210,6 +222,10 @@ function toggleAll() {
 }
 function paga(item: DaPagareItem) {
   void router.push(`/i/paga/${item.tipo}/${item.id}`);
+}
+function apriDettaglio(item: DaPagareItem) {
+  itemDettaglio.value = item;
+  dialogDettaglio.value = true;
 }
 function hoPagato(item: DaPagareItem) {
   void router.push({ path: `/i/paga/${item.tipo}/${item.id}`, query: { dichiara: '1' } });
