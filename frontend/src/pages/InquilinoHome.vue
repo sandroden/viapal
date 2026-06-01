@@ -89,8 +89,8 @@
 
     <q-dialog v-model="dialogQr">
       <QrBonifico
-        v-if="saldoTotale?.pagamento"
-        :pagamento="saldoTotale.pagamento"
+        v-if="pagamentoBonifico"
+        :pagamento="pagamentoBonifico"
         :importo="totaleSel"
       />
     </q-dialog>
@@ -102,7 +102,12 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar, Notify } from 'quasar';
 import { useAuthStore } from 'stores/auth';
-import { useDashboardStore, type DaPagareItem } from 'stores/dashboard';
+import {
+  useDashboardStore,
+  type DaPagareItem,
+  type DatiPagamento,
+  type TipoPagamento,
+} from 'stores/dashboard';
 import RitardoCard from 'src/components/RitardoCard.vue';
 import ThCheck from 'src/components/ThCheck.vue';
 import EmptyState from 'src/components/EmptyState.vue';
@@ -129,9 +134,65 @@ const count = computed(() => sel.value.size);
 const allOn = computed(
   () => daPagare.value.length > 0 && sel.value.size === daPagare.value.length,
 );
-const totaleSel = computed(() =>
-  daPagare.value.filter((x) => sel.value.has(chiave(x))).reduce((s, x) => s + x.residuo, 0),
-);
+const itemsSel = computed(() => daPagare.value.filter((x) => sel.value.has(chiave(x))));
+const totaleSel = computed(() => itemsSel.value.reduce((s, x) => s + x.residuo, 0));
+
+// --- Causale dinamica del bonifico cumulativo --------------------------------
+// Raggruppa le voci selezionate per tipo e ne elenca i mesi, es:
+//   "Utenze: ago 25, dic 25, gen 26 - Affitto: mag 26"
+const MESI_BREVI = [
+  '', 'gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic',
+];
+const GRUPPO_LABEL: Record<TipoPagamento, string> = {
+  rent: 'Affitto',
+  utility_charge: 'Utenze',
+  extra: 'Extra',
+};
+function meseBreve(iso: string): string {
+  const [anno, mese] = iso.split('-');
+  return `${MESI_BREVI[Number(mese)]} ${anno!.slice(-2)}`;
+}
+
+const causaleDinamica = computed(() => {
+  const perTipo = new Map<TipoPagamento, DaPagareItem[]>();
+  for (const it of itemsSel.value) {
+    const voci = perTipo.get(it.tipo) ?? [];
+    voci.push(it);
+    perTipo.set(it.tipo, voci);
+  }
+  const segmenti = [...perTipo.entries()].map(([tipo, voci]) => {
+    const ordinate = [...voci].sort((a, b) => a.competenza.localeCompare(b.competenza));
+    // Le voci pagate solo in parte si versano "a saldo": va segnalato.
+    const mesi = [
+      ...new Set(ordinate.map((v) => meseBreve(v.competenza) + (v.parziale ? ' (saldo)' : ''))),
+    ].join(', ');
+    return { minDate: ordinate[0]?.competenza ?? '', testo: `${GRUPPO_LABEL[tipo]}: ${mesi}` };
+  });
+  segmenti.sort((a, b) => a.minDate.localeCompare(b.minDate));
+  return segmenti.map((s) => s.testo).join(' - ');
+});
+
+// Nome dell'inquilino in coda alla causale, per facilitare la riconciliazione.
+// Intero se ci sta nei 140 char dello standard EPC, altrimenti solo il cognome.
+const CAUSALE_MAX = 140;
+function conNome(descrizione: string, nominativo: string): string {
+  const nome = nominativo.trim();
+  if (!nome) return descrizione.slice(0, CAUSALE_MAX);
+  const intero = `${descrizione} - ${nome}`;
+  if (intero.length <= CAUSALE_MAX) return intero;
+  const cognome = nome.split(/\s+/).pop() ?? nome;
+  return `${descrizione} - ${cognome}`.slice(0, CAUSALE_MAX);
+}
+
+// Pagamento per il QR: stesso conto del saldo totale, ma con la causale
+// costruita sulle voci effettivamente spuntate.
+const pagamentoBonifico = computed<DatiPagamento | null>(() => {
+  const base = saldoTotale.value?.pagamento;
+  if (!base) return null;
+  const descrizione = causaleDinamica.value || base.causale;
+  const nominativo = store.inquilinoData?.tenant?.nominativo ?? '';
+  return { ...base, causale: conNome(descrizione, nominativo) };
+});
 
 function selezionaTutti() {
   sel.value = new Set(daPagare.value.map(chiave));
@@ -155,7 +216,7 @@ function hoPagato(item: DaPagareItem) {
 }
 function bonificoUnico() {
   if (count.value === 0) return;
-  if (saldoTotale.value?.pagamento) dialogQr.value = true;
+  if (pagamentoBonifico.value) dialogQr.value = true;
   else Notify.create({ type: 'warning', message: 'Conto per il bonifico non disponibile' });
 }
 

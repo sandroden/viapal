@@ -74,12 +74,18 @@ def _giorni_ritardo(scadenza: datetime.date, oggi: datetime.date) -> int:
     return (oggi - scadenza).days
 
 
+def _competenza_base(r: Receivable) -> datetime.date:
+    """Mese di competenza di riferimento, coerente con la descrizione mostrata."""
+    if r.causale == Receivable.Causale.UTENZE and r.utility_period:
+        return r.utility_period.periodo_da
+    return r.competenza_da
+
+
 def _descrizione_receivable(r: Receivable) -> str:
     if r.causale == Receivable.Causale.AFFITTO:
         return f"Affitto {format_mese_anno(r.competenza_da)}"
     if r.causale == Receivable.Causale.UTENZE:
-        base = r.utility_period.periodo_da if r.utility_period else r.competenza_da
-        return f"Utenze {format_mese_anno(base)}"
+        return f"Utenze {format_mese_anno(_competenza_base(r))}"
     return r.descrizione or "Addebito extra"
 
 
@@ -110,6 +116,7 @@ def _build_item_da_pagare(r: Receivable, oggi: datetime.date) -> dict:
         "tipo": TIPO_PER_CAUSALE[r.causale],
         "id": r.id,
         "descrizione": descrizione,
+        "competenza": _competenza_base(r).isoformat(),
         # `importo` resta il dovuto pieno per retrocompatibilità FE.
         "importo": float(dovuto),
         "importo_dovuto": float(dovuto),

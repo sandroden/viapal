@@ -15,6 +15,7 @@ export interface DaPagareItem {
   tipo: TipoPagamento;
   id: number;
   descrizione: string;
+  competenza: string;
   importo: number;
   importo_dovuto: number;
   importo_pagato: number;
