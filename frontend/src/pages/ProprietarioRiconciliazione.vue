@@ -1107,11 +1107,17 @@ function aggiungiAllocazione(r: ReceivableFE) {
     segnoDovuto >= 0
       ? Math.max(residuoRecRaw, 0)
       : Math.min(residuoRecRaw, 0);
-  // Quota da allocare: il residuo intero del Rec, capped a |BT.importo| per
-  // evitare proposte assurde quando il segno è discorde rispetto alla BT.
+  // Capacità ancora disponibile sulla BT nel verso del Rec: importo già
+  // allocato escluso, così una BT con resto parziale propone il resto (non
+  // il suo importo pieno) e non sfora il salvataggio. Se non c'è capacità in
+  // questo verso (es. pattern a segni discordi) si ricade sull'importo pieno.
+  const capacitaResidua =
+    segnoDovuto >= 0 ? Math.max(target.residuo, 0) : Math.min(target.residuo, 0);
+  const capAbs = Math.abs(capacitaResidua) || Math.abs(target.importo);
+  // Quota da allocare: il residuo del Rec, capped alla capacità residua della BT.
   const quotaAbs = Math.min(
-    Math.abs(target.importo),
-    Math.abs(residuoRec) || Math.abs(target.importo),
+    capAbs,
+    Math.abs(residuoRec) || capAbs,
   );
   const importo = segnoDovuto < 0 ? -quotaAbs : quotaAbs;
   const bt = store.bts.find((b) => b.id === target.bt_id)!;
