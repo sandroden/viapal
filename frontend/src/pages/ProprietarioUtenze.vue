@@ -1,298 +1,87 @@
 <template>
-  <q-page class="vp-page">
-    <div class="vp-page__head">
-      <h1 class="vp-display vp-page__title">Utenze — emissione</h1>
-      <q-btn
-        flat
-        dense
-        icon="refresh"
-        label="Ricomincia"
-        @click="ricomincia"
-      />
-    </div>
-
+  <q-page class="vp-utenze">
     <q-banner v-if="store.errore" class="vp-banner-error" rounded>
       <template #avatar><q-icon name="error" /></template>
       {{ store.errore }}
     </q-banner>
 
-    <!-- 1. Carica bolletta -->
-    <q-card flat bordered class="vp-card">
-      <q-card-section class="vp-card__title">
-        <q-icon name="upload_file" /> 1 · Carica bolletta (PDF)
-      </q-card-section>
-      <q-card-section class="vp-row">
-        <q-select
-          v-model="ownerId"
-          :options="ownerOptions"
-          label="Pagata da"
-          emit-value
-          map-options
-          outlined
-          dense
-          class="vp-field"
-        />
-        <q-file
-          v-model="filePdf"
-          label="Seleziona uno o più PDF (gas, luce…)"
-          accept=".pdf"
-          multiple
-          append
-          use-chips
-          outlined
-          dense
-          class="vp-field vp-field--grow"
-        >
-          <template #prepend><q-icon name="attach_file" /></template>
-        </q-file>
-        <q-btn
-          color="primary"
-          icon="cloud_upload"
-          :label="filePdf.length > 1 ? `Carica ${filePdf.length}` : 'Carica'"
-          :disable="!filePdf.length || !ownerId"
-          :loading="store.loading"
-          @click="onUpload"
-        />
-      </q-card-section>
-      <q-card-section v-if="store.caricati.length" class="vp-upload-ok">
-        <div v-for="b in store.caricati" :key="b.id" class="vp-upload-row">
-          <q-icon name="check_circle" color="positive" />
-          <strong>{{ b.prodotto }}</strong>
-          {{ b.importo_totale }}€ ·
-          {{ b.periodo_da }} → {{ b.periodo_a }}
-          <span v-if="b.consumo">· {{ b.consumo }}</span>
-        </div>
-      </q-card-section>
-    </q-card>
+    <ConguaglioBollette
+      v-if="periodoCorrenteView"
+      :periodo="periodoCorrenteView"
+      :periodi="statiPeriodi"
+      :anno="anno"
+      :mese="mese"
+      :criterio="criterio"
+      :step="step"
+      :bollette="bolletteView"
+      :voci="vociView"
+      :totale="totaleView"
+      :quote="quoteView"
+      :mancanti-tipi="mancantiTipi"
+      :escludi="escludi"
+      :pagata-da="pagataDa"
+      :n-inquilini="quoteView.length"
+      :has-nuovo-ingresso="hasNuovoIngresso"
+      :ingresso-nota="ingressoNota"
+      :needs-emetti="needsEmetti"
+      :gia-inviato-at="store.period?.avvisi_inviati_at ?? null"
+      @cambia-periodo="onCambiaPeriodo"
+      @update:criterio="(c) => (criterio = c)"
+      @update:step="onStep"
+      @upload="apriUpload"
+      @emetti="onEmetti"
+      @invia="confermaInvio"
+      @toggle-invio="onToggleInvio"
+    />
 
-    <!-- 2. Periodo del mese -->
-    <q-card flat bordered class="vp-card">
-      <q-card-section class="vp-card__title">
-        <q-icon name="event" /> 2 · Periodo del mese
-      </q-card-section>
-      <q-card-section class="vp-row">
-        <q-select
-          v-model="mese"
-          :options="meseOptions"
-          label="Mese"
-          emit-value
-          map-options
-          outlined
-          dense
-          class="vp-field"
-        />
-        <q-select
-          v-model="anno"
-          :options="annoOptions"
-          label="Anno"
-          outlined
-          dense
-          class="vp-field"
-        />
-        <q-btn
-          color="primary"
-          icon="search"
-          label="Trova periodo"
-          :loading="store.loading"
-          @click="onPerMese"
-        />
-      </q-card-section>
+    <div v-else class="vp-vuoto">
+      <q-spinner-dots v-if="store.loading" size="32px" color="primary" />
+      <span v-else>Nessun periodo disponibile.</span>
+    </div>
 
-      <q-card-section v-if="store.period" class="vp-period">
-        <div class="vp-period__info">
-          <q-chip square :color="statoColor" text-color="white" dense>
-            {{ store.period.stato_display }}
-          </q-chip>
-          <span class="vp-period__range">
-            {{ store.period.periodo_da }} → {{ store.period.periodo_a }}
-          </span>
-        </div>
-        <div v-if="store.completezza" class="vp-completezza">
-          <q-chip
-            v-for="voce in vociCompletezza"
-            :key="voce.key"
-            :icon="store.completezza[voce.key] ? 'check_circle' : 'cancel'"
-            :color="store.completezza[voce.key] ? 'positive' : 'grey-5'"
-            text-color="white"
+    <!-- Dialog: carica bollette -->
+    <q-dialog v-model="mostraUpload">
+      <q-card class="vp-dialog">
+        <q-card-section class="vp-dialog__title">
+          <q-icon name="cloud_upload" />
+          Carica bollette<span v-if="uploadTipoHint"> · {{ uploadTipoHint }}</span>
+        </q-card-section>
+        <q-card-section class="column q-gutter-md">
+          <q-select
+            v-model="ownerId"
+            :options="ownerOptions"
+            label="Pagata da"
+            emit-value
+            map-options
+            outlined
+            dense
+          />
+          <q-file
+            v-model="filePdf"
+            label="Seleziona uno o più PDF (luce, gas…)"
+            accept=".pdf"
+            multiple
+            append
+            use-chips
+            outlined
             dense
           >
-            {{ voce.label }}
-          </q-chip>
-        </div>
-        <div v-if="store.completezza && !store.completezza.completo" class="vp-hint">
-          Servono almeno una bolletta <strong>luce</strong> e una
-          <strong>gas</strong> prima di calcolare.
-        </div>
-      </q-card-section>
-    </q-card>
-
-    <!-- 3. Anteprima conto -->
-    <q-card v-if="store.period" flat bordered class="vp-card">
-      <q-card-section class="vp-card__title">
-        <q-icon name="calculate" /> 3 · Conto per inquilino
-        <q-space />
-        <q-btn
-          color="primary"
-          outline
-          icon="calculate"
-          label="Calcola"
-          :disable="!store.completezza?.completo"
-          :loading="store.loading"
-          @click="store.calcolaAnteprima()"
-        />
-      </q-card-section>
-
-      <template v-if="store.anteprima">
-        <!-- Le tre voci del periodo: luce, gas, TARI -> totale -> per persona -->
-        <q-card-section>
-          <div class="vp-sub">Di cosa si compone</div>
-          <q-markup-table flat dense wrap-cells class="vp-tbl">
-            <thead>
-              <tr>
-                <th class="text-left">Voce</th>
-                <th class="text-right">Importo</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="v in vociPeriodo" :key="v.key">
-                <td class="text-left">
-                  <q-badge :color="voceColor(v.key)" :label="v.label" />
-                </td>
-                <td class="text-right">{{ euro(v.importo) }}</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr class="vp-tot">
-                <td class="text-left text-weight-bold">Totale periodo</td>
-                <td class="text-right text-weight-bold">
-                  {{ euro(store.anteprima.totale_periodo) }}
-                </td>
-              </tr>
-            </tfoot>
-          </q-markup-table>
+            <template #prepend><q-icon name="attach_file" /></template>
+          </q-file>
         </q-card-section>
-
-        <!-- Quote per inquilino: solo nome, giorni, quota -->
-        <q-card-section>
-          <div class="vp-sub">Quota per inquilino</div>
-          <q-markup-table flat dense wrap-cells class="vp-tbl">
-            <thead>
-              <tr>
-                <th class="text-left">Inquilino</th>
-                <th class="text-right">Giorni</th>
-                <th class="text-right">Quota</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="q in store.anteprima.quote" :key="q.assignment_id">
-                <td class="text-left">{{ q.tenant_nominativo }}</td>
-                <td class="text-right">{{ q.giorni_presenza }}</td>
-                <td class="text-right text-weight-bold">{{ euro(q.quota) }}</td>
-              </tr>
-            </tbody>
-          </q-markup-table>
-        </q-card-section>
-      </template>
-
-      <q-card-actions v-if="store.anteprima && store.anteprima.quote.length" align="right">
-        <q-chip
-          v-if="store.period.stato === 'inviato'"
-          icon="check"
-          color="positive"
-          text-color="white"
-        >
-          Addebiti creati
-        </q-chip>
-        <q-btn
-          v-else
-          color="primary"
-          icon="task_alt"
-          label="Crea addebiti"
-          :loading="store.loading"
-          @click="onEmetti"
-        />
-      </q-card-actions>
-    </q-card>
-
-    <!-- 4. Avvisi -->
-    <q-card v-if="store.period?.stato === 'inviato'" flat bordered class="vp-card">
-      <q-card-section class="vp-card__title">
-        <q-icon name="mail" /> 4 · Avvisi agli inquilini
-        <q-space />
-        <q-toggle
-          v-model="mostraAvvisi"
-          label="Mostra avvisi"
-          :disable="store.loading"
-          @update:model-value="onToggleAvvisi"
-        />
-      </q-card-section>
-
-      <q-card-section v-if="store.period.avvisi_inviati_at" class="vp-invio-data">
-        <q-icon name="schedule" size="18px" />
-        Avvisi inviati il <strong>{{ formatDateTime(store.period.avvisi_inviati_at) }}</strong>
-      </q-card-section>
-
-      <q-card-section v-if="mostraAvvisi && store.invio">
-        <div class="vp-invio-summary">
-          <q-chip dense color="grey-3">{{ store.invio.totale }} destinatari</q-chip>
-          <q-chip v-if="store.invio.dry_run" dense color="amber-3">anteprima</q-chip>
-          <q-chip v-else dense color="positive" text-color="white">
-            {{ store.invio.inviati }} inviati
-          </q-chip>
-          <q-chip v-if="store.invio.errori" dense color="negative" text-color="white">
-            {{ store.invio.errori }} errori
-          </q-chip>
-          <q-chip
-            v-if="store.invio.senza_email.length"
-            dense
-            color="orange"
-            text-color="white"
-          >
-            senza email: {{ store.invio.senza_email.join(', ') }}
-          </q-chip>
-        </div>
-
-        <q-list bordered separator class="vp-avvisi">
-          <q-expansion-item
-            v-for="a in store.invio.avvisi"
-            :key="a.receivable_id"
-            :label="a.tenant_nominativo"
-            :caption="a.email || 'nessuna email'"
-          >
-            <template #header>
-              <q-item-section>
-                <q-item-label>{{ a.tenant_nominativo }}</q-item-label>
-                <q-item-label caption>{{ a.email || 'nessuna email' }}</q-item-label>
-              </q-item-section>
-              <q-item-section side>
-                <q-chip dense :color="esitoColor(a.esito)" text-color="white">
-                  {{ a.esito }}
-                </q-chip>
-              </q-item-section>
-            </template>
-            <q-card>
-              <q-card-section>
-                <div class="vp-mail-oggetto">{{ a.oggetto }}</div>
-                <pre class="vp-mail-corpo">{{ a.corpo }}</pre>
-              </q-card-section>
-            </q-card>
-          </q-expansion-item>
-        </q-list>
-      </q-card-section>
-
-      <q-card-actions
-        v-if="mostraAvvisi && store.invio && store.invio.totale"
-        align="right"
-      >
-        <q-btn
-          color="primary"
-          icon="send"
-          :label="store.period.avvisi_inviati_at ? 'Invia di nuovo' : 'Invia'"
-          :loading="store.loading"
-          @click="confermaInvio"
-        />
-      </q-card-actions>
-    </q-card>
+        <q-card-actions align="right">
+          <q-btn flat label="Annulla" @click="mostraUpload = false" />
+          <q-btn
+            color="primary"
+            icon="cloud_upload"
+            :label="filePdf.length > 1 ? `Carica ${filePdf.length}` : 'Carica'"
+            :disable="!filePdf.length || !ownerId"
+            :loading="store.loading"
+            @click="onUpload"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -300,152 +89,279 @@
 import { computed, onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { useUtenzeStore } from 'stores/utenze';
+import ConguaglioBollette from 'src/components/utenze/ConguaglioBollette.vue';
+import {
+  prodottoToTipo,
+  voceToTipo,
+  rangePeriodo,
+  meseDa,
+  meseCapitalize,
+  annoDa,
+  avatarHue,
+  type Criterio,
+  type PeriodoView,
+  type BollettaView,
+  type VoceView,
+  type QuotaView,
+} from 'src/components/utenze/format';
+import type { MeseStato } from 'src/components/utenze/PeriodSelector.vue';
 
 const store = useUtenzeStore();
 const $q = useQuasar();
 
-const oggi = new Date();
-const mese = ref(oggi.getMonth() + 1);
-const anno = ref(oggi.getFullYear());
+const criterio = ref<Criterio>('giorni');
+const step = ref(1);
+const escludi = ref<number[]>([]);
+
 const ownerId = ref<number | null>(null);
 const filePdf = ref<File[]>([]);
-const mostraAvvisi = ref(false);
-
-const meseNomi = [
-  'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
-  'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
-];
-const meseOptions = meseNomi.map((label, i) => ({ label, value: i + 1 }));
-const annoOptions = [oggi.getFullYear() + 1, oggi.getFullYear(), oggi.getFullYear() - 1, oggi.getFullYear() - 2];
-
-const vociCompletezza = [
-  { key: 'luce' as const, label: 'Luce' },
-  { key: 'gas' as const, label: 'Gas' },
-  { key: 'tari' as const, label: 'TARI' },
-];
+const mostraUpload = ref(false);
+const uploadTipoHint = ref<string | null>(null);
 
 const ownerOptions = computed(() =>
   store.owners.map((o) => ({ label: o.nominativo, value: o.id })),
 );
 
-const statoColor = computed(() =>
-  store.period?.stato === 'inviato' ? 'positive' : 'grey-6',
+function num(v: number | string | null | undefined): number {
+  const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// ── Anno/mese correnti (dal periodo selezionato) ──────────────────────
+const anno = computed(() =>
+  store.period ? Number(annoDa(store.period.periodo_da)) : new Date().getFullYear(),
+);
+const mese = computed(() =>
+  store.period ? Number(store.period.periodo_da.slice(5, 7)) : new Date().getMonth() + 1,
 );
 
-const VOCI_LABEL: Record<string, string> = {
-  luce: 'Luce',
-  gas: 'Gas',
-  tari: 'TARI',
-  altro: 'Altro',
-};
-const VOCI_ORDINE = ['luce', 'gas', 'tari', 'altro'];
+const needsEmetti = computed(() => store.period?.stato !== 'inviato');
+const incompletoCorrente = computed(() => !!store.completezza && !store.completezza.completo);
 
-const vociPeriodo = computed(() => {
+// "inviato" (badge verde) = avvisi REALMENTE spediti (avvisi_inviati_at), non
+// il semplice stato='inviato' del periodo (= solo addebiti creati). Periodi
+// passati con addebiti ma senza invio email restano "da-inviare".
+const statiPeriodi = computed<MeseStato[]>(() =>
+  store.periodi.map((p) => ({
+    anno: Number(annoDa(p.periodo_da)),
+    mese: Number(p.periodo_da.slice(5, 7)),
+    stato: p.avvisi_inviati_at ? 'inviato' : 'da-inviare',
+  })),
+);
+
+const mancantiTipi = computed<string[]>(() => {
+  const c = store.completezza;
+  if (!c) return [];
+  const out: string[] = [];
+  if (!c.luce) out.push('Luce');
+  if (!c.gas) out.push('Gas');
+  if (!c.tari) out.push('TARI');
+  return out;
+});
+
+const periodoCorrenteView = computed<PeriodoView | null>(() => {
+  const p = store.period;
+  if (!p) return null;
+  const presentiCount = store.completezza
+    ? [store.completezza.luce, store.completezza.gas, store.completezza.tari].filter(Boolean).length
+    : 3;
+  return {
+    id: String(p.id),
+    mese: meseDa(p.periodo_da),
+    label: `${meseCapitalize(meseDa(p.periodo_da))} ${annoDa(p.periodo_da)}`,
+    range: rangePeriodo(p.periodo_da, p.periodo_a),
+    stato: incompletoCorrente.value ? 'incompleto' : p.avvisi_inviati_at ? 'inviato' : 'da-inviare',
+    presenti: presentiCount,
+    attese: 3,
+  };
+});
+
+// ── Bollette del periodo (card di dettaglio) ──────────────────────────
+const bolletteView = computed<BollettaView[]>(() => {
+  const cards: BollettaView[] = store.bollettePeriodo.map((b) => ({
+    tipo: String(prodottoToTipo(b.prodotto)),
+    fornitore: b.supplier_nome || b.pagata_da_nominativo || '—',
+    importo: num(b.importo_totale),
+    periodo: rangePeriodo(b.periodo_da, b.periodo_a),
+    consumo: b.consumo || '—',
+    riferimento: b.numero_fattura || '—',
+    pdfUrl: null,
+  }));
+  const tari = num(store.anteprima?.totali_per_voce?.tari);
+  const haTariCard = cards.some((c) => c.tipo === 'TARI');
+  if (tari > 0 && !haTariCard && store.period) {
+    cards.push({
+      tipo: 'TARI',
+      fornitore: 'Comune (TARI)',
+      importo: tari,
+      periodo: rangePeriodo(store.period.periodo_da, store.period.periodo_a),
+      consumo: '—',
+      riferimento: 'costo annuale ripartito',
+      pdfUrl: null,
+    });
+  }
+  return cards;
+});
+
+// ── Composizione (totali per voce del periodo) ────────────────────────
+const ORDINE_VOCI = ['luce', 'gas', 'tari', 'altro'];
+const vociView = computed<VoceView[]>(() => {
   const tpv = store.anteprima?.totali_per_voce ?? {};
-  return VOCI_ORDINE.filter((k) => k in tpv).map((k) => ({
-    key: k,
-    label: VOCI_LABEL[k] ?? k,
-    importo: tpv[k],
+  return ORDINE_VOCI.filter((k) => k in tpv && num(tpv[k]) > 0).map((k) => ({
+    tipo: String(voceToTipo(k)),
+    importo: num(tpv[k]),
   }));
 });
 
-function euro(v: number | string | null | undefined): string {
-  const n = typeof v === 'string' ? parseFloat(v) : v ?? 0;
-  if (!n) return '—';
-  return new Intl.NumberFormat('it-IT', {
-    style: 'currency',
-    currency: 'EUR',
-  }).format(n);
+const totaleView = computed(() => {
+  if (store.anteprima) return num(store.anteprima.totale_periodo);
+  return store.bollettePeriodo.reduce((s, b) => s + num(b.importo_totale), 0);
+});
+
+// ── Quote per inquilino (+ avviso: email/oggetto/corpo/notificare) ────
+function avvisoPer(nominativo: string) {
+  return store.invio?.avvisi.find((a) => a.tenant_nominativo === nominativo);
 }
 
-function formatDateTime(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return new Intl.DateTimeFormat('it-IT', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(d);
-}
+const quoteView = computed<QuotaView[]>(() => {
+  const quote = store.anteprima?.quote ?? [];
+  return quote.map((q) => {
+    const a = avvisoPer(q.tenant_nominativo);
+    return {
+      id: q.assignment_id,
+      receivableId: a?.receivable_id ?? null,
+      nome: q.tenant_nominativo,
+      stanza: '',
+      email: a?.email ?? '',
+      mq: 0,
+      giorni: q.giorni_presenza,
+      avatarHue: avatarHue(q.tenant_nominativo),
+      per: {
+        Luce: num(q.dettaglio?.luce),
+        Gas: num(q.dettaglio?.gas),
+        TARI: num(q.dettaglio?.tari),
+      },
+      quota: num(q.quota),
+      oggetto: a?.oggetto ?? '',
+      corpo: a?.corpo ?? '',
+      notificare: a ? a.notificare !== false : true,
+      bonifico: a?.bonifico
+        ? {
+            beneficiario: a.bonifico.beneficiario,
+            iban: a.bonifico.iban,
+            causale: a.bonifico.causale,
+            importo: num(a.bonifico.importo),
+          }
+        : null,
+    };
+  });
+});
 
-async function onToggleAvvisi(val: boolean): Promise<void> {
-  // Aprendo il toggle si carica l'anteprima (dry-run): mostra il testo
-  // esatto delle email senza spedire nulla.
-  if (val) {
+const pagataDa = computed(() => {
+  const conNome = store.bollettePeriodo.find((b) => b.pagata_da_nominativo);
+  return conNome?.pagata_da_nominativo ?? '';
+});
+
+const hasNuovoIngresso = computed(() => {
+  const g = quoteView.value.map((q) => q.giorni);
+  return g.length > 1 && Math.min(...g) < Math.max(...g);
+});
+const ingressoNota = computed(() =>
+  hasNuovoIngresso.value
+    ? "Qualcuno è presente solo per una parte del periodo: la sua quota è ridotta in proporzione ai giorni di effettiva presenza."
+    : '',
+);
+
+// ── Orchestrazione ────────────────────────────────────────────────────
+async function caricaDatiPeriodo(): Promise<void> {
+  if (!store.period) return;
+  escludi.value = [];
+  await store.fetchBollettePeriodo(store.period.periodo_da, store.period.periodo_a);
+  if (store.completezza?.completo) {
+    await store.calcolaAnteprima();
+  }
+  if (store.period.stato === 'inviato') {
     await store.inviaAvvisi(true);
   }
 }
 
-function voceColor(tipo: string): string {
-  if (tipo === 'luce') return 'amber-7';
-  if (tipo === 'gas') return 'blue-grey-6';
-  if (tipo === 'tari') return 'green-7';
-  return 'grey-6';
+async function onCambiaPeriodo(v: { anno: number; mese: number }): Promise<void> {
+  step.value = 1;
+  await store.perMese(v.anno, v.mese);
+  await caricaDatiPeriodo();
 }
 
-function esitoColor(esito?: string): string {
-  if (esito === 'inviato') return 'positive';
-  if (esito === 'errore') return 'negative';
-  if (esito === 'senza_email') return 'orange';
-  return 'grey-6';
+async function onStep(n: number): Promise<void> {
+  step.value = n;
+  if (n === 2 && store.completezza?.completo && !store.anteprima) {
+    await store.calcolaAnteprima();
+  }
+  if (n === 3 && store.period?.stato === 'inviato' && !store.invio) {
+    await store.inviaAvvisi(true);
+  }
+}
+
+function onToggleInvio(receivableId: number): void {
+  const i = escludi.value.indexOf(receivableId);
+  if (i >= 0) escludi.value.splice(i, 1);
+  else escludi.value.push(receivableId);
+}
+
+// ── Upload ────────────────────────────────────────────────────────────
+function apriUpload(tipo?: string): void {
+  uploadTipoHint.value = tipo ?? null;
+  mostraUpload.value = true;
 }
 
 async function onUpload(): Promise<void> {
   if (!filePdf.value.length || !ownerId.value) return;
   let ok = 0;
   const errori: string[] = [];
-  // Caricamento in sequenza: l'endpoint accetta un PDF per volta.
   for (const file of filePdf.value) {
     const res = await store.caricaBolletta(file, ownerId.value);
-    if (res) {
-      ok += 1;
-    } else {
-      errori.push(`${file.name}: ${store.errore ?? 'errore'}`);
-    }
+    if (res) ok += 1;
+    else errori.push(`${file.name}: ${store.errore ?? 'errore'}`);
   }
   filePdf.value = [];
   if (ok) {
     $q.notify({ type: 'positive', message: `${ok} bolletta/e caricate` });
-    // Rinfresca la completezza del periodo: i chip Luce/Gas/TARI si
-    // accendono subito senza dover ricaricare la pagina.
     if (store.period) {
       await store.perMese(anno.value, mese.value);
+      await caricaDatiPeriodo();
     }
+    mostraUpload.value = false;
   }
   if (errori.length) {
     $q.notify({ type: 'negative', message: errori.join(' · '), timeout: 6000 });
   }
 }
 
-async function onPerMese(): Promise<void> {
-  mostraAvvisi.value = false;
-  await store.perMese(anno.value, mese.value);
-}
-
-async function caricaMesePredefinito(): Promise<void> {
-  // Default backend: primo mese con avvisi ancora da inviare (l'ultimo
-  // periodo con addebiti emessi ma non ancora notificato), altrimenti il
-  // mese successivo.
-  mostraAvvisi.value = false;
-  const res = await store.perMese();
-  if (res) {
-    anno.value = res.anno;
-    mese.value = res.mese;
-  }
-}
-
+// ── Crea addebiti (esplicito) → poi invio ─────────────────────────────
 async function onEmetti(): Promise<void> {
   const ok = await store.emetti();
   if (ok) {
     $q.notify({ type: 'positive', message: 'Addebiti utenze creati' });
+    await store.fetchPeriodi();
+    // Ora esistono i Receivable: carica l'anteprima avvisi e vai all'invio.
+    await store.inviaAvvisi(true);
+    step.value = 3;
   }
 }
 
 function confermaInvio(): void {
+  if (store.period?.stato !== 'inviato') {
+    // Non ancora emesso: la creazione addebiti è un passo esplicito.
+    void onEmetti();
+    return;
+  }
   const giaInviati = !!store.period?.avvisi_inviati_at;
+  const n = quoteView.value.filter(
+    (q) => q.notificare !== false && !escludi.value.includes(Number(q.receivableId)),
+  ).length;
   $q.dialog({
     title: giaInviati ? 'Reinvio avvisi' : 'Conferma invio',
     message:
-      `Invio reale delle email a ${store.invio?.totale ?? 0} inquilini.` +
+      `Invio reale delle email a ${n} inquilini.` +
       (giaInviati ? ' Gli avvisi erano già stati inviati: procedere comunque?' : ' Procedere?'),
     cancel: true,
     persistent: true,
@@ -455,8 +371,9 @@ function confermaInvio(): void {
 }
 
 async function inviaReale(): Promise<void> {
-  const res = await store.inviaAvvisi(false);
+  const res = await store.inviaAvvisi(false, [...escludi.value]);
   if (res) {
+    await store.fetchPeriodi();
     $q.notify({
       type: res.errori ? 'warning' : 'positive',
       message: `Inviate ${res.inviati} email${res.errori ? `, ${res.errori} errori` : ''}`,
@@ -464,128 +381,44 @@ async function inviaReale(): Promise<void> {
   }
 }
 
-function ricomincia(): void {
-  store.reset();
-  filePdf.value = [];
-  mostraAvvisi.value = false;
-}
-
-onMounted(() => {
-  void store.fetchOwners().then(() => {
-    if (!ownerId.value && store.owners.length) {
-      ownerId.value = store.owners[0]?.id ?? null;
-    }
-  });
-  void caricaMesePredefinito();
+onMounted(async () => {
+  await store.fetchOwners();
+  if (!ownerId.value && store.owners.length) {
+    ownerId.value = store.owners[0]?.id ?? null;
+  }
+  await store.fetchPeriodi();
+  // Default backend: ultimo periodo con avvisi ancora da inviare.
+  await store.perMese();
+  await caricaDatiPeriodo();
 });
 </script>
 
 <style scoped>
-.vp-page {
-  padding: var(--vp-gap-4, 16px);
-  max-width: 900px;
-  margin: 0 auto;
-}
-.vp-page__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--vp-gap-3, 12px);
-}
-.vp-page__title {
-  margin: 0;
-  font-size: var(--vp-text-2xl);
-}
-.vp-card {
-  margin-bottom: var(--vp-gap-3, 12px);
-  border-radius: var(--vp-r-md, 10px);
-}
-.vp-card__title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  color: var(--vp-terra-deep, #9b5a3a);
-}
-.vp-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-}
-.vp-field {
-  min-width: 160px;
-}
-.vp-field--grow {
-  flex: 1 1 240px;
-}
-.vp-upload-ok {
-  color: var(--vp-ink-2, #555);
-}
-.vp-upload-row {
-  padding: 2px 0;
-}
-.vp-period__info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-.vp-period__range {
-  color: var(--vp-ink-2, #555);
-}
-.vp-completezza {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.vp-hint {
-  margin-top: 8px;
-  color: var(--vp-ink-3, #888);
-  font-size: 13px;
-}
-.vp-sub {
-  font-weight: 600;
-  color: var(--vp-ink-2, #555);
-  margin-bottom: 6px;
-}
-.vp-tbl {
-  background: transparent;
-}
-.vp-muted {
-  color: var(--vp-ink-3, #888);
-  font-size: 13px;
-}
-.vp-tot td {
-  border-top: 2px solid var(--vp-paper-3, #e0d8cf);
+.vp-utenze {
+  background: var(--vp-paper);
 }
 .vp-banner-error {
   background: #fdecea;
   color: #a3261d;
-  margin-bottom: var(--vp-gap-3, 12px);
+  margin: 12px;
 }
-.vp-invio-data {
+.vp-vuoto {
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: var(--vp-ink-2, #555);
-  font-size: 13px;
-  padding-top: 0;
+  justify-content: center;
+  gap: 12px;
+  min-height: 50vh;
+  color: var(--vp-ink-3);
 }
-.vp-invio-summary {
+.vp-dialog {
+  min-width: 360px;
+  border-radius: var(--vp-r-lg);
+}
+.vp-dialog__title {
   display: flex;
+  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-.vp-mail-oggetto {
   font-weight: 600;
-  margin-bottom: 6px;
-}
-.vp-mail-corpo {
-  white-space: pre-wrap;
-  font-family: inherit;
-  margin: 0;
-  color: var(--vp-ink-2, #555);
+  color: var(--vp-terra-deep);
 }
 </style>

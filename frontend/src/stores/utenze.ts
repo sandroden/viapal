@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
+import { fetchAllPaginated } from 'src/utils/paginate';
 
 // --- Tipi -----------------------------------------------------------------
 
@@ -74,6 +75,17 @@ export interface AvvisoFE {
   canale: string;
   esito?: string;
   errore?: string;
+  uscito?: boolean;
+  notificare?: boolean;
+  valid_to?: string | null;
+  bonifico?: {
+    beneficiario: string;
+    iban: string;
+    banca?: string;
+    causale: string;
+    importo: number;
+  } | null;
+  qr_cid?: string;
 }
 
 export interface InvioAvvisiResponse {
@@ -84,6 +96,7 @@ export interface InvioAvvisiResponse {
   inviati: number;
   errori: number;
   senza_email: string[];
+  non_inviati?: string[];
   avvisi_inviati_at: string | null;
   avvisi: AvvisoFE[];
 }
@@ -108,11 +121,13 @@ export interface BollettaFE {
 
 interface State {
   owners: OwnerFE[];
+  periodi: PeriodFE[];
   period: PeriodFE | null;
   completezza: Completezza | null;
   anteprima: AnteprimaResponse | null;
   invio: InvioAvvisiResponse | null;
   caricati: BollettaFE[];
+  bollettePeriodo: BollettaFE[];
   loading: boolean;
   errore: string | null;
 }
@@ -125,11 +140,13 @@ function messaggioErrore(e: unknown, fallback: string): string {
 export const useUtenzeStore = defineStore('utenze', {
   state: (): State => ({
     owners: [],
+    periodi: [],
     period: null,
     completezza: null,
     anteprima: null,
     invio: null,
     caricati: [],
+    bollettePeriodo: [],
     loading: false,
     errore: null,
   }),
@@ -161,6 +178,28 @@ export const useUtenzeStore = defineStore('utenze', {
         return null;
       } finally {
         this.loading = false;
+      }
+    },
+
+    async fetchPeriodi(): Promise<void> {
+      try {
+        this.periodi = await fetchAllPaginated<PeriodFE>('/api/v1/utility-periods/');
+      } catch (e: unknown) {
+        this.errore = messaggioErrore(e, 'Errore caricamento periodi');
+      }
+    },
+
+    async fetchBollettePeriodo(da: string, a: string): Promise<void> {
+      // Le bollette che intersecano il periodo (un PDF bimestrale copre due
+      // mesi): si filtra lato client perché l'endpoint non espone il filtro.
+      try {
+        const tutte = await fetchAllPaginated<BollettaFE>('/api/v1/utility-bills/');
+        this.bollettePeriodo = tutte.filter(
+          (b) => b.periodo_da <= a && b.periodo_a >= da,
+        );
+      } catch (e: unknown) {
+        this.errore = messaggioErrore(e, 'Errore caricamento bollette');
+        this.bollettePeriodo = [];
       }
     },
 
@@ -222,14 +261,17 @@ export const useUtenzeStore = defineStore('utenze', {
       }
     },
 
-    async inviaAvvisi(dryRun: boolean): Promise<InvioAvvisiResponse | null> {
+    async inviaAvvisi(
+      dryRun: boolean,
+      escludi: number[] = [],
+    ): Promise<InvioAvvisiResponse | null> {
       if (!this.period) return null;
       this.loading = true;
       this.errore = null;
       try {
         const { data } = await api.post<InvioAvvisiResponse>(
           `/api/v1/utility-periods/${this.period.id}/invia-avvisi/`,
-          { dry_run: dryRun },
+          { dry_run: dryRun, escludi },
         );
         this.invio = data;
         // Invio reale: aggiorna la data sul periodo così la UI mostra subito
@@ -252,6 +294,7 @@ export const useUtenzeStore = defineStore('utenze', {
       this.anteprima = null;
       this.invio = null;
       this.caricati = [];
+      this.bollettePeriodo = [];
     },
   },
 });

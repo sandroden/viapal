@@ -374,7 +374,8 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
 
         period = self.get_object()
         dry_run = bool(request.data.get("dry_run", True))
-        risultato = invia_avvisi_utenze(period, dry_run=dry_run)
+        escludi = request.data.get("escludi") or []
+        risultato = invia_avvisi_utenze(period, dry_run=dry_run, escludi_ids=escludi)
         return Response(risultato)
 
 
