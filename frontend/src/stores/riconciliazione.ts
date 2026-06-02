@@ -115,10 +115,34 @@ interface State {
   errore: string | null;
 }
 
-function asArray<T>(data: T[] | { results: T[] } | undefined | null): T[] {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
-  return data.results ?? [];
+/**
+ * Scarica TUTTE le pagine di un endpoint DRF paginato (LimitOffset),
+ * accumulando i `results` finché non si raggiunge `count`. Necessario per la
+ * riconciliazione: con un periodo ampio i Receivable/BT superano il `max_limit`
+ * del backend (200) e fermarsi alla prima pagina nasconderebbe le voci più
+ * vecchie ancora da abbinare (es. un'utenza 2024 con periodo 2023-2026).
+ */
+async function fetchAllPaginated<T>(
+  url: string,
+  filtri: Record<string, unknown>,
+): Promise<T[]> {
+  const pageSize = Number(filtri.limit) || 200;
+  const acc: T[] = [];
+  let offset = 0;
+  // Guardia anti-loop: il backend cap a 200/pagina, quindi bastano poche
+  // pagine; il tetto duro evita cicli infiniti se `count` fosse incoerente.
+  for (let guard = 0; guard < 1000; guard++) {
+    const { data } = await api.get<T[] | { count?: number; results?: T[] }>(url, {
+      params: paramsClean({ ...filtri, limit: pageSize, offset }),
+    });
+    if (Array.isArray(data)) return data; // endpoint non paginato
+    const results = data.results ?? [];
+    acc.push(...results);
+    const count = typeof data.count === 'number' ? data.count : acc.length;
+    offset += pageSize;
+    if (results.length === 0 || acc.length >= count) break;
+  }
+  return acc;
 }
 
 function paramsClean(filtri: Record<string, unknown>): Record<string, string> {
@@ -146,12 +170,10 @@ export const useRiconciliazioneStore = defineStore('riconciliazione', {
       this.loadingBts = true;
       this.errore = null;
       try {
-        const { data } = await api.get<
-          BankTransactionFE[] | { results: BankTransactionFE[] }
-        >('/api/v1/bank-transactions/', {
-          params: paramsClean({ ...filtri }),
-        });
-        this.bts = asArray(data);
+        this.bts = await fetchAllPaginated<BankTransactionFE>(
+          '/api/v1/bank-transactions/',
+          { ...filtri },
+        );
       } catch (e: unknown) {
         this.errore = (e as Error)?.message ?? 'Errore caricamento transazioni';
       } finally {
@@ -162,12 +184,10 @@ export const useRiconciliazioneStore = defineStore('riconciliazione', {
       this.loadingReceivables = true;
       this.errore = null;
       try {
-        const { data } = await api.get<
-          ReceivableFE[] | { results: ReceivableFE[] }
-        >('/api/v1/receivables/', {
-          params: paramsClean({ ...filtri }),
-        });
-        this.receivables = asArray(data);
+        this.receivables = await fetchAllPaginated<ReceivableFE>(
+          '/api/v1/receivables/',
+          { ...filtri },
+        );
       } catch (e: unknown) {
         this.errore = (e as Error)?.message ?? 'Errore caricamento receivable';
       } finally {

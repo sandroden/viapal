@@ -1242,9 +1242,9 @@ function coperturaClass(r: ReceivableFE): string {
 }
 
 async function ricarica() {
-  // Limite alto: la pagination DRF default 50 taglierebbe i Receivable più
-  // vecchi nel periodo, lasciandoli "invisibili" nella lista. Su un anno
-  // tipico (5 inquilini × 12 mesi × 3 causali) i record stanno entro 200.
+  // Dimensione pagina: lo store segue tutte le pagine DRF (vedi
+  // fetchAllPaginated), quindi non c'è un cap rigido — questo è solo il numero
+  // di record per richiesta (200 = max_limit del backend).
   const PAGE_LIMIT = 200;
   await Promise.all([
     store.fetchBankTransactions({
