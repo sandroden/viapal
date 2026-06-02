@@ -25,6 +25,15 @@
     </div>
 
     <template v-else>
+      <!-- Credito già versato non ancora imputato: evidenziato e scalato dal totale -->
+      <div v-if="haCredito" class="vp-th__credito">
+        <q-icon name="savings" size="20px" class="vp-th__credito-ic" />
+        <div class="vp-th__credito-txt">
+          Hai <b>{{ formattaEuro(creditoDisponibile) }}</b> già versati e non ancora abbinati a una
+          bolletta: li abbiamo <b>scalati dal totale</b> qui sotto, così non paghi due volte.
+        </div>
+      </div>
+
       <!-- Barra di selezione -->
       <div class="vp-th__selbar">
         <button class="vp-th__selall" @click="toggleAll">
@@ -63,12 +72,22 @@
       <div class="vp-th__totalbar">
         <div class="vp-th__totalbar-inner">
           <div class="vp-th__totale">
-            <div class="vp-eyebrow vp-th__totale-eyebrow">Totale selezionato</div>
+            <div class="vp-eyebrow vp-th__totale-eyebrow">
+              {{ haCredito && creditoApplicato > 0 ? 'Da versare' : 'Totale selezionato' }}
+            </div>
             <div class="vp-display vp-mono vp-th__totale-val" :class="{ 'vp-th__totale-val--off': count === 0 }">
-              {{ formattaEuro(totaleSel) }}
+              {{ formattaEuro(nettoDaPagare) }}
+            </div>
+            <!-- Scomposizione: lordo selezionato − credito già versato -->
+            <div v-if="haCredito && creditoApplicato > 0 && count > 0" class="vp-th__scomposizione">
+              <span class="vp-mono">{{ formattaEuro(totaleSel) }}</span>
+              <span class="vp-th__scomp-meno">− credito {{ formattaEuro(creditoApplicato) }}</span>
             </div>
             <div class="vp-th__totale-sub">
-              <template v-if="count > 0">
+              <template v-if="count > 0 && nettoDaPagare <= 0">
+                Coperto dal credito già versato
+              </template>
+              <template v-else-if="count > 0">
                 {{ count }} {{ count === 1 ? 'ritardo' : 'ritardi' }} · un unico bonifico
               </template>
               <template v-else>Spunta i ritardi da saldare insieme</template>
@@ -80,7 +99,7 @@
             color="primary"
             icon="account_balance_wallet"
             :label="$q.screen.gt.sm ? 'Paga con bonifico' : 'Paga'"
-            :disable="count === 0"
+            :disable="count === 0 || nettoDaPagare <= 0"
             class="vp-th__paga-btn"
             @click="bonificoUnico"
           />
@@ -92,7 +111,7 @@
       <QrBonifico
         v-if="pagamentoBonifico"
         :pagamento="pagamentoBonifico"
-        :importo="totaleSel"
+        :importo="nettoDaPagare"
       />
     </q-dialog>
 
@@ -148,6 +167,14 @@ const allOn = computed(
 );
 const itemsSel = computed(() => daPagare.value.filter((x) => sel.value.has(chiave(x))));
 const totaleSel = computed(() => itemsSel.value.reduce((s, x) => s + x.residuo, 0));
+
+// Credito già versato e non ancora imputato (resti dei bonifici): va scalato
+// dal totale così non chiediamo soldi che l'inquilino ha già versato. Si applica
+// alla selezione corrente, mai oltre il suo importo.
+const creditoDisponibile = computed(() => saldoTotale.value?.credito_disponibile ?? 0);
+const creditoApplicato = computed(() => Math.min(creditoDisponibile.value, totaleSel.value));
+const nettoDaPagare = computed(() => Math.max(0, totaleSel.value - creditoApplicato.value));
+const haCredito = computed(() => creditoDisponibile.value > 0.005);
 
 // --- Causale dinamica del bonifico cumulativo --------------------------------
 // Raggruppa le voci selezionate per tipo e ne elenca i mesi, es:
@@ -231,7 +258,7 @@ function hoPagato(item: DaPagareItem) {
   void router.push({ path: `/i/paga/${item.tipo}/${item.id}`, query: { dichiara: '1' } });
 }
 function bonificoUnico() {
-  if (count.value === 0) return;
+  if (count.value === 0 || nettoDaPagare.value <= 0) return;
   if (pagamentoBonifico.value) dialogQr.value = true;
   else Notify.create({ type: 'warning', message: 'Conto per il bonifico non disponibile' });
 }
@@ -272,6 +299,39 @@ onMounted(async () => {
 }
 .vp-th__vuoto {
   padding: var(--vp-gap-6) 0;
+}
+.vp-th__credito {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--vp-leaf-soft, oklch(0.95 0.04 145));
+  border: 1px solid var(--vp-leaf, oklch(0.7 0.1 145));
+  border-radius: var(--vp-r-md);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--vp-ink-2);
+}
+.vp-th__credito-ic {
+  color: var(--vp-leaf, oklch(0.6 0.12 145));
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.vp-th__credito-txt {
+  min-width: 0;
+}
+.vp-th__scomposizione {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--vp-ink-3);
+}
+.vp-th__scomp-meno {
+  color: var(--vp-leaf, oklch(0.55 0.12 145));
+  font-weight: 500;
 }
 .vp-th__selbar {
   display: flex;

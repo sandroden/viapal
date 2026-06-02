@@ -220,11 +220,32 @@ class DashboardInquilinoView(APIView):
         # Saldo totale "per pareggiare": somma dei residui aperti, con un unico
         # conto bonifico (quello utenze della proprietà) — un pagamento unico
         # può accorpare causali diverse.
-        totale_residuo = sum(item["residuo"] for item in da_pagare)
-        saldo_totale = {"importo": float(totale_residuo), "pagamento": None}
+        totale_residuo = sum(
+            (Decimal(str(item["residuo"])) for item in da_pagare), Decimal("0")
+        )
+        # Credito già versato e non ancora imputato a nessuna bolletta: sono i
+        # "resti dei bonifici" (versato − somma allocazioni), gli stessi che lo
+        # sbilancio reale della pagina Situazione riaggiunge. Vanno scalati dal
+        # totale proposto: chiedere il lordo creerebbe uno sbilancio a favore
+        # della proprietà per soldi che l'inquilino ha già versato.
+        credito_disponibile = sum(
+            _resti_per_anno(tenant).values(), Decimal("0")
+        )
+        if credito_disponibile < 0:
+            credito_disponibile = Decimal("0")
+        netto_da_versare = totale_residuo - credito_disponibile
+        if netto_da_versare < 0:
+            netto_da_versare = Decimal("0")
+        saldo_totale = {
+            # `importo` = quanto versare davvero (lordo al netto del credito).
+            "importo": float(netto_da_versare),
+            "lordo": float(totale_residuo),
+            "credito_disponibile": float(credito_disponibile),
+            "pagamento": None,
+        }
         prop = getattr(assignment_attivo.room, "property", None) if assignment_attivo else None
         conto_cum = prop.bank_account_utenze if prop else None
-        if conto_cum and iban_valido(conto_cum.iban) and totale_residuo > 0:
+        if conto_cum and iban_valido(conto_cum.iban) and netto_da_versare > 0:
             saldo_totale["pagamento"] = {
                 "beneficiario": conto_cum.intestatario,
                 "iban": conto_cum.iban,

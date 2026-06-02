@@ -72,7 +72,12 @@ export interface TenantInfo {
 }
 
 export interface SaldoTotale {
+  /** Quanto versare davvero: lordo dei residui aperti meno il credito disponibile. */
   importo: number;
+  /** Somma dei residui delle voci aperte, senza scalare il credito. */
+  lordo: number;
+  /** Credito già versato e non ancora imputato a nessuna bolletta (resti bonifici). */
+  credito_disponibile: number;
   pagamento: DatiPagamento | null;
 }
 
