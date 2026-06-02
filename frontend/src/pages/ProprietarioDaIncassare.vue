@@ -143,7 +143,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { QTableProps } from 'quasar';
-import { api } from 'boot/axios';
+import { fetchAllPaginated } from 'src/utils/paginate';
 import SemaforoBadge from 'src/components/SemaforoBadge.vue';
 import EmptyState from 'src/components/EmptyState.vue';
 import RegistraPagamentoDialog from 'src/components/RegistraPagamentoDialog.vue';
@@ -333,24 +333,16 @@ function livelloStato(_: string, scadenza: string | null): SemaforoLivello {
   return 'salvia';
 }
 
-interface RispostaReceivables {
-  results?: ReceivableRiga[];
-}
-
 async function carica(): Promise<void> {
   caricamento.value = true;
   try {
-    const params: Record<string, string> = {
+    // fetchAllPaginated segue tutte le pagine DRF: il backend cap a 200/pagina
+    // (max_limit), quindi un singolo `limit=500` verrebbe troncato in silenzio.
+    const items = await fetchAllPaginated<ReceivableRiga>('/api/v1/receivables/', {
       riconciliato: 'false',
-      limit: '500',
-    };
-    if (dataDa.value) params.data_da = dataDa.value;
-    if (dataA.value) params.data_a = dataA.value;
-    const { data } = await api.get<ReceivableRiga[] | RispostaReceivables>(
-      '/api/v1/receivables/',
-      { params },
-    );
-    const items = Array.isArray(data) ? data : (data.results ?? []);
+      data_da: dataDa.value,
+      data_a: dataA.value,
+    });
     // Ordina per scadenza decrescente (più recenti / futuri in alto)
     righe.value = items
       .map((r) => ({

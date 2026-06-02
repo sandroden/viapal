@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
+import { fetchAllPaginated } from 'src/utils/paginate';
 
 export type StatoRiconciliazione = 'pieno' | 'parziale' | 'vuoto';
 
@@ -113,47 +114,6 @@ interface State {
   loadingReceivables: boolean;
   saving: boolean;
   errore: string | null;
-}
-
-/**
- * Scarica TUTTE le pagine di un endpoint DRF paginato (LimitOffset),
- * accumulando i `results` finché non si raggiunge `count`. Necessario per la
- * riconciliazione: con un periodo ampio i Receivable/BT superano il `max_limit`
- * del backend (200) e fermarsi alla prima pagina nasconderebbe le voci più
- * vecchie ancora da abbinare (es. un'utenza 2024 con periodo 2023-2026).
- */
-async function fetchAllPaginated<T>(
-  url: string,
-  filtri: Record<string, unknown>,
-): Promise<T[]> {
-  const pageSize = Number(filtri.limit) || 200;
-  const acc: T[] = [];
-  let offset = 0;
-  // Guardia anti-loop: il backend cap a 200/pagina, quindi bastano poche
-  // pagine; il tetto duro evita cicli infiniti se `count` fosse incoerente.
-  for (let guard = 0; guard < 1000; guard++) {
-    const { data } = await api.get<T[] | { count?: number; results?: T[] }>(url, {
-      params: paramsClean({ ...filtri, limit: pageSize, offset }),
-    });
-    if (Array.isArray(data)) return data; // endpoint non paginato
-    const results = data.results ?? [];
-    acc.push(...results);
-    const count = typeof data.count === 'number' ? data.count : acc.length;
-    offset += pageSize;
-    if (results.length === 0 || acc.length >= count) break;
-  }
-  return acc;
-}
-
-function paramsClean(filtri: Record<string, unknown>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(filtri)) {
-    if (v === null || v === undefined || v === '') continue;
-    if (typeof v === 'number') out[k] = v.toString();
-    else if (typeof v === 'boolean') out[k] = v ? 'true' : 'false';
-    else if (typeof v === 'string') out[k] = v;
-  }
-  return out;
 }
 
 export const useRiconciliazioneStore = defineStore('riconciliazione', {

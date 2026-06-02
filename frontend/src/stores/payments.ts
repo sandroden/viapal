@@ -3,21 +3,6 @@ import { api } from 'boot/axios';
 
 export type TipoPagamentoApi = 'rent' | 'utility_charge' | 'extra';
 
-export interface RentPayment {
-  id: number;
-  assignment: number;
-  competenza_da: string;
-  competenza_a: string;
-  scadenza: string;
-  importo_dovuto: string | number;
-  importo_pagato: string | number | null;
-  data_pagamento: string | null;
-  stato: string;
-  metodo_pagamento?: string | null;
-  riferimento?: string | null;
-  note?: string | null;
-}
-
 export interface UtilityCharge {
   id: number;
   assignment: number;
@@ -39,8 +24,6 @@ interface DichiaraPayload {
 }
 
 interface State {
-  rentPayments: RentPayment[];
-  utilityCharges: UtilityCharge[];
   loading: boolean;
   errore: string | null;
 }
@@ -53,34 +36,10 @@ function endpointPerTipo(tipo: TipoPagamentoApi): string {
 
 export const usePaymentsStore = defineStore('payments', {
   state: (): State => ({
-    rentPayments: [],
-    utilityCharges: [],
     loading: false,
     errore: null,
   }),
   actions: {
-    async fetchRentPayments(): Promise<void> {
-      this.loading = true;
-      try {
-        const { data } = await api.get<RentPayment[] | { results: RentPayment[] }>(
-          '/api/v1/rent-payments/',
-        );
-        this.rentPayments = Array.isArray(data) ? data : (data.results ?? []);
-      } finally {
-        this.loading = false;
-      }
-    },
-    async fetchUtilityCharges(): Promise<void> {
-      this.loading = true;
-      try {
-        const { data } = await api.get<UtilityCharge[] | { results: UtilityCharge[] }>(
-          '/api/v1/utility-charges/',
-        );
-        this.utilityCharges = Array.isArray(data) ? data : (data.results ?? []);
-      } finally {
-        this.loading = false;
-      }
-    },
     async fetchUtilityCharge(id: number): Promise<UtilityCharge> {
       const { data } = await api.get<UtilityCharge>(`/api/v1/utility-charges/${id}/`);
       return data;
