@@ -115,11 +115,17 @@
           is-currency
           :sublabel="situazione.saldi.totale >= 0 ? 'In regola' : 'Da saldare'"
         />
+        <!--
+          Card "Ritardo medio" nascosta: dato poco significativo e spesso
+          fuorviante (vedi nota in ProprietarioInquilinoDettaglio.vue e in
+          dashboard_views.py). Riattivabile solo con ritardo misurato rispetto
+          alla scadenza reale *dell'addebito*. Backend invariato.
         <KpiCard
           label="Ritardo medio"
           :value="`${situazione.ritardo_medio_giorni.toFixed(1)} gg`"
           :sublabel="situazione.ritardo_medio_giorni === 0 ? 'Mai in ritardo' : 'Su tutte le scadenze'"
         />
+        -->
       </section>
 
       <q-tabs

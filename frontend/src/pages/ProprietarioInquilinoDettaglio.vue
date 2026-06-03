@@ -170,11 +170,20 @@
           is-currency
           :sublabel="situazione.saldi.totale >= 0 ? 'In regola' : 'Da incassare'"
         />
+        <!--
+          Card "Ritardo medio" nascosta: il dato è poco significativo e spesso
+          fuorviante in questa realtà. La media backend considera solo i ritardi
+          positivi (gli anticipi non la compensano), e `data_pagamento` =
+          Max(data BT allocata): un residuo di matching o le scadenze utenze
+          troppo strette generano ritardi fittizi. Riattivabile in futuro solo
+          se il ritardo è misurato rispetto alla scadenza reale *dell'addebito*
+          (prima di quella data è anticipo, non ritardo). Backend invariato.
         <KpiCard
           label="Ritardo medio"
           :value="`${situazione.ritardo_medio_giorni.toFixed(1)} gg`"
           :sublabel="situazione.ritardo_medio_giorni === 0 ? 'Mai in ritardo' : 'Su tutte le scadenze'"
         />
+        -->
       </section>
 
       <q-tabs

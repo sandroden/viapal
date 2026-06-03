@@ -30,3 +30,14 @@ uv run manage.py shell           # Shell interattiva (ipython)
 * ogni feature deve essere salvata separatamente
 * se comincio una feature con file non committati, o procedi a committare o chiedi
 * se correggi una feature precedentemente chiusa, possibilmemte cerca di andare in amend 
+
+## Note di dominio
+
+### Ritardo medio (card nascosta)
+Il "ritardo medio inquilino" (`dashboard_views.py`, `ritardo_medio_giorni`) è
+calcolato ma **la card frontend è nascosta**: dato poco significativo e spesso
+fuorviante. Difetti: media sui soli ritardi positivi (gli anticipi non
+compensano), `data_pagamento` = Max(data BT) sensibile ai residui di matching,
+scadenze utenze più strette del ciclo reale → ritardi fittizi. Riattivare solo
+se misurato rispetto alla scadenza reale *dell'addebito* (prima di quella data
+è anticipo, non ritardo).

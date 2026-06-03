@@ -952,6 +952,19 @@ class TenantSituazioneView(APIView):
         # Ritardo medio: tutti i Receivable dell'anno con scadenza valida.
         # Pagati: ritardo storico (data_pagamento - scadenza).
         # Non pagati: ritardo in essere (oggi - scadenza).
+        #
+        # NOTA (2026-06-04): la card che espone questo dato è nascosta nel
+        # frontend perché poco significativo e spesso fuorviante. Limiti noti:
+        #   1. La media considera solo i ritardi positivi (d > 0): gli anticipi
+        #      non la compensano mai, quindi un singolo ritardo domina il valore.
+        #   2. `data_pagamento` = Max(data BT allocata) (vedi signals.py): un
+        #      residuo di matching (es. saldo di 20€ con un bonifico del mese
+        #      dopo) sposta in avanti la data dell'intero addebito.
+        #   3. Le scadenze utenze sono spesso più strette del ciclo reale di
+        #      emissione/invio, generando ritardi fittizi sistematici.
+        # Ha senso solo se misurato rispetto alla scadenza reale *dell'addebito*:
+        # prima di quella data è anticipo, non ritardo. Calcolo lasciato per
+        # eventuale riattivazione futura.
         ritardi_giorni = []
         for r in list(rent_qs) + list(utility_qs) + list(extra_qs):
             if not r.scadenza:
