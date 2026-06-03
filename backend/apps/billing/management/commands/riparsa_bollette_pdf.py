@@ -131,7 +131,10 @@ def estrai_da_pdf(path: str) -> dict:
     try:
         out = subprocess.run(
             ["pdftotext", "-layout", path, "-"],
-            capture_output=True, text=True, check=True, timeout=30,
+            capture_output=True, check=True, timeout=30,
+            # encoding esplicito: pdftotext emette UTF-8 (€, m³). Senza, text=True
+            # decodifica col locale del container (ASCII in prod) -> UnicodeDecodeError.
+            encoding="utf-8", errors="replace",
         ).stdout
     except (subprocess.SubprocessError, FileNotFoundError):
         return {}
