@@ -2,10 +2,26 @@
 Modelli per bollette, TARI, periodi e addebiti utenze inquilini.
 """
 from django.db import models
+from django.utils.text import slugify
 
-from properties.models import OwnerProfile, TimestampedModel
+from properties.models import OwnerProfile, Property, TimestampedModel
 
 from .expenses import Expense, Supplier
+
+
+def utility_bill_upload_to(instance: "UtilityBill", filename: str) -> str:
+    """Percorso del PDF: bollette/<immobile>/<anno>/<mese>/<filename>.
+
+    Organizzato per immobile e periodo di competenza (periodo_a), in ottica
+    multi-immobile. Tollera property/periodo non valorizzati (fallback parziale)."""
+    parti = ["bollette"]
+    if instance.immobile_id:
+        parti.append(slugify(instance.immobile.nome) or "immobile")
+    if instance.periodo_a:
+        parti.append(str(instance.periodo_a.year))
+        parti.append(f"{instance.periodo_a.month:02d}")
+    parti.append(filename)
+    return "/".join(parti)
 
 
 class UtilityBill(TimestampedModel):
@@ -22,6 +38,15 @@ class UtilityBill(TimestampedModel):
         Prodotto.ACQUA: "m³",
     }
 
+    immobile = models.ForeignKey(
+        Property,
+        on_delete=models.PROTECT,
+        related_name="utility_bills",
+        null=True,
+        blank=True,
+        verbose_name="immobile",
+        help_text="Immobile a cui appartiene la bolletta (organizza i PDF su disco).",
+    )
     supplier = models.ForeignKey(
         Supplier,
         on_delete=models.PROTECT,
@@ -62,7 +87,7 @@ class UtilityBill(TimestampedModel):
         help_text="kWh per la luce, m³ per gas e acqua.",
     )
     file_pdf = models.FileField(
-        upload_to="bollette/",
+        upload_to=utility_bill_upload_to,
         null=True,
         blank=True,
         verbose_name="file PDF",

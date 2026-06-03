@@ -179,6 +179,7 @@ class UtilityBillSerializer(serializers.ModelSerializer):
         model = UtilityBill
         fields = [
             "id",
+            "immobile",
             "supplier",
             "supplier_nome",
             "prodotto",

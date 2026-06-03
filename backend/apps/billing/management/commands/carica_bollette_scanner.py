@@ -82,6 +82,10 @@ class Command(BaseCommand):
                 f"OwnerProfile id={opts['owner_id']} non esiste."
             ) from exc
 
+        from properties.models import Property
+
+        immobile = Property.objects.first()
+
         soglia = None
         if opts["mesi"]:
             oggi = datetime.date.today()
@@ -163,6 +167,7 @@ class Command(BaseCommand):
                 )
             else:
                 bill = UtilityBill.objects.create(
+                    immobile=immobile,
                     supplier=supplier,
                     prodotto=prodotto,
                     numero_fattura=base,

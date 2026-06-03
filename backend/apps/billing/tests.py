@@ -414,3 +414,33 @@ class TestUtilityBillExpenseSync:
         bill.refresh_from_db()
         assert bill.expense_id is not None
         assert bill.expense.importo == bill.importo_totale
+
+
+# ---------------------------------------------------------------------------
+# upload_to organizzato per immobile/anno/mese
+# ---------------------------------------------------------------------------
+
+
+class TestUtilityBillUploadTo:
+    """`utility_bill_upload_to` legge solo immobile_id/immobile.nome/periodo_a:
+    si testa con un fake (no DB, evita il descriptor FK)."""
+
+    def test_path_con_immobile_e_periodo(self):
+        from types import SimpleNamespace
+
+        from billing.models.utilities import utility_bill_upload_to
+
+        bill = SimpleNamespace(
+            immobile_id=1,
+            immobile=SimpleNamespace(nome="Viapal"),
+            periodo_a=datetime.date(2026, 4, 30),
+        )
+        assert utility_bill_upload_to(bill, "acea.pdf") == "bollette/viapal/2026/04/acea.pdf"
+
+    def test_path_senza_immobile_usa_solo_periodo(self):
+        from types import SimpleNamespace
+
+        from billing.models.utilities import utility_bill_upload_to
+
+        bill = SimpleNamespace(immobile_id=None, periodo_a=datetime.date(2026, 12, 1))
+        assert utility_bill_upload_to(bill, "x.pdf") == "bollette/2026/12/x.pdf"

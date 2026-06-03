@@ -650,9 +650,9 @@ class UtilityBillAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboMod
         "importo_totale", "pagata_da_owner", "consumo", "pdf_link",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
-    list_filter = ("prodotto", "supplier", "pagata_da_owner")
+    list_filter = ("immobile", "prodotto", "supplier", "pagata_da_owner")
     search_fields = ("numero_fattura", "supplier__nome")
-    list_select_related = ("supplier", "pagata_da_owner", "expense")
+    list_select_related = ("immobile", "supplier", "pagata_da_owner", "expense")
 
     @admin.display(description="PDF")
     def pdf_link(self, obj):
@@ -679,7 +679,7 @@ class UtilityBillAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboMod
     )
     fieldsets = (
         ("Bolletta", {
-            "fields": ("supplier", "prodotto", "numero_fattura", "data_emissione"),
+            "fields": ("immobile", "supplier", "prodotto", "numero_fattura", "data_emissione"),
         }),
         ("Periodo, consumo e importo", {
             "fields": ("periodo_da", "periodo_a", "consumo", "importo_totale"),

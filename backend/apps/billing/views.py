@@ -465,8 +465,23 @@ class UtilityBillViewSet(ModelViewSet):
                 nome=nome_forn, tipo=Supplier.TipoFornitore.ALTRO,
             )
 
+        # Immobile: oggi unico, ma accetta 'property' dal form in ottica multi-immobile.
+        from properties.models import Property
+
+        immobile_id = (
+            request.data.get("immobile")
+            or request.data.get("property")
+            or request.data.get("property_id")
+        )
+        immobile = (
+            Property.objects.filter(pk=immobile_id).first()
+            if immobile_id
+            else Property.objects.first()
+        )
+
         file_pdf.seek(0)
         bill = UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier,
             prodotto=prodotto,
             numero_fattura=numero_fattura,
