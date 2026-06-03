@@ -41,14 +41,20 @@ TIPO_PER_CAUSALE = {
     Receivable.Causale.AFFITTO: "rent",
     Receivable.Causale.UTENZE: "utility_charge",
     Receivable.Causale.EXTRA: "extra",
+    # La registrazione contratto viaggia come un addebito "extra" lato FE.
+    Receivable.Causale.REGISTRAZIONE: "extra",
 }
 
 # Causali "di gestione" mostrate nelle dashboard rendita/pagamenti.
 # DEPOSITO è escluso: i depositi cauzionali non sono entrate operative.
+# REGISTRAZIONE è inclusa: è un addebito una-tantum che l'inquilino deve
+# (la sua metà del costo di registrazione), pagabile come un extra; senza
+# di essa pesava sullo sbilancio reale ma non compariva in nessuna lista.
 CAUSALI_OPERATIVE = (
     Receivable.Causale.AFFITTO,
     Receivable.Causale.UTENZE,
     Receivable.Causale.EXTRA,
+    Receivable.Causale.REGISTRAZIONE,
 )
 
 
@@ -381,6 +387,7 @@ class DashboardProprietarioView(APIView):
             Receivable.Causale.AFFITTO: "entrate_rent",
             Receivable.Causale.UTENZE: "entrate_utility",
             Receivable.Causale.EXTRA: "entrate_extra",
+            Receivable.Causale.REGISTRAZIONE: "entrate_extra",
         }
         for r in Receivable.objects.filter(
             stato=StatoPagamento.PAGATO,
@@ -429,6 +436,7 @@ class DashboardProprietarioView(APIView):
             Receivable.Causale.AFFITTO: "rent",
             Receivable.Causale.UTENZE: "utility",
             Receivable.Causale.EXTRA: "extra",
+            Receivable.Causale.REGISTRAZIONE: "extra",
         }
         for r in Receivable.objects.filter(
             stato=StatoPagamento.PAGATO,
@@ -551,6 +559,7 @@ class BilancioOwnerDettaglioView(APIView):
         Receivable.Causale.AFFITTO: "Affitto",
         Receivable.Causale.UTENZE: "Utenze",
         Receivable.Causale.EXTRA: "Addebito extra",
+        Receivable.Causale.REGISTRAZIONE: "Addebito extra",
     }
 
     def get(self, request, owner_id: int):
@@ -879,11 +888,17 @@ class TenantSituazioneView(APIView):
             if r.importo_pagato:
                 utility_pagato += r.importo_pagato
 
-        # Addebiti extra dell'anno (filtra su competenza_da come data dell'addebito)
+        # Addebiti extra dell'anno (filtra su competenza_da come data dell'addebito).
+        # La registrazione contratto viaggia qui sotto "extra": è un addebito
+        # una-tantum dell'inquilino e così entra anche in ``extra_totale`` →
+        # ``totale_dovuto``, coerente con lo sbilancio reale che già la include.
         extra_qs = (
             Receivable.objects.filter(
                 assignment__tenant=tenant,
-                causale=Receivable.Causale.EXTRA,
+                causale__in=(
+                    Receivable.Causale.EXTRA,
+                    Receivable.Causale.REGISTRAZIONE,
+                ),
                 competenza_da__year=anno,
             )
             .order_by("competenza_da")
