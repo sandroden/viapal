@@ -171,21 +171,34 @@
             </thead>
             <tbody>
               <template v-for="(r, i) in g.righe" :key="i">
-                <tr>
+                <tr :class="{ 'vp-rd__dep-row': r.deposito }">
                   <td class="vp-rd__c-data">{{ r.data ? formattaData(r.data) : '—' }}</td>
                   <td>{{ r.descrizione }}</td>
-                  <td class="vp-rd__c-num vp-mono">{{ formattaEuro(r.dovuto) }}</td>
                   <td class="vp-rd__c-num vp-mono">
-                    {{ r.pagato ? formattaEuro(r.pagato) : '—' }}
+                    {{ r.deposito ? '—' : formattaEuro(r.dovuto) }}
+                  </td>
+                  <td class="vp-rd__c-num vp-mono">
+                    <template v-if="r.deposito">{{ formattaEuro(r.depImporto ?? 0) }}</template>
+                    <template v-else>{{ r.pagato ? formattaEuro(r.pagato) : '—' }}</template>
                   </td>
                   <td
+                    v-if="r.deposito"
+                    class="vp-rd__c-num vp-mono"
+                  >
+                    —
+                  </td>
+                  <td
+                    v-else
                     class="vp-rd__c-num vp-mono"
                     :class="diffClass(diffRow(r) ?? 0)"
                   >
                     {{ formattaDiff(diffRow(r)) }}
                   </td>
                   <td class="vp-rd__c-nota">
-                    <span :class="notaClass(r.nota)">{{ etichettaNota(r) }}</span>
+                    <span v-if="r.deposito" class="vp-rd__dep-tag">
+                      non incide sul saldo
+                    </span>
+                    <span v-else :class="notaClass(r.nota)">{{ etichettaNota(r) }}</span>
                   </td>
                 </tr>
                 <tr v-if="r.allocazioni.length" class="vp-rd__cover">
@@ -407,7 +420,10 @@
         </div>
       </section>
 
-      <section class="vp-rd__dep">
+      <!-- La chiusura del deposito è mostrata all'inquilino solo quando il
+           rapporto ha una data di fine (assegnazione chiusa): prima è
+           prematura e fuorviante. Il proprietario la vede sempre. -->
+      <section v-if="rendiconto.periodo.a" class="vp-rd__dep">
         <h2 class="vp-rd__sez-tit">Chiusura deposito</h2>
         <div class="vp-rd__tot-row">
           <span>
@@ -473,6 +489,7 @@
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import {
   useRendicontoStore,
+  type Rendiconto,
   type RendicontoRiga,
   type RendicontoSezione,
   type RendicontoParzialeAnno,
@@ -495,7 +512,12 @@ const rendiconto = computed(() =>
   tenantId.value ? store.get(tenantId.value) : null,
 );
 
-type RigaCron = RendicontoRiga & { causale: string };
+type RigaCron = RendicontoRiga & {
+  causale: string;
+  // riga deposito: informativa, NON entra nelle somme/sbilancio
+  deposito?: boolean;
+  depImporto?: number;
+};
 interface GruppoAnno {
   anno: number;
   righe: RigaCron[];
@@ -513,6 +535,10 @@ const cronologico = computed<GruppoAnno[]>(() => {
   for (const s of r.sezioni) {
     for (const x of s.righe) rows.push({ ...x, causale: s.causale });
   }
+  // Deposito versato: mostrato in cronologia come voce a sé (è denaro che
+  // l'inquilino ha versato), ma NON conteggiato nelle somme né nel saldo.
+  const dr = rigaDeposito(r);
+  if (dr) rows.push(dr);
   rows.sort((a, b) => (a.data ?? '').localeCompare(b.data ?? ''));
   const gruppi: GruppoAnno[] = [];
   let cur: GruppoAnno | null = null;
@@ -523,11 +549,38 @@ const cronologico = computed<GruppoAnno[]>(() => {
       gruppi.push(cur);
     }
     cur.righe.push(row);
-    cur.dovuto += row.dovuto;
-    cur.pagato += row.pagato;
+    // la riga deposito non incide sui totali d'anno (resta informativa)
+    if (!row.deposito) {
+      cur.dovuto += row.dovuto;
+      cur.pagato += row.pagato;
+    }
   }
   return gruppi;
 });
+
+// Riga sintetica "Deposito versato" per la vista cronologica, costruita dai
+// campi deposito del rendiconto. Esclusa da somme/sbilancio (dovuto/pagato 0).
+function rigaDeposito(r: Rendiconto): RigaCron | null {
+  const d = r.deposito;
+  if (!d.versato || !d.data_versamento) return null;
+  return {
+    data: d.data_versamento,
+    mese: null,
+    scadenza: null,
+    descrizione: 'Deposito versato (garanzia)',
+    dovuto: 0,
+    pagato: 0,
+    diff: 0,
+    diff_mese: null,
+    nota: 'ok',
+    stato: 'pagato',
+    data_pagamento: d.data_versamento,
+    allocazioni: [],
+    causale: 'DEPOSITO',
+    deposito: true,
+    depImporto: d.versato,
+  };
+}
 
 const parzialeByAnno = computed<Map<number, RendicontoParzialeAnno>>(() => {
   const m = new Map<number, RendicontoParzialeAnno>();
@@ -768,6 +821,16 @@ onBeforeUnmount(() => {
 }
 .vp-rd__resto-row small {
   color: var(--vp-ink-3);
+}
+.vp-rd__dep-row td {
+  background: var(--vp-paper-1);
+  color: var(--vp-ink-2);
+  font-style: italic;
+}
+.vp-rd__dep-tag {
+  font-size: var(--vp-text-xs, 11px);
+  color: var(--vp-ink-3);
+  font-style: italic;
 }
 .vp-rd__expander {
   display: flex;

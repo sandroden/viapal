@@ -120,6 +120,8 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'rendiconto',
         name: 'i-rendiconto',
+        // documento tabellare: esce dal cap stretto del layout inquilino
+        meta: { wide: true },
         component: () => import('pages/InquilinoRendiconto.vue'),
       },
       {

@@ -9,7 +9,7 @@
     </q-header>
 
     <q-page-container>
-      <div class="vp-i-shell">
+      <div class="vp-i-shell" :class="{ 'vp-i-shell--wide': isWide }">
         <router-view />
       </div>
     </q-page-container>
@@ -44,13 +44,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from 'stores/auth';
 
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 const activeTab = ref<string>('home');
+
+// Pagine "documento" (es. rendiconto): più larghe del cap app-like.
+const isWide = computed(() => route.meta.wide === true);
 
 async function logout() {
   await auth.logout();
@@ -63,6 +67,11 @@ async function logout() {
   max-width: 760px;
   margin: 0 auto;
   width: 100%;
+}
+/* Documenti tabellari larghi (rendiconto): stessa leggibilità della vista
+   proprietario, senza il cap stretto pensato per le card app-like. */
+.vp-i-shell--wide {
+  max-width: 960px;
 }
 .vp-header {
   background: var(--vp-sage-deep);
