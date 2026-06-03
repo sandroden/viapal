@@ -6,8 +6,8 @@
       <h1 class="vp-display vp-th__titolo">Ciao, {{ saluto }}</h1>
       <div v-if="daPagare.length > 0" class="vp-th__riga">
         <span class="vp-th__count">
-          <b>{{ daPagare.length }} {{ daPagare.length === 1 ? 'pagamento' : 'pagamenti' }}</b>
-          da sistemare
+          <b>{{ daPagare.length }} {{ daPagare.length === 1 ? 'addebito' : 'addebiti' }}</b>
+          da pagare
         </span>
         <span v-if="numParziali > 0" class="vp-badge vp-badge--neutral vp-th__badge">
           {{ numParziali }} già {{ numParziali === 1 ? 'pagato' : 'pagati' }} in parte
