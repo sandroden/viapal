@@ -45,6 +45,7 @@ const emit = defineEmits<{
   invia: [];
   emetti: [];
   'toggle-invio': [receivableId: number];
+  'view-pdf': [v: { url: string; title: string }];
 }>();
 
 const STEPS = ['Bolletta', 'Ripartizione', 'Invio'];
@@ -144,6 +145,7 @@ function setStep(n: number): void {
         :totale="totale"
         :mancanti-tipi="mancantiTipi"
         @upload="(t) => emit('upload', t)"
+        @view-pdf="(v) => emit('view-pdf', v)"
       />
       <template v-else-if="step === 2">
         <BloccatoState v-if="incompleto" :mancanti="mancanti" @torna="setStep(1)" />
@@ -151,6 +153,8 @@ function setStep(n: number): void {
           v-else
           :criterio="criterio"
           :quote="quote"
+          :voci="voci"
+          :totale="totale"
           :has-nuovo-ingresso="hasNuovoIngresso ?? false"
           :ingresso-nota="ingressoNota ?? ''"
           @update:criterio="(v) => emit('update:criterio', v)"

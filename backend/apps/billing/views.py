@@ -19,7 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
-from accounts.permissions import IsInquilinoSelf, IsProprietario  # noqa: F401
+from accounts.permissions import IsInquilino, IsInquilinoSelf, IsProprietario  # noqa: F401
 from billing.models import (
     BankTransaction,
     BankTransactionAllocation,
@@ -1107,4 +1107,129 @@ class BankTransactionBulkImportView(APIView):
                 "dettaglio": dettaglio,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class UtenzeInquilinoView(APIView):
+    """Vista utenze per l'inquilino (sola lettura).
+
+    - ``GET utenze-inquilino/``            : elenco dei periodi GIÀ INVIATI in
+      cui l'inquilino ha un addebito utenze.
+    - ``GET utenze-inquilino/<period_id>/``: dettaglio del periodo (bollette con
+      PDF, composizione, quote di tutti i coinquilini). Accessibile solo se il
+      periodo è stato inviato e l'inquilino vi compare.
+
+    Read-only: nessuna modifica possibile lato inquilino.
+    """
+
+    permission_classes = [IsInquilino]
+
+    def _tenant(self, request):
+        from properties.models import TenantProfile
+
+        return (
+            TenantProfile.objects.select_related("user")
+            .filter(user=request.user)
+            .first()
+        )
+
+    def _periodi_inviati(self, tenant):
+        """Periodi finalizzati (addebiti emessi) in cui l'inquilino compare.
+
+        Il gate è ``stato=inviato`` (il proprietario ha emesso gli addebiti):
+        è da quel momento che il conguaglio è ufficiale e l'inquilino lo vede.
+        L'effettivo invio dell'email (``avvisi_inviati_at``) NON è richiesto:
+        molti periodi storici hanno addebiti ma nessuna notifica email.
+        """
+        return (
+            UtilityChargePeriod.objects.filter(
+                stato=UtilityChargePeriod.StatoPeriodo.INVIATO,
+                receivables__causale=Receivable.Causale.UTENZE,
+                receivables__assignment__tenant=tenant,
+            )
+            .distinct()
+            .order_by("-periodo_da")
+        )
+
+    def _period_dict(self, p) -> dict:
+        return {
+            "id": p.id,
+            "periodo_da": p.periodo_da,
+            "periodo_a": p.periodo_a,
+            "stato": p.stato,
+            "avvisi_inviati_at": p.avvisi_inviati_at,
+        }
+
+    def _bollette(self, request, period) -> list:
+        bills = (
+            UtilityBill.objects.select_related("supplier")
+            .filter(
+                periodo_da__lte=period.periodo_a,
+                periodo_a__gte=period.periodo_da,
+            )
+            .order_by("prodotto")
+        )
+        out = []
+        for b in bills:
+            out.append(
+                {
+                    "prodotto": b.prodotto,
+                    "supplier_nome": b.supplier.nome if b.supplier_id else "",
+                    "consumo": b.consumo,
+                    "numero_fattura": b.numero_fattura,
+                    "periodo_da": b.periodo_da,
+                    "periodo_a": b.periodo_a,
+                    "importo_totale": b.importo_totale,
+                    # Path relativo (/media/…): l'app lo serve via proxy stessa
+                    # origin, così l'iframe del PDF non incappa in X-Frame-Options.
+                    "file_pdf": b.file_pdf.url if b.file_pdf else None,
+                }
+            )
+        return out
+
+    def get(self, request, period_id=None):
+        tenant = self._tenant(request)
+        if tenant is None:
+            return Response(
+                {"detail": "Profilo inquilino non trovato."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        periodi = self._periodi_inviati(tenant)
+
+        if period_id is None:
+            return Response({"periodi": [self._period_dict(p) for p in periodi]})
+
+        period = periodi.filter(id=period_id).first()
+        if period is None:
+            return Response(
+                {"detail": "Periodo non disponibile."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        ris = calcola_conguaglio_periodo(period.id, persist=False)
+
+        my_assignment_ids = set(
+            Receivable.objects.filter(
+                causale=Receivable.Causale.UTENZE,
+                utility_period=period,
+                assignment__tenant=tenant,
+            ).values_list("assignment_id", flat=True)
+        )
+        quote = [
+            {**q, "is_me": q.get("assignment_id") in my_assignment_ids}
+            for q in ris.get("quote", [])
+        ]
+
+        return Response(
+            {
+                "period": self._period_dict(period),
+                "bollette": self._bollette(request, period),
+                "totali_per_voce": ris.get("totali_per_voce", {}),
+                "totale_periodo": ris.get("totale_periodo", 0),
+                "quote": quote,
+                "tenant_id": tenant.id,
+            }
         )

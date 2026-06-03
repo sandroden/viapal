@@ -32,12 +32,19 @@
       @emetti="onEmetti"
       @invia="confermaInvio"
       @toggle-invio="onToggleInvio"
+      @view-pdf="apriPdf"
     />
 
     <div v-else class="vp-vuoto">
       <q-spinner-dots v-if="store.loading" size="32px" color="primary" />
       <span v-else>Nessun periodo disponibile.</span>
     </div>
+
+    <PdfDialog
+      v-model="mostraPdf"
+      :url="pdfCorrente?.url ?? null"
+      :title="pdfCorrente?.title ?? null"
+    />
 
     <!-- Dialog: carica bollette -->
     <q-dialog v-model="mostraUpload">
@@ -90,6 +97,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { useUtenzeStore } from 'stores/utenze';
 import ConguaglioBollette from 'src/components/utenze/ConguaglioBollette.vue';
+import PdfDialog from 'src/components/PdfDialog.vue';
 import {
   prodottoToTipo,
   voceToTipo,
@@ -98,6 +106,7 @@ import {
   meseCapitalize,
   annoDa,
   avatarHue,
+  mediaPath,
   type Criterio,
   type PeriodoView,
   type BollettaView,
@@ -117,6 +126,13 @@ const ownerId = ref<number | null>(null);
 const filePdf = ref<File[]>([]);
 const mostraUpload = ref(false);
 const uploadTipoHint = ref<string | null>(null);
+
+const mostraPdf = ref(false);
+const pdfCorrente = ref<{ url: string; title: string } | null>(null);
+function apriPdf(v: { url: string; title: string }): void {
+  pdfCorrente.value = v;
+  mostraPdf.value = true;
+}
 
 const ownerOptions = computed(() =>
   store.owners.map((o) => ({ label: o.nominativo, value: o.id })),
@@ -185,7 +201,8 @@ const bolletteView = computed<BollettaView[]>(() => {
     periodo: rangePeriodo(b.periodo_da, b.periodo_a),
     consumo: b.consumo || '—',
     riferimento: b.numero_fattura || '—',
-    pdfUrl: null,
+    pdfUrl: mediaPath(b.file_pdf),
+    letto: true,
   }));
   const tari = num(store.anteprima?.totali_per_voce?.tari);
   const haTariCard = cards.some((c) => c.tipo === 'TARI');
@@ -198,6 +215,7 @@ const bolletteView = computed<BollettaView[]>(() => {
       consumo: '—',
       riferimento: 'costo annuale ripartito',
       pdfUrl: null,
+      letto: false,
     });
   }
   return cards;

@@ -7,14 +7,21 @@ import { computed } from 'vue';
 import VpIcon from './VpIcon.vue';
 import VpAvatar from './VpAvatar.vue';
 import { eur, CRITERI, CRITERI_ATTIVI } from './format';
-import type { Criterio, QuotaView } from './format';
+import type { Criterio, QuotaView, VoceView } from './format';
+import CompositionPie from './CompositionPie.vue';
 
-const props = defineProps<{
-  criterio: Criterio;
-  quote: QuotaView[];
-  hasNuovoIngresso?: boolean;
-  ingressoNota?: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    criterio: Criterio;
+    quote: QuotaView[];
+    voci?: VoceView[];
+    totale?: number;
+    readonly?: boolean;
+    hasNuovoIngresso?: boolean;
+    ingressoNota?: string;
+  }>(),
+  { voci: () => [], totale: 0, readonly: false },
+);
 const emit = defineEmits<{ 'update:criterio': [c: Criterio] }>();
 
 const sommaQuote = computed(() => props.quote.reduce((s, q) => s + q.quota, 0));
@@ -23,6 +30,7 @@ function attivo(c: Criterio): boolean {
   return CRITERI_ATTIVI.includes(c);
 }
 function scegli(c: Criterio): void {
+  if (props.readonly) return;
   if (attivo(c)) emit('update:criterio', c);
 }
 </script>
@@ -33,15 +41,21 @@ function scegli(c: Criterio): void {
     <div class="vp-card crit">
       <div class="sec-head">
         <div class="vp-display" style="font-size: 20px">Come dividiamo le utenze?</div>
-        <div class="muted">Per ora la ripartizione è pro-rata sui giorni di presenza.</div>
+        <div class="muted">
+          {{
+            readonly
+              ? 'Ripartizione pro-rata sui giorni di presenza.'
+              : 'Per ora la ripartizione è pro-rata sui giorni di presenza.'
+          }}
+        </div>
       </div>
       <div class="crit-grid">
         <button
           v-for="c in CRITERI"
           :key="c.id"
           class="crit-opt"
-          :class="{ sel: criterio === c.id, disabled: !attivo(c.id) }"
-          :disabled="!attivo(c.id)"
+          :class="{ sel: criterio === c.id, disabled: !attivo(c.id) || readonly }"
+          :disabled="!attivo(c.id) || readonly"
           @click="scegli(c.id)"
         >
           <div class="crit-top">
@@ -53,43 +67,52 @@ function scegli(c: Criterio): void {
       </div>
     </div>
 
-    <!-- Tabella per inquilino -->
-    <div class="vp-card tbl-wrap">
-      <div class="tbl-head">
-        <div class="vp-display" style="font-size: 20px">Quota per inquilino</div>
-        <span class="muted">Importo a carico di ciascuno sui giorni di presenza</span>
-      </div>
-      <table class="vp-table">
-        <thead>
-          <tr>
-            <th>Inquilino</th>
-            <th class="r">{{ criterio === 'mq' ? 'm²' : 'Giorni' }}</th>
-            <th class="r">Quota</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="q in quote" :key="q.id">
-            <td>
-              <div class="who">
-                <VpAvatar :name="q.nome" :size="30" :hue="q.avatarHue" />
-                <div>
-                  <div class="who-name">{{ q.nome }}</div>
-                  <div v-if="q.stanza" class="who-room">{{ q.stanza }}</div>
+    <!-- Tabella per inquilino + torta composizione (desktop) -->
+    <div class="rip-layout">
+      <div class="vp-card tbl-wrap">
+        <div class="tbl-head">
+          <div class="vp-display" style="font-size: 20px">Quota per inquilino</div>
+          <span class="muted">Importo a carico di ciascuno sui giorni di presenza</span>
+        </div>
+        <table class="vp-table">
+          <thead>
+            <tr>
+              <th>Inquilino</th>
+              <th class="r">{{ criterio === 'mq' ? 'm²' : 'Giorni' }}</th>
+              <th class="r">Quota</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="q in quote" :key="q.id" :class="{ mine: q.mine }">
+              <td>
+                <div class="who">
+                  <VpAvatar :name="q.nome" :size="30" :hue="q.avatarHue" />
+                  <div>
+                    <div class="who-name">
+                      {{ q.nome }}<span v-if="q.mine" class="tu">tu</span>
+                    </div>
+                    <div v-if="q.stanza" class="who-room">{{ q.stanza }}</div>
+                  </div>
                 </div>
-              </div>
-            </td>
-            <td class="r vp-mono">{{ criterio === 'mq' ? q.mq : q.giorni }}</td>
-            <td class="r vp-mono"><span class="quota">{{ eur(q.quota) }}</span></td>
-          </tr>
-        </tbody>
-        <tfoot>
-          <tr>
-            <td style="font-weight: 600">Totale</td>
-            <td></td>
-            <td class="r vp-mono"><b>{{ eur(sommaQuote) }}</b></td>
-          </tr>
-        </tfoot>
-      </table>
+              </td>
+              <td class="r vp-mono">{{ criterio === 'mq' ? q.mq : q.giorni }}</td>
+              <td class="r vp-mono"><span class="quota">{{ eur(q.quota) }}</span></td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td style="font-weight: 600">Totale</td>
+              <td></td>
+              <td class="r vp-mono"><b>{{ eur(sommaQuote) }}</b></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <aside v-if="voci.length" class="pie-aside vp-card">
+        <div class="vp-display" style="font-size: 17px; margin-bottom: 16px">Composizione</div>
+        <CompositionPie :voci="voci" :totale="totale" />
+      </aside>
     </div>
 
     <div v-if="hasNuovoIngresso" class="vp-banner">
@@ -166,9 +189,42 @@ function scegli(c: Criterio): void {
   color: var(--vp-terra-deep);
 }
 
+.rip-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
 .tbl-wrap {
   overflow: hidden;
-  margin-bottom: 16px;
+  flex: 1;
+  min-width: 0;
+}
+.pie-aside {
+  width: 280px;
+  flex-shrink: 0;
+  padding: 20px 22px;
+}
+/* La torta è una sintesi: ha senso solo dove c'è spazio (desktop). */
+@media (max-width: 1023px) {
+  .pie-aside {
+    display: none;
+  }
+}
+.tr.mine,
+tr.mine td {
+  background: var(--vp-terra-soft);
+}
+.tu {
+  margin-left: 7px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vp-terra-deep);
+  background: var(--vp-cream);
+  border-radius: var(--vp-r-pill);
+  padding: 1px 7px;
+  vertical-align: middle;
 }
 .tbl-head {
   padding: 16px 22px;

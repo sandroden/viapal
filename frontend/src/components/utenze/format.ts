@@ -138,6 +138,7 @@ export interface PeriodoView {
 export interface BollettaView extends ScontrinoData {
   // tipo / fornitore / importo / periodo / consumo / riferimento da ScontrinoData
   pdfUrl?: string | null;
+  letto?: boolean; // false = voce senza bolletta PDF (es. TARI, costo annuale)
 }
 
 export interface VoceView {
@@ -160,6 +161,7 @@ export interface QuotaView {
   corpo?: string;
   notificare?: boolean; // false = inquilino uscito, non si invia
   bonifico?: BonificoView | null;
+  mine?: boolean; // true = è l'inquilino che sta guardando (vista inquilino)
 }
 
 export interface BonificoView {
@@ -167,6 +169,20 @@ export interface BonificoView {
   iban: string;
   causale: string;
   importo: number;
+}
+
+// Riporta un URL media a path relativo (stessa origin del frontend). Senza
+// questo, un'URL assoluta verso Django (:8000) nell'iframe del PDF viene
+// bloccata da X-Frame-Options SAMEORIGIN (app servita su :9000). Il path
+// relativo passa invece dal proxy /media → stessa origin.
+export function mediaPath(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url, window.location.origin);
+    return u.pathname + u.search;
+  } catch {
+    return url;
+  }
 }
 
 // Tinta deterministica (0–360) per l'avatar, derivata dal nome.

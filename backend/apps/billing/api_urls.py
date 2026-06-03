@@ -14,6 +14,7 @@ from billing.views import (
     ReconciliationBulkView,
     RegistraPagamentoReceivableView,
     RentPaymentViewSet,
+    UtenzeInquilinoView,
     UtilityBillViewSet,
     UtilityChargeViewSet,
     UtilityChargePeriodViewSet,
@@ -48,5 +49,15 @@ urlpatterns = [
         "receivables/<int:pk>/registra-pagamento/",
         RegistraPagamentoReceivableView.as_view(),
         name="receivable-registra-pagamento",
+    ),
+    path(
+        "utenze-inquilino/",
+        UtenzeInquilinoView.as_view(),
+        name="utenze-inquilino-list",
+    ),
+    path(
+        "utenze-inquilino/<int:period_id>/",
+        UtenzeInquilinoView.as_view(),
+        name="utenze-inquilino-detail",
     ),
 ]

@@ -6,17 +6,25 @@
 import { computed } from 'vue';
 import VpIcon from './VpIcon.vue';
 import VpScontrino from './VpScontrino.vue';
+import PdfIconButton from 'src/components/PdfIconButton.vue';
 import { utility, eur } from './format';
 import type { PeriodoView, BollettaView, VoceView } from './format';
 
-const props = defineProps<{
-  periodo: PeriodoView;
-  bollette: BollettaView[]; // solo le PRESENTI (PDF letti)
-  voci: VoceView[]; // composizione del periodo (totali per voce)
-  totale: number;
-  mancantiTipi: string[]; // tipi ancora da caricare
+const props = withDefaults(
+  defineProps<{
+    periodo: PeriodoView;
+    bollette: BollettaView[]; // solo le PRESENTI (PDF letti)
+    voci: VoceView[]; // composizione del periodo (totali per voce)
+    totale: number;
+    mancantiTipi: string[]; // tipi ancora da caricare
+    readonly?: boolean; // vista inquilino: niente upload
+  }>(),
+  { readonly: false },
+);
+const emit = defineEmits<{
+  upload: [tipo?: string];
+  'view-pdf': [v: { url: string; title: string }];
 }>();
-const emit = defineEmits<{ upload: [tipo?: string] }>();
 
 const incompleto = computed(() => props.periodo.stato === 'incompleto');
 const mancanti = computed(() => props.mancantiTipi.length);
@@ -50,11 +58,19 @@ const mancanti = computed(() => props.mancantiTipi.length);
           >
         </div>
         <div class="strip-sub">
-          Importo e periodo riconosciuti dall'AI. Trascina altri PDF per aggiungerne — l'upload è
-          multiplo.
+          <template v-if="readonly">Bollette del periodo, lette dall'AI.</template>
+          <template v-else
+            >Importo e periodo riconosciuti dall'AI. Trascina altri PDF per aggiungerne — l'upload è
+            multiplo.</template
+          >
         </div>
       </div>
-      <button class="vp-btn vp-btn--ghost" style="flex-shrink: 0" @click="emit('upload')">
+      <button
+        v-if="!readonly"
+        class="vp-btn vp-btn--ghost"
+        style="flex-shrink: 0"
+        @click="emit('upload')"
+      >
         <VpIcon name="upload" :size="15" /> Aggiungi
       </button>
     </div>
@@ -94,13 +110,22 @@ const mancanti = computed(() => props.mancantiTipi.length);
           </div>
         </div>
         <div class="card-foot">
-          <VpIcon name="check" :size="13" :stroke="2.4" color="var(--vp-sage)" /> PDF letto
-          correttamente
+          <span v-if="b.letto !== false" class="card-foot-ok">
+            <VpIcon name="check" :size="13" :stroke="2.4" color="var(--vp-sage)" /> PDF letto
+            correttamente
+          </span>
+          <span v-else class="card-foot-info">Costo annuale, senza bolletta PDF</span>
+          <PdfIconButton
+            v-if="b.pdfUrl"
+            title="Apri / scarica la bolletta"
+            @click="emit('view-pdf', { url: b.pdfUrl ?? '', title: `${b.tipo} — ${b.fornitore}` })"
+          />
         </div>
       </div>
 
       <button
         v-for="t in mancantiTipi"
+        v-show="!readonly"
         :key="'m' + t"
         class="slot"
         @click="emit('upload', t)"
@@ -278,11 +303,20 @@ const mancanti = computed(() => props.mancantiTipi.length);
 .card-foot {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
-  padding: 10px 18px;
+  padding: 6px 12px 6px 18px;
   border-top: 1px solid var(--vp-paper-3);
   font-size: 12px;
   color: var(--vp-sage-deep);
+}
+.card-foot-ok {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.card-foot-info {
+  color: var(--vp-ink-3);
 }
 
 .slot {

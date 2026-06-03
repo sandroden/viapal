@@ -117,6 +117,7 @@ export interface BollettaFE {
   importo_totale: string;
   supplier_nome?: string;
   pagata_da_nominativo?: string;
+  file_pdf?: string | null;
 }
 
 interface State {

@@ -107,6 +107,29 @@
       </div>
     </template>
 
+    <!-- Pagamenti fatti (storico), sotto le notifiche dei ritardi -->
+    <section v-if="!loading && pagamentiFatti.length" class="vp-th__pagamenti">
+      <div class="vp-th__pagamenti-head">
+        <h2 class="vp-display vp-th__pagamenti-titolo">I tuoi pagamenti</h2>
+        <span class="vp-th__pagamenti-sub">{{ pagamentiFatti.length }} movimenti</span>
+      </div>
+      <q-list bordered separator class="vp-th__pagamenti-lista">
+        <q-item v-for="p in pagamentiFatti" :key="`${p.tipo}-${p.id}`">
+          <q-item-section avatar>
+            <q-icon :name="iconaPer(p.tipo)" color="primary" />
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>{{ p.descrizione }}</q-item-label>
+            <q-item-label caption>{{ formattaData(p.data_pagamento) }}</q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <div class="vp-mono">{{ formattaEuro(p.importo) }}</div>
+            <SemaforoBadge :livello="livelloPer(p.stato)" :label="labelPer(p.stato)" />
+          </q-item-section>
+        </q-item>
+      </q-list>
+    </section>
+
     <q-dialog v-model="dialogQr">
       <QrBonifico
         v-if="pagamentoBonifico"
@@ -141,16 +164,37 @@ import ThCheck from 'src/components/ThCheck.vue';
 import EmptyState from 'src/components/EmptyState.vue';
 import QrBonifico from 'src/components/QrBonifico.vue';
 import DettaglioPagamento from 'src/components/DettaglioPagamento.vue';
+import SemaforoBadge from 'src/components/SemaforoBadge.vue';
+import type { SemaforoLivello } from 'src/types/semaforo';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
+import { useFormatoData } from 'src/composables/useFormatoData';
 
 const auth = useAuthStore();
 const store = useDashboardStore();
 const router = useRouter();
 const $q = useQuasar();
 const { formattaEuro } = useFormatoEuro();
+const { formattaData } = useFormatoData();
 
 const saluto = computed(() => auth.user?.first_name?.trim() || auth.user?.username || 'Inquilino');
 const daPagare = computed(() => store.inquilinoData?.da_pagare ?? []);
+const pagamentiFatti = computed(() => store.inquilinoData?.ultimi_pagamenti ?? []);
+
+function iconaPer(tipo: string): string {
+  if (tipo === 'rent') return 'home';
+  if (tipo === 'utility_charge') return 'bolt';
+  return 'note_add';
+}
+function livelloPer(stato: string): SemaforoLivello {
+  if (stato === 'pagato') return 'salvia';
+  if (stato === 'dichiarato') return 'miele';
+  return 'argilla_chiaro';
+}
+function labelPer(stato: string): string {
+  if (stato === 'pagato') return 'Pagato';
+  if (stato === 'dichiarato') return 'Dichiarato';
+  return stato;
+}
 const saldoTotale = computed(() => store.inquilinoData?.saldo_totale ?? null);
 const loading = computed(() => store.loadingInquilino);
 const numParziali = computed(() => daPagare.value.filter((x) => x.parziale).length);
@@ -371,6 +415,30 @@ onMounted(async () => {
   font-size: 12.5px;
   line-height: 1.5;
   max-width: 620px;
+}
+.vp-th__pagamenti {
+  margin-top: 26px;
+}
+.vp-th__pagamenti-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.vp-th__pagamenti-titolo {
+  font-size: 19px;
+  margin: 0;
+  color: var(--vp-ink);
+}
+.vp-th__pagamenti-sub {
+  font-size: 12.5px;
+  color: var(--vp-ink-3);
+}
+.vp-th__pagamenti-lista {
+  background: var(--vp-cream);
+  border-radius: var(--vp-r-lg);
+  border-color: var(--vp-paper-3) !important;
+  overflow: hidden;
 }
 .vp-th__totalbar {
   position: fixed;

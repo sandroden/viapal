@@ -36,12 +36,7 @@
           label="Rendiconto"
           to="/i/rendiconto"
         />
-        <q-route-tab
-          name="pagamenti"
-          icon="receipt_long"
-          label="Pagamenti"
-          to="/i/pagamenti"
-        />
+        <q-route-tab name="utenze" icon="bolt" label="Utenze" to="/i/utenze" />
         <q-route-tab name="profilo" icon="person" label="Profilo" to="/i/profilo" />
       </q-tabs>
     </q-footer>
