@@ -1,5 +1,25 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from dj_rest_auth.serializers import PasswordResetSerializer
 from rest_framework import serializers
+
+
+def spa_password_reset_url(request, user, temp_key):
+    """Genera il link di reset/invito puntando alla **SPA** invece che al
+    dominio Django.
+
+    ``AllAuthPasswordResetForm.save()`` (usato da dj-rest-auth quando allauth è
+    installato) accetta un ``url_generator`` opzionale con questa firma. L'uid è
+    codificato con l'helper di allauth (``user_pk_to_url_str`` → base36 per PK
+    interi), coerente con quanto si aspetta ``PasswordResetConfirmSerializer``.
+    La pagina ``/imposta-password/<uid>/<token>`` della SPA posta poi a
+    ``/api/auth/password/reset/confirm/``.
+    """
+    from allauth.account.utils import user_pk_to_url_str
+
+    uid = user_pk_to_url_str(user)
+    base = (settings.APP_BASE_URL or '').rstrip('/')
+    return f"{base}/imposta-password/{uid}/{temp_key}"
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -53,3 +73,16 @@ class UserSerializer(serializers.ModelSerializer):
                 "ordinamento", "banca"
             )
         ]
+
+
+class SpaPasswordResetSerializer(PasswordResetSerializer):
+    """Serializer di reset password che fa puntare il link alla SPA.
+
+    Registrato in ``REST_AUTH['PASSWORD_RESET_SERIALIZER']``. Sovrascrive solo
+    ``get_email_options`` per iniettare ``url_generator``; testo/oggetto
+    dell'email restano quelli di allauth (template
+    ``account/email/password_reset_key_*``), che stampano ``password_reset_url``.
+    """
+
+    def get_email_options(self):
+        return {'url_generator': spa_password_reset_url}

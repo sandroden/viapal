@@ -10,6 +10,31 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/password-dimenticata',
+    component: () => import('layouts/AuthLayout.vue'),
+    meta: { public: true },
+    children: [
+      {
+        path: '',
+        name: 'password-dimenticata',
+        component: () => import('pages/PasswordDimenticata.vue'),
+      },
+    ],
+  },
+  {
+    // Usata sia per il primo set-password (invito) sia per il reset password.
+    path: '/imposta-password/:uid/:token',
+    component: () => import('layouts/AuthLayout.vue'),
+    meta: { public: true },
+    children: [
+      {
+        path: '',
+        name: 'imposta-password',
+        component: () => import('pages/ImpostaPassword.vue'),
+      },
+    ],
+  },
+  {
     path: '/p',
     component: () => import('layouts/ProprietarioLayout.vue'),
     meta: { role: 'proprietario' },

@@ -72,5 +72,39 @@ export const useAuthStore = defineStore('auth', {
         this.user = null;
       }
     },
+    // Password dimenticata: chiede l'invio dell'email di reset. La risposta è
+    // sempre 200 (non rivela se l'indirizzo esiste).
+    async requestPasswordReset(email: string) {
+      await this.ensureCsrf();
+      await api.post('/api/auth/password/reset/', { email });
+    },
+    // Imposta/reimposta la password dal link ricevuto via email (invito o reset).
+    async confirmPasswordReset(
+      uid: string,
+      token: string,
+      newPassword1: string,
+      newPassword2: string,
+    ) {
+      await this.ensureCsrf();
+      await api.post('/api/auth/password/reset/confirm/', {
+        uid,
+        token,
+        new_password1: newPassword1,
+        new_password2: newPassword2,
+      });
+    },
+    // Cambio password da utente loggato (richiede la vecchia password).
+    async changePassword(
+      oldPassword: string,
+      newPassword1: string,
+      newPassword2: string,
+    ) {
+      await this.ensureCsrf();
+      await api.post('/api/auth/password/change/', {
+        old_password: oldPassword,
+        new_password1: newPassword1,
+        new_password2: newPassword2,
+      });
+    },
   },
 });

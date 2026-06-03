@@ -76,7 +76,10 @@ ROOT_URLCONF = 'core.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # core/templates: override di template di terze parti (es. oggetto
+        # email allauth). Il filesystem.Loader gira prima dell'app_directories,
+        # così questi hanno la precedenza a prescindere dall'ordine delle app.
+        'DIRS': [os.path.join(PROJECT_DIR, 'templates')],
         # NB: con loader espliciti, NIENTE 'APP_DIRS': True (Django lo vieta).
         'OPTIONS': {
             'context_processors': [
@@ -168,21 +171,33 @@ DEFAULT_FROM_EMAIL = os.environ.get(
 # In dev viene sovrascritto in local.py/dev.py con http://localhost:9000.
 APP_BASE_URL = os.environ.get('APP_BASE_URL', 'https://viapal.e-den.it')
 
-# allauth (login con username, no email verification per dev)
+# allauth: login con username OPPURE email (l'inquilino invitato vede entrambi
+# nell'email di invito). Richiede email univoche — verificato che non ce ne
+# siano di duplicate fra gli utenti esistenti. No verifica email in dev.
 ACCOUNT_EMAIL_VERIFICATION = 'none'
-ACCOUNT_LOGIN_METHODS = {'username'}
-ACCOUNT_SIGNUP_FIELDS = ['username*', 'email', 'password1*', 'password2*']
+# Oggetto delle email allauth: sostituisce il prefisso di default "[<site>] "
+# (che mostrava "[example.com]"). L'oggetto base è in core/templates/account/.
+ACCOUNT_EMAIL_SUBJECT_PREFIX = 'Viapal — '
+ACCOUNT_LOGIN_METHODS = {'username', 'email'}
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_SIGNUP_FIELDS = ['username*', 'email*', 'password1*', 'password2*']
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
     'allauth.account.auth_backends.AuthenticationBackend',
 ]
 
-# dj-rest-auth: session-based, no JWT
+# dj-rest-auth: session-based, no JWT.
+# - PASSWORD_RESET_SERIALIZER: brandizza il link di reset/invito facendolo
+#   puntare alla SPA (vedi accounts.serializers.SpaPasswordResetSerializer).
+# - OLD_PASSWORD_FIELD_ENABLED: il cambio password da loggato richiede la
+#   vecchia password (default dj-rest-auth è False).
 REST_AUTH = {
     'USE_JWT': False,
     'SESSION_LOGIN': True,
     'TOKEN_MODEL': None,
     'USER_DETAILS_SERIALIZER': 'accounts.serializers.UserSerializer',
+    'PASSWORD_RESET_SERIALIZER': 'accounts.serializers.SpaPasswordResetSerializer',
+    'OLD_PASSWORD_FIELD_ENABLED': True,
 }
 
 # Ruoli applicativi (gruppi Django)

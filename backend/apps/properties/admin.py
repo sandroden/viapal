@@ -192,7 +192,35 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
         }),
         ("Assegnazione stanze", {"items": [RoomAssignmentInlineForTenant]}),
     )
-    actions = ["salda_con_resti_dry_run", "salda_con_resti_apply"]
+    actions = ["invia_invito", "salda_con_resti_dry_run", "salda_con_resti_apply"]
+
+    @admin.action(description="Invia email di invito")
+    def invia_invito(self, request, queryset):
+        """Invia a ciascun inquilino selezionato l'email di benvenuto con il
+        link per impostare la password (vedi ``accounts.inviti``)."""
+        from accounts.inviti import invia_invito_inquilino
+
+        inviati, errori = 0, 0
+        for tenant in queryset:
+            esito = invia_invito_inquilino(tenant, request=request)
+            if esito["esito"] == "inviato":
+                inviati += 1
+                self.message_user(
+                    request,
+                    f"Invito inviato a {tenant.nominativo} ({esito['email']}).",
+                    level=messages.SUCCESS,
+                )
+            else:
+                errori += 1
+                self.message_user(
+                    request,
+                    f"{tenant.nominativo}: {esito['errore']}",
+                    level=messages.ERROR,
+                )
+        if inviati and not errori:
+            self.message_user(
+                request, f"{inviati} invito/i inviato/i.", level=messages.INFO
+            )
 
     def _run_salda_con_resti(self, request, queryset, *, apply: bool):
         if queryset.count() != 1:

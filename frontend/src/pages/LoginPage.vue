@@ -36,6 +36,17 @@
           size="lg"
         />
       </q-form>
+
+      <div class="q-mt-md text-center">
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="primary"
+          label="Password dimenticata?"
+          to="/password-dimenticata"
+        />
+      </div>
     </q-card>
   </q-page>
 </template>
