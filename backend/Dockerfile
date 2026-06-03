@@ -6,6 +6,12 @@ ARG APP_USER=www-data
 
 WORKDIR /code/
 
+# poppler-utils fornisce `pdftotext`, usato per il parsing delle bollette PDF
+# (billing.estrai_da_pdf). Senza, l'upload fallisce con 400 "importo non estraibile".
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends poppler-utils \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY backend/pyproject.toml backend/uv.lock /code/
 ENV UV_SYSTEM_PYTHON=1
 ENV UV_PROJECT_ENVIRONMENT=/usr/local
