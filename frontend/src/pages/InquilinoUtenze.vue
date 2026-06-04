@@ -67,6 +67,7 @@
           :voci="vociView"
           :totale="totaleView"
           :mancanti-tipi="[]"
+          :mia-quota="miaQuotaView"
           readonly
           @view-pdf="apriPdf"
         />
@@ -85,7 +86,7 @@
           <VpIcon name="back" :size="16" /> Bolletta
         </button>
         <button v-if="step === 1" class="vp-btn vp-btn--primary" @click="step = 2">
-          Vedi la tua quota <VpIcon name="arrow" :size="16" color="#fff" />
+          Vedi la ripartizione <VpIcon name="arrow" :size="16" color="#fff" />
         </button>
         <div v-else class="vp-iu__miaquota">
           <span class="vp-eyebrow">La tua quota</span>
@@ -229,6 +230,12 @@ const quoteView = computed<QuotaView[]>(() => {
 });
 
 const miaQuota = computed(() => quoteView.value.find((q) => q.mine)?.quota ?? 0);
+
+// La mia quota + giorni di presenza: sintesi mostrata già nello step 1.
+const miaQuotaView = computed(() => {
+  const q = quoteView.value.find((x) => x.mine);
+  return q ? { importo: q.quota, giorni: q.giorni } : null;
+});
 
 watch(selectedId, (id) => {
   step.value = 1;

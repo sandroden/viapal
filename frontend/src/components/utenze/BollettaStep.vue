@@ -7,7 +7,7 @@ import { computed } from 'vue';
 import VpIcon from './VpIcon.vue';
 import VpScontrino from './VpScontrino.vue';
 import PdfIconButton from 'src/components/PdfIconButton.vue';
-import { utility, eur } from './format';
+import { utility, eur, meseCapitalize } from './format';
 import type { PeriodoView, BollettaView, VoceView } from './format';
 
 const props = withDefaults(
@@ -18,9 +18,13 @@ const props = withDefaults(
     totale: number;
     mancantiTipi: string[]; // tipi ancora da caricare
     readonly?: boolean; // vista inquilino: niente upload
+    // Vista inquilino: la SUA quota del mese. Mostrata in cima allo step come
+    // sintesi sticky ("quanto pago"); su mobile rimpiazza lo strip terracotta.
+    miaQuota?: { importo: number; giorni: number } | null;
   }>(),
-  { readonly: false },
+  { readonly: false, miaQuota: null },
 );
+const meseCap = computed(() => meseCapitalize(props.periodo.mese));
 const emit = defineEmits<{
   upload: [tipo?: string];
   'view-pdf': [v: { url: string; title: string }];
@@ -32,6 +36,16 @@ const mancanti = computed(() => props.mancantiTipi.length);
 
 <template>
   <div>
+    <!-- Vista inquilino: la tua quota in evidenza, sticky mentre scorri.
+         Su mobile prende il posto dello strip terracotta (qui sotto). -->
+    <div v-if="miaQuota" class="miaq">
+      <div class="miaq-lbl">La tua quota · {{ meseCap }}</div>
+      <div class="vp-mono miaq-val">{{ eur(miaQuota.importo) }}</div>
+      <div class="miaq-gg">
+        {{ miaQuota.giorni }} {{ miaQuota.giorni === 1 ? 'giorno' : 'giorni' }} di presenza
+      </div>
+    </div>
+
     <!-- Strip di upload (multiplo) -->
     <div class="strip" :class="{ warn: incompleto }">
       <div class="thumbs">
@@ -189,6 +203,39 @@ const mancanti = computed(() => props.mancantiTipi.length);
   font-size: 13px;
   color: var(--vp-ink-3);
 }
+
+/* "La tua quota": sintesi terracotta in evidenza. Sticky così resta visibile
+   mentre si scorre il dettaglio. Su mobile sostituisce lo strip e la
+   composizione del totale (vedi media query). */
+.miaq {
+  position: sticky;
+  top: 50px; /* sotto l'header fisso (q-toolbar, 50px) */
+  z-index: 4;
+  background: linear-gradient(135deg, var(--vp-terra), var(--vp-terra-deep));
+  color: var(--vp-cream);
+  border-radius: 16px;
+  padding: 15px 20px;
+  margin-bottom: 18px;
+  box-shadow: var(--vp-shadow-2);
+}
+.miaq-lbl {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.miaq-val {
+  font-size: 34px;
+  font-weight: 600;
+  font-family: var(--vp-font-display);
+  line-height: 1.1;
+  margin: 3px 0 2px;
+}
+.miaq-gg {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
 .strip {
   display: flex;
   align-items: center;
@@ -411,6 +458,15 @@ const mancanti = computed(() => props.mancantiTipi.length);
   }
   .legend {
     grid-template-columns: 1fr 1fr;
+  }
+  /* Vista inquilino su mobile: la "tua quota" prende il posto dello strip
+     terracotta (bello ma inutile in mobile) e della composizione del totale.
+     Restano la quota in cima e il dettaglio delle bollette. */
+  .miaq + .strip {
+    display: none;
+  }
+  .miaq ~ .comp {
+    display: none;
   }
 }
 </style>
