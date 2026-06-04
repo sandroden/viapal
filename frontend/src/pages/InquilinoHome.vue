@@ -168,6 +168,7 @@ import SemaforoBadge from 'src/components/SemaforoBadge.vue';
 import type { SemaforoLivello } from 'src/types/semaforo';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
+import { useRefreshOnResume } from 'src/composables/useRefreshOnResume';
 
 const auth = useAuthStore();
 const store = useDashboardStore();
@@ -311,6 +312,9 @@ onMounted(async () => {
   await store.loadInquilino();
   selezionaTutti(); // all'apertura tutti i ritardi sono selezionati
 });
+
+// Rientrando nell'app dopo che è rimasta in background, ricarica i dati freschi.
+useRefreshOnResume(() => store.loadInquilino(true));
 </script>
 
 <style scoped>

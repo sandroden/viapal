@@ -497,6 +497,7 @@ import {
 import { useDashboardStore } from 'stores/dashboard';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
+import { useRefreshOnResume } from 'src/composables/useRefreshOnResume';
 import EmptyState from 'src/components/EmptyState.vue';
 
 const store = useRendicontoStore();
@@ -656,6 +657,12 @@ onMounted(async () => {
   window.addEventListener('beforeprint', onBeforePrint);
   await dashboard.loadInquilino();
   carica();
+});
+
+// Refresh al rientro nell'app (force: il rendiconto è cache-ato per tenant).
+useRefreshOnResume(() => {
+  void dashboard.loadInquilino(true);
+  if (tenantId.value) void store.load(tenantId.value, true);
 });
 
 watch(tenantId, (id) => {

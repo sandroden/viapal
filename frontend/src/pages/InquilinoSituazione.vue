@@ -588,6 +588,7 @@ import KpiCard from 'src/components/KpiCard.vue';
 import StatoPagamentoBadge from 'src/components/StatoPagamentoBadge.vue';
 import EmptyState from 'src/components/EmptyState.vue';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
+import { useRefreshOnResume } from 'src/composables/useRefreshOnResume';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
 type TipoPagamento = 'rent' | 'utility' | 'extra' | 'deposito';
@@ -842,6 +843,12 @@ onMounted(async () => {
   await dashboard.loadInquilino();
   caricaSituazione();
   aggiornaQuery();
+});
+
+// Refresh al rientro nell'app.
+useRefreshOnResume(() => {
+  void dashboard.loadInquilino(true);
+  caricaSituazione(true);
 });
 
 watch(tenantId, (id) => {

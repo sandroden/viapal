@@ -125,6 +125,7 @@ import {
   type VoceView,
   type QuotaView,
 } from 'src/components/utenze/format';
+import { useRefreshOnResume } from 'src/composables/useRefreshOnResume';
 
 const store = useUtenzeInquilinoStore();
 
@@ -238,6 +239,12 @@ onMounted(async () => {
   const lista = await store.fetchPeriodi();
   const primo = lista[0]; // il più recente (lista in ordine desc)
   if (primo) selectedId.value = primo.id;
+});
+
+// Refresh al rientro nell'app: lista periodi + dettaglio selezionato.
+useRefreshOnResume(() => {
+  void store.fetchPeriodi();
+  if (selectedId.value != null) void store.fetchDettaglio(selectedId.value);
 });
 </script>
 
