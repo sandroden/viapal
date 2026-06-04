@@ -8,6 +8,24 @@
       </q-toolbar>
     </q-header>
 
+    <q-banner v-if="auth.isImpersonating" dense class="vp-impersona-banner">
+      <template #avatar>
+        <q-icon name="visibility" color="white" />
+      </template>
+      Stai vedendo come <strong>{{ auth.user?.username }}</strong>
+      <template #action>
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="white"
+          label="Torna a te"
+          :loading="uscendo"
+          @click="tornaProprietario"
+        />
+      </template>
+    </q-banner>
+
     <q-page-container>
       <div class="vp-i-shell" :class="{ 'vp-i-shell--wide': isWide }">
         <router-view />
@@ -56,7 +74,24 @@ const activeTab = ref<string>('home');
 // Pagine "documento" (es. rendiconto): più larghe del cap app-like.
 const isWide = computed(() => route.meta.wide === true);
 
+// Durante l'impersonation il "logout" non scollega la sessione del
+// proprietario: termina solo l'impersonation e torna all'area proprietari.
+const uscendo = ref(false);
+async function tornaProprietario() {
+  uscendo.value = true;
+  try {
+    // stopImpersonation() fa hard reload verso /p/.
+    await auth.stopImpersonation();
+  } catch {
+    uscendo.value = false;
+  }
+}
+
 async function logout() {
+  if (auth.isImpersonating) {
+    await tornaProprietario();
+    return;
+  }
   await auth.logout();
   await router.replace('/login');
 }
@@ -75,6 +110,10 @@ async function logout() {
 }
 .vp-header {
   background: var(--vp-sage-deep);
+  color: var(--vp-cream);
+}
+.vp-impersona-banner {
+  background: var(--vp-terra-deep);
   color: var(--vp-cream);
 }
 .vp-bottom-nav {

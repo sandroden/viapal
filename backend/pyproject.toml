@@ -11,6 +11,7 @@ dependencies = [
     "django-allauth[socialaccount]>=65.16.1",
     "django-cors-headers>=4.9.0",
     "django-environ>=0.13.0",
+    "django-hijack>=3.7.8",
     "djangorestframework>=3.17.1",
     "jmb-filters>=2.0.3",
     "jmb-jadmin>=2.1.11",

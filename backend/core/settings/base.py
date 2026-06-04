@@ -48,6 +48,10 @@ INSTALLED_APPS = [
     'allauth',
     'allauth.account',
     'dj_rest_auth',
+    # NB: NON installare 'hijack.contrib.admin' — il bottone hijack in admin non
+    # serve (l'ingresso e' dal frontend) ed evita interferenze coi template
+    # loader custom di jmb.
+    'hijack',
 
     # Local apps
     'accounts',
@@ -66,6 +70,9 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    # Imposta request.user.is_hijacked durante l'impersonation (deve stare dopo
+    # l'AuthenticationMiddleware).
+    'hijack.middleware.HijackUserMiddleware',
     'allauth.account.middleware.AccountMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -203,6 +210,10 @@ REST_AUTH = {
 # Ruoli applicativi (gruppi Django)
 ROLE_PROPRIETARI = 'proprietari'
 ROLE_INQUILINI = 'inquilini'
+
+# django-hijack: impersonation "vedi come inquilino". Il gate di autorizzazione
+# (chi puo' impersonare chi) e' centralizzato in accounts.impersonation.
+HIJACK_PERMISSION_CHECK = 'accounts.impersonation.check_hijack_authorization'
 
 
 # django-admin-tools: classi dashboard dichiarate esplicitamente per evitare

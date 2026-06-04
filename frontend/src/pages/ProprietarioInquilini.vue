@@ -84,16 +84,19 @@
         </q-td>
       </template>
       <template #body-cell-azioni="props">
-        <q-td :props="props" auto-width>
+        <q-td :props="props" auto-width class="vp-p-inq__azioni">
           <q-btn
             flat
+            round
             dense
-            icon="visibility"
+            icon="theater_comedy"
             color="primary"
-            no-caps
-            label="Dettaglio"
-            @click.stop="apri(props.row, 'profilo')"
-          />
+            :loading="impersonandoId === props.row.id"
+            aria-label="Vedi come questo inquilino"
+            @click.stop="impersona(props.row)"
+          >
+            <q-tooltip>Vedi come {{ props.row.nominativo }}</q-tooltip>
+          </q-btn>
         </q-td>
       </template>
     </q-table>
@@ -103,8 +106,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { QTableProps } from 'quasar';
+import { useQuasar, type QTableProps } from 'quasar';
 import { useTenantsStore, type Tenant } from 'stores/tenants';
+import { useAuthStore } from 'stores/auth';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 
 const { formattaEuro } = useFormatoEuro();
@@ -112,6 +116,8 @@ const { formattaEuro } = useFormatoEuro();
 const router = useRouter();
 const route = useRoute();
 const store = useTenantsStore();
+const auth = useAuthStore();
+const $q = useQuasar();
 
 const annoCorrente = new Date().getFullYear();
 const annoMin = annoCorrente - 5;
@@ -224,6 +230,20 @@ function apri(t: Tenant, tab: 'pagamenti' | 'profilo' = 'pagamenti') {
     query: q,
   });
 }
+
+// Impersonation diretta dalla lista ("vedi come questo inquilino").
+const impersonandoId = ref<number | null>(null);
+async function impersona(t: Tenant) {
+  impersonandoId.value = t.id;
+  try {
+    // impersonate() fa hard reload verso /i/: in caso di successo la pagina si
+    // ricarica e questa funzione non prosegue oltre.
+    await auth.impersonate(t.id);
+  } catch {
+    $q.notify({ type: 'negative', message: 'Impossibile impersonare questo inquilino.' });
+    impersonandoId.value = null;
+  }
+}
 </script>
 
 <style scoped>
@@ -266,6 +286,9 @@ function apri(t: Tenant, tab: 'pagamenti' | 'profilo' = 'pagamenti') {
 }
 .vp-p-inq__saldo--zero {
   color: var(--vp-ink-3);
+}
+.vp-p-inq__azioni {
+  white-space: nowrap;
 }
 .vp-mono {
   font-variant-numeric: tabular-nums;

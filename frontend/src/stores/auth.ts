@@ -22,6 +22,10 @@ export interface User {
   role: Role;
   owner_profile_id: number | null;
   bank_accounts: BankAccountInfo[];
+  // Impersonation ("vedi come inquilino"): valorizzati quando un proprietario
+  // sta vedendo l'app come un inquilino.
+  is_impersonated: boolean;
+  impersonator_username: string | null;
 }
 
 interface State {
@@ -37,6 +41,7 @@ export const useAuthStore = defineStore('auth', {
   getters: {
     isAuthenticated: (state): boolean => state.user !== null,
     role: (state): Role => state.user?.role ?? null,
+    isImpersonating: (state): boolean => state.user?.is_impersonated ?? false,
     homePath(): string {
       if (this.role === 'proprietario') return '/p/';
       if (this.role === 'inquilino') return '/i/';
@@ -71,6 +76,24 @@ export const useAuthStore = defineStore('auth', {
       } finally {
         this.user = null;
       }
+    },
+    // Impersonation: un proprietario inizia a vedere l'app come l'inquilino con
+    // il TenantProfile id dato. Dopo l'acquire facciamo un HARD RELOAD verso la
+    // home inquilino: ricrea da zero tutti gli store Pinia, così non restano in
+    // cache i dati del proprietario (niente refresh manuale).
+    async impersonate(tenantId: number): Promise<void> {
+      await this.ensureCsrf();
+      const { data } = await api.post<{ redirect: string }>(
+        `/api/auth/impersonate/${tenantId}/`,
+      );
+      window.location.assign(data.redirect ?? '/i/');
+    },
+    // Termina l'impersonation e torna al proprietario, anche qui con hard reload
+    // per ripartire da dati puliti.
+    async stopImpersonation(): Promise<void> {
+      await this.ensureCsrf();
+      const { data } = await api.post<{ redirect: string }>('/api/auth/impersonate/stop/');
+      window.location.assign(data.redirect ?? '/p/');
     },
     // Password dimenticata: chiede l'invio dell'email di reset. La risposta è
     // sempre 200 (non rivela se l'indirizzo esiste).

@@ -40,6 +40,19 @@
           </q-tooltip>
         </q-btn>
       </div>
+      <q-btn
+        flat
+        round
+        dense
+        icon="theater_comedy"
+        color="primary"
+        :loading="impersonando"
+        aria-label="Vedi come questo inquilino"
+        class="vp-p-id__impersona"
+        @click="vediComeInquilino"
+      >
+        <q-tooltip>Vedi come {{ situazione?.tenant.nominativo ?? 'inquilino' }}</q-tooltip>
+      </q-btn>
     </div>
 
     <header class="vp-p-id__head">
@@ -729,7 +742,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { QTableProps } from 'quasar';
+import { useQuasar, type QTableProps } from 'quasar';
 import { useTenantSituazioneStore } from 'stores/tenantSituazione';
 import { useTenantsStore, type Tenant } from 'stores/tenants';
 import { useAuthStore } from 'stores/auth';
@@ -1118,7 +1131,21 @@ function iconaPerTipo(t: TipoPagamento): string {
 // --- Registra pagamento (modale su righe in stato atteso) -----------------
 
 const auth = useAuthStore();
+const $q = useQuasar();
 const contiStore = useOwnerBankAccountsStore();
+
+// --- Impersonation ("vedi come inquilino") --------------------------------
+const impersonando = ref(false);
+async function vediComeInquilino() {
+  impersonando.value = true;
+  try {
+    // impersonate() fa hard reload verso /i/.
+    await auth.impersonate(tenantId.value);
+  } catch {
+    $q.notify({ type: 'negative', message: 'Impossibile impersonare questo inquilino.' });
+    impersonando.value = false;
+  }
+}
 const tenantCorrente = computed(() => situazione.value?.tenant ?? null);
 
 const dialogPagamento = ref(false);
@@ -1193,6 +1220,9 @@ const contoDiDefaultUtente = computed(
   gap: var(--vp-gap-3);
   margin-bottom: var(--vp-gap-3);
   flex-wrap: wrap;
+}
+.vp-p-id__impersona {
+  margin-left: auto;
 }
 .vp-p-id__back {
   margin: 0;

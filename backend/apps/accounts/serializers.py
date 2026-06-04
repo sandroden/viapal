@@ -30,14 +30,37 @@ class UserSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     owner_profile_id = serializers.SerializerMethodField()
     bank_accounts = serializers.SerializerMethodField()
+    is_impersonated = serializers.SerializerMethodField()
+    impersonator_username = serializers.SerializerMethodField()
 
     class Meta:
         model = get_user_model()
         fields = ('id', 'username', 'email', 'first_name', 'last_name',
                   'is_staff', 'is_superuser', 'role',
-                  'owner_profile_id', 'bank_accounts')
+                  'owner_profile_id', 'bank_accounts',
+                  'is_impersonated', 'impersonator_username')
         read_only_fields = ('id', 'is_staff', 'is_superuser', 'role',
-                            'owner_profile_id', 'bank_accounts')
+                            'owner_profile_id', 'bank_accounts',
+                            'is_impersonated', 'impersonator_username')
+
+    def get_is_impersonated(self, user):
+        """True se la sessione corrente sta impersonando (django-hijack)."""
+        request = self.context.get('request')
+        return bool(getattr(getattr(request, 'user', None), 'is_hijacked', False))
+
+    def get_impersonator_username(self, user):
+        """Username del proprietario che sta impersonando, se attivo."""
+        request = self.context.get('request')
+        if not request or not getattr(request.user, 'is_hijacked', False):
+            return None
+        history = request.session.get('hijack_history', [])
+        if not history:
+            return None
+        try:
+            orig = get_user_model().objects.get(pk=history[-1])
+        except get_user_model().DoesNotExist:
+            return None
+        return orig.username
 
     def get_role(self, user):
         groups = set(user.groups.values_list('name', flat=True))
