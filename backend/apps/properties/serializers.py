@@ -3,7 +3,15 @@ Serializer per l'app properties.
 """
 from rest_framework import serializers
 
-from properties.models import Contract, OwnerBankAccount, OwnerProfile, Room, RoomAssignment, TenantProfile
+from properties.models import (
+    Contract,
+    OwnerBankAccount,
+    OwnerProfile,
+    Room,
+    RoomAssignment,
+    TenantDocument,
+    TenantProfile,
+)
 
 
 class OwnerProfileSerializer(serializers.ModelSerializer):
@@ -68,6 +76,54 @@ class TenantProfileSerializer(serializers.ModelSerializer):
         if saldi is None:
             return None
         return saldi.get(obj.id, 0.0)
+
+
+class TenantSelfUpdateSerializer(serializers.ModelSerializer):
+    """Serializer ristretto con cui l'inquilino aggiorna i propri dati.
+
+    Espone in sola lettura username/email e in scrittura solo i campi che
+    l'inquilino può modificare da solo. I campi sensibili (deposito, giorno
+    pagamento, ciclo, ecc.) restano gestiti dai proprietari via admin.
+    """
+
+    username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.CharField(source="user.email", read_only=True)
+
+    class Meta:
+        model = TenantProfile
+        fields = [
+            "id",
+            "username",
+            "email",
+            "nominativo",
+            "telefono",
+            "codice_fiscale",
+        ]
+
+
+class TenantDocumentSerializer(serializers.ModelSerializer):
+    tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
+    tenant_nominativo = serializers.CharField(source="tenant.nominativo", read_only=True)
+    scaduto = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = TenantDocument
+        fields = [
+            "id",
+            "tenant",
+            "tenant_nominativo",
+            "tipo",
+            "tipo_display",
+            "file",
+            "descrizione",
+            "data_scadenza",
+            "scaduto",
+            "created_at",
+        ]
+        # Il tenant è imposto dalla view (per l'inquilino il proprio, per il
+        # proprietario quello indicato): mai derivabile dal client per gli
+        # inquilini.
+        extra_kwargs = {"tenant": {"required": False}}
 
 
 class RoomSerializer(serializers.ModelSerializer):

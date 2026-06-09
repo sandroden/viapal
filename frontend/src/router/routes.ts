@@ -150,6 +150,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/InquilinoProfilo.vue'),
       },
       {
+        path: 'documenti',
+        name: 'i-documenti',
+        component: () => import('pages/InquilinoDocumenti.vue'),
+      },
+      {
         path: ':catchAll(.*)*',
         component: () => import('pages/ErrorNotFound.vue'),
       },

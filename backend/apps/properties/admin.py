@@ -21,6 +21,7 @@ from .models import (
     Property,
     Room,
     RoomAssignment,
+    TenantDocument,
     TenantProfile,
 )
 
@@ -60,6 +61,15 @@ class RoomAssignmentInlineForTenant(admin.TabularInline):
     autocomplete_fields = ("room", "bank_account_affitto")
     ordering = ("-valid_from",)
     show_change_link = True
+
+
+class TenantDocumentInline(admin.TabularInline):
+    """Documenti dell'inquilino in linea nel profilo."""
+
+    model = TenantDocument
+    extra = 0
+    fields = ("tipo", "file", "descrizione", "data_scadenza")
+    ordering = ("tipo", "-created_at")
 
 
 class RoomAssignmentInlineForRoom(admin.TabularInline):
@@ -156,10 +166,10 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
     search_fields = ("nominativo", "user__username", "user__email")
     list_filter = ("frequenza_conguagli", "ciclo_fatturazione")
     list_select_related = ("user",)
-    inlines = (RoomAssignmentInlineForTenant,)
+    inlines = (RoomAssignmentInlineForTenant, TenantDocumentInline)
     fieldsets = (
         ("Anagrafica", {
-            "fields": ("user", "nominativo", "telefono", "email_alt"),
+            "fields": ("user", "nominativo", "codice_fiscale", "telefono", "email_alt"),
         }),
         ("Pagamenti", {
             "fields": (
@@ -191,6 +201,7 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
             "active": True,
         }),
         ("Assegnazione stanze", {"items": [RoomAssignmentInlineForTenant]}),
+        ("Documenti", {"items": [TenantDocumentInline]}),
     )
     actions = ["invia_invito", "salda_con_resti_dry_run", "salda_con_resti_apply"]
 

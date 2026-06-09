@@ -1,11 +1,13 @@
 """
 Modelli relativi agli inquilini.
 """
+import os
 from decimal import Decimal
 
 from django.conf import settings
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 from django.db import models
+from django.utils.text import slugify
 
 from ._base import TimestampedModel
 
@@ -132,3 +134,95 @@ class TenantProfile(TimestampedModel):
             return f"{inizio:%d/%m/%Y} →"
         fine = max(a.valid_to for a in assignments)
         return f"{inizio:%d/%m/%Y} → {fine:%d/%m/%Y}"
+
+
+def tenant_document_upload_to(instance, filename):
+    """Percorso di upload: ``documenti/<id>-<slug nominativo>/<filename>``."""
+    nome = slugify(instance.tenant.nominativo) or "inquilino"
+    return os.path.join("documenti", f"{instance.tenant_id}-{nome}", filename)
+
+
+def valida_dimensione_documento(file):
+    """Rifiuta file più grandi di 10 MB."""
+    from django.core.exceptions import ValidationError
+
+    limite = 10 * 1024 * 1024
+    if file.size and file.size > limite:
+        raise ValidationError("Il file non può superare i 10 MB.")
+
+
+class TenantDocument(TimestampedModel):
+    """Documento di un inquilino (carta d'identità, codice fiscale, ecc.).
+
+    Un record corrisponde a un singolo file: per i documenti fronte/retro si
+    caricano due record dello stesso ``tipo`` distinguendoli con
+    ``descrizione`` (es. "fronte"/"retro").
+    """
+
+    class Tipo(models.TextChoices):
+        CARTA_IDENTITA = "carta_identita", "Carta d'identità"
+        CODICE_FISCALE = "codice_fiscale", "Codice fiscale / Tessera sanitaria"
+        PASSAPORTO = "passaporto", "Passaporto"
+        PERMESSO_SOGGIORNO = "permesso_soggiorno", "Permesso di soggiorno"
+        CONTRATTO_LAVORO = "contratto_lavoro", "Contratto di lavoro"
+        ALTRO = "altro", "Altro"
+
+    tenant = models.ForeignKey(
+        TenantProfile,
+        on_delete=models.CASCADE,
+        related_name="documenti",
+        verbose_name="inquilino",
+    )
+    tipo = models.CharField(
+        max_length=30,
+        choices=Tipo.choices,
+        default=Tipo.ALTRO,
+        verbose_name="tipo documento",
+    )
+    file = models.FileField(
+        upload_to=tenant_document_upload_to,
+        validators=[
+            FileExtensionValidator(["pdf", "jpg", "jpeg", "png"]),
+            valida_dimensione_documento,
+        ],
+        verbose_name="file",
+        help_text="PDF o immagine (JPG/PNG), massimo 10 MB.",
+    )
+    descrizione = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="descrizione",
+        help_text="Facoltativa: es. 'fronte', 'retro', o dettaglio per 'Altro'.",
+    )
+    data_scadenza = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="data di scadenza",
+        help_text="Facoltativa: utile per carta d'identità, passaporto, "
+        "permesso di soggiorno.",
+    )
+    caricato_da = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="documenti_inquilini_caricati",
+        verbose_name="caricato da",
+    )
+
+    class Meta:
+        verbose_name = "documento inquilino"
+        verbose_name_plural = "documenti inquilini"
+        ordering = ["tenant__nominativo", "tipo", "-created_at"]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} — {self.tenant.nominativo}"
+
+    @property
+    def scaduto(self):
+        """True se il documento ha una scadenza già passata."""
+        if not self.data_scadenza:
+            return False
+        import datetime
+
+        return self.data_scadenza < datetime.date.today()

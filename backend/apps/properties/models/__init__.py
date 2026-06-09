@@ -6,7 +6,7 @@ from .owner import (
     quote_attive_at,
 )
 from .property import Contract, Property, Room, RoomAssignment
-from .tenant import TenantProfile
+from .tenant import TenantDocument, TenantProfile
 
 __all__ = [
     "TimestampedModel",
@@ -14,6 +14,7 @@ __all__ = [
     "OwnershipShare",
     "OwnerBankAccount",
     "TenantProfile",
+    "TenantDocument",
     "Property",
     "Room",
     "Contract",

@@ -9,12 +9,14 @@ from properties.views import (
     OwnerProfileViewSet,
     RoomAssignmentViewSet,
     RoomViewSet,
+    TenantDocumentViewSet,
     TenantProfileViewSet,
 )
 
 router = DefaultRouter()
 router.register(r"owners", OwnerProfileViewSet, basename="owner-profile")
 router.register(r"tenants", TenantProfileViewSet, basename="tenant-profile")
+router.register(r"tenant-documents", TenantDocumentViewSet, basename="tenant-document")
 router.register(r"rooms", RoomViewSet, basename="room")
 router.register(r"room-assignments", RoomAssignmentViewSet, basename="room-assignment")
 router.register(r"contracts", ContractViewSet, basename="contract")

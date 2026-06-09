@@ -11,9 +11,18 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth.models import Group, User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 
-from properties.models import Contract, OwnerBankAccount, OwnerProfile, Room, RoomAssignment, TenantProfile
+from properties.models import (
+    Contract,
+    OwnerBankAccount,
+    OwnerProfile,
+    Room,
+    RoomAssignment,
+    TenantDocument,
+    TenantProfile,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -337,3 +346,136 @@ class TestOwnerBankAccountViewSet:
     def test_inquilino_non_autorizzato(self, client_inq_1):
         resp = client_inq_1.get("/api/v1/bank-accounts/")
         assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Test TenantProfileViewSet.me (auto-modifica dati inquilino)
+# ---------------------------------------------------------------------------
+
+
+def _pdf_finto(nome="doc.pdf"):
+    return SimpleUploadedFile(nome, b"%PDF-1.4 contenuto finto", content_type="application/pdf")
+
+
+class TestTenantMe:
+    def test_get_me_ritorna_proprio_profilo(self, client_inq_1, tenant_1):
+        resp = client_inq_1.get("/api/v1/tenants/me/")
+        assert resp.status_code == 200
+        assert resp.json()["id"] == tenant_1.id
+        assert resp.json()["nominativo"] == "Inquilino Uno"
+
+    def test_patch_me_aggiorna_campi_consentiti(self, client_inq_1, tenant_1):
+        resp = client_inq_1.patch(
+            "/api/v1/tenants/me/",
+            {"nominativo": "Nuovo Nome", "telefono": "333111", "codice_fiscale": "RSSMRA80A01H501U"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        tenant_1.refresh_from_db()
+        assert tenant_1.nominativo == "Nuovo Nome"
+        assert tenant_1.telefono == "333111"
+        assert tenant_1.codice_fiscale == "RSSMRA80A01H501U"
+
+    def test_patch_me_ignora_campi_non_consentiti(self, client_inq_1, tenant_1):
+        # giorno_pagamento_affitto NON è nel serializer ristretto: deve restare 1.
+        resp = client_inq_1.patch(
+            "/api/v1/tenants/me/",
+            {"nominativo": "Tizio", "giorno_pagamento_affitto": 20, "deposito_versato": "999"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        tenant_1.refresh_from_db()
+        assert tenant_1.nominativo == "Tizio"
+        assert tenant_1.giorno_pagamento_affitto == 1
+        assert tenant_1.deposito_versato == Decimal("0")
+
+    def test_me_senza_profilo_404(self, api_client, user_prop):
+        # Un proprietario non ha tenant_profile.
+        api_client.force_login(user_prop)
+        resp = api_client.get("/api/v1/tenants/me/")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Test TenantDocumentViewSet
+# ---------------------------------------------------------------------------
+
+
+class TestTenantDocumentViewSet:
+    @pytest.fixture(autouse=True)
+    def _media_tmp(self, settings, tmp_path):
+        # I file caricati nei test finiscono in una dir temporanea, non in media/.
+        settings.MEDIA_ROOT = str(tmp_path)
+
+    def test_inquilino_carica_proprio_documento(self, client_inq_1, tenant_1):
+        resp = client_inq_1.post(
+            "/api/v1/tenant-documents/",
+            {"tipo": "passaporto", "file": _pdf_finto(), "descrizione": "fronte"},
+            format="multipart",
+        )
+        assert resp.status_code == 201, resp.content
+        doc = TenantDocument.objects.get(id=resp.json()["id"])
+        # tenant forzato al proprio profilo, caricato_da tracciato
+        assert doc.tenant_id == tenant_1.id
+        assert doc.caricato_da_id == tenant_1.user_id
+
+    def test_inquilino_non_puo_caricare_per_altri(self, client_inq_1, tenant_1, tenant_2):
+        # Anche passando tenant=tenant_2, il documento finisce su tenant_1.
+        resp = client_inq_1.post(
+            "/api/v1/tenant-documents/",
+            {"tipo": "carta_identita", "file": _pdf_finto(), "tenant": tenant_2.id},
+            format="multipart",
+        )
+        assert resp.status_code == 201
+        assert TenantDocument.objects.get(id=resp.json()["id"]).tenant_id == tenant_1.id
+
+    def test_inquilino_vede_solo_propri(self, client_inq_1, tenant_1, tenant_2):
+        TenantDocument.objects.create(tenant=tenant_1, tipo="passaporto", file=_pdf_finto())
+        TenantDocument.objects.create(tenant=tenant_2, tipo="passaporto", file=_pdf_finto())
+        resp = client_inq_1.get("/api/v1/tenant-documents/")
+        assert resp.status_code == 200
+        tenant_ids = {d["tenant"] for d in resp.json()}
+        assert tenant_ids == {tenant_1.id}
+
+    def test_inquilino_non_accede_a_documento_altrui(self, client_inq_1, tenant_2):
+        doc = TenantDocument.objects.create(tenant=tenant_2, tipo="passaporto", file=_pdf_finto())
+        resp = client_inq_1.get(f"/api/v1/tenant-documents/{doc.id}/")
+        assert resp.status_code == 404
+
+    def test_inquilino_elimina_proprio(self, client_inq_1, tenant_1):
+        doc = TenantDocument.objects.create(tenant=tenant_1, tipo="passaporto", file=_pdf_finto())
+        resp = client_inq_1.delete(f"/api/v1/tenant-documents/{doc.id}/")
+        assert resp.status_code == 204
+        assert not TenantDocument.objects.filter(id=doc.id).exists()
+
+    def test_proprietario_vede_tutti_e_filtra(self, client_prop, tenant_1, tenant_2):
+        TenantDocument.objects.create(tenant=tenant_1, tipo="passaporto", file=_pdf_finto())
+        TenantDocument.objects.create(tenant=tenant_2, tipo="passaporto", file=_pdf_finto())
+        resp = client_prop.get("/api/v1/tenant-documents/")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 2
+        resp_filtro = client_prop.get(f"/api/v1/tenant-documents/?tenant={tenant_1.id}")
+        tenant_ids = {d["tenant"] for d in resp_filtro.json()}
+        assert tenant_ids == {tenant_1.id}
+
+    def test_proprietario_deve_indicare_tenant(self, client_prop, tenant_1):
+        resp = client_prop.post(
+            "/api/v1/tenant-documents/",
+            {"tipo": "passaporto", "file": _pdf_finto()},
+            format="multipart",
+        )
+        assert resp.status_code == 400
+
+    def test_estensione_non_consentita_rifiutata(self, client_inq_1, tenant_1):
+        cattivo = SimpleUploadedFile("virus.exe", b"MZ", content_type="application/octet-stream")
+        resp = client_inq_1.post(
+            "/api/v1/tenant-documents/",
+            {"tipo": "altro", "file": cattivo},
+            format="multipart",
+        )
+        assert resp.status_code == 400
+
+    def test_anonimo_non_autorizzato(self, tenant_1):
+        client = APIClient()
+        resp = client.get("/api/v1/tenant-documents/")
+        assert resp.status_code in (401, 403)

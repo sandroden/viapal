@@ -6,18 +6,39 @@ from decimal import Decimal
 
 from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
-from rest_framework.viewsets import ReadOnlyModelViewSet
+from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.response import Response
+from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from accounts.permissions import IsProprietario, IsInquilinoSelf
-from properties.models import Contract, OwnerBankAccount, OwnerProfile, Room, RoomAssignment, TenantProfile
+from properties.models import (
+    Contract,
+    OwnerBankAccount,
+    OwnerProfile,
+    Room,
+    RoomAssignment,
+    TenantDocument,
+    TenantProfile,
+)
 from properties.serializers import (
     ContractSerializer,
     OwnerBankAccountSerializer,
     OwnerProfileSerializer,
     RoomAssignmentSerializer,
     RoomSerializer,
+    TenantDocumentSerializer,
     TenantProfileSerializer,
+    TenantSelfUpdateSerializer,
 )
+
+
+def _is_proprietario(user):
+    return bool(
+        user
+        and user.is_authenticated
+        and (user.groups.filter(name="proprietari").exists() or user.is_superuser)
+    )
 
 
 class OwnerProfileViewSet(ReadOnlyModelViewSet):
@@ -147,6 +168,74 @@ class TenantProfileViewSet(ReadOnlyModelViewSet):
         if anno_filtro is not None:
             ctx["saldi_anno"] = saldi_anno
         return ctx
+
+    @action(detail=False, methods=["get", "patch"], url_path="me")
+    def me(self, request):
+        """Profilo dell'inquilino loggato, con aggiornamento self-service.
+
+        GET restituisce i propri dati; PATCH consente di modificare solo i
+        campi concessi (nominativo, telefono, codice fiscale) tramite
+        ``TenantSelfUpdateSerializer``.
+        """
+        tenant = getattr(request.user, "tenant_profile", None)
+        if tenant is None:
+            return Response(
+                {"detail": "Nessun profilo inquilino associato all'utente."},
+                status=404,
+            )
+        if request.method == "PATCH":
+            serializer = TenantSelfUpdateSerializer(
+                tenant, data=request.data, partial=True, context={"request": request}
+            )
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+        else:
+            serializer = TenantSelfUpdateSerializer(
+                tenant, context={"request": request}
+            )
+        return Response(serializer.data)
+
+
+class TenantDocumentViewSet(ModelViewSet):
+    """
+    Documenti degli inquilini (CI, CF, passaporto, permesso, contratto lavoro).
+    - Inquilini: vedono, caricano ed eliminano solo i propri (il ``tenant`` è
+      forzato al proprio profilo, indipendentemente dal payload).
+    - Proprietari: vedono tutti, filtrabili con ``?tenant=<id>``; in scrittura
+      devono indicare il ``tenant`` nel payload.
+    """
+
+    serializer_class = TenantDocumentSerializer
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_permissions(self):
+        return [IsInquilinoSelf()]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = TenantDocument.objects.select_related("tenant", "tenant__user")
+        if not _is_proprietario(user):
+            return qs.filter(tenant__user=user)
+        tenant_id = self.request.query_params.get("tenant")
+        if tenant_id:
+            qs = qs.filter(tenant_id=tenant_id)
+        return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if _is_proprietario(user):
+            tenant = serializer.validated_data.get("tenant")
+            if tenant is None:
+                from rest_framework.exceptions import ValidationError
+
+                raise ValidationError({"tenant": "Campo obbligatorio per i proprietari."})
+        else:
+            tenant = getattr(user, "tenant_profile", None)
+            if tenant is None:
+                from rest_framework.exceptions import PermissionDenied
+
+                raise PermissionDenied("Nessun profilo inquilino associato all'utente.")
+        serializer.save(tenant=tenant, caricato_da=user)
 
 
 class RoomViewSet(ReadOnlyModelViewSet):
