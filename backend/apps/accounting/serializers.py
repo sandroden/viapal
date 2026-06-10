@@ -64,6 +64,23 @@ class MarcaBtInterOwnerSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default="")
 
 
+class GeneraSettlementSerializer(serializers.Serializer):
+    """Payload per POST /api/v1/owner-settlements/genera/."""
+    anno = serializers.IntegerField(required=False, allow_null=True)
+    periodo_da = serializers.DateField(required=False, allow_null=True)
+    periodo_a = serializers.DateField(required=False, allow_null=True)
+    descrizione = serializers.CharField(required=False, allow_blank=True, default="")
+    dry_run = serializers.BooleanField(default=False)
+    reset = serializers.BooleanField(default=False)
+
+    def validate(self, attrs):
+        if not attrs.get("anno") and not (attrs.get("periodo_da") and attrs.get("periodo_a")):
+            raise serializers.ValidationError(
+                "Indicare `anno` oppure `periodo_da` + `periodo_a`.",
+            )
+        return attrs
+
+
 class OwnerSettlementSerializer(serializers.ModelSerializer):
     class Meta:
         model = OwnerSettlement
@@ -97,3 +114,36 @@ class SaldoLiveSerializer(serializers.Serializer):
     anticipi_pendenti = serializers.DecimalField(max_digits=12, decimal_places=2)
     bt_inter_owner = serializers.DecimalField(max_digits=12, decimal_places=2)
     totale = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class _ReceivableOrfanoSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    tenant = serializers.CharField()
+    causale = serializers.CharField()
+    importo = serializers.DecimalField(max_digits=12, decimal_places=2)
+    data = serializers.DateField()
+    motivo = serializers.CharField()
+
+
+class _ExpenseOrfanaSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    descrizione = serializers.CharField()
+    categoria = serializers.CharField()
+    importo = serializers.DecimalField(max_digits=12, decimal_places=2)
+    data = serializers.DateField()
+    motivo = serializers.CharField()
+
+
+class QuadraturaSerializer(serializers.Serializer):
+    """Serializer per accounting.services.saldi_live.Quadratura."""
+    somma_saldi = serializers.DecimalField(max_digits=12, decimal_places=2)
+    quadra = serializers.BooleanField()
+    receivable_orfani = _ReceivableOrfanoSerializer(many=True)
+    expense_orfane = _ExpenseOrfanaSerializer(many=True)
+
+
+class PianoRientroVoceSerializer(serializers.Serializer):
+    """Un bonifico proposto del piano di rientro: da → a, importo."""
+    da = _OwnerMinimalSerializer()
+    a = _OwnerMinimalSerializer()
+    importo = serializers.DecimalField(max_digits=12, decimal_places=2)

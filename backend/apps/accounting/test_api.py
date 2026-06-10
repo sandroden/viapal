@@ -337,9 +337,12 @@ class TestActionSaldiLive:
         )
         resp = client_prop.get("/api/v1/owner-ledger/saldi-live/")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
-        assert len(resp.json()) == 1
-        assert resp.json()[0]["owner"]["nominativo"] == "Proprietario ACC 1"
+        body = resp.json()
+        assert set(body.keys()) == {"saldi", "quadratura", "piano_rientro"}
+        assert len(body["saldi"]) == 1
+        assert body["saldi"][0]["owner"]["nominativo"] == "Proprietario ACC 1"
+        assert body["quadratura"]["quadra"] is True
+        assert body["piano_rientro"] == []
 
     def test_at_invalido_400(self, client_prop):
         resp = client_prop.get("/api/v1/owner-ledger/saldi-live/?at=non-una-data")
@@ -347,6 +350,72 @@ class TestActionSaldiLive:
 
     def test_inquilino_non_accede(self, client_inq):
         resp = client_inq.get("/api/v1/owner-ledger/saldi-live/")
+        assert resp.status_code == 403
+
+
+class TestActionGeneraSettlement:
+    @pytest.fixture
+    def quota_unica(self, owner_1):
+        return OwnershipShare.objects.create(
+            owner=owner_1, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
+        )
+
+    def test_dry_run_non_persiste(self, client_prop, quota_unica):
+        resp = client_prop.post(
+            "/api/v1/owner-settlements/genera/",
+            data={"anno": 2024, "dry_run": True},
+            format="json",
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["dry_run"] is True
+        assert body["id"] is None
+        assert body["periodo_da"] == "2024-01-01"
+        from accounting.models import OwnerSettlement
+        assert OwnerSettlement.objects.count() == 0
+
+    def test_genera_persiste(self, client_prop, quota_unica):
+        resp = client_prop.post(
+            "/api/v1/owner-settlements/genera/",
+            data={"anno": 2024},
+            format="json",
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["id"] is not None
+        from accounting.models import OwnerSettlement
+        assert OwnerSettlement.objects.filter(pk=body["id"]).exists()
+
+    def test_doppia_generazione_409(self, client_prop, quota_unica):
+        client_prop.post(
+            "/api/v1/owner-settlements/genera/", data={"anno": 2024}, format="json",
+        )
+        resp = client_prop.post(
+            "/api/v1/owner-settlements/genera/", data={"anno": 2024}, format="json",
+        )
+        assert resp.status_code == 409
+
+    def test_reset_rigenera(self, client_prop, quota_unica):
+        client_prop.post(
+            "/api/v1/owner-settlements/genera/", data={"anno": 2024}, format="json",
+        )
+        resp = client_prop.post(
+            "/api/v1/owner-settlements/genera/",
+            data={"anno": 2024, "reset": True},
+            format="json",
+        )
+        assert resp.status_code == 201
+
+    def test_senza_anno_ne_periodo_400(self, client_prop, quota_unica):
+        resp = client_prop.post(
+            "/api/v1/owner-settlements/genera/", data={}, format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_inquilino_non_accede(self, client_inq):
+        resp = client_inq.post(
+            "/api/v1/owner-settlements/genera/", data={"anno": 2024}, format="json",
+        )
         assert resp.status_code == 403
 
 

@@ -11,10 +11,13 @@ from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from accounting.models import InterOwnerEntry, OwnerLedgerEntry, OwnerSettlement
 from accounting.serializers import (
+    GeneraSettlementSerializer,
     InterOwnerEntrySerializer,
     MarcaBtInterOwnerSerializer,
     OwnerLedgerEntrySerializer,
     OwnerSettlementSerializer,
+    PianoRientroVoceSerializer,
+    QuadraturaSerializer,
     SaldoLiveSerializer,
 )
 from accounting.services.bt_inter_owner import (
@@ -22,7 +25,12 @@ from accounting.services.bt_inter_owner import (
     disfa_marcatura,
     marca_bt_come_ledger,
 )
-from accounting.services.saldi_live import calcola_saldi_correnti
+from accounting.services.saldi_live import (
+    calcola_piano_rientro,
+    calcola_saldi_correnti,
+    verifica_quadratura,
+)
+from accounting.services.settlement import SettlementGiaEsistente, genera_settlement
 from accounts.permissions import IsProprietario
 from billing.models.payments import BankTransaction
 from properties.models import OwnerProfile
@@ -91,7 +99,10 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="saldi-live")
     def saldi_live(self, request):
-        """Saldi correnti calcolati al volo. Query param `?at=YYYY-MM-DD`."""
+        """Saldi correnti calcolati al volo. Query param `?at=YYYY-MM-DD`.
+
+        Risposta: {saldi: [...], quadratura: {...}, piano_rientro: [...]}.
+        """
         at_raw = request.query_params.get("at")
         try:
             at_date = datetime.date.fromisoformat(at_raw) if at_raw else datetime.date.today()
@@ -101,6 +112,8 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         saldi = calcola_saldi_correnti(at_date)
+        quadratura = verifica_quadratura(at_date, saldi)
+        piano = calcola_piano_rientro(saldi)
         items = [
             {
                 "owner": {"id": s.owner.pk, "nominativo": s.owner.nominativo},
@@ -114,16 +127,66 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
             }
             for s in saldi.values()
         ]
-        return Response(SaldoLiveSerializer(items, many=True).data)
+        piano_items = [
+            {
+                "da": {"id": v["da"].pk, "nominativo": v["da"].nominativo},
+                "a": {"id": v["a"].pk, "nominativo": v["a"].nominativo},
+                "importo": v["importo"],
+            }
+            for v in piano
+        ]
+        return Response({
+            "saldi": SaldoLiveSerializer(items, many=True).data,
+            "quadratura": QuadraturaSerializer(quadratura).data,
+            "piano_rientro": PianoRientroVoceSerializer(piano_items, many=True).data,
+        })
 
 
 class OwnerSettlementViewSet(ReadOnlyModelViewSet):
-    """Chiusure periodiche dei conti tra fratelli. Read-only: i settlement
-    si creano via management command `genera_settlement`."""
+    """Chiusure periodiche dei conti tra fratelli. La creazione passa
+    dall'action `genera` (con dry-run di anteprima) o dal management
+    command omonimo."""
 
     serializer_class = OwnerSettlementSerializer
     permission_classes = [IsProprietario]
     queryset = OwnerSettlement.objects.order_by("-data")
+
+    @action(detail=False, methods=["post"], url_path="genera")
+    def genera(self, request):
+        """Genera/rigenera un settlement. Con dry_run=True calcola lo
+        snapshot e fa rollback: serve da anteprima prima della conferma."""
+        ser = GeneraSettlementSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        d = ser.validated_data
+        if d.get("anno"):
+            periodo_da = datetime.date(d["anno"], 1, 1)
+            periodo_a = datetime.date(d["anno"], 12, 31)
+        else:
+            periodo_da = d["periodo_da"]
+            periodo_a = d["periodo_a"]
+
+        try:
+            settlement = genera_settlement(
+                periodo_da,
+                periodo_a,
+                descrizione=d.get("descrizione") or None,
+                reset=d["reset"],
+                dry_run=d["dry_run"],
+            )
+        except SettlementGiaEsistente as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({
+            # In dry-run il record è rollbackato: l'id non è riutilizzabile.
+            "id": None if d["dry_run"] else settlement.pk,
+            "periodo_da": periodo_da,
+            "periodo_a": periodo_a,
+            "descrizione": settlement.descrizione,
+            "snapshot": settlement.snapshot,
+            "dry_run": d["dry_run"],
+        }, status=status.HTTP_200_OK if d["dry_run"] else status.HTTP_201_CREATED)
 
 
 class InterOwnerEntryViewSet(ModelViewSet):

@@ -149,6 +149,50 @@ def test_voci_create_per_expense_con_anticipo(db, quote_due_e_uno, sandro, expen
     assert anticipo.importo == Decimal("1200")
 
 
+def test_voci_per_expense_con_riferimento_quota_owner(db, quote_due_e_uno, sandro, bruna, fabio):
+    """Bruna paga IMU di Fabio: solo 2 voci (SPESA intera per Fabio, ANTICIPO
+    per Bruna), somma zero, Sandro non toccato."""
+    cat = ExpenseCategory.objects.create(nome="IMU", codice="imu")
+    exp = Expense.objects.create(
+        data=datetime.date(2024, 6, 16),
+        category=cat,
+        importo=Decimal("1200"),
+        descrizione="IMU 2024 Fabio",
+        anticipata_da_owner=bruna,
+        riferimento_quota_owner=fabio,
+    )
+    settlement = genera_settlement(datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
+    voci = OwnerLedgerEntry.objects.filter(
+        riferimento_settlement=settlement, riferimento_expense=exp,
+    )
+    assert voci.count() == 2
+    spesa = voci.get(tipo=OwnerLedgerEntry.TipoVoce.SPESA)
+    assert spesa.owner == fabio
+    assert spesa.importo == Decimal("-1200")
+    anticipo = voci.get(tipo=OwnerLedgerEntry.TipoVoce.ANTICIPO)
+    assert anticipo.owner == bruna
+    assert anticipo.importo == Decimal("1200")
+    assert Decimal(settlement.snapshot[str(sandro.pk)]) == Decimal("0.00")
+    assert Decimal(settlement.snapshot[str(bruna.pk)]) == Decimal("1200.00")
+    assert Decimal(settlement.snapshot[str(fabio.pk)]) == Decimal("-1200.00")
+
+
+def test_spesa_personale_pagata_da_se_nessuna_voce(db, quote_due_e_uno, fabio):
+    """Fabio paga la propria IMU: il settlement non crea voci."""
+    cat = ExpenseCategory.objects.create(nome="IMU", codice="imu")
+    exp = Expense.objects.create(
+        data=datetime.date(2024, 6, 16),
+        category=cat,
+        importo=Decimal("1200"),
+        descrizione="IMU 2024 Fabio",
+        anticipata_da_owner=fabio,
+        riferimento_quota_owner=fabio,
+    )
+    settlement = genera_settlement(datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
+    assert not OwnerLedgerEntry.objects.filter(riferimento_expense=exp).exists()
+    assert Decimal(settlement.snapshot[str(fabio.pk)]) == Decimal("0.00")
+
+
 def test_voce_straordinaria_marcata_in_descrizione(db, quote_due_e_uno, sandro):
     cat = ExpenseCategory.objects.create(nome="Manutenzione", codice="manut")
     Expense.objects.create(
@@ -162,6 +206,42 @@ def test_voce_straordinaria_marcata_in_descrizione(db, quote_due_e_uno, sandro):
     settlement = genera_settlement(datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
     voci = OwnerLedgerEntry.objects.filter(riferimento_settlement=settlement)
     assert any("[straord]" in v.descrizione for v in voci)
+
+
+def test_somma_zero_con_quote_a_terzi(db, sandro, bruna, fabio, assignment):
+    """Quote 0.3334/0.3333/0.3333: il resto di arrotondamento non deve
+    rompere la cassa virtuale (somma voci = 0 e somma snapshot = 0)."""
+    OwnershipShare.objects.create(owner=sandro, valid_from=datetime.date(2020, 1, 1), quota=Decimal("0.3334"))
+    OwnershipShare.objects.create(owner=bruna, valid_from=datetime.date(2020, 1, 1), quota=Decimal("0.3333"))
+    OwnershipShare.objects.create(owner=fabio, valid_from=datetime.date(2020, 1, 1), quota=Decimal("0.3333"))
+    # Importo che non si divide bene per tre.
+    Receivable.objects.create(
+        assignment=assignment,
+        causale=Receivable.Causale.AFFITTO,
+        competenza_da=datetime.date(2024, 4, 1),
+        competenza_a=datetime.date(2024, 4, 30),
+        scadenza=datetime.date(2024, 4, 5),
+        importo_dovuto=Decimal("400.01"),
+        importo_pagato=Decimal("400.01"),
+        data_pagamento=datetime.date(2024, 4, 4),
+        stato=StatoPagamento.PAGATO,
+        incassato_da_owner=bruna,
+    )
+    cat = ExpenseCategory.objects.create(nome="IMU", codice="imu")
+    Expense.objects.create(
+        data=datetime.date(2024, 6, 16),
+        category=cat,
+        importo=Decimal("1000.01"),
+        descrizione="IMU",
+        anticipata_da_owner=sandro,
+    )
+    settlement = genera_settlement(datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
+    totale_voci = OwnerLedgerEntry.objects.filter(
+        riferimento_settlement=settlement,
+    ).aggregate(t=Sum("importo"))["t"]
+    assert totale_voci == Decimal("0.00")
+    somma_snapshot = sum(Decimal(v) for v in settlement.snapshot.values())
+    assert somma_snapshot == Decimal("0.00")
 
 
 def test_idempotenza_richiede_reset(db, quote_due_e_uno, receivable_aprile):

@@ -16,6 +16,11 @@ ledger la cui somma è zero. La somma per owner ricostruisce il saldo netto.
     Saldo A = -quota_A·I + I = (1-quota_A)·I  (credito verso gli altri).
     Saldo X≠A = -quota_X·I  (debito verso A).
 
+- Expense E con `riferimento_quota_owner` = R (es. Bruna paga IMU di Fabio):
+    niente pro-quota: voce SPESA per R, importo = -I; voce ANTICIPO per A,
+    importo = +I. Gli altri owner non sono toccati. Se A == R (spesa personale
+    pagata da sé) non si crea alcuna voce.
+
 Tutte le voci sono collegate al settlement via `riferimento_settlement` e al
 record sorgente (Receivable/Expense). I vincoli unique parziali ne garantiscono
 l'idempotenza senza bisogno di chiavi composite.
@@ -36,6 +41,25 @@ from properties.models import OwnerProfile, quote_attive_at
 
 class SettlementGiaEsistente(Exception):
     """Il settlement per questo periodo esiste già: passare reset=True."""
+
+
+def _ripartisci(importo: Decimal, quote: dict[OwnerProfile, Decimal]) -> dict[OwnerProfile, Decimal]:
+    """Ripartisce `importo` pro-quota arrotondando al centesimo.
+
+    Il resto di arrotondamento finisce sull'ultimo owner (ordine pk) così la
+    somma delle parti è *esattamente* `importo`: con quote tipo 1/3 il
+    quantize per-voce accumulerebbe centesimi e la cassa virtuale non
+    sommerebbe più a zero (visibile poi come falsa non-quadratura).
+    """
+    owners = sorted(quote, key=lambda o: o.pk)
+    parti: dict[OwnerProfile, Decimal] = {}
+    accumulato = Decimal("0")
+    for o in owners[:-1]:
+        v = (quote[o] * importo).quantize(Decimal("0.01"))
+        parti[o] = v
+        accumulato += v
+    parti[owners[-1]] = importo - accumulato
+    return parti
 
 
 @transaction.atomic
@@ -101,12 +125,12 @@ def _crea_voci_da_receivable(
     for r in rec_qs:
         importo = r.importo_pagato
         descr_base = f"{r.get_causale_display()} {r.assignment.tenant} {r.competenza_da or r.scadenza}"
-        for owner, quota in quote.items():
+        for owner, parte in _ripartisci(importo, quote).items():
             OwnerLedgerEntry.objects.create(
                 owner=owner,
                 data=r.data_pagamento,
                 descrizione=f"Quota {descr_base}",
-                importo=(quota * importo).quantize(Decimal("0.01")),
+                importo=parte,
                 tipo=OwnerLedgerEntry.TipoVoce.INCASSO_AFFITTO,
                 riferimento_receivable=r,
                 riferimento_settlement=settlement,
@@ -128,20 +152,46 @@ def _crea_voci_da_expense(
     periodo_a: date,
     quote: dict[OwnerProfile, Decimal],
 ) -> None:
-    exp_qs = Expense.objects.select_related("category", "anticipata_da_owner").filter(
+    exp_qs = Expense.objects.select_related(
+        "category", "anticipata_da_owner", "riferimento_quota_owner"
+    ).filter(
         data__gte=periodo_da,
         data__lte=periodo_a,
     )
+    owner_per_pk = {o.pk: o for o in quote}
     for e in exp_qs:
         descr_base = f"{e.category.nome} — {e.descrizione}"
         if e.is_straordinaria:
             descr_base = f"[straord] {descr_base}"
-        for owner, quota in quote.items():
+        if e.riferimento_quota_owner_id and e.riferimento_quota_owner_id in owner_per_pk:
+            # Spesa interamente di un owner specifico: niente pro-quota.
+            if e.riferimento_quota_owner_id == e.anticipata_da_owner_id:
+                continue  # spesa personale pagata da sé: nessuna voce
+            OwnerLedgerEntry.objects.create(
+                owner=owner_per_pk[e.riferimento_quota_owner_id],
+                data=e.data,
+                descrizione=f"Spesa personale {descr_base}",
+                importo=-e.importo,
+                tipo=OwnerLedgerEntry.TipoVoce.SPESA,
+                riferimento_expense=e,
+                riferimento_settlement=settlement,
+            )
+            OwnerLedgerEntry.objects.create(
+                owner=e.anticipata_da_owner,
+                data=e.data,
+                descrizione=f"Anticipo {descr_base}",
+                importo=e.importo,
+                tipo=OwnerLedgerEntry.TipoVoce.ANTICIPO,
+                riferimento_expense=e,
+                riferimento_settlement=settlement,
+            )
+            continue
+        for owner, parte in _ripartisci(e.importo, quote).items():
             OwnerLedgerEntry.objects.create(
                 owner=owner,
                 data=e.data,
                 descrizione=f"Quota {descr_base}",
-                importo=-(quota * e.importo).quantize(Decimal("0.01")),
+                importo=-parte,
                 tipo=OwnerLedgerEntry.TipoVoce.SPESA,
                 riferimento_expense=e,
                 riferimento_settlement=settlement,
