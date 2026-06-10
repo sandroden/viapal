@@ -26,6 +26,59 @@
       </div>
     </header>
 
+    <!-- Banner quadratura -->
+    <q-banner
+      v-if="store.quadratura && !store.quadratura.quadra"
+      rounded
+      class="vp-saldi__banner-quadratura"
+    >
+      <template #avatar>
+        <q-icon name="warning_amber" color="deep-orange" />
+      </template>
+      <div class="text-weight-medium">
+        I saldi non quadrano
+        <span v-if="Number(store.quadratura.somma_saldi) !== 0">
+          (somma = {{ formattaEuro(store.quadratura.somma_saldi) }}, dovrebbe essere 0,00&nbsp;€)
+        </span>
+      </div>
+      <div class="vp-saldi__quadratura-dettaglio">
+        <div v-if="store.quadratura.receivable_orfani.length">
+          <strong>{{ store.quadratura.receivable_orfani.length }}</strong>
+          incassi esclusi dal calcolo:
+          <ul>
+            <li v-for="r in store.quadratura.receivable_orfani" :key="`r-${r.id}`">
+              {{ formattaData(r.data) }} — {{ r.tenant }} · {{ r.causale }} ·
+              <span class="vp-mono">{{ formattaEuro(r.importo) }}</span>
+              <span class="text-grey-8"> ({{ r.motivo }})</span>
+            </li>
+          </ul>
+          <router-link to="/p/riconciliazione">
+            Correggili dalla Riconciliazione
+          </router-link>
+        </div>
+        <div v-if="store.quadratura.expense_orfane.length" class="q-mt-sm">
+          <strong>{{ store.quadratura.expense_orfane.length }}</strong>
+          spese con anticipante senza quota attiva:
+          <ul>
+            <li v-for="e in store.quadratura.expense_orfane" :key="`e-${e.id}`">
+              {{ formattaData(e.data) }} — {{ e.categoria }} · {{ e.descrizione }} ·
+              <span class="vp-mono">{{ formattaEuro(e.importo) }}</span>
+              <a :href="`/admin/billing/expense/${e.id}/change/`" target="_blank">
+                correggi
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </q-banner>
+    <div
+      v-else-if="store.quadratura"
+      class="vp-saldi__quadratura-ok"
+    >
+      <q-icon name="check_circle" size="16px" />
+      Saldi quadrati: la somma fa zero e ogni movimento ha un responsabile.
+    </div>
+
     <!-- Sezione 1: saldi live -->
     <section class="vp-saldi__sezione">
       <div class="vp-eyebrow">Saldi live alla data</div>
@@ -94,7 +147,16 @@
               </q-item-section>
             </q-item>
             <q-item v-if="Number(s.anticipi_pendenti) !== 0" dense>
-              <q-item-section caption>Anticipi pendenti</q-item-section>
+              <q-item-section caption>
+                di cui anticipi di tasca propria
+                <q-icon name="info_outline" size="13px" class="q-ml-xs">
+                  <q-tooltip max-width="260px">
+                    Fetta delle spese anticipate da {{ s.owner.nominativo }}
+                    che gli altri gli devono. È già compresa nelle "Spese
+                    pro-quota" qui sopra, non si somma al totale.
+                  </q-tooltip>
+                </q-icon>
+              </q-item-section>
               <q-item-section side class="vp-mono" :class="totaleClass(s.anticipi_pendenti)">
                 {{ formattaEuro(s.anticipi_pendenti) }}
               </q-item-section>
@@ -115,9 +177,51 @@
       </div>
     </section>
 
+    <!-- Sezione: chi deve a chi (piano di rientro) -->
+    <section class="vp-saldi__sezione">
+      <div class="vp-eyebrow">Chi deve a chi</div>
+      <p class="vp-saldi__hint">
+        Bonifici minimi per azzerare i saldi alla data. Una volta fatti,
+        marcali come inter-owner dalla Riconciliazione: i saldi si
+        aggiornano da soli.
+      </p>
+      <q-list separator bordered class="vp-saldi__lista">
+        <q-item v-for="(v, i) in store.pianoRientro" :key="i">
+          <q-item-section avatar>
+            <q-icon name="swap_horiz" color="primary" />
+          </q-item-section>
+          <q-item-section>
+            <q-item-label class="vp-saldi__rientro-riga">
+              <strong>{{ v.da.nominativo }}</strong>
+              <q-icon name="east" size="16px" class="q-mx-sm" />
+              <strong>{{ v.a.nominativo }}</strong>
+            </q-item-label>
+          </q-item-section>
+          <q-item-section side class="vp-mono vp-saldi__rientro-importo">
+            {{ formattaEuro(v.importo) }}
+          </q-item-section>
+        </q-item>
+        <q-item v-if="store.pianoRientro.length === 0">
+          <q-item-section class="text-grey-7">
+            Saldi a zero: nessun bonifico necessario.
+          </q-item-section>
+        </q-item>
+      </q-list>
+    </section>
+
     <!-- Sezione 2: settlement chiusi -->
     <section class="vp-saldi__sezione">
-      <div class="vp-eyebrow">Settlement chiusi</div>
+      <div class="vp-saldi__sezione-head">
+        <div class="vp-eyebrow">Settlement chiusi</div>
+        <q-btn
+          outline
+          color="primary"
+          icon="event_available"
+          no-caps
+          label="Chiudi periodo…"
+          @click="apriChiusura"
+        />
+      </div>
       <q-list separator bordered class="vp-saldi__lista">
         <q-item
           v-for="set in store.settlements"
@@ -152,8 +256,7 @@
         </q-item>
         <q-item v-if="store.settlements.length === 0">
           <q-item-section class="text-grey-7">
-            Nessun settlement chiuso. Lancia
-            <code>uv run manage.py genera_settlement --anno YYYY</code>.
+            Nessun settlement chiuso. Usa "Chiudi periodo…" qui sopra.
           </q-item-section>
         </q-item>
       </q-list>
@@ -221,6 +324,86 @@
       </q-list>
     </section>
 
+    <!-- Modal chiusura periodo -->
+    <q-dialog v-model="dialogChiusuraAperto">
+      <q-card class="vp-saldi__dialog">
+        <q-card-section class="row items-center q-pb-none">
+          <div>
+            <div class="vp-eyebrow">Chiusura conti</div>
+            <div class="vp-display vp-saldi__dialog-titolo">Chiudi periodo</div>
+          </div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
+        </q-card-section>
+        <q-card-section>
+          <div class="vp-saldi__chiusura-form">
+            <q-input
+              v-model.number="chiusuraAnno"
+              dense
+              outlined
+              type="number"
+              label="Anno da chiudere"
+              style="max-width: 160px"
+            />
+            <q-input
+              v-model="chiusuraDescrizione"
+              dense
+              outlined
+              label="Descrizione (opzionale)"
+              :placeholder="`Chiusura ${chiusuraAnno}`"
+            />
+            <q-checkbox
+              v-model="chiusuraReset"
+              dense
+              label="Rigenera se già esistente"
+            />
+          </div>
+          <q-banner v-if="chiusuraErrore" rounded dense class="bg-red-1 text-red-9 q-mt-md">
+            {{ chiusuraErrore }}
+          </q-banner>
+
+          <template v-if="anteprimaChiusura">
+            <div class="vp-eyebrow q-mt-md">
+              Anteprima saldi alla chiusura
+              ({{ formattaData(anteprimaChiusura.periodo_da) }} →
+              {{ formattaData(anteprimaChiusura.periodo_a) }})
+            </div>
+            <q-list dense separator class="q-mt-sm">
+              <q-item
+                v-for="[ownerId, saldo] in Object.entries(anteprimaChiusura.snapshot)"
+                :key="ownerId"
+                dense
+              >
+                <q-item-section>{{ nominativoOwner(Number(ownerId)) }}</q-item-section>
+                <q-item-section side class="vp-mono" :class="totaleClass(saldo)">
+                  {{ formattaEuro(saldo) }}
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </template>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn
+            flat
+            no-caps
+            color="primary"
+            label="Anteprima (non salva)"
+            :loading="chiusuraInCorso"
+            @click="anteprimaSettlement"
+          />
+          <q-btn
+            unelevated
+            no-caps
+            color="primary"
+            label="Conferma chiusura"
+            :disable="!anteprimaChiusura"
+            :loading="chiusuraInCorso"
+            @click="confermaSettlement"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
     <!-- Modal voci settlement -->
     <q-dialog v-model="dialogSettlementAperto">
       <q-card class="vp-saldi__dialog">
@@ -263,6 +446,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import {
   useSaldiFratelliStore,
+  type GeneraSettlementEsito,
   type OwnerLedgerEntryFE,
   type OwnerSettlementFE,
 } from 'stores/saldiFratelli';
@@ -286,6 +470,14 @@ const atDate = ref<string>(isoOggi());
 const dialogSettlementAperto = ref(false);
 const settlementSelezionato = ref<OwnerSettlementFE | null>(null);
 const vociSettlement = ref<OwnerLedgerEntryFE[]>([]);
+
+const dialogChiusuraAperto = ref(false);
+const chiusuraAnno = ref<number>(new Date().getFullYear() - 1);
+const chiusuraDescrizione = ref('');
+const chiusuraReset = ref(false);
+const chiusuraInCorso = ref(false);
+const chiusuraErrore = ref<string | null>(null);
+const anteprimaChiusura = ref<GeneraSettlementEsito | null>(null);
 
 const ledgerEntriesAggregate = computed(() => {
   // Una BT può avere più voci ledger (es. distribuzione: 2 voci simmetriche).
@@ -349,6 +541,56 @@ function etichettaCategoria(chiave: string): string {
   const [codice, tipo] = chiave.split('|');
   const tag = tipo === 'straord' ? ' (straord.)' : '';
   return `${codice ?? chiave}${tag}`;
+}
+
+function apriChiusura() {
+  chiusuraErrore.value = null;
+  anteprimaChiusura.value = null;
+  dialogChiusuraAperto.value = true;
+}
+
+function erroreApi(e: unknown): string {
+  const detail = (e as { response?: { data?: { detail?: string } } })
+    ?.response?.data?.detail;
+  return detail ?? (e as Error)?.message ?? 'Errore imprevisto';
+}
+
+async function anteprimaSettlement() {
+  chiusuraInCorso.value = true;
+  chiusuraErrore.value = null;
+  try {
+    anteprimaChiusura.value = await store.generaSettlement({
+      anno: chiusuraAnno.value,
+      descrizione: chiusuraDescrizione.value || undefined,
+      reset: chiusuraReset.value,
+      dry_run: true,
+    });
+  } catch (e: unknown) {
+    anteprimaChiusura.value = null;
+    chiusuraErrore.value = erroreApi(e);
+  } finally {
+    chiusuraInCorso.value = false;
+  }
+}
+
+async function confermaSettlement() {
+  chiusuraInCorso.value = true;
+  chiusuraErrore.value = null;
+  try {
+    await store.generaSettlement({
+      anno: chiusuraAnno.value,
+      descrizione: chiusuraDescrizione.value || undefined,
+      reset: chiusuraReset.value,
+      dry_run: false,
+    });
+    dialogChiusuraAperto.value = false;
+    anteprimaChiusura.value = null;
+    await ricarica();
+  } catch (e: unknown) {
+    chiusuraErrore.value = erroreApi(e);
+  } finally {
+    chiusuraInCorso.value = false;
+  }
 }
 
 async function apriSettlement(set: OwnerSettlementFE) {
@@ -448,6 +690,47 @@ watch(atDate, () => {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+.vp-saldi__sezione-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--vp-gap-2);
+}
+.vp-saldi__chiusura-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-gap-2);
+  align-items: center;
+}
+.vp-saldi__banner-quadratura {
+  background: #fdeee4;
+  border: 1px solid #e8b89a;
+  margin-bottom: var(--vp-gap-4);
+}
+.vp-saldi__quadratura-dettaglio {
+  font-size: 0.85rem;
+  margin-top: var(--vp-gap-1);
+}
+.vp-saldi__quadratura-dettaglio ul {
+  margin: var(--vp-gap-1) 0;
+  padding-left: 1.2em;
+}
+.vp-saldi__quadratura-ok {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #2e7a39;
+  font-size: 0.85rem;
+  margin-bottom: var(--vp-gap-4);
+}
+.vp-saldi__rientro-riga {
+  display: flex;
+  align-items: center;
+}
+.vp-saldi__rientro-importo {
+  font-size: 1.05rem;
+  font-weight: 600;
 }
 .vp-saldi__pos {
   color: #2e7a39;

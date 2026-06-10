@@ -223,8 +223,13 @@
       >
         <div class="vp-p-home__sezione-head">
           <div>
-            <div class="vp-eyebrow">Bilancio proprietari</div>
+            <div class="vp-eyebrow">Flussi di cassa proprietari</div>
             <h2 class="vp-display vp-p-home__h2">Entrate vs uscite — anno {{ data.anno }}</h2>
+            <p class="vp-p-home__sezione-nota">
+              Quanto è transitato dalle tasche di ciascuno (incassato −
+              anticipato), non il dare/avere: per quello vedi
+              <router-link to="/p/saldi-fratelli">Saldi fratelli</router-link>.
+            </p>
           </div>
         </div>
         <q-table
@@ -473,7 +478,7 @@ const colonneBilancio: QTableProps['columns'] = [
     align: 'right',
     format: (v: number) => formattaEuro(v),
   },
-  { name: 'saldo', label: 'Saldo', field: 'saldo', align: 'right' },
+  { name: 'saldo', label: 'Flusso di cassa', field: 'saldo', align: 'right' },
 ];
 
 const colonneBreakdown: QTableProps['columns'] = [
@@ -548,6 +553,11 @@ const colonneBreakdown: QTableProps['columns'] = [
   align-items: center;
   margin-bottom: var(--vp-gap-3);
   gap: var(--vp-gap-3);
+}
+.vp-p-home__sezione-nota {
+  color: var(--vp-ink-2);
+  font-size: 0.8rem;
+  margin: var(--vp-gap-1) 0 0;
 }
 .vp-p-home__h2 {
   font-size: var(--vp-text-xl);

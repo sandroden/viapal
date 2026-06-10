@@ -17,6 +17,59 @@ export interface SaldoLiveFE {
   totale: string;
 }
 
+export interface ReceivableOrfanoFE {
+  id: number;
+  tenant: string;
+  causale: string;
+  importo: string;
+  data: string;
+  motivo: string;
+}
+
+export interface ExpenseOrfanaFE {
+  id: number;
+  descrizione: string;
+  categoria: string;
+  importo: string;
+  data: string;
+  motivo: string;
+}
+
+export interface QuadraturaFE {
+  somma_saldi: string;
+  quadra: boolean;
+  receivable_orfani: ReceivableOrfanoFE[];
+  expense_orfane: ExpenseOrfanaFE[];
+}
+
+export interface PianoRientroVoceFE {
+  da: OwnerMinimale;
+  a: OwnerMinimale;
+  importo: string;
+}
+
+interface SaldiLiveResponse {
+  saldi: SaldoLiveFE[];
+  quadratura: QuadraturaFE;
+  piano_rientro: PianoRientroVoceFE[];
+}
+
+export interface GeneraSettlementPayload {
+  anno: number;
+  descrizione?: string | undefined;
+  dry_run?: boolean;
+  reset?: boolean;
+}
+
+export interface GeneraSettlementEsito {
+  id: number | null;
+  periodo_da: string;
+  periodo_a: string;
+  descrizione: string;
+  snapshot: Record<string, string>;
+  dry_run: boolean;
+}
+
 export interface OwnerSettlementFE {
   id: number;
   data: string;
@@ -61,6 +114,8 @@ export interface InterOwnerEntryFE {
 
 interface State {
   saldi: SaldoLiveFE[];
+  quadratura: QuadraturaFE | null;
+  pianoRientro: PianoRientroVoceFE[];
   settlements: OwnerSettlementFE[];
   ledgerEntries: OwnerLedgerEntryFE[];
   bilaterali: InterOwnerEntryFE[];
@@ -77,6 +132,8 @@ function asArray<T>(data: T[] | { results: T[] } | undefined | null): T[] {
 export const useSaldiFratelliStore = defineStore('saldiFratelli', {
   state: (): State => ({
     saldi: [],
+    quadratura: null,
+    pianoRientro: [],
     settlements: [],
     ledgerEntries: [],
     bilaterali: [],
@@ -90,11 +147,13 @@ export const useSaldiFratelliStore = defineStore('saldiFratelli', {
       try {
         const params: Record<string, string> = {};
         if (at) params.at = at;
-        const { data } = await api.get<SaldoLiveFE[]>(
+        const { data } = await api.get<SaldiLiveResponse>(
           '/api/v1/owner-ledger/saldi-live/',
           { params },
         );
-        this.saldi = data;
+        this.saldi = data.saldi;
+        this.quadratura = data.quadratura;
+        this.pianoRientro = data.piano_rientro;
       } catch (e: unknown) {
         this.errore = (e as Error)?.message ?? 'Errore caricamento saldi';
       } finally {
@@ -118,6 +177,15 @@ export const useSaldiFratelliStore = defineStore('saldiFratelli', {
         InterOwnerEntryFE[] | { results: InterOwnerEntryFE[] }
       >('/api/v1/inter-owner-entries/');
       this.bilaterali = asArray(data);
+    },
+    async generaSettlement(
+      payload: GeneraSettlementPayload,
+    ): Promise<GeneraSettlementEsito> {
+      const { data } = await api.post<GeneraSettlementEsito>(
+        '/api/v1/owner-settlements/genera/',
+        payload,
+      );
+      return data;
     },
     async fetchLedgerBySettlement(settlementId: number): Promise<OwnerLedgerEntryFE[]> {
       const { data } = await api.get<
