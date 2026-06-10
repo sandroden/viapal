@@ -75,6 +75,7 @@ const vociMenu = [
   { to: '/p/utenze', label: 'Utenze', icon: 'bolt' },
   { to: '/p/riconciliazione', label: 'Riconciliazione', icon: 'compare_arrows' },
   { to: '/p/saldi-fratelli', label: 'Saldi fratelli', icon: 'account_balance' },
+  { to: '/p/conto-economico', label: 'Conto economico', icon: 'assessment' },
   { to: '/p/quick-add', label: 'Aggiungi rapida', icon: 'add_circle' },
 ];
 

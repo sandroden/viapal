@@ -6,6 +6,7 @@ from django.urls import path
 from billing.dashboard_views import (
     BilancioOwnerDettaglioView,
     ConguagliaPrevisionaleView,
+    ContoEconomicoView,
     DashboardInquilinoView,
     DashboardProprietarioView,
     PrevisionaleUtenzeView,
@@ -17,6 +18,11 @@ from billing.dashboard_views import (
 urlpatterns = [
     path("dashboard/inquilino/", DashboardInquilinoView.as_view(), name="dashboard-inquilino"),
     path("dashboard/proprietario/", DashboardProprietarioView.as_view(), name="dashboard-proprietario"),
+    path(
+        "dashboard/conto-economico/",
+        ContoEconomicoView.as_view(),
+        name="dashboard-conto-economico",
+    ),
     path(
         "dashboard/proprietario/<int:owner_id>/dettaglio-bilancio/",
         BilancioOwnerDettaglioView.as_view(),

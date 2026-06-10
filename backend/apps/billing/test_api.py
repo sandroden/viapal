@@ -2227,3 +2227,132 @@ class TestPrevisionaleEConguaglio:
             format="json",
         )
         assert resp.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Test Conto economico
+# ---------------------------------------------------------------------------
+
+
+class TestContoEconomico:
+    @pytest.fixture
+    def owner_ce(self, db, gruppo_proprietari):
+        u = User.objects.create_user("ce_prop", email="ce@v.it", password="pwd123!")
+        u.groups.add(gruppo_proprietari)
+        return OwnerProfile.objects.create(user=u, nominativo="Owner CE")
+
+    @pytest.fixture
+    def quote_ce(self, db, owner_ce):
+        from properties.models import OwnershipShare
+        return OwnershipShare.objects.create(
+            owner=owner_ce, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
+        )
+
+    @pytest.fixture
+    def flussi_2025(self, db, assignment_1, owner_ce):
+        """Affitto di dicembre 2025 pagato a gennaio 2026 + spesa ordinaria
+        e straordinaria nel 2025."""
+        from billing.models import Expense, ExpenseCategory
+        Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.AFFITTO,
+            competenza_da=datetime.date(2025, 12, 1),
+            competenza_a=datetime.date(2025, 12, 31),
+            importo_dovuto=Decimal("400"),
+            importo_pagato=Decimal("400"),
+            scadenza=datetime.date(2025, 12, 5),
+            data_pagamento=datetime.date(2026, 1, 8),
+            stato=StatoPagamento.PAGATO,
+            incassato_da_owner=owner_ce,
+        )
+        Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.AFFITTO,
+            competenza_da=datetime.date(2025, 11, 1),
+            competenza_a=datetime.date(2025, 11, 30),
+            importo_dovuto=Decimal("400"),
+            importo_pagato=Decimal("400"),
+            scadenza=datetime.date(2025, 11, 5),
+            data_pagamento=datetime.date(2025, 11, 4),
+            stato=StatoPagamento.PAGATO,
+            incassato_da_owner=owner_ce,
+        )
+        cat = ExpenseCategory.objects.create(nome="IMU CE", codice="imu-ce")
+        Expense.objects.create(
+            data=datetime.date(2025, 6, 16),
+            category=cat,
+            importo=Decimal("300"),
+            descrizione="IMU acconto",
+            anticipata_da_owner=owner_ce,
+        )
+        Expense.objects.create(
+            data=datetime.date(2025, 7, 1),
+            category=cat,
+            importo=Decimal("1000"),
+            descrizione="Rifacimento bagno",
+            anticipata_da_owner=owner_ce,
+            is_straordinaria=True,
+        )
+
+    def test_cassa_vs_competenza(self, client_prop, quote_ce, flussi_2025):
+        resp = client_prop.get("/api/v1/dashboard/conto-economico/?anno=2025")
+        assert resp.status_code == 200
+        body = resp.json()
+        # Cassa 2025: solo l'affitto di novembre (quello di dicembre è
+        # incassato a gennaio 2026).
+        assert body["cassa"]["ricavi"]["rent"] == 400.0
+        # Competenza 2025: entrambi i canoni maturano nel 2025.
+        assert body["competenza"]["ricavi"]["rent"] == 800.0
+        # Spese: 300 ordinarie, 1000 straordinarie in entrambe le letture.
+        assert body["cassa"]["spese_ordinarie"] == 300.0
+        assert body["cassa"]["spese_straordinarie"] == 1000.0
+        assert body["cassa"]["margine_operativo"] == 100.0
+        assert body["cassa"]["utile"] == -900.0
+        assert body["competenza"]["utile"] == -500.0
+
+    def test_utile_pro_quota_e_serie(self, client_prop, quote_ce, flussi_2025, owner_ce):
+        resp = client_prop.get("/api/v1/dashboard/conto-economico/?anno=2025")
+        body = resp.json()
+        pq = body["utile_pro_quota"]
+        assert len(pq) == 1
+        assert pq[0]["owner_id"] == owner_ce.pk
+        assert pq[0]["quota"] == 1.0
+        assert pq[0]["utile_cassa"] == -900.0
+        anni = {r["anno"]: r for r in body["serie_anni"]}
+        assert anni[2025]["ricavi"] == 400.0
+        assert anni[2025]["spese"] == 1300.0
+        assert anni[2026]["ricavi"] == 400.0
+        assert 2025 in body["anni_disponibili"] and 2026 in body["anni_disponibili"]
+
+    def test_non_incassato_in_competenza(self, client_prop, quote_ce, assignment_1):
+        Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.AFFITTO,
+            competenza_da=datetime.date(2025, 10, 1),
+            competenza_a=datetime.date(2025, 10, 31),
+            importo_dovuto=Decimal("400"),
+            scadenza=datetime.date(2025, 10, 5),
+            stato=StatoPagamento.IN_RITARDO,
+        )
+        resp = client_prop.get("/api/v1/dashboard/conto-economico/?anno=2025")
+        body = resp.json()
+        assert body["competenza"]["non_incassato"] == 400.0
+        assert body["competenza"]["non_incassato_voci"] == 1
+
+    def test_occupazione_anno_pieno(self, client_prop, quote_ce, assignment_1, room_2):
+        # assignment_1: dal 2024-09-01, senza fine → camera A occupata tutto
+        # il 2025; camera B mai occupata.
+        resp = client_prop.get("/api/v1/dashboard/conto-economico/?anno=2025")
+        body = resp.json()
+        per_stanza = {o["stanza"]: o for o in body["occupazione"]["per_stanza"]}
+        assert per_stanza["Camera Billing A"]["tasso"] == 1.0
+        assert per_stanza["Camera Billing B"]["tasso"] == 0.0
+        assert body["occupazione"]["tasso_medio"] == 0.5
+
+    def test_inquilino_non_accede(self, client_inq_1):
+        resp = client_inq_1.get("/api/v1/dashboard/conto-economico/")
+        assert resp.status_code == 403
+
+    def test_anno_invalido_400(self, client_prop):
+        resp = client_prop.get("/api/v1/dashboard/conto-economico/?anno=abc")
+        assert resp.status_code == 400

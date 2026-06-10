@@ -96,6 +96,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/ProprietarioSaldiFratelli.vue'),
       },
       {
+        path: 'conto-economico',
+        name: 'p-conto-economico',
+        component: () => import('pages/ProprietarioContoEconomico.vue'),
+      },
+      {
         path: 'utenze',
         name: 'p-utenze',
         component: () => import('pages/ProprietarioUtenze.vue'),
