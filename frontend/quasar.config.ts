@@ -174,33 +174,16 @@ export default defineConfig((/* ctx */) => {
 
     // https://v2.quasar.dev/quasar-cli-vite/developing-pwa/configuring-pwa
     pwa: {
-      workboxMode: 'GenerateSW', // 'GenerateSW' or 'InjectManifest'
+      // InjectManifest: serve il SW custom (src-pwa/custom-service-worker.ts)
+      // per gli handler push/notificationclick delle notifiche. La denylist
+      // dei path Django (fix "pagina beige") vive ora nel SW custom.
+      workboxMode: 'InjectManifest', // 'GenerateSW' or 'InjectManifest'
       // swFilename: 'sw.js',
       // manifestFilename: 'manifest.json',
       // extendManifestJson (json) {},
       // useCredentialsForManifestTag: true,
       // injectPwaMetaTags: false,
       // extendPWACustomSWConf (esbuildConf) {},
-      extendGenerateSWOptions (cfg) {
-        // Il dominio serve sia la SPA sia Django (admin/api/static/...),
-        // instradati da Traefik per path. Senza questa denylist il
-        // navigation fallback di Workbox dirotta /admin sull'index.html
-        // della SPA (pagina "tutta beige"): vanno esclusi i path Django.
-        cfg.navigateFallbackDenylist = [
-          /sw\.js$/,
-          /workbox-(.)*\.js$/,
-          /^\/admin/,
-          /^\/api/,
-          /^\/static/,
-          /^\/media/,
-          /^\/accounts/,
-        ];
-        // Propaga subito il SW corretto ai client che hanno ancora
-        // quello vecchio in cache (altrimenti il fix non arriva finché
-        // non chiudono tutte le tab).
-        cfg.skipWaiting = true;
-        cfg.clientsClaim = true;
-      },
       // extendInjectManifestOptions (cfg) {}
     },
 

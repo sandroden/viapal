@@ -178,6 +178,17 @@ DEFAULT_FROM_EMAIL = os.environ.get(
 # In dev viene sovrascritto in local.py/dev.py con http://localhost:9000.
 APP_BASE_URL = os.environ.get('APP_BASE_URL', 'https://viapal.e-den.it')
 
+# Web Push (VAPID). Chiavi generabili con `manage.py genera_chiavi_vapid`:
+# la pubblica va anche al frontend (pushManager.subscribe), la privata firma
+# il JWT verso il push service. Senza chiavi il canale push è disattivato
+# (le email continuano a funzionare). In prod: env o local.py.
+VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
+VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
+# Contatto richiesto dal protocollo VAPID (claim "sub" del JWT).
+VAPID_CLAIMS_SUB = os.environ.get(
+    'VAPID_CLAIMS_SUB', 'mailto:sandro.dentella@gmail.com'
+)
+
 # allauth: login con username OPPURE email (l'inquilino invitato vede entrambi
 # nell'email di invito). Richiede email univoche — verificato che non ce ne
 # siano di duplicate fra gli utenti esistenti. No verifica email in dev.

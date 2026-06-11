@@ -27,3 +27,9 @@ DATABASES = {
 # Email, Sentry, etc.
 # SENTRY_DSN_KEY = "https://..."
 # DEFAULT_FROM_EMAIL = "noreply@viapal.e-den.it"
+
+# Notifiche Web Push (VAPID). Genera la coppia con:
+#   uv run manage.py genera_chiavi_vapid
+# Senza chiavi il canale push resta disattivato (email ok comunque).
+# VAPID_PRIVATE_KEY = "..."
+# VAPID_PUBLIC_KEY = "..."

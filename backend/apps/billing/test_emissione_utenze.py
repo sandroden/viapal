@@ -299,3 +299,41 @@ class TestInvioAvvisi:
         assert body["inviati"] == 0
         assert body["senza_email"] == ["Mario Rossi"]
         assert len(mailoutbox) == 0
+
+    def test_invio_reale_con_push(self, mailoutbox):
+        """Inquilino con device registrato: oltre all'email parte la push."""
+        from unittest import mock
+
+        from notifications.models import Notification, PushSubscription
+
+        c = _client()
+        pid = _setup_emesso(c)
+        tenant_user = User.objects.get(username="tenant_em")
+        PushSubscription.objects.create(
+            user=tenant_user,
+            endpoint="https://push.example.com/tenant-em",
+            p256dh="p",
+            auth="a",
+        )
+        with mock.patch("pywebpush.webpush") as wp:
+            resp = c.post(
+                f"/api/v1/utility-periods/{pid}/invia-avvisi/",
+                {"dry_run": False},
+                format="json",
+            )
+        body = resp.json()
+        assert body["inviati"] == 1
+        assert body["push_inviate"] == 1
+        assert body["avvisi"][0]["push"]["inviate"] == 1
+        assert wp.call_count == 1
+        # il payload push punta al dettaglio del conguaglio
+        assert "/i/utenze/" in wp.call_args.kwargs["data"]
+        assert len(mailoutbox) == 1
+        # due Notification: una email, una push
+        assert Notification.objects.filter(inviata_at__isnull=False).count() == 2
+        assert (
+            Notification.objects.filter(
+                canale=Notification.CanaleComunicazione.PUSH
+            ).count()
+            == 1
+        )

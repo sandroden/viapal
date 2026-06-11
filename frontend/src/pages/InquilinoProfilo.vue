@@ -84,6 +84,52 @@
       </q-item>
     </q-card>
 
+    <!-- Notifiche push: visibile solo se browser e server le supportano -->
+    <q-card v-if="push.disponibile.value" class="vp-i-prof__card q-mt-md">
+      <q-item>
+        <q-item-section avatar>
+          <q-icon name="notifications_active" color="primary" size="28px" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Notifiche su questo dispositivo</q-item-label>
+          <q-item-label caption>
+            Avvisi di bollette e scadenze anche ad app chiusa
+          </q-item-label>
+        </q-item-section>
+        <q-item-section side>
+          <q-toggle
+            :model-value="push.attivo.value"
+            color="primary"
+            :disable="push.loading.value || push.negato.value"
+            @update:model-value="togglePush"
+          />
+        </q-item-section>
+      </q-item>
+      <q-card-section v-if="push.negato.value" class="q-pt-none">
+        <q-banner class="text-white bg-orange-8" rounded dense>
+          Le notifiche sono bloccate per questo sito: sbloccale dalle
+          impostazioni del browser e ricarica la pagina.
+        </q-banner>
+      </q-card-section>
+      <q-card-section v-else-if="push.errore.value" class="q-pt-none">
+        <q-banner class="text-white bg-red-7" rounded dense>
+          {{ push.errore.value }}
+        </q-banner>
+      </q-card-section>
+      <q-card-section v-if="push.attivo.value" class="q-pt-none">
+        <q-btn
+          outline
+          color="primary"
+          icon="send"
+          label="Invia notifica di prova"
+          no-caps
+          size="sm"
+          :loading="provaLoading"
+          @click="inviaProva"
+        />
+      </q-card-section>
+    </q-card>
+
     <q-card class="vp-i-prof__card q-mt-md">
       <q-expansion-item icon="lock_reset" label="Cambia password" header-class="text-primary">
         <q-form ref="cambioForm" @submit.prevent="cambiaPassword" class="q-pa-md q-gutter-md">
@@ -144,6 +190,7 @@ import { useAuthStore } from 'stores/auth';
 import { useDashboardStore } from 'stores/dashboard';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
+import { usePush } from 'src/composables/usePush';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -187,7 +234,40 @@ async function caricaDati() {
 onMounted(() => {
   void store.loadInquilino();
   void caricaDati();
+  void push.init();
 });
+
+// --- Notifiche push ---
+const push = usePush();
+const provaLoading = ref(false);
+
+async function togglePush(valore: boolean) {
+  if (valore) {
+    await push.abilita();
+    if (push.attivo.value) {
+      $q.notify({ type: 'positive', message: 'Notifiche attivate su questo dispositivo.' });
+    }
+  } else {
+    await push.disabilita();
+  }
+}
+
+async function inviaProva() {
+  provaLoading.value = true;
+  try {
+    const esito = await push.provaNotifica();
+    $q.notify({
+      type: esito.inviate ? 'positive' : 'warning',
+      message: esito.inviate
+        ? `Notifica di prova inviata (${esito.inviate} dispositivi).`
+        : 'Nessun dispositivo raggiunto: riattiva le notifiche.',
+    });
+  } catch {
+    $q.notify({ type: 'negative', message: 'Invio della prova non riuscito.' });
+  } finally {
+    provaLoading.value = false;
+  }
+}
 
 async function salvaDati() {
   datiErrore.value = '';

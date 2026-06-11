@@ -34,3 +34,8 @@ CSRF_COOKIE_HTTPONLY = False
 
 # Admin tinto di rosso + badge "LOCALE": inconfondibile rispetto al remoto
 ADMIN_TOOLS_THEMING_CSS = 'viapal/admin/dashboard-dev.css'
+
+# Chiavi VAPID di SVILUPPO per il Web Push (generate con genera_chiavi_vapid).
+# Solo per dev locale: in prod le chiavi vere stanno in local.py/env.
+VAPID_PRIVATE_KEY = 'NeorFWlxM460J_EtdK41xkj9oGyXRVkRU19GvR4U0kY'
+VAPID_PUBLIC_KEY = 'BLyx_0qljdfIrfEEPW1GGZimi-7A16tkjnJRKGa4mciQblUg9fb2DEkAPbzuR9XWymSp3h_bgq1rqjW1mjjgnpw'

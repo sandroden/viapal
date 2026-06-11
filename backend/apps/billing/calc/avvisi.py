@@ -1,9 +1,9 @@
 """
 Costruzione e invio degli **avvisi utenze** agli inquilini.
 
-Architettura a canali: oggi è implementato il canale ``email``; il canale
-``push`` si innesterà qui (stessa firma) quando gli inquilini avranno
-installato la PWA e registrato una ``PushSubscription``.
+Architettura a canali: ``email`` (canale principale, fa fede per l'esito) e
+``push`` (best-effort via :func:`notifications.push.invia_push`, per chi ha
+attivato le notifiche dalla PWA — vedi ``PushSubscription``).
 
 Il testo del messaggio viene da un ``MessageTemplate`` con codice
 ``avviso_utenze`` (canale email): ``titolo`` → oggetto, ``corpo`` → corpo, con
@@ -27,6 +27,7 @@ from billing._dates import format_mese_anno
 from billing._payments import conto_per_receivable, iban_valido
 from billing.models import Receivable
 from notifications.models import MessageTemplate, Notification
+from notifications.push import invia_push
 
 TEMPLATE_CODICE = "avviso_utenze"
 
@@ -367,6 +368,7 @@ def invia_avvisi_utenze(period, dry_run: bool = False, escludi_ids=None) -> dict
     avvisi = costruisci_avvisi_utenze(period)
     inviati = 0
     errori = 0
+    push_inviate = 0
     senza_email = []
     non_inviati = []
     esclusi = []
@@ -400,6 +402,20 @@ def invia_avvisi_utenze(period, dry_run: bool = False, escludi_ids=None) -> dict
         receivable = receivables.get(a["receivable_id"])
         tenant = receivable.assignment.tenant if receivable else None
         user = getattr(tenant, "user", None)
+        # Canale push (best-effort, in aggiunta all'email): notifica di
+        # sistema sui device dove l'inquilino ha attivato le notifiche.
+        # Non tocca l'esito email; senza subscription o chiavi VAPID è no-op.
+        a["push"] = invia_push(
+            user,
+            titolo=a["oggetto"],
+            corpo=(
+                f"Il tuo importo è di {_eur(a['importo'])} €. "
+                "Tocca per vedere il dettaglio e pagare."
+            ),
+            url=f"/i/utenze/{a['receivable_id']}",
+            oggetto_riferimento=receivable,
+        )
+        push_inviate += a["push"]["inviate"]
         try:
             msg = EmailMultiAlternatives(
                 a["oggetto"], a["corpo"], from_email, [a["email"]]
@@ -449,6 +465,7 @@ def invia_avvisi_utenze(period, dry_run: bool = False, escludi_ids=None) -> dict
         "totale": len(avvisi),
         "inviati": inviati,
         "errori": errori,
+        "push_inviate": push_inviate,
         "senza_email": senza_email,
         "non_inviati": non_inviati,
         "esclusi": esclusi,
