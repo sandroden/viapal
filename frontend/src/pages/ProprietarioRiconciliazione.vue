@@ -219,6 +219,9 @@
                 >
                   {{ etichettaStato(bt.stato_riconciliazione) }}
                 </span>
+                <span class="vp-p-rec__chip vp-p-rec__chip--conto">
+                  {{ bt.owner_nominativo }} · {{ bt.conto_banca }}
+                </span>
                 <span v-if="bt.is_inter_owner" class="vp-p-rec__chip vp-p-rec__chip--inter-owner">
                   inter-owner
                 </span>
@@ -1431,6 +1434,10 @@ watch([filtroRiconciliato, filtroDataDa, filtroDataA], () => {
 .vp-p-rec__chip--pieno {
   background: var(--vp-salvia, #c6d6c6);
   color: var(--vp-ink);
+}
+.vp-p-rec__chip--conto {
+  text-transform: none;
+  letter-spacing: normal;
 }
 .vp-p-rec__chip--inter-owner {
   background: var(--vp-terra-soft, #ead0bd);
