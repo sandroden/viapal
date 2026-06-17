@@ -13,7 +13,7 @@ dependencies = [
     "django-environ>=0.13.0",
     "django-hijack>=3.7.8",
     "djangorestframework>=3.17.1",
-    "jmb-filters>=2.0.3",
+    "jmb-filters>=2.1.0",
     "jmb-jadmin>=2.1.11",
     "openpyxl>=3.1.5",
     "pillow>=12.2.0",
@@ -32,6 +32,11 @@ dev = [
 
 [tool.uv]
 index-strategy = "unsafe-best-match"
+
+# TRIAL: jmb-filters 2.1.0 non ancora pubblicato — installato dal wheel locale
+# per provare advanced_search_autocomplete_fields. Rimuovere quando 2.1.0 è su pypi.thux.dev.
+[tool.uv.sources]
+jmb-filters = { path = "/home/sandro/src/thux/CODE/jmb/jmb-filters/dist/jmb_filters-2.1.0-py3-none-any.whl" }
 
 [[tool.uv.index]]
 name = "thux"

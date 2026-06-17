@@ -377,6 +377,17 @@ class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
     search_fields = (
         "tenant__nominativo", "room__nome",
     )
+    advanced_search_fields = (
+        ("tenant", "room",
+         "room__property__nome__icontains:immobile"),
+        ("valid_from__gte:dal", "valid_from__lte:al",
+         "valid_to__isnull:occupazione chiusa"),
+        ("valid_to__gte:fine dal", "valid_to__lte:fine al"),
+        ("canone_mensile__gte:canone min", "canone_mensile__lte:canone max"),
+        ("costo_cessione__isnull:senza costo cessione",
+         "data_atto_cessione__gte:atto dal", "data_atto_cessione__lte:atto al"),
+    )
+    advanced_search_autocomplete_fields = ("tenant", "room")
     list_select_related = ("tenant", "room")
     autocomplete_fields = ("tenant", "room", "bank_account_affitto")
     ordering = ("-valid_from", "room__nome")

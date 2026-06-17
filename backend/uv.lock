@@ -293,7 +293,7 @@ requires-dist = [
     { name = "django-environ", specifier = ">=0.13.0" },
     { name = "django-hijack", specifier = ">=3.7.8" },
     { name = "djangorestframework", specifier = ">=3.17.1" },
-    { name = "jmb-filters", specifier = ">=2.0.3" },
+    { name = "jmb-filters", path = "../../../../thux/CODE/jmb/jmb-filters/dist/jmb_filters-2.1.0-py3-none-any.whl" },
     { name = "jmb-jadmin", specifier = ">=2.1.11" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pillow", specifier = ">=12.2.0" },
@@ -658,15 +658,20 @@ wheels = [
 
 [[package]]
 name = "jmb-filters"
-version = "2.0.3"
-source = { registry = "https://pypi.thux.dev/" }
+version = "2.1.0"
+source = { path = "../../../../thux/CODE/jmb/jmb-filters/dist/jmb_filters-2.1.0-py3-none-any.whl" }
 dependencies = [
     { name = "django" },
     { name = "django-filter" },
 ]
-sdist = { url = "https://pypi.thux.dev/packages/jmb_filters-2.0.3.tar.gz", hash = "sha256:fa3e28bcbd526dcb34fb22e611020b384ecf6b55838ac47be8a7ac6ffaa2a7ad" }
 wheels = [
-    { url = "https://pypi.thux.dev/packages/jmb_filters-2.0.3-py3-none-any.whl", hash = "sha256:bd431d9fcc8703f50357727803f19897d3281efdd690e51070b1207a18f16ae3" },
+    { filename = "jmb_filters-2.1.0-py3-none-any.whl", hash = "sha256:124722ca683d0e80ae2afce5b9cc46ede60b9ae39f264c8ba8b30687138f3ef4" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "django", specifier = ">=2.2" },
+    { name = "django-filter", specifier = ">=2.2" },
 ]
 
 [[package]]
