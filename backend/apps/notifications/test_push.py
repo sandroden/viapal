@@ -16,6 +16,20 @@ from notifications.models import Notification, PushSubscription
 from notifications.push import invia_push, push_configurato
 
 
+@pytest.fixture(autouse=True)
+def vapid_keys(settings):
+    """Chiavi VAPID deterministiche per i test.
+
+    In CI pytest gira con ``ENV=production``: lì le chiavi arrivano da env
+    (vuote) e ``push_configurato()`` sarebbe False, rendendo no-op ogni
+    invio. Le fissiamo qui così i test non dipendono dall'ambiente; i casi
+    che vogliono il canale spento le azzerano nel corpo del test.
+    """
+    settings.VAPID_PRIVATE_KEY = "test-vapid-private"
+    settings.VAPID_PUBLIC_KEY = "test-vapid-public"
+    settings.VAPID_CLAIMS_SUB = "mailto:test@viapal.it"
+
+
 @pytest.fixture
 def user(db):
     return User.objects.create_user("push_user", email="p@v.it", password="pwd123!")

@@ -300,11 +300,17 @@ class TestInvioAvvisi:
         assert body["senza_email"] == ["Mario Rossi"]
         assert len(mailoutbox) == 0
 
-    def test_invio_reale_con_push(self, mailoutbox):
+    def test_invio_reale_con_push(self, mailoutbox, settings):
         """Inquilino con device registrato: oltre all'email parte la push."""
         from unittest import mock
 
         from notifications.models import Notification, PushSubscription
+
+        # Chiavi VAPID deterministiche: in CI pytest gira con ENV=production
+        # (chiavi da env, vuote) e la push sarebbe disattivata.
+        settings.VAPID_PRIVATE_KEY = "test-vapid-private"
+        settings.VAPID_PUBLIC_KEY = "test-vapid-public"
+        settings.VAPID_CLAIMS_SUB = "mailto:test@viapal.it"
 
         c = _client()
         pid = _setup_emesso(c)
