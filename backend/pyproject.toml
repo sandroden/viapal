@@ -33,11 +33,6 @@ dev = [
 [tool.uv]
 index-strategy = "unsafe-best-match"
 
-# TRIAL: jmb-filters 2.1.0 non ancora pubblicato — installato dal wheel locale
-# per provare advanced_search_autocomplete_fields. Rimuovere quando 2.1.0 è su pypi.thux.dev.
-[tool.uv.sources]
-jmb-filters = { path = "/home/sandro/src/thux/CODE/jmb/jmb-filters/dist/jmb_filters-2.1.0-py3-none-any.whl" }
-
 [[tool.uv.index]]
 name = "thux"
 url = "https://pypi.thux.dev/"

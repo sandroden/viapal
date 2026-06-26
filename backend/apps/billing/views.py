@@ -496,6 +496,88 @@ class UtilityBillViewSet(ModelViewSet):
         serializer = self.get_serializer(bill)
         return Response(serializer.data, status=201)
 
+    @action(detail=False, methods=["get"], url_path="statistiche")
+    def statistiche(self, request):
+        """Statistiche mensili luce/gas per grafici di andamento costi.
+
+        Restituisce una lista ordinata per anno/mese con consumi, importi e
+        prezzo unitario per luce e gas, più i giorni-persona del mese calcolati
+        dagli RoomAssignment attivi (non da UtilityChargePeriod.giorni_totali,
+        che è la somma dell'intero periodo bimestrale).
+        """
+        import calendar
+        from collections import defaultdict
+        from properties.models import RoomAssignment
+
+        MESI_IT = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
+                   "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
+
+        bills = (
+            UtilityBill.objects
+            .filter(
+                consumo__gt=0,
+                prodotto__in=[UtilityBill.Prodotto.LUCE, UtilityBill.Prodotto.GAS],
+            )
+            .order_by("periodo_da")
+            .values("periodo_da", "prodotto", "consumo", "importo_totale")
+        )
+
+        # Accumula per (anno, mese, prodotto)
+        data: dict = defaultdict(lambda: {"luce": None, "gas": None})
+        for bill in bills:
+            anno = bill["periodo_da"].year
+            mese = bill["periodo_da"].month
+            key = (anno, mese)
+            slot = "luce" if bill["prodotto"] == UtilityBill.Prodotto.LUCE else "gas"
+            if data[key][slot] is None:
+                data[key][slot] = {"consumo": Decimal("0"), "importo": Decimal("0")}
+            data[key][slot]["consumo"] += bill["consumo"]
+            data[key][slot]["importo"] += bill["importo_totale"]
+
+        # RoomAssignment: serve solo valid_from e valid_to per calcolare i
+        # giorni-persona del singolo mese (intersezione assegnazione ∩ mese).
+        today = datetime.date.today()
+        assignments = list(RoomAssignment.objects.values("valid_from", "valid_to"))
+
+        def _giorni_persona_mese(first_day, last_day):
+            """Somma i giorni di presenza di tutti gli inquilini nel mese."""
+            totale = 0
+            for a in assignments:
+                a_end = a["valid_to"] or today
+                overlap_start = max(a["valid_from"], first_day)
+                overlap_end = min(a_end, last_day)
+                if overlap_end >= overlap_start:
+                    totale += (overlap_end - overlap_start).days + 1
+            return totale or None
+
+        def _prezzo_unitario(slot):
+            if slot is None or slot["consumo"] == 0:
+                return None
+            return round(float(slot["importo"]) / float(slot["consumo"]), 3)
+
+        result = []
+        for (anno, mese) in sorted(data.keys()):
+            first_day = datetime.date(anno, mese, 1)
+            last_day = datetime.date(anno, mese, calendar.monthrange(anno, mese)[1])
+
+            luce = data[(anno, mese)]["luce"]
+            gas = data[(anno, mese)]["gas"]
+
+            result.append({
+                "anno": anno,
+                "mese": mese,
+                "mese_label": MESI_IT[mese - 1],
+                "luce_consumo": float(luce["consumo"]) if luce else None,
+                "luce_importo": float(luce["importo"]) if luce else None,
+                "luce_prezzo_unitario": _prezzo_unitario(luce),
+                "gas_consumo": float(gas["consumo"]) if gas else None,
+                "gas_importo": float(gas["importo"]) if gas else None,
+                "gas_prezzo_unitario": _prezzo_unitario(gas),
+                "presenze": _giorni_persona_mese(first_day, last_day),
+            })
+
+        return Response(result)
+
 
 class ExpenseCategoryViewSet(ReadOnlyModelViewSet):
     """Categorie di spesa. Read-only via API: si gestiscono dall'admin Django."""

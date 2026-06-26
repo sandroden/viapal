@@ -5,8 +5,22 @@
       {{ store.errore }}
     </q-banner>
 
+    <!-- Tab selector: Conguaglio / Andamento -->
+    <div class="vp-screen-tabs">
+      <button :class="['vp-screen-tab', { active: tab === 'conguaglio' }]" @click="tab = 'conguaglio'">
+        <q-icon name="receipt_long" size="16px" />
+        Conguaglio
+      </button>
+      <button :class="['vp-screen-tab', { active: tab === 'andamento' }]" @click="onTabAndamento">
+        <q-icon name="bar_chart" size="16px" />
+        Andamento
+      </button>
+    </div>
+
+    <UtenzeAndamento v-if="tab === 'andamento'" />
+
     <ConguaglioBollette
-      v-if="periodoCorrenteView"
+      v-else-if="periodoCorrenteView"
       :periodo="periodoCorrenteView"
       :periodi="statiPeriodi"
       :anno="anno"
@@ -35,7 +49,7 @@
       @view-pdf="apriPdf"
     />
 
-    <div v-else class="vp-vuoto">
+    <div v-else-if="tab === 'conguaglio'" class="vp-vuoto">
       <q-spinner-dots v-if="store.loading" size="32px" color="primary" />
       <span v-else>Nessun periodo disponibile.</span>
     </div>
@@ -97,6 +111,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { useUtenzeStore } from 'stores/utenze';
 import ConguaglioBollette from 'src/components/utenze/ConguaglioBollette.vue';
+import UtenzeAndamento from 'src/components/utenze/UtenzeAndamento.vue';
 import PdfDialog from 'src/components/PdfDialog.vue';
 import {
   prodottoToTipo,
@@ -107,6 +122,7 @@ import {
   annoDa,
   avatarHue,
   mediaPath,
+  fmtConsumo,
   type Criterio,
   type PeriodoView,
   type BollettaView,
@@ -117,6 +133,15 @@ import type { MeseStato } from 'src/components/utenze/PeriodSelector.vue';
 
 const store = useUtenzeStore();
 const $q = useQuasar();
+
+const tab = ref<'conguaglio' | 'andamento'>('conguaglio');
+
+async function onTabAndamento(): Promise<void> {
+  tab.value = 'andamento';
+  if (!store.statistiche.length) {
+    await store.fetchStatistiche();
+  }
+}
 
 const criterio = ref<Criterio>('giorni');
 const step = ref(1);
@@ -199,7 +224,7 @@ const bolletteView = computed<BollettaView[]>(() => {
     fornitore: b.supplier_nome || b.pagata_da_nominativo || '—',
     importo: num(b.importo_totale),
     periodo: rangePeriodo(b.periodo_da, b.periodo_a),
-    consumo: b.consumo || '—',
+    consumo: fmtConsumo(b.consumo),
     riferimento: b.numero_fattura || '—',
     pdfUrl: mediaPath(b.file_pdf),
     letto: true,
@@ -414,6 +439,47 @@ onMounted(async () => {
 <style scoped>
 .vp-utenze {
   background: var(--vp-paper);
+}
+
+.vp-screen-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--vp-paper-3);
+  background: var(--vp-paper);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.vp-screen-tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--vp-font-ui);
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--vp-ink-3);
+  position: relative;
+  transition: color 0.15s;
+}
+.vp-screen-tab:hover { color: var(--vp-ink); }
+.vp-screen-tab.active {
+  color: var(--vp-ink);
+  font-weight: 600;
+}
+.vp-screen-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2.5px;
+  border-radius: 2px;
+  background: var(--vp-terra);
 }
 .vp-banner-error {
   background: #fdecea;

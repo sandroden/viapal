@@ -101,6 +101,19 @@ export interface InvioAvvisiResponse {
   avvisi: AvvisoFE[];
 }
 
+export interface StatisticaMensile {
+  anno: number;
+  mese: number;
+  mese_label: string;
+  luce_consumo: number | null;
+  luce_importo: number | null;
+  luce_prezzo_unitario: number | null;
+  gas_consumo: number | null;
+  gas_importo: number | null;
+  gas_prezzo_unitario: number | null;
+  presenze: number | null;
+}
+
 export interface OwnerFE {
   id: number;
   nominativo: string;
@@ -129,6 +142,7 @@ interface State {
   invio: InvioAvvisiResponse | null;
   caricati: BollettaFE[];
   bollettePeriodo: BollettaFE[];
+  statistiche: StatisticaMensile[];
   loading: boolean;
   errore: string | null;
 }
@@ -148,6 +162,7 @@ export const useUtenzeStore = defineStore('utenze', {
     invio: null,
     caricati: [],
     bollettePeriodo: [],
+    statistiche: [],
     loading: false,
     errore: null,
   }),
@@ -286,6 +301,17 @@ export const useUtenzeStore = defineStore('utenze', {
         return null;
       } finally {
         this.loading = false;
+      }
+    },
+
+    async fetchStatistiche(): Promise<void> {
+      try {
+        const { data } = await api.get<StatisticaMensile[]>(
+          '/api/v1/utility-bills/statistiche/',
+        );
+        this.statistiche = data;
+      } catch (e: unknown) {
+        this.errore = messaggioErrore(e, 'Errore caricamento statistiche');
       }
     },
 

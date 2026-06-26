@@ -171,6 +171,17 @@ export interface BonificoView {
   importo: number;
 }
 
+// Formatta il consumo da backend (Decimal con 3 cifre) → intero se possibile.
+// "7.000" → "7", "387.000" → "387", "1.5" → "1,5"
+export function fmtConsumo(consumo: string | number | null | undefined): string {
+  if (consumo === null || consumo === undefined || consumo === '') return '—';
+  const n = typeof consumo === 'string' ? parseFloat(consumo) : consumo;
+  if (!isFinite(n)) return '—';
+  return Number.isInteger(n)
+    ? n.toLocaleString('it-IT')
+    : n.toLocaleString('it-IT', { maximumFractionDigits: 1 });
+}
+
 // Riporta un URL media a path relativo (stessa origin del frontend). Senza
 // questo, un'URL assoluta verso Django (:8000) nell'iframe del PDF viene
 // bloccata da X-Frame-Options SAMEORIGIN (app servita su :9000). Il path
