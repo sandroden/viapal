@@ -43,5 +43,23 @@ export default defineRouter((/* { store, ssrContext } */) => {
     return true;
   });
 
+  // Recupero da deploy: se una navigazione fallisce perché il chunk lazy della
+  // rotta non esiste più (hash cambiato dopo un deploy, vecchio file → 404),
+  // ricarichiamo a pagina piena sulla destinazione così il browser scarica il
+  // bundle nuovo. Doppia rete rispetto al reload-on-controllerchange del SW.
+  // La guardia in sessionStorage evita loop se il reload non risolve.
+  const CHUNK_ERR =
+    /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i;
+  Router.onError((error, to) => {
+    if (!CHUNK_ERR.test(error?.message ?? '')) return;
+    if (sessionStorage.getItem('vp-chunk-reload') === to.fullPath) return;
+    sessionStorage.setItem('vp-chunk-reload', to.fullPath);
+    window.location.assign(to.fullPath);
+  });
+  // Navigazione andata a buon fine: azzera la guardia per i deploy futuri.
+  Router.afterEach(() => {
+    sessionStorage.removeItem('vp-chunk-reload');
+  });
+
   return Router;
 });
