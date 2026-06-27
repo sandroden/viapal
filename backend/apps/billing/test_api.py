@@ -2389,3 +2389,144 @@ class TestContoEconomico:
     def test_anno_invalido_400(self, client_prop):
         resp = client_prop.get("/api/v1/dashboard/conto-economico/?anno=abc")
         assert resp.status_code == 400
+
+
+@pytest.fixture
+def assignment_uscita(db, room_1, tenant_1):
+    """Assignment con fine occupazione e deposito versato sul tenant."""
+    tenant_1.deposito_versato = Decimal("380")
+    tenant_1.data_versamento_deposito = datetime.date(2024, 9, 1)
+    tenant_1.save()
+    return RoomAssignment.objects.create(
+        room=room_1,
+        tenant=tenant_1,
+        valid_from=datetime.date(2024, 9, 1),
+        valid_to=datetime.date(2026, 6, 30),
+        canone_mensile=Decimal("400"),
+    )
+
+
+class TestRestituzioneDeposito:
+    def _url(self, tenant):
+        return f"/api/v1/tenants/{tenant.id}/restituzione-deposito/"
+
+    def test_get_suggerisce_data_e_importo(
+        self, client_prop, tenant_1, assignment_uscita
+    ):
+        resp = client_prop.get(self._url(tenant_1))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["esiste"] is False
+        # data suggerita = fine occupazione; importo = deposito versato
+        assert data["data_suggerita"] == "2026-06-30"
+        assert data["importo_suggerito"] == 380.0
+
+    def test_post_crea_negativo_e_allinea_profilo(
+        self, client_prop, tenant_1, assignment_uscita
+    ):
+        resp = client_prop.post(
+            self._url(tenant_1),
+            {"data_restituzione": "2026-06-30", "importo": "380.00"},
+            format="json",
+        )
+        assert resp.status_code == 201
+        assert resp.json()["creato"] is True
+
+        riga = Receivable.objects.get(
+            assignment__tenant=tenant_1,
+            causale=Receivable.Causale.DEPOSITO,
+            importo_dovuto__lt=0,
+        )
+        assert riga.importo_dovuto == Decimal("-380.00")
+        assert riga.competenza_da == datetime.date(2026, 6, 30)
+        assert riga.scadenza == datetime.date(2026, 6, 30)
+
+        tenant_1.refresh_from_db()
+        assert tenant_1.data_restituzione_prevista == datetime.date(2026, 6, 30)
+        assert tenant_1.deposito_da_restituire == Decimal("380.00")
+
+    def test_post_due_volte_aggiorna_senza_duplicare(
+        self, client_prop, tenant_1, assignment_uscita
+    ):
+        client_prop.post(
+            self._url(tenant_1),
+            {"data_restituzione": "2026-06-30", "importo": "380.00"},
+            format="json",
+        )
+        resp = client_prop.post(
+            self._url(tenant_1),
+            {"data_restituzione": "2026-07-15", "importo": "350.00"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.json()["creato"] is False
+
+        negativi = Receivable.objects.filter(
+            assignment__tenant=tenant_1,
+            causale=Receivable.Causale.DEPOSITO,
+            importo_dovuto__lt=0,
+        )
+        assert negativi.count() == 1
+        riga = negativi.get()
+        assert riga.importo_dovuto == Decimal("-350.00")
+        assert riga.competenza_da == datetime.date(2026, 7, 15)
+
+    def test_post_importo_non_positivo_400(
+        self, client_prop, tenant_1, assignment_uscita
+    ):
+        resp = client_prop.post(
+            self._url(tenant_1),
+            {"data_restituzione": "2026-06-30", "importo": "0"},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_post_body_malformato_400(
+        self, client_prop, tenant_1, assignment_uscita
+    ):
+        resp = client_prop.post(
+            self._url(tenant_1), {"importo": "380"}, format="json"
+        )
+        assert resp.status_code == 400
+
+    def test_post_con_allocazioni_409(
+        self, client_prop, tenant_1, assignment_uscita, owner_account
+    ):
+        from billing.models import BankTransaction, BankTransactionAllocation
+
+        client_prop.post(
+            self._url(tenant_1),
+            {"data_restituzione": "2026-06-30", "importo": "380.00"},
+            format="json",
+        )
+        riga = Receivable.objects.get(
+            assignment__tenant=tenant_1,
+            causale=Receivable.Causale.DEPOSITO,
+            importo_dovuto__lt=0,
+        )
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 6, 30),
+            descrizione="Restituzione deposito",
+            importo=Decimal("-380"),
+            owner_account=owner_account,
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=riga, importo=Decimal("-380")
+        )
+
+        resp = client_prop.post(
+            self._url(tenant_1),
+            {"data_restituzione": "2026-07-15", "importo": "300.00"},
+            format="json",
+        )
+        assert resp.status_code == 409
+        riga.refresh_from_db()
+        assert riga.importo_dovuto == Decimal("-380.00")
+
+    def test_inquilino_non_accede_403(self, client_inq_1, tenant_1, assignment_uscita):
+        resp = client_inq_1.get(self._url(tenant_1))
+        assert resp.status_code == 403
+
+    def test_tenant_inesistente_404(self, client_prop):
+        resp = client_prop.get("/api/v1/tenants/99999/restituzione-deposito/")
+        assert resp.status_code == 404
