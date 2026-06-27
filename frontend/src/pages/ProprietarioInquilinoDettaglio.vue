@@ -725,7 +725,7 @@
       v-model="dialogPrevisionale"
       :tenant-id="tenantId"
       :assignment-id="assignmentAttivoId"
-      :data-target="situazione?.tenant?.data_restituzione_prevista ?? null"
+      :data-target="dataTargetPrevisionale"
       @saved="dopoSalvataggioPagamento"
     />
 
@@ -743,7 +743,10 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuasar, type QTableProps } from 'quasar';
-import { useTenantSituazioneStore } from 'stores/tenantSituazione';
+import {
+  useTenantSituazioneStore,
+  type AssignmentRiga,
+} from 'stores/tenantSituazione';
 import { useTenantsStore, type Tenant } from 'stores/tenants';
 import { useAuthStore } from 'stores/auth';
 import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
@@ -1153,14 +1156,37 @@ const receivableSelezionato = ref<ReceivableInput | null>(null);
 
 const dialogPrevisionale = ref(false);
 const dialogConguaglio = ref(false);
-// Mostra il bottone solo quando ha senso: c'è una data di restituzione
-// prevista e c'è almeno un assignment attivo a cui collegare il Receivable.
-const assignmentAttivoId = computed<number | null>(() => {
-  const list = situazione.value?.assignments ?? [];
-  if (!list.length) return null;
-  // L'ordinamento backend è -valid_from: il primo è il più recente.
-  return list[0]?.id ?? null;
+// Giorni prima della fine occupazione in cui ha senso preparare i conti
+// (previsionale) anche se la restituzione del deposito non è ancora stata
+// fissata. Allineato alla finestra "in scadenza" del backend.
+const FINESTRA_PREVISIONALE_GIORNI = 14;
+// Assignment più recente: l'ordinamento backend è -valid_from, quindi il
+// primo è quello da cui dedurre fine occupazione e data target.
+const assignmentRecente = computed<AssignmentRiga | null>(
+  () => situazione.value?.assignments?.[0] ?? null,
+);
+const assignmentAttivoId = computed<number | null>(
+  () => assignmentRecente.value?.id ?? null,
+);
+// True quando oggi è entro le ultime due settimane prima della fine
+// occupazione (o oltre): finestra in cui preparare il previsionale.
+const inFinestraUscita = computed(() => {
+  const vt = assignmentRecente.value?.valid_to;
+  if (!vt) return false;
+  const fine = new Date(`${vt}T00:00:00`).getTime();
+  const oggi = new Date();
+  oggi.setHours(0, 0, 0, 0);
+  return oggi.getTime() >= fine - FINESTRA_PREVISIONALE_GIORNI * 86_400_000;
 });
+// Data fino a cui stimare il previsionale: la restituzione prevista se già
+// fissata, altrimenti la fine occupazione (così si può preparare in anticipo
+// senza dover prima generare il Receivable di restituzione).
+const dataTargetPrevisionale = computed<string | null>(
+  () =>
+    situazione.value?.tenant?.data_restituzione_prevista ??
+    assignmentRecente.value?.valid_to ??
+    null,
+);
 
 // Cerca un Receivable EXTRA marcato come previsionale e non ancora
 // conguagliato. Usa la situazione dell'anno corrente; in futuro si potrebbe
@@ -1176,7 +1202,8 @@ const previsionaleApertoId = computed<number | null>(() => {
 
 const puoCrearePrevisionale = computed(
   () =>
-    !!situazione.value?.tenant?.data_restituzione_prevista &&
+    (!!situazione.value?.tenant?.data_restituzione_prevista ||
+      inFinestraUscita.value) &&
     !restituzioneEffettuata.value &&
     assignmentAttivoId.value !== null &&
     previsionaleApertoId.value === null,
