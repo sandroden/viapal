@@ -165,6 +165,36 @@ def charge_1(db, period, assignment_1):
 
 
 @pytest.fixture
+def period_maggio(db):
+    return UtilityChargePeriod.objects.create(
+        periodo_da=datetime.date(2026, 5, 1),
+        periodo_a=datetime.date(2026, 5, 31),
+        stato="inviato",
+        tot_luce=Decimal("180.00"),
+        tot_gas=Decimal("22.00"),
+        tot_tari=Decimal("44.00"),
+        giorni_totali=139,
+    )
+
+
+@pytest.fixture
+def charge_maggio(db, period_maggio, assignment_1):
+    # Quota dell'inquilino GIÀ ripartita sui suoi 15 giorni di presenza:
+    # il conguaglio deve sommarla per intero, senza ulteriore pro-rata.
+    return Receivable.objects.create(
+        utility_period=period_maggio,
+        assignment=assignment_1,
+        causale=Receivable.Causale.UTENZE,
+        competenza_da=period_maggio.periodo_da,
+        competenza_a=period_maggio.periodo_a,
+        importo_dovuto=Decimal("26.69"),
+        giorni_presenza=15,
+        scadenza=datetime.date(2026, 6, 5),
+        stato=StatoPagamento.ATTESO,
+    )
+
+
+@pytest.fixture
 def charge_2(db, period, assignment_2):
     return Receivable.objects.create(
         utility_period=period,
@@ -2141,11 +2171,12 @@ class TestPrevisionaleEConguaglio:
         assert resp.status_code == 400
 
     def test_conguaglio_anteprima_e_creazione(
-        self, client_prop, tenant_1, assignment_1, charge_1, period
+        self, client_prop, tenant_1, assignment_1, charge_1, charge_maggio
     ):
-        # charge_1 ha utility_period = period (apr 2026), importo 45, giorni
-        # presenza 30. Sovrapposizione col previsionale (30/4 → 15/5):
-        # solo il giorno 30/4 ricade nel periodo del previsionale.
+        # Previsionale 30/4 → 15/5. charge_1 (apr, periodo_a=30/4) FINISCE su
+        # data_da: è già fatturato a parte e va escluso (niente riga di bordo).
+        # charge_maggio (mag, quota 26,69 già ripartita su 15 gg presenza) è
+        # l'unica utenza reale del periodo: si somma per intero, senza pro-rata.
         prev_resp = self._crea_previsionale(client_prop, tenant_1, assignment_1)
         assert prev_resp.status_code == 201
         prev_id = prev_resp.json()["id"]
@@ -2159,12 +2190,14 @@ class TestPrevisionaleEConguaglio:
         assert ant["previsionale_id"] == prev_id
         assert ant["previsionale_importo"] == 80.0
         assert len(ant["utenze_reali"]) == 1
-        # 1 giorno sovrapposto su 30 totali → 45 * 1/30 = 1.50
-        assert ant["utenze_reali"][0]["giorni_sovrapposti"] == 1
-        assert ant["utenze_reali"][0]["quota_nel_periodo"] == 1.50
-        assert ant["somma_utenze_reali"] == 1.50
-        assert ant["rettifica_proposta"] == -1.50
-        assert ant["netto_a_favore_inquilino"] == 78.50
+        riga = ant["utenze_reali"][0]
+        assert riga["receivable_id"] == charge_maggio.id
+        assert riga["giorni_presenza"] == 15
+        # Nessun secondo pro-rata: quota = importo_dovuto pieno.
+        assert riga["quota_nel_periodo"] == 26.69
+        assert ant["somma_utenze_reali"] == 26.69
+        assert ant["rettifica_proposta"] == -26.69
+        assert ant["netto_a_favore_inquilino"] == 53.31
 
         # Salva conguaglio (POST)
         post_resp = client_prop.post(
@@ -2176,14 +2209,14 @@ class TestPrevisionaleEConguaglio:
         body = post_resp.json()
         rett = Receivable.objects.get(pk=body["rettifica_id"])
         assert rett.causale == Receivable.Causale.EXTRA
-        assert rett.importo_dovuto == Decimal("-1.50")
+        assert rett.importo_dovuto == Decimal("-26.69")
         assert f"conguaglio_previsionale:{prev_id}" in (rett.note or "")
         # Previsionale marcato come conguagliato
         prev = Receivable.objects.get(pk=prev_id)
         assert "conguaglio_previsionale" in (prev.note or "")
 
     def test_conguaglio_rifiuta_se_gia_conguagliato(
-        self, client_prop, tenant_1, assignment_1, charge_1
+        self, client_prop, tenant_1, assignment_1, charge_maggio
     ):
         prev_id = self._crea_previsionale(
             client_prop, tenant_1, assignment_1

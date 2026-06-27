@@ -88,7 +88,7 @@
                     {{ formattaData(u.periodo_da) }} → {{ formattaData(u.periodo_a) }}
                   </q-item-label>
                   <q-item-label caption>
-                    {{ u.giorni_sovrapposti }}/{{ u.giorni_totali }} giorni · totale
+                    {{ u.giorni_presenza }} gg presenza · quota
                     {{ formattaEuro(u.importo_dovuto) }}
                   </q-item-label>
                 </q-item-section>
@@ -136,7 +136,7 @@ interface UtenzaReale {
   periodo_a: string;
   importo_dovuto: number;
   giorni_totali: number;
-  giorni_sovrapposti: number;
+  giorni_presenza: number;
   quota_nel_periodo: number;
 }
 

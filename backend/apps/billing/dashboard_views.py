@@ -1999,14 +1999,22 @@ class ConguagliaPrevisionaleView(APIView):
         return prev, None
 
     def _utenze_nel_periodo(self, tenant: TenantProfile, data_da, data_a):
-        # Receivable utenze del tenant con periodo che si sovrappone al
-        # range del previsionale. Calcolo pro-rata dei giorni di sovrapposizione.
+        # Receivable utenze del tenant da conguagliare contro il previsionale.
+        #
+        # ``data_da`` del previsionale coincide con la fine dell'ultima bolletta
+        # già fatturata (vedi _calcola_stima_previsionale), quindi:
+        #   * si includono i periodi che FINISCONO dopo data_da (periodo_a__gt):
+        #     quello che finisce esattamente su data_da è già stato addebitato a
+        #     parte e non va riconguagliato (evita la riga di bordo a 1 giorno);
+        #   * NON si ri-ripartisce: ``importo_dovuto`` è già la quota
+        #     dell'inquilino ripartita sui suoi giorni di presenza, quindi si
+        #     somma per intero (niente secondo pro-rata).
         candidate = (
             Receivable.objects.filter(
                 assignment__tenant=tenant,
                 causale=Receivable.Causale.UTENZE,
                 utility_period__periodo_da__lte=data_a,
-                utility_period__periodo_a__gte=data_da,
+                utility_period__periodo_a__gt=data_da,
             )
             .select_related("utility_period")
             .order_by("utility_period__periodo_da")
@@ -2017,23 +2025,18 @@ class ConguagliaPrevisionaleView(APIView):
             p = r.utility_period
             if not p:
                 continue
-            inizio = max(p.periodo_da, data_da)
-            fine = min(p.periodo_a, data_a)
-            if fine < inizio:
-                continue
-            giorni_sovr = (fine - inizio).days + 1
+            importo = r.importo_dovuto.quantize(Decimal("0.01"))
             giorni_totali = (p.periodo_a - p.periodo_da).days + 1
-            quota = (r.importo_dovuto * Decimal(giorni_sovr) / Decimal(giorni_totali)).quantize(Decimal("0.01"))
             righe.append({
                 "receivable_id": r.id,
                 "periodo_da": p.periodo_da.isoformat(),
                 "periodo_a": p.periodo_a.isoformat(),
-                "importo_dovuto": float(r.importo_dovuto),
+                "importo_dovuto": float(importo),
+                "giorni_presenza": r.giorni_presenza,
                 "giorni_totali": giorni_totali,
-                "giorni_sovrapposti": giorni_sovr,
-                "quota_nel_periodo": float(quota),
+                "quota_nel_periodo": float(importo),
             })
-            somma += quota
+            somma += importo
         return righe, somma
 
     def get(self, request, tenant_id: int):
