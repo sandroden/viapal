@@ -7,8 +7,10 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
+from rest_framework import mixins, status
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
@@ -24,6 +26,7 @@ from properties.models import (
     TenantProfile,
 )
 from properties.serializers import (
+    CessioneAssignmentSerializer,
     ContractSerializer,
     OwnerBankAccountSerializer,
     OwnerProfileSerializer,
@@ -31,6 +34,7 @@ from properties.serializers import (
     RoomSerializer,
     TenantDocumentSerializer,
     TenantProfileSerializer,
+    TenantProfileWriteSerializer,
     TenantSelfUpdateSerializer,
 )
 
@@ -42,6 +46,38 @@ def _is_gestione(user):
         and user.is_authenticated
         and (user.is_superuser or user.property_memberships.exists())
     )
+
+
+class ProtectedDestroyMixin:
+    """DELETE di oggetti referenziati da FK PROTECT → 409 con messaggio
+    chiaro invece del 500 di ``ProtectedError``."""
+
+    protected_detail = (
+        "Impossibile eliminare: l'oggetto è referenziato da altri dati."
+    )
+
+    def destroy(self, request, *args, **kwargs):
+        from django.db.models.deletion import ProtectedError
+
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {"detail": self.protected_detail},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+
+def _valida_owner_membro(owner_profile, prop, campo):
+    """400 se ``owner_profile`` (facoltativo) non è membro dell'immobile."""
+    from rest_framework.exceptions import ValidationError
+
+    if owner_profile is None:
+        return
+    if not owner_profile.user.property_memberships.filter(property=prop).exists():
+        raise ValidationError(
+            {campo: "Il proprietario indicato non è membro di questo immobile."}
+        )
 
 
 class OwnerProfileViewSet(ReadOnlyModelViewSet):
@@ -58,21 +94,52 @@ class OwnerProfileViewSet(ReadOnlyModelViewSet):
         ).distinct()
 
 
-class TenantProfileViewSet(ReadOnlyModelViewSet):
+class TenantProfileViewSet(
+    mixins.CreateModelMixin, mixins.UpdateModelMixin, ReadOnlyModelViewSet
+):
     """
     Profili inquilini.
-    - Proprietari: vedono tutti. Per default solo gli attivi (con assignment in
-      corso oggi); query param ``?solo_attivi=0`` per includere anche gli storici.
-      In alternativa, ``?anno=YYYY`` filtra gli inquilini con almeno un
-      assignment che si sovrappone all'anno indicato (ha la precedenza su
-      ``solo_attivi``).
+    - Proprietari: vedono tutti. Per default la lista mostra solo gli attivi
+      (con assignment in corso oggi); query param ``?solo_attivi=0`` per
+      includere anche gli storici. In alternativa, ``?anno=YYYY`` filtra gli
+      inquilini con almeno un assignment che si sovrappone all'anno indicato
+      (ha la precedenza su ``solo_attivi``).
     - Inquilini: vedono solo il proprio.
+    - Scrittura (create/update) riservata ai membri operativi dell'immobile
+      attivo: la creazione genera anche lo User collegato (vedi
+      ``TenantProfileWriteSerializer``); l'action ``invita`` manda l'email
+      di primo accesso.
     """
 
     serializer_class = TenantProfileSerializer
 
     def get_permissions(self):
+        # ``me`` resta self-service dell'inquilino (GET/PATCH); le altre
+        # scritture sono riservate ai membri operativi dell'immobile.
+        if self.action == "me":
+            return [IsInquilinoSelf()]
+        if self.request.method not in SAFE_METHODS:
+            return [IsPropertyMember()]
         return [IsInquilinoSelf()]
+
+    def get_serializer_class(self):
+        if self.action in ("create", "update", "partial_update"):
+            return TenantProfileWriteSerializer
+        return TenantProfileSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(property=get_request_property(self.request))
+
+    @action(detail=True, methods=["post"], url_path="invita")
+    def invita(self, request, pk=None):
+        """Invia all'inquilino l'email di invito (link imposta-password)."""
+        from accounts.inviti import invia_invito_inquilino
+
+        tenant = self.get_object()
+        esito = invia_invito_inquilino(tenant, request=request)
+        if esito["esito"] != "inviato":
+            return Response(esito, status=status.HTTP_400_BAD_REQUEST)
+        return Response(esito)
 
     def get_queryset(self):
         user = self.request.user
@@ -80,6 +147,12 @@ class TenantProfileViewSet(ReadOnlyModelViewSet):
         if not _is_gestione(user):
             return qs.filter(user=user)
         qs = qs.filter(property=get_request_property(self.request))
+
+        # I filtri di "attività" valgono solo per la lista: il dettaglio (e
+        # quindi update/invita) deve raggiungere anche gli inquilini appena
+        # creati (senza assignment) e quelli storici.
+        if self.action != "list":
+            return qs
 
         anno_param = self.request.query_params.get("anno")
         if anno_param:
@@ -246,16 +319,23 @@ class TenantDocumentViewSet(ModelViewSet):
         serializer.save(tenant=tenant, caricato_da=user)
 
 
-class RoomViewSet(ReadOnlyModelViewSet):
+class RoomViewSet(ProtectedDestroyMixin, ModelViewSet):
     """
     Stanze.
-    - Proprietari: tutte.
-    - Inquilini: solo le stanze con assignment attivo per sé.
+    - Proprietari: tutte, con CRUD completo (scrittura riservata ai membri
+      operativi; la property è assegnata dal server sull'immobile attivo).
+    - Inquilini: solo lettura delle stanze con assignment attivo per sé.
     """
 
     serializer_class = RoomSerializer
+    protected_detail = (
+        "Impossibile eliminare la stanza: ha assegnazioni collegate. "
+        "Rimuovere prima le assegnazioni."
+    )
 
     def get_permissions(self):
+        if self.request.method not in SAFE_METHODS:
+            return [IsPropertyMember()]
         return [IsInquilinoSelf()]
 
     def get_queryset(self):
@@ -271,17 +351,30 @@ class RoomViewSet(ReadOnlyModelViewSet):
             Q(assignments__valid_to__isnull=True) | Q(assignments__valid_to__gt=today)
         ).distinct()
 
+    def perform_create(self, serializer):
+        serializer.save(property=get_request_property(self.request))
 
-class RoomAssignmentViewSet(ReadOnlyModelViewSet):
+
+class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
     """
     Assegnazioni stanza.
-    - Proprietari: tutte.
-    - Inquilini: solo le proprie.
+    - Proprietari: tutte, con CRUD completo (scrittura riservata ai membri
+      operativi). Create/update passano da ``full_clean`` del modello: date
+      coerenti, nessuna sovrapposizione sulla stessa stanza, stanza e
+      inquilino dello stesso immobile (che deve essere quello attivo).
+    - Inquilini: solo lettura delle proprie.
+
+    Action ``cessione`` (POST, detail): wizard di cessione stanza.
     """
 
     serializer_class = RoomAssignmentSerializer
+    protected_detail = (
+        "Impossibile eliminare l'assegnazione: ha addebiti collegati."
+    )
 
     def get_permissions(self):
+        if self.request.method not in SAFE_METHODS:
+            return [IsPropertyMember()]
         return [IsInquilinoSelf()]
 
     def get_queryset(self):
@@ -293,25 +386,164 @@ class RoomAssignmentViewSet(ReadOnlyModelViewSet):
             return qs.filter(room__property=get_request_property(self.request))
         return qs.filter(tenant__user=user)
 
+    def _full_clean_o_400(self, obj):
+        """``full_clean`` del modello → 400 DRF con i messaggi originali."""
+        from rest_framework.exceptions import ValidationError
 
-class ContractViewSet(ReadOnlyModelViewSet):
-    """Contratti di locazione dell'immobile attivo."""
+        try:
+            obj.full_clean()
+        except DjangoValidationError as e:
+            raise ValidationError(
+                e.message_dict if hasattr(e, "error_dict") else e.messages
+            )
+
+    def _valida_assignment(self, serializer):
+        """Coerenza property (stanza e inquilino sull'immobile attivo) e
+        validazione completa del modello (no-overlap, date)."""
+        from rest_framework.exceptions import ValidationError
+
+        prop = get_request_property(self.request)
+        inst = serializer.instance
+
+        def _val(campo, default=None):
+            if campo in serializer.validated_data:
+                return serializer.validated_data[campo]
+            return getattr(inst, campo, default)
+
+        room = _val("room")
+        tenant = _val("tenant")
+        if room is not None and room.property_id != prop.pk:
+            raise ValidationError(
+                {"room": "La stanza appartiene a un altro immobile."}
+            )
+        if tenant is not None and tenant.property_id != prop.pk:
+            raise ValidationError(
+                {"tenant": "L'inquilino appartiene a un altro immobile."}
+            )
+        conto = _val("bank_account_affitto")
+        if conto is not None and not conto.owner.user.property_memberships.filter(
+            property=prop
+        ).exists():
+            raise ValidationError(
+                {"bank_account_affitto": "Conto estraneo a questo immobile."}
+            )
+
+        obj = RoomAssignment(
+            pk=inst.pk if inst else None,
+            room=room,
+            tenant=tenant,
+            valid_from=_val("valid_from"),
+            valid_to=_val("valid_to"),
+            canone_mensile=_val("canone_mensile"),
+            bank_account_affitto=conto,
+            costo_cessione=_val("costo_cessione"),
+            data_atto_cessione=_val("data_atto_cessione"),
+            note=_val("note", "") or "",
+        )
+        if inst is not None:
+            # L'istanza rappresenta un update: senza questo flag full_clean
+            # segnalerebbe il pk come duplicato.
+            obj._state.adding = False
+        self._full_clean_o_400(obj)
+
+    def perform_create(self, serializer):
+        self._valida_assignment(serializer)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._valida_assignment(serializer)
+        serializer.save()
+
+    @action(detail=True, methods=["post"], url_path="cessione")
+    def cessione(self, request, pk=None):
+        """Wizard cessione stanza: chiude l'assignment corrente a
+        ``data_fine`` e ne apre uno nuovo dal giorno dopo per il nuovo
+        inquilino, in transazione atomica.
+
+        Body: ``{data_fine, nuovo_tenant, canone_mensile, costo_cessione?,
+        data_atto_cessione?}``. Il ``costo_cessione`` sul nuovo assignment
+        attiva i side-effect esistenti (Receivable registrazione 50% +
+        Expense proprietari 50%, vedi ``properties/signals.py``).
+        """
+        from django.db import transaction
+        from rest_framework.exceptions import ValidationError
+
+        corrente = self.get_object()
+        ser = CessioneAssignmentSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        v = ser.validated_data
+
+        prop = get_request_property(request)
+        nuovo_tenant = v["nuovo_tenant"]
+        if nuovo_tenant.property_id != prop.pk:
+            raise ValidationError(
+                {"nuovo_tenant": "L'inquilino appartiene a un altro immobile."}
+            )
+        data_fine = v["data_fine"]
+
+        with transaction.atomic():
+            corrente.valid_to = data_fine
+            self._full_clean_o_400(corrente)
+            corrente.save()
+
+            nuovo = RoomAssignment(
+                room=corrente.room,
+                tenant=nuovo_tenant,
+                valid_from=data_fine + datetime.timedelta(days=1),
+                canone_mensile=v["canone_mensile"],
+                costo_cessione=v.get("costo_cessione"),
+                data_atto_cessione=v.get("data_atto_cessione"),
+            )
+            # Un errore qui (es. overlap col successivo) annulla anche la
+            # chiusura del corrente: tutto-o-niente.
+            self._full_clean_o_400(nuovo)
+            nuovo.save()
+
+        out = self.get_serializer
+        return Response(
+            {"chiuso": out(corrente).data, "nuovo": out(nuovo).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ContractViewSet(ProtectedDestroyMixin, ModelViewSet):
+    """Contratti di locazione dell'immobile attivo (CRUD per i membri
+    operativi; la property è assegnata dal server)."""
 
     serializer_class = ContractSerializer
     permission_classes = [IsPropertyMember]
     queryset = Contract.objects.all()
+    protected_detail = (
+        "Impossibile eliminare il contratto: ha dati collegati."
+    )
 
     def get_queryset(self):
         return super().get_queryset().filter(
             property=get_request_property(self.request)
         )
 
+    def _valida_pagatore(self, serializer):
+        _valida_owner_membro(
+            serializer.validated_data.get("default_pagatore_bollette"),
+            get_request_property(self.request),
+            "default_pagatore_bollette",
+        )
 
-class OwnerBankAccountViewSet(ReadOnlyModelViewSet):
+    def perform_create(self, serializer):
+        self._valida_pagatore(serializer)
+        serializer.save(property=get_request_property(self.request))
+
+    def perform_update(self, serializer):
+        self._valida_pagatore(serializer)
+        serializer.save()
+
+
+class OwnerBankAccountViewSet(ProtectedDestroyMixin, ModelViewSet):
     """Conti bancari dei membri dell'immobile attivo.
 
     Visibilità fra co-membri (decisione 2026-07-11): chi condivide un
-    immobile col titolare vede i suoi conti.
+    immobile col titolare vede i suoi conti. Scrittura solo sui PROPRI
+    conti: l'owner è sempre il profilo del richiedente.
     """
 
     serializer_class = OwnerBankAccountSerializer
@@ -319,12 +551,44 @@ class OwnerBankAccountViewSet(ReadOnlyModelViewSet):
     queryset = OwnerBankAccount.objects.select_related("owner").order_by(
         "owner__nominativo", "ordinamento"
     )
+    protected_detail = (
+        "Impossibile eliminare il conto: ha movimenti bancari collegati."
+    )
 
     def get_queryset(self):
         prop = get_request_property(self.request)
         return super().get_queryset().filter(
             owner__user__property_memberships__property=prop
         ).distinct()
+
+    def _profilo_richiedente(self):
+        from rest_framework.exceptions import PermissionDenied
+
+        profilo = getattr(self.request.user, "owner_profile", None)
+        if profilo is None:
+            raise PermissionDenied(
+                "Nessun profilo proprietario associato all'utente."
+            )
+        return profilo
+
+    def _richiedi_titolare(self, conto):
+        from rest_framework.exceptions import PermissionDenied
+
+        if self.request.user.is_superuser:
+            return
+        if conto.owner.user_id != self.request.user.pk:
+            raise PermissionDenied("Puoi modificare solo i tuoi conti.")
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self._profilo_richiedente())
+
+    def perform_update(self, serializer):
+        self._richiedi_titolare(serializer.instance)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._richiedi_titolare(instance)
+        instance.delete()
 
 
 # ---------------------------------------------------------------------------

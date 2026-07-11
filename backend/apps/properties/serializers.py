@@ -1,6 +1,7 @@
 """
 Serializer per l'app properties.
 """
+from django.utils.text import slugify
 from rest_framework import serializers
 
 from properties.models import (
@@ -12,6 +13,21 @@ from properties.models import (
     TenantDocument,
     TenantProfile,
 )
+
+
+def _username_da_nominativo(nominativo: str) -> str:
+    """Genera uno username dallo slug del nominativo (es. "Mario Rossi" →
+    "mario-rossi"), con suffisso numerico se già occupato."""
+    from django.contrib.auth import get_user_model
+
+    base = slugify(nominativo) or "inquilino"
+    User = get_user_model()
+    username = base
+    n = 2
+    while User.objects.filter(username=username).exists():
+        username = f"{base}{n}"
+        n += 1
+    return username
 
 
 class OwnerProfileSerializer(serializers.ModelSerializer):
@@ -78,6 +94,71 @@ class TenantProfileSerializer(serializers.ModelSerializer):
         return saldi.get(obj.id, 0.0)
 
 
+class TenantProfileWriteSerializer(serializers.ModelSerializer):
+    """Creazione/aggiornamento di un inquilino lato gestione.
+
+    In creazione genera anche lo ``User`` collegato: username dallo slug del
+    nominativo (con suffisso numerico se occupato), password inutilizzabile
+    (l'accesso si attiva con l'invito), gruppo 'inquilini'. La ``property``
+    è assegnata dal server (immobile attivo) e non è esposta in scrittura.
+    """
+
+    username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.EmailField(
+        source="user.email", required=False, allow_blank=True,
+    )
+    property = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = TenantProfile
+        fields = [
+            "id",
+            "username",
+            "email",
+            "property",
+            "nominativo",
+            "codice_fiscale",
+            "telefono",
+            "email_alt",
+            "giorno_pagamento_affitto",
+            "frequenza_conguagli",
+            "ciclo_fatturazione",
+            "note_pagamento",
+            "deposito_versato",
+            "data_versamento_deposito",
+            "deposito_da_restituire",
+            "data_restituzione_prevista",
+        ]
+
+    def create(self, validated_data):
+        from django.conf import settings
+        from django.contrib.auth import get_user_model
+        from django.contrib.auth.models import Group
+        from django.db import transaction
+
+        user_data = validated_data.pop("user", {})
+        email = (user_data.get("email") or "").strip()
+        User = get_user_model()
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=_username_da_nominativo(validated_data["nominativo"]),
+                email=email,
+            )
+            user.set_unusable_password()
+            user.save()
+            gruppo, _ = Group.objects.get_or_create(name=settings.ROLE_INQUILINI)
+            user.groups.add(gruppo)
+            return TenantProfile.objects.create(user=user, **validated_data)
+
+    def update(self, instance, validated_data):
+        user_data = validated_data.pop("user", {})
+        email = user_data.get("email")
+        if email is not None and email.strip() != instance.user.email:
+            instance.user.email = email.strip()
+            instance.user.save(update_fields=["email"])
+        return super().update(instance, validated_data)
+
+
 class TenantSelfUpdateSerializer(serializers.ModelSerializer):
     """Serializer ristretto con cui l'inquilino aggiorna i propri dati.
 
@@ -127,10 +208,14 @@ class TenantDocumentSerializer(serializers.ModelSerializer):
 
 
 class RoomSerializer(serializers.ModelSerializer):
+    # La property è assegnata dal server (immobile attivo): mai in scrittura.
+    property = serializers.PrimaryKeyRelatedField(read_only=True)
+
     class Meta:
         model = Room
         fields = [
             "id",
+            "property",
             "nome",
             "superficie_mq",
             "foto",
@@ -153,32 +238,59 @@ class RoomAssignmentSerializer(serializers.ModelSerializer):
             "valid_from",
             "valid_to",
             "canone_mensile",
+            "bank_account_affitto",
             "costo_cessione",
             "data_atto_cessione",
             "note",
         ]
 
 
+class CessioneAssignmentSerializer(serializers.Serializer):
+    """Input del wizard cessione stanza (POST room-assignments/{id}/cessione).
+
+    Chiude l'assegnazione corrente a ``data_fine`` e ne apre una nuova per
+    la stessa stanza dal giorno dopo, con il nuovo inquilino.
+    """
+
+    data_fine = serializers.DateField()
+    nuovo_tenant = serializers.PrimaryKeyRelatedField(
+        queryset=TenantProfile.objects.all()
+    )
+    canone_mensile = serializers.DecimalField(max_digits=10, decimal_places=2)
+    costo_cessione = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False, allow_null=True,
+    )
+    data_atto_cessione = serializers.DateField(required=False, allow_null=True)
+
+
 class ContractSerializer(serializers.ModelSerializer):
     regime_fiscale_display = serializers.CharField(
         source="get_regime_fiscale_display", read_only=True
     )
+    property = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = Contract
         fields = [
             "id",
+            "property",
+            "nome",
             "data_stipula",
             "data_decorrenza",
+            "termine",
             "durata_anni",
             "asseverato",
             "regime_fiscale",
             "regime_fiscale_display",
+            "default_pagatore_bollette",
             "note",
         ]
 
 
 class OwnerBankAccountSerializer(serializers.ModelSerializer):
+    # L'owner è sempre il profilo del richiedente (assegnato dal server):
+    # nessuno può creare/modificare conti a nome altrui.
+    owner = serializers.PrimaryKeyRelatedField(read_only=True)
     owner_nominativo = serializers.CharField(source="owner.nominativo", read_only=True)
 
     class Meta:

@@ -26,17 +26,21 @@ from accounts.permissions import (  # noqa: F401
     IsProprietario,
 )
 from properties.context import get_request_property
+from properties.views import ProtectedDestroyMixin
 from billing.models import (
+    AnnualUtilityCost,
     BankTransaction,
     BankTransactionAllocation,
     Expense,
     ExpenseCategory,
     Receivable,
     StatoPagamento,
+    Supplier,
     UtilityBill,
     UtilityChargePeriod,
 )
 from billing.serializers import (
+    AnnualUtilityCostSerializer,
     BankTransactionBulkImportInputSerializer,
     BankTransactionSerializer,
     ExpenseCategorySerializer,
@@ -45,6 +49,7 @@ from billing.serializers import (
     ReceivableForReconcileSerializer,
     RegistraPagamentoInputSerializer,
     RentPaymentSerializer,
+    SupplierSerializer,
     UtilityBillSerializer,
     UtilityChargePeriodSerializer,
     UtilityChargeSerializer,
@@ -612,18 +617,89 @@ class UtilityBillViewSet(ModelViewSet):
         return Response(result)
 
 
-class ExpenseCategoryViewSet(ReadOnlyModelViewSet):
-    """Categorie di spesa. Read-only via API: si gestiscono dall'admin Django."""
+class ExpenseCategoryViewSet(ProtectedDestroyMixin, ModelViewSet):
+    """Categorie di spesa dell'immobile attivo (CRUD per i membri operativi;
+    la property è assegnata dal server)."""
 
     serializer_class = ExpenseCategorySerializer
     permission_classes = [IsPropertyMember]
     queryset = ExpenseCategory.objects.all().order_by("nome")
+    pagination_class = None
+    protected_detail = (
+        "Impossibile eliminare la categoria: ha spese collegate."
+    )
 
     def get_queryset(self):
         return super().get_queryset().filter(
             property=get_request_property(self.request)
         )
+
+    def _valida_codice_univoco(self, serializer):
+        """Anticipa il vincolo unique (property, codice) con un 400 chiaro."""
+        from rest_framework.exceptions import ValidationError
+
+        codice = serializer.validated_data.get("codice")
+        if codice is None:
+            return
+        qs = ExpenseCategory.objects.filter(
+            property=get_request_property(self.request), codice=codice
+        )
+        if serializer.instance is not None:
+            qs = qs.exclude(pk=serializer.instance.pk)
+        if qs.exists():
+            raise ValidationError(
+                {"codice": "Esiste già una categoria con questo codice."}
+            )
+
+    def perform_create(self, serializer):
+        self._valida_codice_univoco(serializer)
+        serializer.save(property=get_request_property(self.request))
+
+    def perform_update(self, serializer):
+        self._valida_codice_univoco(serializer)
+        serializer.save()
+
+
+class SupplierViewSet(ProtectedDestroyMixin, ModelViewSet):
+    """Fornitori dell'immobile attivo (CRUD per i membri operativi; la
+    property è assegnata dal server)."""
+
+    serializer_class = SupplierSerializer
+    permission_classes = [IsPropertyMember]
+    queryset = Supplier.objects.all().order_by("nome")
     pagination_class = None
+    protected_detail = (
+        "Impossibile eliminare il fornitore: ha spese o bollette collegate."
+    )
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            property=get_request_property(self.request)
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(property=get_request_property(self.request))
+
+
+class AnnualUtilityCostViewSet(ProtectedDestroyMixin, ModelViewSet):
+    """Costi utenze annuali (TARI, ecc.) dell'immobile attivo (CRUD per i
+    membri operativi; la property è assegnata dal server)."""
+
+    serializer_class = AnnualUtilityCostSerializer
+    permission_classes = [IsPropertyMember]
+    queryset = AnnualUtilityCost.objects.all().order_by("-anno", "voce")
+    pagination_class = None
+    protected_detail = (
+        "Impossibile eliminare il costo annuale: è referenziato da altri dati."
+    )
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            property=get_request_property(self.request)
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(property=get_request_property(self.request))
 
 
 class ExpenseViewSet(ModelViewSet):

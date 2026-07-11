@@ -5,6 +5,7 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from billing.views import (
+    AnnualUtilityCostViewSet,
     BankTransactionBulkImportView,
     BankTransactionViewSet,
     ExpenseCategoryViewSet,
@@ -14,6 +15,7 @@ from billing.views import (
     ReconciliationBulkView,
     RegistraPagamentoReceivableView,
     RentPaymentViewSet,
+    SupplierViewSet,
     UtenzeInquilinoView,
     UtilityBillViewSet,
     UtilityChargeViewSet,
@@ -26,6 +28,10 @@ router.register(r"utility-charges", UtilityChargeViewSet, basename="utility-char
 router.register(r"utility-periods", UtilityChargePeriodViewSet, basename="utility-charge-period")
 router.register(r"utility-bills", UtilityBillViewSet, basename="utility-bill")
 router.register(r"expense-categories", ExpenseCategoryViewSet, basename="expense-category")
+router.register(r"suppliers", SupplierViewSet, basename="supplier")
+router.register(
+    r"annual-utility-costs", AnnualUtilityCostViewSet, basename="annual-utility-cost"
+)
 router.register(r"expenses", ExpenseViewSet, basename="expense")
 router.register(r"extra-charges", ExtraChargeViewSet, basename="extra-charge")
 router.register(r"bank-transactions", BankTransactionViewSet, basename="bank-transaction")
