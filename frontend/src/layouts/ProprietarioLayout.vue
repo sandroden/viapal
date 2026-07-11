@@ -13,6 +13,53 @@
           Viapal — area proprietari
         </q-toolbar-title>
         <q-space />
+
+        <!-- Switcher immobile: visibile solo con più di un immobile.
+             Con un immobile solo l'app resta identica a prima. -->
+        <q-btn-dropdown
+          v-if="propStore.hasMultiple"
+          flat
+          dense
+          no-caps
+          icon="home_work"
+          :label="propStore.activeProperty?.nome ?? 'Immobile'"
+          class="vp-property-switcher"
+          data-testid="property-switcher"
+        >
+          <q-list>
+            <q-item
+              v-for="p in propStore.properties"
+              :key="p.id"
+              v-close-popup
+              clickable
+              :active="p.id === propStore.activePropertyId"
+              @click="propStore.cambia(p.id)"
+            >
+              <q-item-section avatar>
+                <q-icon :name="p.id === propStore.activePropertyId ? 'radio_button_checked' : 'radio_button_unchecked'" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>{{ p.nome }}</q-item-label>
+                <q-item-label caption>{{ etichettaRuolo(p.ruolo) }}</q-item-label>
+              </q-item-section>
+            </q-item>
+            <q-separator />
+            <q-item v-close-popup clickable to="/p/proprieta/nuova">
+              <q-item-section avatar><q-icon name="add_home" /></q-item-section>
+              <q-item-section>Nuova proprietà…</q-item-section>
+            </q-item>
+          </q-list>
+        </q-btn-dropdown>
+        <q-chip
+          v-if="propStore.mioRuolo && propStore.mioRuolo !== 'proprietario'"
+          dense
+          outline
+          class="vp-user-chip"
+          data-testid="ruolo-badge"
+        >
+          {{ etichettaRuolo(propStore.mioRuolo) }}
+        </q-chip>
+
         <q-chip dense outline class="vp-user-chip">
           {{ auth.user?.first_name || auth.user?.username }}
         </q-chip>
@@ -60,11 +107,20 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAuthStore } from 'stores/auth';
+import { useAuthStore, type RuoloProperty } from 'stores/auth';
+import { usePropertiesStore } from 'stores/properties';
 
 const auth = useAuthStore();
+const propStore = usePropertiesStore();
 const router = useRouter();
 const drawerOpen = ref(true);
+
+function etichettaRuolo(ruolo: RuoloProperty | null): string {
+  if (ruolo === 'proprietario') return 'Proprietario';
+  if (ruolo === 'gestore') return 'Gestore';
+  if (ruolo === 'sola_lettura') return 'Sola lettura';
+  return '';
+}
 
 const vociMenu = [
   { to: '/p/', label: 'Dashboard', icon: 'dashboard' },
@@ -77,6 +133,7 @@ const vociMenu = [
   { to: '/p/saldi-fratelli', label: 'Saldi fratelli', icon: 'account_balance' },
   { to: '/p/conto-economico', label: 'Conto economico', icon: 'assessment' },
   { to: '/p/quick-add', label: 'Aggiungi rapida', icon: 'add_circle' },
+  { to: '/p/impostazioni/proprieta', label: 'Immobile', icon: 'home_work' },
 ];
 
 function toggleDrawer() {
@@ -105,6 +162,10 @@ async function logout() {
 .vp-user-chip {
   color: var(--vp-cream);
   border-color: var(--vp-cream);
+}
+.vp-property-switcher {
+  color: var(--vp-cream);
+  margin-right: var(--vp-gap-2);
 }
 .vp-drawer {
   background: var(--vp-paper-2);

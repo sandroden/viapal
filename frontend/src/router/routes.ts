@@ -106,6 +106,16 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/ProprietarioUtenze.vue'),
       },
       {
+        path: 'proprieta/nuova',
+        name: 'p-property-nuova',
+        component: () => import('pages/ProprietarioPropertyNuova.vue'),
+      },
+      {
+        path: 'impostazioni/proprieta',
+        name: 'p-impostazioni-proprieta',
+        component: () => import('pages/ProprietarioImpostazioniProprieta.vue'),
+      },
+      {
         path: ':catchAll(.*)*',
         component: () => import('pages/ErrorNotFound.vue'),
       },

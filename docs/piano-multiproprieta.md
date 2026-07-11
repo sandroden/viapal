@@ -384,4 +384,11 @@ Palestrina non deve rompersi mai).
   con ruoli, scoping di tutti i viewset/dashboard, API
   `properties`/membri/quote/inviti, `/api/auth/user/` con elenco immobili,
   suite cross-property (56 test di isolamento). Suite totale: 511 test.
-- ⏭ **Fase C** — frontend multi-property (store, switcher, onboarding).
+- ✅ **Fase C** completata (2026-07-11): store `properties` + interceptor
+  `X-Property-Id`, switcher nel layout proprietari (nascosto con un solo
+  immobile, badge ruolo), pagina "Nuova proprietà" (con scelta del ruolo
+  del creatore) e pagina "Immobile" (dati, membri con inviti email, quote
+  versionate). Verifica browser con screenshot in
+  `tests/screenshots/multiproprieta/`.
+- ⏭ **Fase D** — anagrafiche nel frontend (stanze, contratti, cessioni,
+  inquilini CRUD, conti, categorie, solleciti, TARI).
