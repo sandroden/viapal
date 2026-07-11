@@ -7,6 +7,7 @@ from properties.views import (
     ContractViewSet,
     OwnerBankAccountViewSet,
     OwnerProfileViewSet,
+    PropertyViewSet,
     RoomAssignmentViewSet,
     RoomViewSet,
     TenantDocumentViewSet,
@@ -14,6 +15,7 @@ from properties.views import (
 )
 
 router = DefaultRouter()
+router.register(r"properties", PropertyViewSet, basename="property")
 router.register(r"owners", OwnerProfileViewSet, basename="owner-profile")
 router.register(r"tenants", TenantProfileViewSet, basename="tenant-profile")
 router.register(r"tenant-documents", TenantDocumentViewSet, basename="tenant-document")

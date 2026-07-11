@@ -4,6 +4,7 @@ ViewSet per l'app properties.
 import datetime
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
 from rest_framework.decorators import action
@@ -324,3 +325,325 @@ class OwnerBankAccountViewSet(ReadOnlyModelViewSet):
         return super().get_queryset().filter(
             owner__user__property_memberships__property=prop
         ).distinct()
+
+
+# ---------------------------------------------------------------------------
+# Immobili: CRUD, membri, quote, inviti (multiproprietà — Fase B)
+# ---------------------------------------------------------------------------
+
+
+class PropertyViewSet(ModelViewSet):
+    """Immobili dell'utente.
+
+    - list/retrieve: gli immobili di cui si è membri;
+    - create: qualsiasi utente lato gestione (membro di almeno un immobile);
+      chi crea diventa membro col ruolo indicato in ``ruolo_creatore``
+      (default 'proprietario', con quota 1.0);
+    - update: membri operativi (proprietario/gestore);
+    - destroy: solo ruolo 'proprietario' e solo se l'immobile è vuoto.
+
+    Azioni annidate: ``membri`` (GET/POST/DELETE), ``quote`` (GET/POST),
+    ``inviti`` (POST).
+    """
+
+    from properties.serializers import PropertySerializer
+
+    serializer_class = PropertySerializer
+
+    def get_queryset(self):
+        from properties.context import properties_accessibili
+        from properties.models import Property
+
+        return Property.objects.filter(
+            pk__in=properties_accessibili(self.request.user).values("pk")
+        ).order_by("nome")
+
+    def get_permissions(self):
+        from rest_framework.permissions import IsAuthenticated
+
+        return [IsAuthenticated()]
+
+    def _ruolo(self, prop):
+        from properties.context import ruolo_su_property
+
+        return ruolo_su_property(self.request.user, prop)
+
+    def _richiedi_operativo(self, prop):
+        from rest_framework.exceptions import PermissionDenied
+
+        from properties.models import PropertyMembership
+
+        if self._ruolo(prop) not in (
+            PropertyMembership.Ruolo.PROPRIETARIO,
+            PropertyMembership.Ruolo.GESTORE,
+        ):
+            raise PermissionDenied("Operazione riservata a proprietari e gestori.")
+
+    def _richiedi_proprietario(self, prop):
+        from rest_framework.exceptions import PermissionDenied
+
+        from properties.models import PropertyMembership
+
+        if self._ruolo(prop) != PropertyMembership.Ruolo.PROPRIETARIO:
+            raise PermissionDenied("Operazione riservata ai proprietari dell'immobile.")
+
+    def create(self, request, *args, **kwargs):
+        from django.db import transaction
+        from rest_framework import status as st
+        from rest_framework.exceptions import PermissionDenied
+
+        from properties.models import OwnerProfile, OwnershipShare, PropertyMembership
+
+        user = request.user
+        if not (user.is_superuser or user.property_memberships.exists()):
+            raise PermissionDenied(
+                "Solo chi gestisce già un immobile può crearne di nuovi."
+            )
+
+        ruolo_creatore = request.data.get(
+            "ruolo_creatore", PropertyMembership.Ruolo.PROPRIETARIO
+        )
+        if ruolo_creatore not in (
+            PropertyMembership.Ruolo.PROPRIETARIO,
+            PropertyMembership.Ruolo.GESTORE,
+        ):
+            return Response(
+                {"detail": "ruolo_creatore deve essere 'proprietario' o 'gestore'."},
+                status=st.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            prop = serializer.save()
+            PropertyMembership.objects.create(
+                property=prop, user=user, ruolo=ruolo_creatore,
+            )
+            if ruolo_creatore == PropertyMembership.Ruolo.PROPRIETARIO:
+                profilo, _ = OwnerProfile.objects.get_or_create(
+                    user=user,
+                    defaults={
+                        "nominativo": user.get_full_name() or user.username,
+                    },
+                )
+                OwnershipShare.objects.create(
+                    property=prop,
+                    owner=profilo,
+                    quota=Decimal("1.0000"),
+                    valid_from=datetime.date.today(),
+                )
+        out = self.get_serializer(prop)
+        return Response(out.data, status=st.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        self._richiedi_operativo(self.get_object())
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        from django.db.models.deletion import ProtectedError
+        from rest_framework import status as st
+
+        prop = self.get_object()
+        self._richiedi_proprietario(prop)
+        try:
+            prop.delete()
+        except ProtectedError:
+            return Response(
+                {"detail": "L'immobile non è vuoto: rimuovere prima stanze, "
+                           "contratti e dati collegati."},
+                status=st.HTTP_409_CONFLICT,
+            )
+        return Response(status=st.HTTP_204_NO_CONTENT)
+
+    # --- membri -------------------------------------------------------------
+
+    @action(detail=True, methods=["get", "post"], url_path="membri")
+    def membri(self, request, pk=None):
+        from rest_framework import status as st
+
+        from properties.models import PropertyMembership
+        from properties.serializers import PropertyMembershipSerializer
+
+        prop = self.get_object()
+        if request.method == "GET":
+            qs = prop.memberships.select_related("user").order_by("user__username")
+            return Response(PropertyMembershipSerializer(qs, many=True).data)
+
+        self._richiedi_proprietario(prop)
+        ser = PropertyMembershipSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        membership = PropertyMembership(
+            property=prop,
+            user=ser.validated_data["user"],
+            ruolo=ser.validated_data["ruolo"],
+            invitato_da=request.user,
+        )
+        try:
+            membership.full_clean()
+        except DjangoValidationError as e:
+            return Response(
+                {"detail": "; ".join(e.messages)}, status=st.HTTP_400_BAD_REQUEST
+            )
+        membership.save()
+        return Response(
+            PropertyMembershipSerializer(membership).data, status=st.HTTP_201_CREATED
+        )
+
+    @action(
+        detail=True,
+        methods=["delete", "patch"],
+        url_path=r"membri/(?P<membership_id>\d+)",
+    )
+    def membro_dettaglio(self, request, pk=None, membership_id=None):
+        from django.shortcuts import get_object_or_404
+        from rest_framework import status as st
+
+        from properties.models import PropertyMembership
+        from properties.serializers import PropertyMembershipSerializer
+
+        prop = self.get_object()
+        self._richiedi_proprietario(prop)
+        membership = get_object_or_404(
+            PropertyMembership, pk=membership_id, property=prop
+        )
+
+        if request.method == "PATCH":
+            ruolo = request.data.get("ruolo")
+            if ruolo not in dict(PropertyMembership.Ruolo.choices):
+                return Response(
+                    {"detail": "Ruolo non valido."}, status=st.HTTP_400_BAD_REQUEST
+                )
+            if (
+                membership.ruolo == PropertyMembership.Ruolo.PROPRIETARIO
+                and ruolo != PropertyMembership.Ruolo.PROPRIETARIO
+                and not prop.memberships.filter(
+                    ruolo=PropertyMembership.Ruolo.PROPRIETARIO
+                ).exclude(pk=membership.pk).exists()
+            ):
+                return Response(
+                    {"detail": "L'immobile deve avere almeno un proprietario."},
+                    status=st.HTTP_409_CONFLICT,
+                )
+            membership.ruolo = ruolo
+            membership.save(update_fields=["ruolo"])
+            return Response(PropertyMembershipSerializer(membership).data)
+
+        # DELETE
+        if (
+            membership.ruolo == PropertyMembership.Ruolo.PROPRIETARIO
+            and not prop.memberships.filter(
+                ruolo=PropertyMembership.Ruolo.PROPRIETARIO
+            ).exclude(pk=membership.pk).exists()
+        ):
+            return Response(
+                {"detail": "L'immobile deve avere almeno un proprietario."},
+                status=st.HTTP_409_CONFLICT,
+            )
+        membership.delete()
+        return Response(status=st.HTTP_204_NO_CONTENT)
+
+    # --- quote --------------------------------------------------------------
+
+    @action(detail=True, methods=["get", "post"], url_path="quote")
+    def quote(self, request, pk=None):
+        """GET: quote correnti e storiche. POST: nuovo assetto dal
+        ``valid_from`` indicato (chiude le quote aperte e crea il nuovo set,
+        in transazione atomica; la somma deve fare 1.0)."""
+        from django.db import transaction
+        from rest_framework import status as st
+
+        from properties.models import OwnershipShare, PropertyMembership
+        from properties.serializers import (
+            OwnershipShareSerializer,
+            QuoteReplaceSerializer,
+        )
+
+        prop = self.get_object()
+        if request.method == "GET":
+            qs = prop.ownership_shares.select_related("owner").order_by(
+                "-valid_from", "owner__nominativo"
+            )
+            return Response(OwnershipShareSerializer(qs, many=True).data)
+
+        self._richiedi_proprietario(prop)
+        ser = QuoteReplaceSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        valid_from = ser.validated_data["valid_from"]
+        voci = ser.validated_data["quote"]
+
+        totale = Decimal("0")
+        normalizzate = []
+        for voce in voci:
+            try:
+                user_id = int(voce["user"])
+                quota = Decimal(str(voce["quota"]))
+            except (KeyError, TypeError, ValueError, ArithmeticError):
+                return Response(
+                    {"detail": "Ogni voce deve avere 'user' e 'quota'."},
+                    status=st.HTTP_400_BAD_REQUEST,
+                )
+            membership = prop.memberships.filter(
+                user_id=user_id, ruolo=PropertyMembership.Ruolo.PROPRIETARIO
+            ).select_related("user__owner_profile").first()
+            if membership is None:
+                return Response(
+                    {"detail": f"L'utente {user_id} non è proprietario dell'immobile."},
+                    status=st.HTTP_400_BAD_REQUEST,
+                )
+            profilo = getattr(membership.user, "owner_profile", None)
+            if profilo is None:
+                return Response(
+                    {"detail": f"L'utente {user_id} non ha un profilo proprietario."},
+                    status=st.HTTP_400_BAD_REQUEST,
+                )
+            normalizzate.append((profilo, quota))
+            totale += quota
+        if abs(totale - Decimal("1")) > Decimal("0.001"):
+            return Response(
+                {"detail": f"La somma delle quote è {totale}: deve fare 1.0."},
+                status=st.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            aperte = prop.ownership_shares.filter(
+                Q(valid_to__isnull=True) | Q(valid_to__gt=valid_from),
+                valid_from__lt=valid_from,
+            )
+            aperte.update(valid_to=valid_from)
+            prop.ownership_shares.filter(valid_from__gte=valid_from).delete()
+            nuove = [
+                OwnershipShare.objects.create(
+                    property=prop, owner=profilo, quota=quota, valid_from=valid_from,
+                )
+                for profilo, quota in normalizzate
+            ]
+        return Response(
+            OwnershipShareSerializer(nuove, many=True).data,
+            status=st.HTTP_201_CREATED,
+        )
+
+    # --- inviti -------------------------------------------------------------
+
+    @action(detail=True, methods=["post"], url_path="inviti")
+    def inviti(self, request, pk=None):
+        from rest_framework import status as st
+
+        from accounts.inviti import invia_invito_membro
+        from properties.serializers import InvitoMembroSerializer
+
+        prop = self.get_object()
+        self._richiedi_proprietario(prop)
+        ser = InvitoMembroSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        esito = invia_invito_membro(
+            prop,
+            ser.validated_data["email"],
+            ser.validated_data["ruolo"],
+            nominativo=ser.validated_data.get("nominativo", ""),
+            invitato_da=request.user,
+        )
+        if esito["esito"] != "inviato":
+            return Response(
+                {"detail": esito["errore"]}, status=st.HTTP_400_BAD_REQUEST
+            )
+        return Response(esito, status=st.HTTP_201_CREATED)

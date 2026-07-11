@@ -193,3 +193,90 @@ class OwnerBankAccountSerializer(serializers.ModelSerializer):
             "attivo",
             "ordinamento",
         ]
+
+
+class PropertySerializer(serializers.ModelSerializer):
+    """Immobile con il ruolo dell'utente corrente."""
+
+    mio_ruolo = serializers.SerializerMethodField()
+    n_stanze = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import Property
+
+        model = Property
+        fields = [
+            "id",
+            "nome",
+            "indirizzo",
+            "bank_account_utenze",
+            "owner_anticipa_cessioni",
+            "mio_ruolo",
+            "n_stanze",
+        ]
+
+    def get_mio_ruolo(self, obj):
+        from .context import ruolo_su_property
+
+        request = self.context.get("request")
+        if request is None:
+            return None
+        return ruolo_su_property(request.user, obj)
+
+    def get_n_stanze(self, obj):
+        return obj.rooms.count()
+
+
+class PropertyMembershipSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
+    nominativo = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import PropertyMembership
+
+        model = PropertyMembership
+        fields = ["id", "user", "username", "email", "nominativo", "ruolo", "invitato_da"]
+        read_only_fields = ["id", "username", "email", "nominativo", "invitato_da"]
+
+    def get_nominativo(self, obj):
+        profilo = getattr(obj.user, "owner_profile", None)
+        if profilo:
+            return profilo.nominativo
+        return obj.user.get_full_name() or obj.user.username
+
+
+class OwnershipShareSerializer(serializers.ModelSerializer):
+    owner_nominativo = serializers.CharField(source="owner.nominativo", read_only=True)
+
+    class Meta:
+        from .models import OwnershipShare
+
+        model = OwnershipShare
+        fields = [
+            "id", "owner", "owner_nominativo", "quota", "valid_from", "valid_to",
+        ]
+
+
+class InvitoMembroSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    ruolo = serializers.ChoiceField(choices=[])
+    nominativo = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from .models import PropertyMembership
+
+        self.fields["ruolo"].choices = PropertyMembership.Ruolo.choices
+
+
+class QuoteReplaceSerializer(serializers.Serializer):
+    """Nuovo assetto quote dell'immobile a partire da una data.
+
+    ``quote`` = [{"user": id, "quota": "0.3334"}, ...] — la somma deve fare 1.
+    """
+
+    valid_from = serializers.DateField()
+    quote = serializers.ListField(
+        child=serializers.DictField(), allow_empty=False,
+    )
