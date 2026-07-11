@@ -17,10 +17,15 @@ class MessageTemplate(TimestampedModel):
         PUSH = "push", "Push notification"
         SMS = "sms", "SMS"
 
+    property = models.ForeignKey(
+        "properties.Property",
+        on_delete=models.CASCADE,
+        related_name="message_templates",
+        verbose_name="immobile",
+    )
     codice = models.SlugField(
-        unique=True,
         verbose_name="codice",
-        help_text="Identificativo univoco del template (es. 'affitto_promemoria_pre').",
+        help_text="Identificativo del template (es. 'affitto_promemoria_pre'), univoco per immobile.",
     )
     titolo = models.CharField(
         max_length=200,
@@ -40,6 +45,12 @@ class MessageTemplate(TimestampedModel):
         verbose_name = "template messaggio"
         verbose_name_plural = "template messaggi"
         ordering = ["codice"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["property", "codice"],
+                name="message_template_codice_unique_per_property",
+            ),
+        ]
 
     def __str__(self):
         return f"[{self.get_canale_display()}] {self.codice}"
@@ -63,6 +74,12 @@ class ReminderRule(TimestampedModel):
         PROPRIETARIO = "proprietario", "Proprietario"
         ENTRAMBI = "entrambi", "Entrambi"
 
+    property = models.ForeignKey(
+        "properties.Property",
+        on_delete=models.CASCADE,
+        related_name="reminder_rules",
+        verbose_name="immobile",
+    )
     applicabile_a = models.CharField(
         max_length=20,
         choices=ApplicabileA.choices,

@@ -74,27 +74,33 @@ def owner_profile(db, user_prop):
 
 
 @pytest.fixture
-def tenant_1(db, user_inq_1):
+def tenant_1(db, user_inq_1, immobile):
     return TenantProfile.objects.create(
-        user=user_inq_1, nominativo="Inquilino Uno", giorno_pagamento_affitto=1
+        user=user_inq_1,
+        property=immobile,
+        nominativo="Inquilino Uno",
+        giorno_pagamento_affitto=1,
     )
 
 
 @pytest.fixture
-def tenant_2(db, user_inq_2):
+def tenant_2(db, user_inq_2, immobile):
     return TenantProfile.objects.create(
-        user=user_inq_2, nominativo="Inquilino Due", giorno_pagamento_affitto=5
+        user=user_inq_2,
+        property=immobile,
+        nominativo="Inquilino Due",
+        giorno_pagamento_affitto=5,
     )
 
 
 @pytest.fixture
-def room_1(db):
-    return Room.objects.create(nome="Camera Test A", ordinamento=10)
+def room_1(db, immobile):
+    return Room.objects.create(property=immobile, nome="Camera Test A", ordinamento=10)
 
 
 @pytest.fixture
-def room_2(db):
-    return Room.objects.create(nome="Camera Test B", ordinamento=11)
+def room_2(db, immobile):
+    return Room.objects.create(property=immobile, nome="Camera Test B", ordinamento=11)
 
 
 @pytest.fixture
@@ -118,8 +124,9 @@ def assignment_2(db, room_2, tenant_2):
 
 
 @pytest.fixture
-def contract(db):
+def contract(db, immobile):
     return Contract.objects.create(
+        property=immobile,
         data_stipula=datetime.date(2024, 9, 15),
         data_decorrenza=datetime.date(2024, 9, 20),
         durata_anni=4,

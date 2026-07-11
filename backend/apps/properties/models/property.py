@@ -34,6 +34,18 @@ class Property(TimestampedModel):
         verbose_name="conto domiciliazione utenze",
         help_text="Conto su cui gli inquilini versano le utenze/conguagli di questo immobile.",
     )
+    owner_anticipa_cessioni = models.ForeignKey(
+        OwnerProfile,
+        on_delete=models.PROTECT,
+        related_name="properties_anticipo_cessioni",
+        null=True,
+        blank=True,
+        verbose_name="anticipa i costi di cessione",
+        help_text=(
+            "Proprietario che, per convenzione, anticipa il 50% dei costi "
+            "di registrazione/cessione contratto di questo immobile."
+        ),
+    )
 
     class Meta:
         verbose_name = "immobile"
@@ -51,8 +63,6 @@ class Room(TimestampedModel):
         Property,
         on_delete=models.PROTECT,
         related_name="rooms",
-        null=True,
-        blank=True,
         verbose_name="immobile",
     )
     nome = models.CharField(
@@ -87,13 +97,23 @@ class Room(TimestampedModel):
 
 
 class Contract(TimestampedModel):
-    """Il contratto unico di locazione (un solo record attivo)."""
+    """Contratto di locazione di un immobile.
+
+    Storicamente "il contratto unico": oggi ogni immobile ha i propri
+    contratti (di norma uno attivo per volta).
+    """
 
     class RegimeFiscale(models.TextChoices):
         CEDOLARE_10 = "cedolare_10", "Cedolare secca 10%"
         CEDOLARE_21 = "cedolare_21", "Cedolare secca 21%"
         IRPEF = "irpef", "IRPEF ordinario"
 
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.PROTECT,
+        related_name="contracts",
+        verbose_name="immobile",
+    )
     nome = models.CharField(
         max_length=100,
         blank=True,
@@ -244,7 +264,23 @@ class RoomAssignment(TimestampedModel):
             raise ValidationError(
                 {"valid_to": "La data di fine occupazione deve essere successiva alla data di inizio."}
             )
+        self._valida_stessa_property()
         self._valida_no_overlap()
+
+    def _valida_stessa_property(self):
+        """La stanza e l'inquilino devono appartenere allo stesso immobile."""
+        if not self.room_id or not self.tenant_id:
+            return
+        room_property_id = self.room.property_id
+        tenant_property_id = self.tenant.property_id
+        if (
+            room_property_id
+            and tenant_property_id
+            and room_property_id != tenant_property_id
+        ):
+            raise ValidationError(
+                "La stanza e l'inquilino appartengono a immobili diversi."
+            )
 
     def _valida_no_overlap(self):
         """Verifica che non ci siano assegnazioni sovrapposte per la stessa stanza."""

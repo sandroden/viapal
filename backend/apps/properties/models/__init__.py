@@ -1,4 +1,5 @@
 from ._base import TimestampedModel
+from .membership import PropertyMembership, user_property_ids
 from .owner import (
     OwnerBankAccount,
     OwnerProfile,
@@ -16,8 +17,10 @@ __all__ = [
     "TenantProfile",
     "TenantDocument",
     "Property",
+    "PropertyMembership",
     "Room",
     "Contract",
     "RoomAssignment",
     "quote_attive_at",
+    "user_property_ids",
 ]

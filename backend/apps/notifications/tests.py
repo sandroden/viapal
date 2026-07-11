@@ -27,8 +27,9 @@ def user(db):
 
 
 @pytest.fixture
-def template_affitto(db):
+def template_affitto(db, immobile):
     return MessageTemplate.objects.create(
+        property=immobile,
         codice="affitto_promemoria_pre",
         titolo="Promemoria affitto",
         corpo="Caro {{nominativo}}, il tuo affitto di {{importo}}€ scade domani.",
@@ -52,11 +53,24 @@ class TestMessageTemplate:
 
         with pytest.raises(IntegrityError):
             MessageTemplate.objects.create(
+                property=template_affitto.property,  # stesso immobile
                 codice="affitto_promemoria_pre",  # duplicato
                 titolo="Altro template",
                 corpo="...",
                 canale="email",
             )
+
+    def test_stesso_codice_su_altro_immobile_ok(self, db, template_affitto, immobile2):
+        """Il codice è univoco PER immobile: su un altro immobile è lecito."""
+        altro = MessageTemplate.objects.create(
+            property=immobile2,
+            codice="affitto_promemoria_pre",  # stesso codice, altra property
+            titolo="Template altro immobile",
+            corpo="...",
+            canale="email",
+        )
+        assert altro.pk is not None
+        assert altro.pk != template_affitto.pk
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +81,7 @@ class TestMessageTemplate:
 class TestReminderRule:
     def test_creazione_sollecito_pre_scadenza(self, db, template_affitto):
         rule = ReminderRule.objects.create(
+            property=template_affitto.property,
             applicabile_a="affitto",
             giorni_offset=-1,
             canale="push",
@@ -77,9 +92,10 @@ class TestReminderRule:
         assert rule.attiva is True
         assert "-1" in str(rule)
 
-    def test_sollecito_post_scadenza(self, db):
+    def test_sollecito_post_scadenza(self, db, immobile):
         """Sollecito +9 giorni dopo scadenza, via email+push a entrambi."""
         rule = ReminderRule.objects.create(
+            property=immobile,
             applicabile_a="affitto",
             giorni_offset=9,
             canale="both",
@@ -87,8 +103,9 @@ class TestReminderRule:
         )
         assert "+9" in str(rule)
 
-    def test_regola_inattiva(self, db):
+    def test_regola_inattiva(self, db, immobile):
         rule = ReminderRule.objects.create(
+            property=immobile,
             applicabile_a="conguaglio",
             giorni_offset=0,
             canale="push",
@@ -142,6 +159,7 @@ class TestPushSubscription:
 class TestNotification:
     def test_creazione_senza_riferimento(self, db, user, template_affitto):
         rule = ReminderRule.objects.create(
+            property=template_affitto.property,
             applicabile_a="affitto",
             giorni_offset=-1,
             canale="push",

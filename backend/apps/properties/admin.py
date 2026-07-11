@@ -19,6 +19,7 @@ from .models import (
     OwnerProfile,
     OwnershipShare,
     Property,
+    PropertyMembership,
     Room,
     RoomAssignment,
     TenantDocument,
@@ -119,14 +120,14 @@ class OwnerProfileAdmin(ModalEditMixin, JumboModelAdmin):
 class OwnershipShareAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 700
     list_display = (
-        "owner", "valid_from", "valid_to", "quota",
+        "property", "owner", "valid_from", "valid_to", "quota",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
-    list_filter = ("owner",)
-    list_select_related = ("owner",)
-    search_fields = ("owner__nominativo",)
-    autocomplete_fields = ("owner",)
-    ordering = ("-valid_from", "owner__nominativo")
+    list_filter = ("property", "owner")
+    list_select_related = ("property", "owner")
+    search_fields = ("owner__nominativo", "property__nome")
+    autocomplete_fields = ("property", "owner")
+    ordering = ("property__nome", "-valid_from", "owner__nominativo")
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +281,14 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
 # ---------------------------------------------------------------------------
 
 
+class PropertyMembershipInline(admin.TabularInline):
+    model = PropertyMembership
+    fk_name = "property"
+    extra = 0
+    fields = ("user", "ruolo", "invitato_da")
+    autocomplete_fields = ("user", "invitato_da")
+
+
 @admin.register(Property)
 class PropertyAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 700
@@ -288,12 +297,26 @@ class PropertyAdmin(ModalEditMixin, JumboModelAdmin):
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
     search_fields = ("nome", "indirizzo")
-    autocomplete_fields = ("bank_account_utenze",)
+    autocomplete_fields = ("bank_account_utenze", "owner_anticipa_cessioni")
+    inlines = (PropertyMembershipInline,)
     fieldsets = (
         ("Immobile", {
-            "fields": ("nome", "indirizzo", "bank_account_utenze"),
+            "fields": ("nome", "indirizzo", "bank_account_utenze", "owner_anticipa_cessioni"),
         }),
     )
+
+
+@admin.register(PropertyMembership)
+class PropertyMembershipAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 700
+    list_display = (
+        "property", "user", "ruolo", "invitato_da",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
+    list_filter = ("property", "ruolo")
+    list_select_related = ("property", "user", "invitato_da")
+    search_fields = ("property__nome", "user__username", "user__email")
+    autocomplete_fields = ("property", "user", "invitato_da")
 
 
 @admin.register(Room)

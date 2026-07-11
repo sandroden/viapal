@@ -1,6 +1,7 @@
 """
 Modelli relativi agli inquilini.
 """
+import builtins
 import os
 from decimal import Decimal
 
@@ -28,6 +29,16 @@ class TenantProfile(TimestampedModel):
         on_delete=models.PROTECT,
         related_name="tenant_profile",
         verbose_name="utente",
+    )
+    property = models.ForeignKey(
+        "properties.Property",
+        on_delete=models.PROTECT,
+        related_name="tenants",
+        verbose_name="immobile",
+        help_text=(
+            "Immobile in cui l'inquilino affitta: definisce chi può vedere "
+            "e gestire questo profilo."
+        ),
     )
     nominativo = models.CharField(
         max_length=200,
@@ -116,7 +127,8 @@ class TenantProfile(TimestampedModel):
     def __str__(self):
         return self.nominativo
 
-    @property
+    # builtins.property: il campo `property` oscura il builtin nel corpo classe
+    @builtins.property
     def periodo_occupazione(self):
         """Intervallo coperto dalle assegnazioni stanza dell'inquilino.
 

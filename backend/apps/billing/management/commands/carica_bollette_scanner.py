@@ -69,6 +69,10 @@ class Command(BaseCommand):
             "--dry-run", action="store_true",
             help="Mostra cosa verrebbe fatto senza scrivere nulla.",
         )
+        parser.add_argument(
+            "--property", type=str, default=None,
+            help="Immobile (id o nome). Obbligatorio se ci sono più immobili.",
+        )
 
     def handle(self, *args, **opts):
         cartella = Path(opts["cartella"]).expanduser()
@@ -82,9 +86,12 @@ class Command(BaseCommand):
                 f"OwnerProfile id={opts['owner_id']} non esiste."
             ) from exc
 
-        from properties.models import Property
+        from properties.context import resolve_property_cli
 
-        immobile = Property.objects.first()
+        try:
+            immobile = resolve_property_cli(opts["property"])
+        except ValueError as exc:
+            raise CommandError(str(exc)) from exc
 
         soglia = None
         if opts["mesi"]:

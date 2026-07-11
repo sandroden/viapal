@@ -13,14 +13,16 @@ from ._base import TimestampedModel
 logger = logging.getLogger(__name__)
 
 
-def quote_attive_at(data) -> dict["OwnerProfile", Decimal]:
-    """Ritorna le quote di proprietà valide alla data come dict {owner: quota}.
+def quote_attive_at(property, data) -> dict["OwnerProfile", Decimal]:
+    """Ritorna le quote di proprietà dell'immobile valide alla data come
+    dict {owner: quota}.
 
     Se la somma non è esattamente 1.0 logga un warning e ribilancia
     proporzionalmente: serve a mantenere coerente il calcolo pro-quota anche
     quando il versionamento delle quote ha buchi temporali.
     """
     qs = OwnershipShare.objects.select_related("owner").filter(
+        property=property,
         valid_from__lte=data,
     ).filter(
         models.Q(valid_to__isnull=True) | models.Q(valid_to__gte=data),
@@ -31,8 +33,8 @@ def quote_attive_at(data) -> dict["OwnerProfile", Decimal]:
         return {}
     if abs(totale - Decimal("1")) > Decimal("0.001"):
         logger.warning(
-            "quote_attive_at(%s): somma quote = %s (atteso 1.0). Riproporziono.",
-            data, totale,
+            "quote_attive_at(%s, %s): somma quote = %s (atteso 1.0). Riproporziono.",
+            property, data, totale,
         )
         quote = {o: q / totale for o, q in quote.items()}
     return quote
@@ -76,8 +78,14 @@ class OwnerProfile(TimestampedModel):
 
 
 class OwnershipShare(TimestampedModel):
-    """Quota di proprietà versionata nel tempo."""
+    """Quota di proprietà di un immobile, versionata nel tempo."""
 
+    property = models.ForeignKey(
+        "properties.Property",
+        on_delete=models.PROTECT,
+        related_name="ownership_shares",
+        verbose_name="immobile",
+    )
     owner = models.ForeignKey(
         OwnerProfile,
         on_delete=models.PROTECT,
@@ -102,10 +110,10 @@ class OwnershipShare(TimestampedModel):
     class Meta:
         verbose_name = "quota di proprietà"
         verbose_name_plural = "quote di proprietà"
-        ordering = ["-valid_from", "owner__nominativo"]
+        ordering = ["property__nome", "-valid_from", "owner__nominativo"]
 
     def __str__(self):
-        return f"{self.owner} — {self.quota} (dal {self.valid_from})"
+        return f"{self.property} / {self.owner} — {self.quota} (dal {self.valid_from})"
 
     def clean(self):
         super().clean()
@@ -113,17 +121,22 @@ class OwnershipShare(TimestampedModel):
             return
         if self.quota <= 0 or self.quota > 1:
             raise ValidationError({"quota": "La quota deve essere compresa tra 0 (escluso) e 1."})
+        self._valida_membership()
         self._valida_somma_quote()
 
     def _valida_somma_quote(self):
-        """Verifica che la somma delle quote attive nella data valid_from non superi 1.0.
+        """Verifica che la somma delle quote attive dell'immobile nella data
+        valid_from non superi 1.0.
 
-        La somma deve essere esattamente 1.0: se è < 1.0 con quote già esistenti per quella
-        data, segnala l'incongruenza. Se supera 1.0, è un errore immediato.
-        Questa validazione agisce su ogni singolo record: il set completo delle quote deve
-        essere inserito in una transazione atomica, con la quota finale che chiude a 1.0.
+        La somma deve essere esattamente 1.0 per ogni immobile: se è < 1.0 con
+        quote già esistenti per quella data, segnala l'incongruenza. Se supera
+        1.0, è un errore immediato. Questa validazione agisce su ogni singolo
+        record: il set completo delle quote deve essere inserito in una
+        transazione atomica, con la quota finale che chiude a 1.0.
         """
-        qs = OwnershipShare.objects.exclude(pk=self.pk)
+        if not self.property_id:
+            return
+        qs = OwnershipShare.objects.filter(property=self.property_id).exclude(pk=self.pk)
 
         # Quote attive nel valid_from di questa (valid_to esclusivo: valid_to > valid_from)
         qs_at_start = qs.filter(
@@ -150,7 +163,25 @@ class OwnershipShare(TimestampedModel):
         owner_duplicato = qs_at_start.filter(owner=self.owner).exists()
         if owner_duplicato:
             raise ValidationError(
-                f"Il proprietario {self.owner} ha già una quota attiva al {self.valid_from}."
+                f"Il proprietario {self.owner} ha già una quota attiva su "
+                f"{self.property} al {self.valid_from}."
+            )
+
+    def _valida_membership(self):
+        """L'owner della quota deve essere membro 'proprietario' dell'immobile."""
+        if not self.property_id or not self.owner_id:
+            return
+        from .membership import PropertyMembership
+
+        ok = PropertyMembership.objects.filter(
+            property=self.property_id,
+            user=self.owner.user_id,
+            ruolo=PropertyMembership.Ruolo.PROPRIETARIO,
+        ).exists()
+        if not ok:
+            raise ValidationError(
+                f"{self.owner} non è membro con ruolo 'proprietario' di "
+                f"{self.property}: aggiungerlo prima di assegnargli una quota."
             )
 
 

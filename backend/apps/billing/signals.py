@@ -138,6 +138,7 @@ def sincronizza_expense_da_bolletta(bill: "UtilityBill") -> "Expense | None":
         return None
 
     cat, _ = ExpenseCategory.objects.get_or_create(
+        property_id=bill.immobile_id,
         codice=CATEGORIA_UTENZE_CODICE,
         defaults={"nome": CATEGORIA_UTENZE_NOME, "ripartibile_inquilini": True},
     )
@@ -155,6 +156,7 @@ def sincronizza_expense_da_bolletta(bill: "UtilityBill") -> "Expense | None":
         return Expense.objects.get(pk=bill.expense_id)
 
     expense = Expense.objects.create(
+        property_id=bill.immobile_id,
         data=bill.data_emissione,
         category=cat,
         supplier=bill.supplier,

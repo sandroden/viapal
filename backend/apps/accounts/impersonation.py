@@ -12,10 +12,8 @@ Regole attuali:
 - il target deve essere *solo inquilino*: nel gruppo ``inquilini``, mai
   superuser ne' proprietario.
 
-FUTURO multiproprieta': quando gli inquilini saranno legati a una ``Property``
-(e ad alcuni proprietari), bastera' aggiungere qui il filtro che limita ogni
-proprietario agli inquilini delle proprie proprieta'. Vedi il commento nel
-corpo della funzione.
+Multiproprieta': l'attore (non superuser) puo' impersonare solo gli
+inquilini degli immobili di cui e' membro (``PropertyMembership``).
 """
 from django.conf import settings
 
@@ -47,14 +45,22 @@ def puo_impersonare(actor_user, target_user) -> bool:
     if not _in_group(target_user, settings.ROLE_INQUILINI):
         return False
 
-    # FUTURO multiproprieta': limitare agli inquilini delle proprieta'
-    # dell'attore, es.:
-    #   from properties.models import Property
-    #   return Property.objects.filter(
-    #       owners__user=actor_user,
-    #       rooms__assignments__tenant__user=target_user,
-    #   ).exists()
-    return True
+    # Un membro puo' impersonare solo inquilini dei propri immobili, e solo
+    # con ruolo operativo (proprietario/gestore, non sola_lettura).
+    # I superuser non hanno restrizioni (strumento di manutenzione).
+    if actor_user.is_superuser:
+        return True
+    from properties.models import Property, PropertyMembership
+
+    ruoli_operativi = [
+        PropertyMembership.Ruolo.PROPRIETARIO,
+        PropertyMembership.Ruolo.GESTORE,
+    ]
+    return Property.objects.filter(
+        memberships__user=actor_user,
+        memberships__ruolo__in=ruoli_operativi,
+        tenants__user=target_user,
+    ).exists()
 
 
 def check_hijack_authorization(*, hijacker, hijacked) -> bool:

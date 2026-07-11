@@ -1,6 +1,20 @@
 # Development settings — usato quando ENV=dev
+import os
 
 DEBUG = True
+
+# Nome DB parametrizzabile: consente run pytest paralleli con DB di test
+# distinti (es. VIAPAL_DB_NAME=viapal_a → test DB test_viapal_a).
+if os.environ.get('VIAPAL_DB_NAME'):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ['VIAPAL_DB_NAME'],
+            'USER': 'sandro',
+            'HOST': '/var/run/postgresql',
+            'PORT': '5434',
+        }
+    }
 
 ALLOWED_HOSTS = ['*']
 

@@ -33,6 +33,7 @@ from accounting.services.saldi_live import (
 from accounting.services.settlement import SettlementGiaEsistente, genera_settlement
 from accounts.permissions import IsProprietario
 from billing.models.payments import BankTransaction
+from properties.context import get_request_property
 from properties.models import OwnerProfile
 
 
@@ -48,6 +49,9 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
         "riferimento_settlement",
         "bank_transaction",
     ).order_by("-data")
+
+    def get_queryset(self):
+        return super().get_queryset().filter(property=get_request_property(self.request))
 
     @action(detail=False, methods=["post"], url_path="bt-inter-owner")
     def bt_inter_owner_create(self, request):
@@ -71,6 +75,7 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
         try:
             voci = marca_bt_come_ledger(
                 bt,
+                property=get_request_property(request),
                 tipo=d["tipo"],
                 controparte_owner=controparte,
                 settlement=settlement,
@@ -111,8 +116,9 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
                 {"detail": "Parametro `at` non valido (atteso YYYY-MM-DD)."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        saldi = calcola_saldi_correnti(at_date)
-        quadratura = verifica_quadratura(at_date, saldi)
+        prop = get_request_property(request)
+        saldi = calcola_saldi_correnti(prop, at_date)
+        quadratura = verifica_quadratura(prop, at_date, saldi)
         piano = calcola_piano_rientro(saldi)
         items = [
             {
@@ -151,6 +157,9 @@ class OwnerSettlementViewSet(ReadOnlyModelViewSet):
     permission_classes = [IsProprietario]
     queryset = OwnerSettlement.objects.order_by("-data")
 
+    def get_queryset(self):
+        return super().get_queryset().filter(property=get_request_property(self.request))
+
     @action(detail=False, methods=["post"], url_path="genera")
     def genera(self, request):
         """Genera/rigenera un settlement. Con dry_run=True calcola lo
@@ -167,6 +176,7 @@ class OwnerSettlementViewSet(ReadOnlyModelViewSet):
 
         try:
             settlement = genera_settlement(
+                get_request_property(request),
                 periodo_da,
                 periodo_a,
                 descrizione=d.get("descrizione") or None,
@@ -201,3 +211,9 @@ class InterOwnerEntryViewSet(ModelViewSet):
         "riferimento_expense",
         "bank_transaction",
     ).order_by("-data")
+
+    def get_queryset(self):
+        return super().get_queryset().filter(property=get_request_property(self.request))
+
+    def perform_create(self, serializer):
+        serializer.save(property=get_request_property(self.request))

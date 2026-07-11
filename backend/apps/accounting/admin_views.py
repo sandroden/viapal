@@ -14,9 +14,14 @@ from accounting.services.settlement import (
     SettlementGiaEsistente,
     genera_settlement,
 )
+from properties.models import Property
 
 
 class GeneraSettlementForm(forms.Form):
+    property = forms.ModelChoiceField(
+        queryset=Property.objects.all().order_by("nome"),
+        label="Immobile",
+    )
     anno = forms.IntegerField(
         min_value=2020,
         max_value=2099,
@@ -50,6 +55,7 @@ def genera_settlement_view(request):
             anno = form.cleaned_data["anno"]
             try:
                 settlement = genera_settlement(
+                    form.cleaned_data["property"],
                     datetime.date(anno, 1, 1),
                     datetime.date(anno, 12, 31),
                     descrizione=form.cleaned_data["descrizione"] or None,

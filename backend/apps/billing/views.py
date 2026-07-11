@@ -297,11 +297,15 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
         primo = datetime.date(anno, mese, 1)
         ultimo = datetime.date(anno, mese, calendar.monthrange(anno, mese)[1])
 
+        from properties.context import get_request_property
+
+        prop = get_request_property(request)
+
         # periodo esistente che copre (anche parzialmente) il mese richiesto:
         # evita di creare doppioni su periodi bimestrali già presenti.
         period = (
             UtilityChargePeriod.objects.filter(
-                periodo_da__lte=ultimo, periodo_a__gte=primo
+                property=prop, periodo_da__lte=ultimo, periodo_a__gte=primo
             )
             .order_by("periodo_da")
             .first()
@@ -309,7 +313,7 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
         created = False
         if period is None:
             period = UtilityChargePeriod.objects.create(
-                periodo_da=primo, periodo_a=ultimo
+                property=prop, periodo_da=primo, periodo_a=ultimo
             )
             created = True
 
@@ -458,26 +462,31 @@ class UtilityBillViewSet(ModelViewSet):
                 status=400,
             )
 
-        nome_forn = dati.get("fornitore") or request.data.get("supplier_nome") or "Sconosciuto"
-        supplier = Supplier.objects.filter(nome__iexact=nome_forn).first()
-        if not supplier:
-            supplier = Supplier.objects.create(
-                nome=nome_forn, tipo=Supplier.TipoFornitore.ALTRO,
-            )
-
-        # Immobile: oggi unico, ma accetta 'property' dal form in ottica multi-immobile.
-        from properties.models import Property
+        # Immobile: dal contesto della richiesta (header X-Property-Id o
+        # unico immobile dell'utente). Un eventuale id esplicito nel form
+        # deve comunque essere accessibile all'utente.
+        from properties.context import get_request_property, properties_accessibili
 
         immobile_id = (
             request.data.get("immobile")
             or request.data.get("property")
             or request.data.get("property_id")
         )
-        immobile = (
-            Property.objects.filter(pk=immobile_id).first()
-            if immobile_id
-            else Property.objects.first()
-        )
+        if immobile_id:
+            immobile = properties_accessibili(request.user).filter(pk=immobile_id).first()
+            if immobile is None:
+                return Response(
+                    {"detail": "Nessun accesso a questo immobile."}, status=403,
+                )
+        else:
+            immobile = get_request_property(request)
+
+        nome_forn = dati.get("fornitore") or request.data.get("supplier_nome") or "Sconosciuto"
+        supplier = Supplier.objects.filter(property=immobile, nome__iexact=nome_forn).first()
+        if not supplier:
+            supplier = Supplier.objects.create(
+                property=immobile, nome=nome_forn, tipo=Supplier.TipoFornitore.ALTRO,
+            )
 
         file_pdf.seek(0)
         bill = UtilityBill.objects.create(
@@ -621,7 +630,9 @@ class ExpenseViewSet(ModelViewSet):
                 validated["anticipata_da_owner"] = account.owner
 
         with transaction.atomic():
-            expense = serializer.save()
+            from properties.context import get_request_property
+
+            expense = serializer.save(property=get_request_property(self.request))
             if crea_bt and account is not None:
                 BankTransaction.objects.create(
                     data=bt_data or expense.data,

@@ -751,8 +751,10 @@ class ContoEconomicoView(APIView):
             )
 
         # --- Utile pro-quota -------------------------------------------------
+        from properties.context import get_request_property
+
         data_quote = min(datetime.date(anno, 12, 31), oggi)
-        quote = quote_attive_at(data_quote)
+        quote = quote_attive_at(get_request_property(request), data_quote)
         utile_pro_quota = [
             {
                 "owner_id": owner.pk,
@@ -1219,9 +1221,12 @@ class TenantSituazioneView(APIView):
             if x["anno"] <= anno:
                 saldo_totale_globale = x["saldo_progressivo"]
 
-        # Quota condominio: dal contratto attivo
+        # Quota condominio: dal contratto attivo dell'immobile dell'inquilino
         contract_attivo = (
-            Contract.objects.filter(data_decorrenza__lte=oggi)
+            Contract.objects.filter(
+                property_id=tenant.property_id,
+                data_decorrenza__lte=oggi,
+            )
             .select_related("default_pagatore_bollette")
             .order_by("-data_decorrenza")
             .first()

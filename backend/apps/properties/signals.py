@@ -107,15 +107,14 @@ def _crea_deposito_restituzione(tenant: TenantProfile) -> None:
 _EXPENSE_CAT_REGISTRAZIONE = ("registrazione-contratti", "Registrazione contratti")
 
 
-def _owner_anticipante():
-    """Il proprietario che anticipa il 50% cessione: per convenzione Sandro.
+def _owner_anticipante(property):
+    """Il proprietario che anticipa il 50% cessione: configurato
+    sull'immobile (``Property.owner_anticipa_cessioni``).
 
-    Se non lo si trova (es. fixture incomplete) la Expense non viene creata,
-    ma il Receivable inquilino sì: meglio un dato parziale che un crash.
+    Se non è configurato la Expense non viene creata, ma il Receivable
+    inquilino sì: meglio un dato parziale che un crash.
     """
-    from .models import OwnerProfile
-
-    return OwnerProfile.objects.filter(nominativo__icontains="sandro").first()
+    return property.owner_anticipa_cessioni
 
 
 def _crea_costo_cessione(assignment: RoomAssignment) -> None:
@@ -159,20 +158,23 @@ def _crea_costo_cessione(assignment: RoomAssignment) -> None:
 
     marker = f"[auto:cessione:{assignment.pk}]"
     if not Expense.objects.filter(note__contains=marker).exists():
-        anticipante = _owner_anticipante()
+        prop = assignment.room.property
+        anticipante = _owner_anticipante(prop)
         if anticipante is None:
             log.warning(
-                "Costo cessione assignment %s: nessun proprietario 'Sandro' "
-                "trovato, Expense 50%% proprietari non creata.",
-                assignment.pk,
+                "Costo cessione assignment %s: nessun 'owner_anticipa_cessioni' "
+                "configurato su %s, Expense 50%% proprietari non creata.",
+                assignment.pk, prop,
             )
             return
         codice, nome = _EXPENSE_CAT_REGISTRAZIONE
         categoria, _ = ExpenseCategory.objects.get_or_create(
+            property=prop,
             codice=codice,
             defaults={"nome": nome, "ripartibile_inquilini": False},
         )
         Expense.objects.create(
+            property=prop,
             data=data_evento,
             category=categoria,
             importo=quota_proprietari,
