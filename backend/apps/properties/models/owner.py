@@ -21,11 +21,14 @@ def quote_attive_at(property, data) -> dict["OwnerProfile", Decimal]:
     proporzionalmente: serve a mantenere coerente il calcolo pro-quota anche
     quando il versionamento delle quote ha buchi temporali.
     """
+    # valid_to ESCLUSIVO (coerente con _valida_somma_quote): alla data di
+    # confine fra due versioni delle quote vale solo il set nuovo, altrimenti
+    # la somma raddoppierebbe e il riproporzionamento dimezzerebbe le quote.
     qs = OwnershipShare.objects.select_related("owner").filter(
         property=property,
         valid_from__lte=data,
     ).filter(
-        models.Q(valid_to__isnull=True) | models.Q(valid_to__gte=data),
+        models.Q(valid_to__isnull=True) | models.Q(valid_to__gt=data),
     )
     quote = {s.owner: s.quota for s in qs}
     totale = sum(quote.values(), start=Decimal("0"))
