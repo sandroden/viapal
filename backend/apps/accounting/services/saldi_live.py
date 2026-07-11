@@ -211,6 +211,8 @@ def verifica_quadratura(property: Property, at_date: date, saldi: dict[OwnerProf
     for r in rec_qs:
         if r.incassato_da_owner_id is None:
             motivo = "manca «incassato da»: escluso dai saldi"
+        elif r.importo_pagato is None:
+            motivo = "PAGATO senza importo pagato: escluso dai saldi"
         elif r.incassato_da_owner_id not in owner_pks:
             motivo = f"incassante {r.incassato_da_owner} senza quota attiva"
         else:

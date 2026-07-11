@@ -64,18 +64,34 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
 
+        prop = get_request_property(request)
         bt = get_object_or_404(BankTransaction, pk=d["bank_transaction"])
+        # La BT e l'eventuale controparte devono appartenere al perimetro
+        # dell'immobile della richiesta: niente scritture cross-property.
+        membri = prop.memberships.values_list("user_id", flat=True)
+        if bt.owner_account.owner.user_id not in membri:
+            return Response(
+                {"detail": "La transazione appartiene a un conto estraneo a questo immobile."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         controparte = None
         if d.get("controparte_owner"):
             controparte = get_object_or_404(OwnerProfile, pk=d["controparte_owner"])
+            if controparte.user_id not in membri:
+                return Response(
+                    {"detail": "La controparte non è membro di questo immobile."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
         settlement = None
         if d.get("settlement"):
-            settlement = get_object_or_404(OwnerSettlement, pk=d["settlement"])
+            settlement = get_object_or_404(
+                OwnerSettlement, pk=d["settlement"], property=prop,
+            )
 
         try:
             voci = marca_bt_come_ledger(
                 bt,
-                property=get_request_property(request),
+                property=prop,
                 tipo=d["tipo"],
                 controparte_owner=controparte,
                 settlement=settlement,
@@ -98,7 +114,18 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
 
     @action(detail=False, methods=["delete"], url_path=r"bt-inter-owner/(?P<bt_id>\d+)")
     def bt_inter_owner_delete(self, request, bt_id=None):
+        prop = get_request_property(request)
         bt = get_object_or_404(BankTransaction, pk=bt_id)
+        # Le marcature di un altro immobile non si toccano da qui.
+        estranee = (
+            bt.ledger_entries.exclude(property=prop).exists()
+            or bt.inter_owner_entries.exclude(property=prop).exists()
+        )
+        if estranee:
+            return Response(
+                {"detail": "La transazione ha marcature di un altro immobile."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         n = disfa_marcatura(bt)
         return Response({"voci_cancellate": n}, status=status.HTTP_200_OK)
 
