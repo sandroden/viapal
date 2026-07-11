@@ -18,6 +18,7 @@ from properties.models import (
     Contract,
     OwnerBankAccount,
     OwnerProfile,
+    PropertyMembership,
     Room,
     RoomAssignment,
     TenantDocument,
@@ -48,9 +49,12 @@ def gruppo_inquilini(db):
 
 
 @pytest.fixture
-def user_prop(db, gruppo_proprietari):
+def user_prop(db, gruppo_proprietari, immobile):
     u = User.objects.create_user("prop_test", email="p@v.it", password="pwd123!")
     u.groups.add(gruppo_proprietari)
+    PropertyMembership.objects.create(
+        property=immobile, user=u, ruolo=PropertyMembership.Ruolo.PROPRIETARIO,
+    )
     return u
 
 

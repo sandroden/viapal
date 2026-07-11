@@ -61,7 +61,14 @@ def get_request_property(request) -> Property:
     - header assente: fallback sulla prima property accessibile (il caso
       "utente con un solo immobile" resta trasparente);
     - nessuna property accessibile: 404.
+
+    Il risultato è cacheato sulla richiesta: permission class, queryset e
+    action possono chiamarla più volte senza query ripetute.
     """
+    cached = getattr(request, "_viapal_property", None)
+    if cached is not None:
+        return cached
+
     accessibili = properties_accessibili(request.user)
     raw = request.headers.get(HEADER_PROPERTY)
     if raw:
@@ -72,8 +79,25 @@ def get_request_property(request) -> Property:
         prop = accessibili.filter(pk=pk).first()
         if prop is None:
             raise PermissionDenied("Nessun accesso a questo immobile.")
-        return prop
-    prop = accessibili.first()
-    if prop is None:
-        raise NotFound("Nessun immobile accessibile per questo utente.")
+    else:
+        prop = accessibili.first()
+        if prop is None:
+            raise NotFound("Nessun immobile accessibile per questo utente.")
+    request._viapal_property = prop
     return prop
+
+
+def ruolo_su_property(user, prop) -> str | None:
+    """Il ruolo dell'utente sulla property (None se non membro).
+
+    I superuser sono equiparati al ruolo 'proprietario' (strumento di
+    manutenzione, coerente con l'admin).
+    """
+    from .models import PropertyMembership
+
+    if not user or not user.is_authenticated:
+        return None
+    if user.is_superuser:
+        return PropertyMembership.Ruolo.PROPRIETARIO
+    m = PropertyMembership.objects.filter(property=prop, user=user).first()
+    return m.ruolo if m else None

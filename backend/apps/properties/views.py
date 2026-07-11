@@ -11,7 +11,8 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
-from accounts.permissions import IsProprietario, IsInquilinoSelf
+from accounts.permissions import IsInquilinoSelf, IsPropertyMember
+from properties.context import get_request_property
 from properties.models import (
     Contract,
     OwnerBankAccount,
@@ -33,20 +34,27 @@ from properties.serializers import (
 )
 
 
-def _is_proprietario(user):
+def _is_gestione(user):
+    """True se l'utente sta dal lato gestione (membro di almeno un immobile)."""
     return bool(
         user
         and user.is_authenticated
-        and (user.groups.filter(name="proprietari").exists() or user.is_superuser)
+        and (user.is_superuser or user.property_memberships.exists())
     )
 
 
 class OwnerProfileViewSet(ReadOnlyModelViewSet):
-    """Lista i 3 profili proprietario. Accesso solo ai proprietari."""
+    """Profili proprietario dei membri dell'immobile attivo."""
 
     serializer_class = OwnerProfileSerializer
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
     queryset = OwnerProfile.objects.select_related("user").order_by("nominativo")
+
+    def get_queryset(self):
+        prop = get_request_property(self.request)
+        return super().get_queryset().filter(
+            user__property_memberships__property=prop
+        ).distinct()
 
 
 class TenantProfileViewSet(ReadOnlyModelViewSet):
@@ -68,11 +76,9 @@ class TenantProfileViewSet(ReadOnlyModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = TenantProfile.objects.select_related("user").order_by("nominativo")
-        is_proprietario = (
-            user.groups.filter(name="proprietari").exists() or user.is_superuser
-        )
-        if not is_proprietario:
+        if not _is_gestione(user):
             return qs.filter(user=user)
+        qs = qs.filter(property=get_request_property(self.request))
 
         anno_param = self.request.query_params.get("anno")
         if anno_param:
@@ -106,11 +112,7 @@ class TenantProfileViewSet(ReadOnlyModelViewSet):
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
         user = self.request.user
-        is_proprietario = (
-            user.is_authenticated
-            and (user.groups.filter(name="proprietari").exists() or user.is_superuser)
-        )
-        if not is_proprietario:
+        if not (user.is_authenticated and _is_gestione(user)):
             return ctx
 
         from billing.dashboard_views import _resti_per_anno, _sbilancio_progressivo
@@ -214,8 +216,9 @@ class TenantDocumentViewSet(ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = TenantDocument.objects.select_related("tenant", "tenant__user")
-        if not _is_proprietario(user):
+        if not _is_gestione(user):
             return qs.filter(tenant__user=user)
+        qs = qs.filter(tenant__property=get_request_property(self.request))
         tenant_id = self.request.query_params.get("tenant")
         if tenant_id:
             qs = qs.filter(tenant_id=tenant_id)
@@ -223,12 +226,16 @@ class TenantDocumentViewSet(ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        if _is_proprietario(user):
+        if _is_gestione(user):
             tenant = serializer.validated_data.get("tenant")
             if tenant is None:
                 from rest_framework.exceptions import ValidationError
 
                 raise ValidationError({"tenant": "Campo obbligatorio per i proprietari."})
+            if tenant.property_id != get_request_property(self.request).pk:
+                from rest_framework.exceptions import PermissionDenied
+
+                raise PermissionDenied("L'inquilino appartiene a un altro immobile.")
         else:
             tenant = getattr(user, "tenant_profile", None)
             if tenant is None:
@@ -253,8 +260,8 @@ class RoomViewSet(ReadOnlyModelViewSet):
     def get_queryset(self):
         user = self.request.user
         today = datetime.date.today()
-        if user.groups.filter(name="proprietari").exists() or user.is_superuser:
-            return Room.objects.all()
+        if _is_gestione(user):
+            return Room.objects.filter(property=get_request_property(self.request))
         # Stanze dove l'inquilino ha un assignment attivo oggi
         return Room.objects.filter(
             assignments__tenant__user=user,
@@ -281,24 +288,39 @@ class RoomAssignmentViewSet(ReadOnlyModelViewSet):
         qs = RoomAssignment.objects.select_related("room", "tenant", "tenant__user").order_by(
             "-valid_from"
         )
-        if user.groups.filter(name="proprietari").exists() or user.is_superuser:
-            return qs
+        if _is_gestione(user):
+            return qs.filter(room__property=get_request_property(self.request))
         return qs.filter(tenant__user=user)
 
 
 class ContractViewSet(ReadOnlyModelViewSet):
-    """Contratto unico di locazione. Accesso solo ai proprietari."""
+    """Contratti di locazione dell'immobile attivo."""
 
     serializer_class = ContractSerializer
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
     queryset = Contract.objects.all()
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            property=get_request_property(self.request)
+        )
 
 
 class OwnerBankAccountViewSet(ReadOnlyModelViewSet):
-    """Conti bancari dei proprietari. Accesso solo ai proprietari."""
+    """Conti bancari dei membri dell'immobile attivo.
+
+    Visibilità fra co-membri (decisione 2026-07-11): chi condivide un
+    immobile col titolare vede i suoi conti.
+    """
 
     serializer_class = OwnerBankAccountSerializer
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
     queryset = OwnerBankAccount.objects.select_related("owner").order_by(
         "owner__nominativo", "ordinamento"
     )
+
+    def get_queryset(self):
+        prop = get_request_property(self.request)
+        return super().get_queryset().filter(
+            owner__user__property_memberships__property=prop
+        ).distinct()

@@ -10,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsInquilino, IsProprietario
+from accounts.permissions import IsInquilino, IsPropertyMember, IsProprietario  # noqa: F401
 from billing._dates import format_mese, format_mese_anno
 from billing._payments import conto_per_receivable, iban_valido
 from billing.models import (
@@ -300,9 +300,12 @@ class DashboardProprietarioView(APIView):
     Con `anno` diverso da quello corrente: vista storica, ritardi/in-scadenza vuoti.
     """
 
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
 
     def get(self, request):
+        from properties.context import get_request_property
+
+        prop = get_request_property(request)
         oggi = datetime.date.today()
 
         try:
@@ -325,6 +328,7 @@ class DashboardProprietarioView(APIView):
 
         def _incasso_per_causale(causale: str, anno_: int, mese_: int | None = None) -> Decimal:
             qs = Receivable.objects.filter(
+                assignment__room__property=prop,
                 causale=causale,
                 stato=StatoPagamento.PAGATO,
                 data_pagamento__year=anno_,
@@ -345,9 +349,9 @@ class DashboardProprietarioView(APIView):
 
         # KPI: spese anno
         from billing.models import Expense
-        spese_qs = Expense.objects.filter(data__year=anno).select_related(
-            "category", "anticipata_da_owner"
-        )
+        spese_qs = Expense.objects.filter(
+            property=prop, data__year=anno,
+        ).select_related("category", "anticipata_da_owner")
         spese_anno = spese_qs.aggregate(tot=Sum("importo"))["tot"] or Decimal("0")
 
         spese_per_categoria: dict[str, Decimal] = {}
@@ -372,7 +376,9 @@ class DashboardProprietarioView(APIView):
 
         # Bilancio per proprietario (entrate - uscite) — anno selezionato.
         bilancio_per_owner: dict[int, dict] = {}
-        for o in OwnerProfile.objects.all():
+        for o in OwnerProfile.objects.filter(
+            user__property_memberships__property=prop
+        ).distinct():
             bilancio_per_owner[o.id] = {
                 "owner_id": o.id,
                 "nominativo": o.nominativo,
@@ -390,6 +396,7 @@ class DashboardProprietarioView(APIView):
             Receivable.Causale.REGISTRAZIONE: "entrate_extra",
         }
         for r in Receivable.objects.filter(
+            assignment__room__property=prop,
             stato=StatoPagamento.PAGATO,
             data_pagamento__year=anno,
             incassato_da_owner__isnull=False,
@@ -439,6 +446,7 @@ class DashboardProprietarioView(APIView):
             Receivable.Causale.REGISTRAZIONE: "extra",
         }
         for r in Receivable.objects.filter(
+            assignment__room__property=prop,
             stato=StatoPagamento.PAGATO,
             data_pagamento__year=anno,
             causale__in=CAUSALI_OPERATIVE,
@@ -472,6 +480,7 @@ class DashboardProprietarioView(APIView):
             # che non beccheremo più: non vogliamo ingolfare la dashboard).
             ritardi_qs = (
                 Receivable.objects.filter(
+                    assignment__room__property=prop,
                     scadenza__lt=oggi,
                     causale__in=CAUSALI_OPERATIVE,
                 )
@@ -482,6 +491,7 @@ class DashboardProprietarioView(APIView):
             )
             scadenza_qs = (
                 Receivable.objects.filter(
+                    assignment__room__property=prop,
                     stato__in=[StatoPagamento.ATTESO, StatoPagamento.DICHIARATO],
                     scadenza__lte=soglia_scadenza,
                     scadenza__gte=oggi,
@@ -553,7 +563,7 @@ class BilancioOwnerDettaglioView(APIView):
     deve quindi quadrare con la cella della dashboard.
     """
 
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
 
     CAUSALE_LABEL = {
         Receivable.Causale.AFFITTO: "Affitto",
@@ -575,14 +585,20 @@ class BilancioOwnerDettaglioView(APIView):
                 status=400,
             )
 
+        from properties.context import get_request_property
+
+        prop = get_request_property(request)
         try:
-            owner = OwnerProfile.objects.get(pk=owner_id)
+            owner = OwnerProfile.objects.filter(
+                user__property_memberships__property=prop
+            ).get(pk=owner_id)
         except OwnerProfile.DoesNotExist:
             return Response({"detail": "Proprietario non trovato."}, status=404)
 
         if tipo == "entrate":
             righe_qs = (
                 Receivable.objects.filter(
+                    assignment__room__property=prop,
                     stato=StatoPagamento.PAGATO,
                     data_pagamento__year=anno,
                     incassato_da_owner_id=owner_id,
@@ -613,7 +629,9 @@ class BilancioOwnerDettaglioView(APIView):
         else:
             from billing.models import Expense
             spese_qs = (
-                Expense.objects.filter(data__year=anno, anticipata_da_owner_id=owner_id)
+                Expense.objects.filter(
+                    property=prop, data__year=anno, anticipata_da_owner_id=owner_id,
+                )
                 .select_related("category", "supplier", "utility_bill")
                 .order_by("-data", "-id")
             )
@@ -666,7 +684,7 @@ class ContoEconomicoView(APIView):
     stanze da RoomAssignment.
     """
 
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
 
     VOCE_PER_CAUSALE = {
         Receivable.Causale.AFFITTO: "rent",
@@ -681,6 +699,9 @@ class ContoEconomicoView(APIView):
         from billing.models import Expense
         from properties.models import Room, quote_attive_at
 
+        from properties.context import get_request_property
+
+        prop = get_request_property(request)
         oggi = datetime.date.today()
         try:
             anno = int(request.query_params.get("anno", oggi.year))
@@ -690,6 +711,7 @@ class ContoEconomicoView(APIView):
         # --- Ricavi per cassa: incassato nell'anno --------------------------
         ricavi_cassa = {"rent": Decimal("0"), "utility": Decimal("0"), "extra": Decimal("0")}
         for r in Receivable.objects.filter(
+            assignment__room__property=prop,
             stato=StatoPagamento.PAGATO,
             data_pagamento__year=anno,
             causale__in=CAUSALI_OPERATIVE,
@@ -702,6 +724,7 @@ class ContoEconomicoView(APIView):
         non_incassato_voci = 0
         insoluti = Decimal("0")
         comp_qs = Receivable.objects.filter(
+            assignment__room__property=prop,
             causale__in=CAUSALI_OPERATIVE,
         ).select_related("utility_period")
         for r in comp_qs:
@@ -721,7 +744,9 @@ class ContoEconomicoView(APIView):
         # --- Spese: ordinarie e straordinarie per categoria -----------------
         spese_ord: dict[str, Decimal] = {}
         spese_straord: dict[str, Decimal] = {}
-        for sp in Expense.objects.filter(data__year=anno).select_related("category"):
+        for sp in Expense.objects.filter(
+            property=prop, data__year=anno,
+        ).select_related("category"):
             target = spese_straord if sp.is_straordinaria else spese_ord
             cat = sp.category.nome if sp.category else "Senza categoria"
             target[cat] = target.get(cat, Decimal("0")) + sp.importo
@@ -751,10 +776,8 @@ class ContoEconomicoView(APIView):
             )
 
         # --- Utile pro-quota -------------------------------------------------
-        from properties.context import get_request_property
-
         data_quote = min(datetime.date(anno, 12, 31), oggi)
-        quote = quote_attive_at(get_request_property(request), data_quote)
+        quote = quote_attive_at(prop, data_quote)
         utile_pro_quota = [
             {
                 "owner_id": owner.pk,
@@ -770,6 +793,7 @@ class ContoEconomicoView(APIView):
         ricavi_per_anno = {
             row["y"]: row["t"] or Decimal("0")
             for row in Receivable.objects.filter(
+                assignment__room__property=prop,
                 stato=StatoPagamento.PAGATO,
                 data_pagamento__isnull=False,
                 causale__in=CAUSALI_OPERATIVE,
@@ -777,7 +801,8 @@ class ContoEconomicoView(APIView):
         }
         spese_per_anno = {
             row["y"]: row["t"] or Decimal("0")
-            for row in Expense.objects.annotate(y=ExtractYear("data"))
+            for row in Expense.objects.filter(property=prop)
+            .annotate(y=ExtractYear("data"))
             .values("y").annotate(t=Sum("importo"))
         }
         anni = sorted(set(ricavi_per_anno) | set(spese_per_anno))
@@ -797,7 +822,7 @@ class ContoEconomicoView(APIView):
         occupazione = []
         if finestra_a >= finestra_da:
             giorni_finestra = (finestra_a - finestra_da).days + 1
-            for room in Room.objects.all().order_by("ordinamento"):
+            for room in Room.objects.filter(property=prop).order_by("ordinamento"):
                 giorni_occupati = 0
                 for a in room.assignments.filter(
                     valid_from__lte=finestra_a,
@@ -848,19 +873,22 @@ class ContoEconomicoView(APIView):
 class QuadroAnnualeView(APIView):
     """
     GET /api/v1/quadro-annuale/<anno>/ — Riproduce il foglio Excel delle utenze.
-    Solo proprietari.
+    Solo membri dell'immobile.
     """
 
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
 
     def get(self, request, anno: int):
+        from properties.context import get_request_property
+
+        prop = get_request_property(request)
         periods = UtilityChargePeriod.objects.filter(
-            periodo_da__year=anno
+            property=prop, periodo_da__year=anno,
         ).order_by("periodo_da")
 
         if not periods.exists():
             periods = UtilityChargePeriod.objects.filter(
-                periodo_a__year=anno
+                property=prop, periodo_a__year=anno,
             ).order_by("periodo_da")
 
         receivables = (
@@ -970,11 +998,10 @@ class TenantSituazioneView(APIView):
             )
 
         user = request.user
-        is_proprietario = (
-            user.is_superuser
-            or user.groups.filter(name="proprietari").exists()
-        )
-        if not is_proprietario and tenant.user_id != user.id:
+        is_gestione = user.is_superuser or user.property_memberships.filter(
+            property_id=tenant.property_id
+        ).exists()
+        if not is_gestione and tenant.user_id != user.id:
             return Response(
                 {"detail": "Puoi accedere solo ai tuoi dati."}, status=403
             )
@@ -1462,11 +1489,10 @@ class RendicontoView(APIView):
             return Response({"detail": "Inquilino non trovato."}, status=404)
 
         user = request.user
-        is_proprietario = (
-            user.is_superuser
-            or user.groups.filter(name="proprietari").exists()
-        )
-        if not is_proprietario and tenant.user_id != user.id:
+        is_gestione = user.is_superuser or user.property_memberships.filter(
+            property_id=tenant.property_id
+        ).exists()
+        if not is_gestione and tenant.user_id != user.id:
             return Response(
                 {"detail": "Puoi accedere solo ai tuoi dati."}, status=403
             )
@@ -1835,11 +1861,15 @@ class PrevisionaleUtenzeView(APIView):
     ConguagliaPrevisionaleView).
     """
 
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
 
     def get(self, request, tenant_id: int):
+        from properties.context import get_request_property
+
         try:
-            tenant = TenantProfile.objects.get(pk=tenant_id)
+            tenant = TenantProfile.objects.get(
+                pk=tenant_id, property=get_request_property(request),
+            )
         except TenantProfile.DoesNotExist:
             return Response({"detail": "Inquilino non trovato."}, status=404)
 
@@ -1884,8 +1914,12 @@ class PrevisionaleUtenzeView(APIView):
         })
 
     def post(self, request, tenant_id: int):
+        from properties.context import get_request_property
+
         try:
-            tenant = TenantProfile.objects.get(pk=tenant_id)
+            tenant = TenantProfile.objects.get(
+                pk=tenant_id, property=get_request_property(request),
+            )
         except TenantProfile.DoesNotExist:
             return Response({"detail": "Inquilino non trovato."}, status=404)
 
@@ -1968,7 +2002,7 @@ class ConguagliaPrevisionaleView(APIView):
         e marca il previsionale come conguagliato.
     """
 
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
 
     def _load_previsionale(self, tenant: TenantProfile, previsionale_id):
         try:
@@ -2076,8 +2110,12 @@ class ConguagliaPrevisionaleView(APIView):
         })
 
     def post(self, request, tenant_id: int):
+        from properties.context import get_request_property
+
         try:
-            tenant = TenantProfile.objects.get(pk=tenant_id)
+            tenant = TenantProfile.objects.get(
+                pk=tenant_id, property=get_request_property(request),
+            )
         except TenantProfile.DoesNotExist:
             return Response({"detail": "Inquilino non trovato."}, status=404)
 

@@ -19,7 +19,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
-from accounts.permissions import IsInquilino, IsInquilinoSelf, IsProprietario  # noqa: F401
+from accounts.permissions import (  # noqa: F401
+    IsInquilino,
+    IsInquilinoSelf,
+    IsPropertyMember,
+    IsProprietario,
+)
+from properties.context import get_request_property
 from billing.models import (
     BankTransaction,
     BankTransactionAllocation,
@@ -52,7 +58,8 @@ class BillingPagination(LimitOffsetPagination):
 
 
 def _is_proprietario(user) -> bool:
-    return user.is_superuser or user.groups.filter(name="proprietari").exists()
+    """Lato gestione: superuser o membro di almeno un immobile."""
+    return user.is_superuser or user.property_memberships.exists()
 
 
 def _is_inquilino(user) -> bool:
@@ -73,7 +80,7 @@ class _ReceivableMixin:
             from rest_framework.permissions import IsAuthenticated
             return [IsAuthenticated()]
         if self.action in ("create", "update", "partial_update", "destroy"):
-            return [IsProprietario()]
+            return [IsPropertyMember()]
         return [IsInquilinoSelf()]
 
     def _base_queryset(self):
@@ -88,7 +95,9 @@ class _ReceivableMixin:
     def get_queryset(self):
         qs = self._base_queryset().order_by("-scadenza")
         if _is_proprietario(self.request.user):
-            return qs
+            return qs.filter(
+                assignment__room__property=get_request_property(self.request)
+            )
         return qs.filter(assignment__tenant__user=self.request.user)
 
     @action(detail=True, methods=["post"], url_path="dichiara_pagato")
@@ -172,7 +181,9 @@ class UtilityChargeViewSet(_ReceivableMixin, ModelViewSet):
     def get_queryset(self):
         qs = self._base_queryset().order_by("-utility_period__periodo_da")
         if _is_proprietario(self.request.user):
-            return qs
+            return qs.filter(
+                assignment__room__property=get_request_property(self.request)
+            )
         return qs.filter(assignment__tenant__user=self.request.user)
 
 
@@ -198,8 +209,13 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
     """
 
     serializer_class = UtilityChargePeriodSerializer
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
     queryset = UtilityChargePeriod.objects.all().order_by("-periodo_da")
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            property=get_request_property(self.request)
+        )
 
     def _completezza(self, period) -> dict:
         """Quali voci sono presenti per il periodo (hint rapido pre-calcolo).
@@ -396,12 +412,17 @@ class UtilityBillViewSet(ModelViewSet):
     """
 
     serializer_class = UtilityBillSerializer
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
     authentication_classes = [SessionAuthentication, BasicAuthentication]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     queryset = UtilityBill.objects.select_related("supplier", "pagata_da_owner").order_by(
         "-data_emissione"
     )
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            immobile=get_request_property(self.request)
+        )
 
     def create(self, request, *args, **kwargs):
         import os
@@ -592,8 +613,13 @@ class ExpenseCategoryViewSet(ReadOnlyModelViewSet):
     """Categorie di spesa. Read-only via API: si gestiscono dall'admin Django."""
 
     serializer_class = ExpenseCategorySerializer
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
     queryset = ExpenseCategory.objects.all().order_by("nome")
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            property=get_request_property(self.request)
+        )
     pagination_class = None
 
 
@@ -607,11 +633,16 @@ class ExpenseViewSet(ModelViewSet):
     l'allineamento è implicito (stessa data e importo opposto)."""
 
     serializer_class = ExpenseSerializer
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
     queryset = Expense.objects.select_related(
         "category", "supplier", "anticipata_da_owner",
         "riferimento_quota_owner", "utility_bill",
     ).order_by("-data")
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            property=get_request_property(self.request)
+        )
 
     def perform_create(self, serializer):
         from properties.models import OwnerBankAccount
@@ -659,18 +690,22 @@ class BankTransactionViewSet(ReadOnlyModelViewSet):
     """
 
     serializer_class = BankTransactionSerializer
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
     pagination_class = BillingPagination
 
     def get_queryset(self):
+        # Visibilità fra co-membri: i conti dei membri dell'immobile attivo.
+        prop = get_request_property(self.request)
         qs = (
             BankTransaction.objects
+            .filter(owner_account__owner__user__property_memberships__property=prop)
             .select_related("owner_account__owner")
             .prefetch_related(
                 "allocations__receivable__assignment__tenant",
                 "allocations__receivable__utility_period",
             )
             .order_by("-data")
+            .distinct()
         )
 
         params = self.request.query_params
@@ -696,7 +731,7 @@ class BankTransactionViewSet(ReadOnlyModelViewSet):
         if tenant_id:
             from properties.models import TenantProfile
             try:
-                tenant = TenantProfile.objects.get(pk=tenant_id)
+                tenant = TenantProfile.objects.get(pk=tenant_id, property=prop)
             except TenantProfile.DoesNotExist:
                 return qs.none()
             descr_q = Q()
@@ -727,13 +762,14 @@ class ReceivableViewSet(ReadOnlyModelViewSet):
     """
 
     serializer_class = ReceivableForReconcileSerializer
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
     pagination_class = BillingPagination
 
     def get_queryset(self):
         from django.db.models import Prefetch
         qs = (
             Receivable.objects
+            .filter(assignment__room__property=get_request_property(self.request))
             .select_related(
                 "assignment__tenant",
                 "assignment__room",
@@ -817,11 +853,12 @@ class ReconciliationBulkView(APIView):
     ``_riallinea_receivable`` perché ``bulk_create`` non emette ``post_save``.
     """
 
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
 
     _TOLLERANZA = Decimal("0.01")
 
     def post(self, request):
+        prop = get_request_property(request)
         replace_for_transactions = request.data.get("replace_for_transactions") or []
         items = request.data.get("items") or []
 
@@ -839,6 +876,38 @@ class ReconciliationBulkView(APIView):
             )
 
         replace_set = set(replace_for_transactions)
+
+        # Perimetro immobile: le BT devono stare su conti di membri
+        # dell'immobile attivo e i Receivable appartenergli.
+        if replace_set:
+            bt_ok = set(
+                BankTransaction.objects.filter(
+                    pk__in=replace_set,
+                    owner_account__owner__user__property_memberships__property=prop,
+                ).values_list("pk", flat=True)
+            )
+            if bt_ok != replace_set:
+                return Response(
+                    {"detail": "Transazioni estranee a questo immobile."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        rec_ids = {
+            int(raw["receivable"])
+            for raw in items
+            if isinstance(raw, dict) and str(raw.get("receivable", "")).isdigit()
+        }
+        if rec_ids:
+            rec_ok = set(
+                Receivable.objects.filter(
+                    pk__in=rec_ids,
+                    assignment__room__property=prop,
+                ).values_list("pk", flat=True)
+            )
+            if rec_ok != rec_ids:
+                return Response(
+                    {"detail": "Addebiti estranei a questo immobile."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         normalizzati = []
         somme_per_bt: dict[int, Decimal] = {}
@@ -1005,11 +1074,14 @@ class RegistraPagamentoReceivableView(APIView):
     riconciliazione). Se è minore, alloca tutto: il Receivable resta atteso.
     """
 
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
 
     def post(self, request, pk):
         try:
-            receivable = Receivable.objects.get(pk=pk)
+            receivable = Receivable.objects.get(
+                pk=pk,
+                assignment__room__property=get_request_property(request),
+            )
         except Receivable.DoesNotExist:
             return Response(
                 {"detail": "Receivable non trovato."},
@@ -1112,7 +1184,7 @@ class BankTransactionBulkImportView(APIView):
     gestire il CSRF della sessione.
     """
 
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
     authentication_classes = [SessionAuthentication, BasicAuthentication]
 
     PREFISSO_NOTA = "Precedente: "
@@ -1121,6 +1193,19 @@ class BankTransactionBulkImportView(APIView):
         serializer = BankTransactionBulkImportInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         account = serializer.validated_data["owner_account"]
+        # Il conto deve essere di un membro di un immobile condiviso col
+        # richiedente (i movimenti bancari sono visibili fra co-membri).
+        condiviso = account.owner.user_id == request.user.pk or (
+            not request.user.is_superuser
+            and account.owner.user.property_memberships.filter(
+                property__memberships__user=request.user
+            ).exists()
+        ) or request.user.is_superuser
+        if not condiviso:
+            return Response(
+                {"detail": "Conto estraneo ai tuoi immobili."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         dry_run = serializer.validated_data["dry_run"]
         movimenti = serializer.validated_data["movimenti"]
 
