@@ -236,8 +236,13 @@ def invia_invito_membro(
     - Per il ruolo 'proprietario' crea anche l'OwnerProfile se manca
       (necessario per quote e incassi).
 
+    Tutto-o-niente: se l'invio email fallisce, utente e membership creati
+    in questa chiamata vengono annullati (si può ritentare).
+
     Ritorna ``{"esito", "email", "user_id", "creato", "errore"}``.
     """
+    from django.db import transaction
+
     from properties.models import PropertyMembership
 
     User = get_user_model()
@@ -246,6 +251,23 @@ def invia_invito_membro(
         return {"esito": "errore", "email": "", "user_id": None,
                 "creato": False, "errore": "Email obbligatoria."}
 
+    with transaction.atomic():
+        return _crea_e_invia_membro(
+            property, email, ruolo,
+            nominativo=nominativo, invitato_da=invitato_da,
+        )
+
+
+class _InvioFallito(Exception):
+    pass
+
+
+def _crea_e_invia_membro(property, email, ruolo, *, nominativo, invitato_da):
+    from django.db import transaction
+
+    from properties.models import PropertyMembership
+
+    User = get_user_model()
     user = User.objects.filter(email__iexact=email).first()
     creato = False
     if user is None:
@@ -319,8 +341,11 @@ def invia_invito_membro(
         msg.attach_alternative(corpo_html, "text/html")
         msg.send(fail_silently=False)
     except Exception as e:  # noqa: BLE001 — l'esito torna alla view
-        return {"esito": "errore", "email": email, "user_id": user.pk,
-                "creato": creato, "errore": str(e)}
+        # Annulla utente/membership creati in questa transazione: il
+        # chiamante può ritentare l'invito da capo.
+        transaction.set_rollback(True)
+        return {"esito": "errore", "email": email, "user_id": None,
+                "creato": False, "errore": str(e)}
 
     Notification.objects.create(
         user=user,

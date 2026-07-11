@@ -446,7 +446,14 @@ class PropertyViewSet(ModelViewSet):
         prop = self.get_object()
         self._richiedi_proprietario(prop)
         try:
-            prop.delete()
+            # Le quote create automaticamente alla creazione non rendono
+            # "pieno" un immobile: un immobile senza dati operativi deve
+            # restare cancellabile.
+            from django.db import transaction
+
+            with transaction.atomic():
+                prop.ownership_shares.all().delete()
+                prop.delete()
         except ProtectedError:
             return Response(
                 {"detail": "L'immobile non è vuoto: rimuovere prima stanze, "
@@ -573,6 +580,7 @@ class PropertyViewSet(ModelViewSet):
 
         totale = Decimal("0")
         normalizzate = []
+        visti: set[int] = set()
         for voce in voci:
             try:
                 user_id = int(voce["user"])
@@ -582,6 +590,12 @@ class PropertyViewSet(ModelViewSet):
                     {"detail": "Ogni voce deve avere 'user' e 'quota'."},
                     status=st.HTTP_400_BAD_REQUEST,
                 )
+            if user_id in visti:
+                return Response(
+                    {"detail": f"Utente {user_id} ripetuto nelle quote."},
+                    status=st.HTTP_400_BAD_REQUEST,
+                )
+            visti.add(user_id)
             membership = prop.memberships.filter(
                 user_id=user_id, ruolo=PropertyMembership.Ruolo.PROPRIETARIO
             ).select_related("user__owner_profile").first()
