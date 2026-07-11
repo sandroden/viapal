@@ -133,7 +133,8 @@ const vociMenu = [
   { to: '/p/saldi-fratelli', label: 'Saldi fratelli', icon: 'account_balance' },
   { to: '/p/conto-economico', label: 'Conto economico', icon: 'assessment' },
   { to: '/p/quick-add', label: 'Aggiungi rapida', icon: 'add_circle' },
-  { to: '/p/impostazioni/proprieta', label: 'Immobile', icon: 'home_work' },
+  { to: '/p/impostazioni/proprieta', label: 'Immobile e membri', icon: 'home_work' },
+  { to: '/p/impostazioni/casa', label: 'La casa', icon: 'meeting_room' },
 ];
 
 function toggleDrawer() {

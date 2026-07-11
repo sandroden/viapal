@@ -390,5 +390,12 @@ Palestrina non deve rompersi mai).
   del creatore) e pagina "Immobile" (dati, membri con inviti email, quote
   versionate). Verifica browser con screenshot in
   `tests/screenshots/multiproprieta/`.
-- ⏭ **Fase D** — anagrafiche nel frontend (stanze, contratti, cessioni,
-  inquilini CRUD, conti, categorie, solleciti, TARI).
+- ✅ **Fase D** completata (2026-07-11): CRUD via API per stanze,
+  contratti, assignment (con action cessione), inquilini (con creazione
+  utente e invito), conti bancari, categorie, fornitori, TARI, regole
+  solleciti e template (94 test nuovi; suite a 605). Frontend: pagina
+  "La casa" (tab Stanze/Contratti/Spese/TARI), "Nuovo inquilino" con
+  invito, wizard "Cessione" nel dettaglio inquilino. Restano in admin
+  solo operazioni di manutenzione straordinaria.
+- ⏭ **Fase E** — rifiniture (visibilità BankTransaction raffinata,
+  export commercialista per-property, notifiche deep-link) a consumo.
