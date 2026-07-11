@@ -374,3 +374,14 @@ Palestrina non deve rompersi mai).
 | Denormalizzare `property` su `Receivable`? | No: derivata via `assignment__room__property`. |
 | Header `X-Property-Id` vs query param | Header via interceptor axios (zero modifiche agli store esistenti). |
 | Via all'implementazione | Fase A approvata e avviata il 2026-07-11. |
+
+## 9. Stato di avanzamento
+
+- ✅ **Fase A** completata (2026-07-11): PropertyMembership, FK property su
+  tutti i modelli, migrations con backfill, calcoli per-property, hardcode
+  rimossi, seed con 2ª property demo, `check_multiproprieta`.
+- ✅ **Fase B** completata (2026-07-11): permission class membership-based
+  con ruoli, scoping di tutti i viewset/dashboard, API
+  `properties`/membri/quote/inviti, `/api/auth/user/` con elenco immobili,
+  suite cross-property (56 test di isolamento). Suite totale: 511 test.
+- ⏭ **Fase C** — frontend multi-property (store, switcher, onboarding).

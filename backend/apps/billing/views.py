@@ -227,6 +227,7 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
         from billing.models import AnnualUtilityCost
 
         bills = UtilityBill.objects.filter(
+            immobile_id=period.property_id,
             periodo_da__lte=period.periodo_a,
             periodo_a__gte=period.periodo_da,
         )
@@ -234,6 +235,7 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
         has_gas = bills.filter(prodotto=UtilityBill.Prodotto.GAS).exists()
         has_tari = (
             AnnualUtilityCost.objects.filter(
+                property_id=period.property_id,
                 voce=AnnualUtilityCost.VoceAnnuale.TARI,
                 valid_from__lte=period.periodo_a,
             )
@@ -260,6 +262,7 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
         """
         ultimo = (
             Receivable.objects.filter(
+                assignment__room__property=get_request_property(self.request),
                 causale=Receivable.Causale.UTENZE,
                 utility_period__isnull=False,
             )
@@ -656,7 +659,16 @@ class ExpenseViewSet(ModelViewSet):
         # il conto appartiene a un proprietario e la spesa è "anticipata" da lui.
         account = None
         if crea_bt and bt_owner_account_id:
-            account = OwnerBankAccount.objects.get(pk=bt_owner_account_id)
+            from properties.context import get_request_property
+            from rest_framework.exceptions import PermissionDenied
+
+            prop = get_request_property(self.request)
+            account = OwnerBankAccount.objects.filter(
+                pk=bt_owner_account_id,
+                owner__user__property_memberships__property=prop,
+            ).first()
+            if account is None:
+                raise PermissionDenied("Conto estraneo a questo immobile.")
             if validated.get("anticipata_da_owner") is None:
                 validated["anticipata_da_owner"] = account.owner
 
@@ -1097,6 +1109,19 @@ class RegistraPagamentoReceivableView(APIView):
         serializer = RegistraPagamentoInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         v = serializer.validated_data
+
+        # Il conto di destinazione deve essere di un membro dell'immobile.
+        from properties.models import OwnerBankAccount
+
+        conto_ok = OwnerBankAccount.objects.filter(
+            pk=v["owner_account"].pk,
+            owner__user__property_memberships__property=get_request_property(request),
+        ).exists()
+        if not conto_ok:
+            return Response(
+                {"detail": "Conto estraneo a questo immobile."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         allocato_attuale = (
             receivable.allocations.aggregate(tot=Sum("importo"))["tot"] or Decimal("0")
