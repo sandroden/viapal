@@ -16,7 +16,9 @@ Uso:
     uv run manage.py pin_bollette_storiche --persist       # esegue il pin
     uv run manage.py pin_bollette_storiche --year 2024     # filtro anno
 """
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
+
+from properties.context import resolve_property_cli
 
 
 class Command(BaseCommand):
@@ -35,6 +37,12 @@ class Command(BaseCommand):
             default=None,
             help="Filtra solo bollette con periodo_da in quell'anno.",
         )
+        parser.add_argument(
+            "--property",
+            type=str,
+            default=None,
+            help="Immobile (id o nome). Obbligatorio se ci sono più immobili.",
+        )
 
     def handle(self, *args, **options):
         from billing.calc.utility import VOCI_FATTURABILI
@@ -42,8 +50,13 @@ class Command(BaseCommand):
 
         persist = options["persist"]
         year = options.get("year")
+        try:
+            prop = resolve_property_cli(options.get("property"))
+        except ValueError as e:
+            raise CommandError(str(e)) from e
 
         bills_qs = UtilityBill.objects.filter(
+            immobile=prop,
             prodotto__in=VOCI_FATTURABILI,
         ).order_by("data_emissione")
         if year:
@@ -64,7 +77,7 @@ class Command(BaseCommand):
                 skip_count += 1
                 continue
 
-            target = self._scegli_periodo(bill)
+            target = self._scegli_periodo(bill, prop)
             if target is None:
                 orphan_count += 1
                 riepilogo.append(
@@ -92,7 +105,7 @@ class Command(BaseCommand):
             self.stdout.write(r)
 
     @staticmethod
-    def _scegli_periodo(bill):
+    def _scegli_periodo(bill, prop):
         """Regola di pinning automatico:
         - Se esiste UN periodo il cui range coincide col range della bolletta
           → pin a quel periodo.
@@ -108,6 +121,7 @@ class Command(BaseCommand):
 
         # 1. Periodo che coincide col range bolletta (esatto o contenente)
         contenente = UtilityChargePeriod.objects.filter(
+            property=prop,
             periodo_da__lte=bill.periodo_da,
             periodo_a__gte=bill.periodo_a,
         ).order_by("periodo_da")
@@ -116,7 +130,9 @@ class Command(BaseCommand):
 
         # 2. Multi-bimestre: ribalta sul primo periodo dopo periodo_a
         successivo = (
-            UtilityChargePeriod.objects.filter(periodo_da__gt=bill.periodo_a)
+            UtilityChargePeriod.objects.filter(
+                property=prop, periodo_da__gt=bill.periodo_a
+            )
             .order_by("periodo_da")
             .first()
         )
@@ -126,6 +142,7 @@ class Command(BaseCommand):
         # 3. Fallback: ultimo periodo che interseca almeno parzialmente
         ultimo_intersezione = (
             UtilityChargePeriod.objects.filter(
+                property=prop,
                 periodo_da__lte=bill.periodo_a,
                 periodo_a__gte=bill.periodo_da,
             )

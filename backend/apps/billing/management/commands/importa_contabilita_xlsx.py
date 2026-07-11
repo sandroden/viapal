@@ -240,12 +240,23 @@ class Command(BaseCommand):
                             help="Cartella dei PDF utenze-*edison.pdf per la fase 4 "
                                  "(default: la cartella del file .xlsx).")
         parser.add_argument("--dry-run", action="store_true", help="Non scrive nulla, mostra solo il parsing.")
+        parser.add_argument(
+            "--property", type=str, default=None,
+            help="Immobile (id o nome). Obbligatorio se ci sono più immobili.",
+        )
 
     def handle(self, *args, **opts):
         try:
             from openpyxl import load_workbook
         except ImportError as e:  # noqa
             raise CommandError("openpyxl non installato: `uv add openpyxl`") from e
+
+        from properties.context import resolve_property_cli
+
+        try:
+            self.prop = resolve_property_cli(opts.get("property"))
+        except ValueError as e:
+            raise CommandError(str(e)) from e
 
         xlsx_path = Path(opts["xlsx_path"]).expanduser().resolve()
         if not xlsx_path.exists():
@@ -385,8 +396,11 @@ class Command(BaseCommand):
                 tot_importato += importo
                 continue
 
-            obj = Expense.objects.filter(note__contains=marker).first()
+            obj = Expense.objects.filter(
+                property=self.prop, note__contains=marker
+            ).first()
             defaults = dict(
+                property=self.prop,
                 data=data_eff,
                 category=categoria,
                 importo=importo,
@@ -415,17 +429,22 @@ class Command(BaseCommand):
         }
 
     # ------------------------------------------------------------------
-    @staticmethod
-    def _categoria(codice, nome, dry_run):
+    def _categoria(self, codice, nome, dry_run):
         from billing.models import ExpenseCategory
 
-        cat = ExpenseCategory.objects.filter(codice=codice).first()
+        cat = ExpenseCategory.objects.filter(
+            property=self.prop, codice=codice
+        ).first()
         if cat:
             return cat
         if dry_run:
-            return ExpenseCategory(codice=codice, nome=nome, ripartibile_inquilini=False)
+            return ExpenseCategory(
+                property=self.prop, codice=codice, nome=nome,
+                ripartibile_inquilini=False,
+            )
         return ExpenseCategory.objects.create(
-            codice=codice, nome=nome, ripartibile_inquilini=False
+            property=self.prop, codice=codice, nome=nome,
+            ripartibile_inquilini=False,
         )
 
     @staticmethod
@@ -456,7 +475,9 @@ class Command(BaseCommand):
 
         # --- affitti ---
         for tenant_key, anno, mese, dovuto, fonte, nota in AFFITTO_RICOSTRUITO:
-            tenant = TenantProfile.objects.filter(nominativo__icontains=tenant_key).first()
+            tenant = TenantProfile.objects.filter(
+                property=self.prop, nominativo__icontains=tenant_key
+            ).first()
             if tenant is None:
                 warnings.append(f"affitto {tenant_key} {anno}-{mese:02}: inquilino non trovato")
                 continue
@@ -504,6 +525,7 @@ class Command(BaseCommand):
             comp_da = date(anno, mese, 1)
             rec = Receivable.objects.filter(
                 causale="affitto",
+                assignment__tenant__property=self.prop,
                 assignment__tenant__nominativo__icontains=tenant_key,
                 competenza_da=comp_da,
             ).first()
@@ -532,6 +554,7 @@ class Command(BaseCommand):
             dep = (
                 Receivable.objects.filter(
                     causale="deposito",
+                    assignment__tenant__property=self.prop,
                     assignment__tenant__nominativo__icontains=tenant_key,
                     competenza_da__year__lte=2023,
                     importo_dovuto__gt=0,
@@ -577,6 +600,7 @@ class Command(BaseCommand):
         for tenant_key, anno, mese, tranches, fonte, nota in AFFITTO_FASE3:
             rec = Receivable.objects.filter(
                 causale="affitto",
+                assignment__tenant__property=self.prop,
                 assignment__tenant__nominativo__icontains=tenant_key,
                 competenza_da=date(anno, mese, 1),
             ).first()
@@ -597,6 +621,7 @@ class Command(BaseCommand):
             rec = (
                 Receivable.objects.filter(
                     causale="deposito",
+                    assignment__tenant__property=self.prop,
                     assignment__tenant__nominativo__icontains=tenant_key,
                     importo_dovuto__gt=0,
                     competenza_da__year__in=(2022, 2023),
@@ -618,6 +643,7 @@ class Command(BaseCommand):
         for tenant_key, anno, mese, tranches, fonte, nota in UTENZE_FASE3:
             rec = Receivable.objects.filter(
                 causale="utenze",
+                assignment__tenant__property=self.prop,
                 assignment__tenant__nominativo__icontains=tenant_key,
                 competenza_da=date(anno, mese, 1),
             ).first()
@@ -638,7 +664,9 @@ class Command(BaseCommand):
 
         for descr_esatta, vecchio_str, nuovo_str, fonte in CORREZIONI_CONDOMINIO:
             match = Expense.objects.filter(
-                category__codice="condominio", descrizione=descr_esatta
+                property=self.prop,
+                category__codice="condominio",
+                descrizione=descr_esatta,
             )
             if match.count() != 1:
                 warnings.append(
@@ -788,10 +816,14 @@ class Command(BaseCommand):
         bdir = Path(bollette_dir).expanduser().resolve()
         sandro = self._owner("Alessandro")
 
-        supplier = Supplier.objects.filter(nome__iexact="Edison Energia").first()
+        supplier = Supplier.objects.filter(
+            property=self.prop, nome__iexact="Edison Energia"
+        ).first()
         if supplier is None and not dry_run:
             supplier = Supplier.objects.create(
-                nome="Edison Energia", tipo=Supplier.TipoFornitore.ENERGIA
+                property=self.prop,
+                nome="Edison Energia",
+                tipo=Supplier.TipoFornitore.ENERGIA,
             )
 
         pdfs = sorted(bdir.glob("utenze-*edison.pdf")) if bdir.is_dir() else []
@@ -809,12 +841,14 @@ class Command(BaseCommand):
             # UtilityBill già a sistema per la stessa bolletta (stesso prodotto,
             # anno e importo ~uguale) — sono le #144/#145/#147 importate prima
             # con metadati grezzi: vanno aggiornate sul posto, non duplicate.
-            bill = UtilityBill.objects.filter(numero_fattura=stem).first()
+            bill = UtilityBill.objects.filter(
+                immobile=self.prop, numero_fattura=stem
+            ).first()
             if bill is None:
                 simili = [
                     b
                     for b in UtilityBill.objects.filter(
-                        prodotto=meta["prodotto"]
+                        immobile=self.prop, prodotto=meta["prodotto"]
                     ).filter(
                         Q(periodo_da__year=meta["anno"])
                         | Q(periodo_a__year=meta["anno"])
@@ -854,6 +888,7 @@ class Command(BaseCommand):
 
             if bill is None:
                 bill = UtilityBill(numero_fattura=stem)
+            bill.immobile = self.prop
             bill.numero_fattura = stem
             bill.supplier = supplier
             bill.prodotto = meta["prodotto"]
@@ -883,6 +918,7 @@ class Command(BaseCommand):
         supplier = None
         if not dry_run:
             supplier, _ = Supplier.objects.get_or_create(
+                property=self.prop,
                 nome="Sconosciuto",
                 defaults={"tipo": Supplier.TipoFornitore.ALTRO},
             )
@@ -891,7 +927,9 @@ class Command(BaseCommand):
             importo = Decimal(imp)
             periodo_da = dt.date.fromisoformat(pda)
             periodo_a = dt.date.fromisoformat(pa)
-            bill = UtilityBill.objects.filter(numero_fattura=nf).first()
+            bill = UtilityBill.objects.filter(
+                immobile=self.prop, numero_fattura=nf
+            ).first()
             row = dict(
                 riga=riga, periodo_da=periodo_da, periodo_a=periodo_a,
                 importo=importo, descr=descr,
@@ -909,6 +947,7 @@ class Command(BaseCommand):
             )
             if bill is None:
                 bill = UtilityBill(numero_fattura=nf)
+            bill.immobile = self.prop
             bill.numero_fattura = nf
             bill.supplier = supplier
             bill.prodotto = UtilityBill.Prodotto.LUCE  # segnaposto: vedi note
@@ -988,17 +1027,23 @@ class Command(BaseCommand):
 
         importo = Decimal("405")
         bruna = self._owner("Bruna")
-        exp = Expense.objects.filter(note__contains=MARKER_TARI).first()
+        exp = Expense.objects.filter(
+            property=self.prop, note__contains=MARKER_TARI
+        ).first()
         row = dict(importo=importo, stato="aggiornerò" if exp else "creerò")
         if dry_run:
             return row
 
-        cat = ExpenseCategory.objects.filter(codice="tari").first()
+        cat = ExpenseCategory.objects.filter(
+            property=self.prop, codice="tari"
+        ).first()
         if cat is None:
             cat = ExpenseCategory.objects.create(
-                codice="tari", nome="TARI", ripartibile_inquilini=True
+                property=self.prop, codice="tari", nome="TARI",
+                ripartibile_inquilini=True,
             )
         defaults = dict(
+            property=self.prop,
             data=dt.date(2023, 7, 1),
             category=cat,
             importo=importo,
