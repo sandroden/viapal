@@ -133,7 +133,7 @@ irrealistico per l'uso previsto; se mai servirà, si trasformerà il OneToOne in
 | `TenantCondominioRate` | nessuna (eredita via `contract.property`) | |
 | `Receivable`, `BankTransactionAllocation` | nessuna FK: property derivata via `assignment__room__property` | volumi piccoli, il join non è un problema; niente denormalizzazione da tenere sincronizzata |
 | `BankTransaction`, `OwnerBankAccount` | **nessuna FK a property**: restano per-owner | un conto riceve per più proprietà; visibilità: vedi §3.3 |
-| `InterOwnerLoan/Entry`, `WithholdingRule` | **restano personali** (coppia di persone, cross-property) | visibilità ristretta alla coppia coinvolta, vedi §3.3 |
+| `InterOwnerLoan/Entry`, `WithholdingRule` | + `property` FK **NOT NULL** *(deciso 2026-07-11)* | il partitario bilaterale è legato alla proprietà: visibile ai membri di quella property, come oggi fra fratelli |
 | `Notification`, `PushSubscription` | nessuna FK (sono per-user) | eventualmente `Notification.property` nullable per il deep-link, non necessario ora |
 
 ### 2.3 Migrazione dati (una sola release, reversibile)
@@ -211,7 +211,7 @@ Filtri queryset per app (il pattern, non l'elenco esaustivo):
 | Tema | Decisione proposta |
 |---|---|
 | **BankTransaction** (conto di Sandro usato per due proprietà) | visibile a chi condivide almeno una property col titolare del conto. La riconciliazione alloca su `Receivable` che sono property-scoped, quindi il *risultato* resta coerente per property. Caveat: Bruna vede anche i movimenti del conto di Sandro relativi all'altra casa — accettabile in famiglia, da raffinare con un flag `visibile_solo_al_titolare` se servirà. |
-| **Partitario bilaterale** (`InterOwner*`) | resta personale fra due persone; la pagina è visibile **solo ai due coinvolti** (oggi la vede qualsiasi proprietario). Le entry generate da `Expense.riferimento_quota_owner` continuano a funzionare (la Expense è property-scoped, l'entry personale no). |
+| **Partitario bilaterale** (`InterOwner*`) | *(deciso 2026-07-11)* legato alla proprietà: FK `property`, visibile ai membri di quella property come oggi. Le entry generate da `Expense.riferimento_quota_owner` ereditano la property della Expense. |
 | **Impersonation** | attivare il filtro già predisposto in `impersonation.py:50-56`: un membro può impersonare solo inquilini delle proprie property. |
 | **Superuser/admin Django** | resta strumento di manutenzione di Sandro (vede tutto). Aggiungere `list_filter` per property ovunque. Nessuna funzione utente deve più richiedere l'admin. |
 | **Gruppi Django** | mantenuti per il routing d'area (`homePath` FE). L'aggiunta al gruppo `proprietari` avviene automaticamente alla creazione della prima membership (signal). |
@@ -363,13 +363,14 @@ Palestrina non deve rompersi mai).
    backfill è banale; ma la decisione "partitario bilaterale personale (cross-property)"
    va confermata con l'uso reale.
 
-## 8. Decisioni aperte (con proposta)
+## 8. Decisioni prese (confermate da Sandro il 2026-07-11)
 
-| Decisione | Proposta |
+| Decisione | Scelta |
 |---|---|
 | Chi può creare nuove property? | Qualsiasi utente "lato proprietari" (membro di almeno una property). Il self-signup pubblico resta chiuso. |
 | Categorie spesa globali o per-property? | Per-property, seed automatico dei default alla creazione. |
-| Visibilità BankTransaction fra co-membri | Sì (semplice), con eventuale flag privacy in Fase E. |
-| Partitario bilaterale | Personale fra due persone, non property-scoped, visibile solo alla coppia. |
+| Visibilità BankTransaction fra co-membri | Sì, come oggi: chi condivide una property col titolare del conto vede i movimenti. Eventuale flag privacy in Fase E. |
+| Partitario bilaterale | **Legato alla proprietà** (FK `property`), visibile ai membri di quella property. |
 | Denormalizzare `property` su `Receivable`? | No: derivata via `assignment__room__property`. |
 | Header `X-Property-Id` vs query param | Header via interceptor axios (zero modifiche agli store esistenti). |
+| Via all'implementazione | Fase A approvata e avviata il 2026-07-11. |
