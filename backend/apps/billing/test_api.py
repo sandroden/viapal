@@ -20,7 +20,13 @@ from billing.models import (
     StatoPagamento,
     UtilityChargePeriod,
 )
-from properties.models import OwnerProfile, Room, RoomAssignment, TenantProfile
+from properties.models import (
+    OwnerProfile,
+    PropertyMembership,
+    Room,
+    RoomAssignment,
+    TenantProfile,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -46,9 +52,12 @@ def gruppo_inquilini(db):
 
 
 @pytest.fixture
-def user_prop(db, gruppo_proprietari):
+def user_prop(db, gruppo_proprietari, immobile):
     u = User.objects.create_user("bp_prop", email="prop@v.it", password="pwd123!")
     u.groups.add(gruppo_proprietari)
+    PropertyMembership.objects.create(
+        property=immobile, user=u, ruolo=PropertyMembership.Ruolo.PROPRIETARIO
+    )
     return u
 
 
@@ -67,27 +76,29 @@ def user_inq_2(db, gruppo_inquilini):
 
 
 @pytest.fixture
-def tenant_1(db, user_inq_1):
+def tenant_1(db, user_inq_1, immobile):
     return TenantProfile.objects.create(
+        property=immobile,
         user=user_inq_1, nominativo="Inquilino Billing 1", giorno_pagamento_affitto=1
     )
 
 
 @pytest.fixture
-def tenant_2(db, user_inq_2):
+def tenant_2(db, user_inq_2, immobile):
     return TenantProfile.objects.create(
+        property=immobile,
         user=user_inq_2, nominativo="Inquilino Billing 2", giorno_pagamento_affitto=5
     )
 
 
 @pytest.fixture
-def room_1(db):
-    return Room.objects.create(nome="Camera Billing A", ordinamento=20)
+def room_1(db, immobile):
+    return Room.objects.create(property=immobile, nome="Camera Billing A", ordinamento=20)
 
 
 @pytest.fixture
-def room_2(db):
-    return Room.objects.create(nome="Camera Billing B", ordinamento=21)
+def room_2(db, immobile):
+    return Room.objects.create(property=immobile, nome="Camera Billing B", ordinamento=21)
 
 
 @pytest.fixture
@@ -137,8 +148,9 @@ def rent_payment_2(db, assignment_2):
 
 
 @pytest.fixture
-def period(db):
+def period(db, immobile):
     return UtilityChargePeriod.objects.create(
+        property=immobile,
         periodo_da=datetime.date(2026, 4, 1),
         periodo_a=datetime.date(2026, 4, 30),
         stato="inviato",
@@ -165,8 +177,9 @@ def charge_1(db, period, assignment_1):
 
 
 @pytest.fixture
-def period_maggio(db):
+def period_maggio(db, immobile):
     return UtilityChargePeriod.objects.create(
+        property=immobile,
         periodo_da=datetime.date(2026, 5, 1),
         periodo_a=datetime.date(2026, 5, 31),
         stato="inviato",
@@ -534,19 +547,18 @@ class TestDashboardInquilino:
         assert item["pagamento"] is None
 
     def test_pagamento_qr_con_conto_valido(
-        self, client_inq_1, tenant_1, charge_1, room_1, owner_prop
+        self, client_inq_1, tenant_1, charge_1, room_1, owner_prop, immobile
     ):
         """Con proprietà + conto a IBAN valido, le utenze espongono i dati QR."""
-        from properties.models import OwnerBankAccount, Property
+        from properties.models import OwnerBankAccount
 
         conto = OwnerBankAccount.objects.create(
             owner=owner_prop, banca="Webank",
             intestatario="Alessandro Dentella",
             iban="IT72I0503401799000000081536",
         )
-        prop = Property.objects.create(nome="Immobile Test", bank_account_utenze=conto)
-        room_1.property = prop
-        room_1.save(update_fields=["property"])
+        immobile.bank_account_utenze = conto
+        immobile.save(update_fields=["bank_account_utenze"])
 
         resp = client_inq_1.get("/api/v1/dashboard/inquilino/")
         util = next(
@@ -767,13 +779,14 @@ class TestBilancioOwnerDettaglio:
             assert k in data["righe"][0]
 
     def test_uscite_solo_owner_richiesto(
-        self, client_prop, owner_alessandro, user_inq_2
+        self, client_prop, owner_alessandro, user_inq_2, immobile
     ):
         from billing.models import Expense, ExpenseCategory
         anno = datetime.date.today().year
-        cat = ExpenseCategory.objects.create(nome="Spese condominiali")
+        cat = ExpenseCategory.objects.create(property=immobile, nome="Spese condominiali")
         altro = OwnerProfile.objects.create(user=user_inq_2, nominativo="Altro")
         Expense.objects.create(
+            property=immobile,
             data=datetime.date(anno, 3, 23),
             category=cat,
             importo=Decimal("1000"),
@@ -781,6 +794,7 @@ class TestBilancioOwnerDettaglio:
             anticipata_da_owner=owner_alessandro,
         )
         Expense.objects.create(
+            property=immobile,
             data=datetime.date(anno, 4, 1),
             category=cat,
             importo=Decimal("500"),
@@ -1925,9 +1939,11 @@ class TestExpenseCreaBT:
     URL = "/api/v1/expenses/"
 
     @pytest.fixture
-    def expense_category(self, db):
+    def expense_category(self, db, immobile):
         from billing.models import ExpenseCategory
-        return ExpenseCategory.objects.create(nome="Manutenzione", codice="MAN")
+        return ExpenseCategory.objects.create(
+            property=immobile, nome="Manutenzione", codice="MAN"
+        )
 
     def test_default_crea_bank_transaction(
         self, client_prop, owner_account, expense_category, owner_prop
@@ -2055,11 +2071,11 @@ class TestExpenseCategoryEndpoint:
     URL = "/api/v1/expense-categories/"
 
     @pytest.fixture
-    def categorie(self, db):
+    def categorie(self, db, immobile):
         from billing.models import ExpenseCategory
         return [
-            ExpenseCategory.objects.create(nome="IMU", codice="imu"),
-            ExpenseCategory.objects.create(nome="Manutenzione", codice="man"),
+            ExpenseCategory.objects.create(property=immobile, nome="IMU", codice="imu"),
+            ExpenseCategory.objects.create(property=immobile, nome="Manutenzione", codice="man"),
         ]
 
     def test_lista_per_proprietario(self, client_prop, categorie):
@@ -2275,14 +2291,15 @@ class TestContoEconomico:
         return OwnerProfile.objects.create(user=u, nominativo="Owner CE")
 
     @pytest.fixture
-    def quote_ce(self, db, owner_ce):
+    def quote_ce(self, db, owner_ce, immobile):
         from properties.models import OwnershipShare
         return OwnershipShare.objects.create(
+            property=immobile,
             owner=owner_ce, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
         )
 
     @pytest.fixture
-    def flussi_2025(self, db, assignment_1, owner_ce):
+    def flussi_2025(self, db, assignment_1, owner_ce, immobile):
         """Affitto di dicembre 2025 pagato a gennaio 2026 + spesa ordinaria
         e straordinaria nel 2025."""
         from billing.models import Expense, ExpenseCategory
@@ -2310,8 +2327,9 @@ class TestContoEconomico:
             stato=StatoPagamento.PAGATO,
             incassato_da_owner=owner_ce,
         )
-        cat = ExpenseCategory.objects.create(nome="IMU CE", codice="imu-ce")
+        cat = ExpenseCategory.objects.create(property=immobile, nome="IMU CE", codice="imu-ce")
         Expense.objects.create(
+            property=immobile,
             data=datetime.date(2025, 6, 16),
             category=cat,
             importo=Decimal("300"),
@@ -2319,6 +2337,7 @@ class TestContoEconomico:
             anticipata_da_owner=owner_ce,
         )
         Expense.objects.create(
+            property=immobile,
             data=datetime.date(2025, 7, 1),
             category=cat,
             importo=Decimal("1000"),

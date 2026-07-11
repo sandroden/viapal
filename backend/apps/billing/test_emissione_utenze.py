@@ -15,14 +15,19 @@ pytestmark = pytest.mark.django_db
 User = get_user_model()
 
 
-def _proprietario():
+def _proprietario(immobile):
+    from properties.models import PropertyMembership
+
     user = User.objects.create_user(username="propr_em", password="x")
     grp, _ = Group.objects.get_or_create(name="proprietari")
     user.groups.add(grp)
+    PropertyMembership.objects.create(
+        property=immobile, user=user, ruolo=PropertyMembership.Ruolo.PROPRIETARIO
+    )
     return user
 
 
-def _assignment_attivo(email="mario@example.com"):
+def _assignment_attivo(immobile, email="mario@example.com"):
     """Inquilino con assegnazione stanza attiva da inizio 2024 (no scadenza).
 
     Allineato alle fixture del conftest: ``Room`` senza ``Building`` né
@@ -30,12 +35,12 @@ def _assignment_attivo(email="mario@example.com"):
     """
     from properties.models import Room, RoomAssignment, TenantProfile
 
-    room = Room.objects.create(nome="Camera Emissione", ordinamento=30)
+    room = Room.objects.create(property=immobile, nome="Camera Emissione", ordinamento=30)
     tenant_user = User.objects.create_user(
         username="tenant_em", password="x", email=email
     )
     tenant = TenantProfile.objects.create(
-        user=tenant_user, nominativo="Mario Rossi", giorno_pagamento_affitto=1
+        property=immobile, user=tenant_user, nominativo="Mario Rossi", giorno_pagamento_affitto=1
     )
     assignment = RoomAssignment.objects.create(
         tenant=tenant,
@@ -46,14 +51,16 @@ def _assignment_attivo(email="mario@example.com"):
     return tenant, assignment
 
 
-def _bolletta(prodotto, importo, da, a):
+def _bolletta(immobile, prodotto, importo, da, a):
     from billing.models import Supplier, UtilityBill
 
     supplier, _ = Supplier.objects.get_or_create(
+        property=immobile,
         nome=f"Forn-{prodotto}",
         defaults={"tipo": Supplier.TipoFornitore.ALTRO},
     )
     return UtilityBill.objects.create(
+        immobile=immobile,
         supplier=supplier,
         prodotto=prodotto,
         numero_fattura=f"{prodotto}-{da}",
@@ -64,15 +71,15 @@ def _bolletta(prodotto, importo, da, a):
     )
 
 
-def _client():
+def _client(immobile):
     c = APIClient()
-    c.force_authenticate(user=_proprietario())
+    c.force_authenticate(user=_proprietario(immobile))
     return c
 
 
 class TestPerMese:
-    def test_crea_periodo_se_assente(self):
-        c = _client()
+    def test_crea_periodo_se_assente(self, immobile):
+        c = _client(immobile)
         resp = c.get("/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6})
         assert resp.status_code == 200, resp.content
         body = resp.json()
@@ -81,34 +88,34 @@ class TestPerMese:
         assert body["period"]["periodo_a"] == "2025-06-30"
         assert body["completezza"]["completo"] is False  # nessuna bolletta
 
-    def test_riusa_periodo_esistente(self):
-        c = _client()
+    def test_riusa_periodo_esistente(self, immobile):
+        c = _client(immobile)
         first = c.get("/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 7})
         second = c.get("/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 7})
         assert second.json()["created"] is False
         assert first.json()["period"]["id"] == second.json()["period"]["id"]
 
-    def test_parametri_mancanti(self):
+    def test_parametri_mancanti(self, immobile):
         # 'mese' senza 'anno' è un input parziale invalido
-        c = _client()
+        c = _client(immobile)
         resp = c.get("/api/v1/utility-periods/per-mese/", {"mese": 6})
         assert resp.status_code == 400
 
-    def test_default_senza_parametri_mese_corrente_se_vuoto(self):
+    def test_default_senza_parametri_mese_corrente_se_vuoto(self, immobile):
         # nessun addebito utenze esistente -> default = mese corrente
-        c = _client()
+        c = _client(immobile)
         resp = c.get("/api/v1/utility-periods/per-mese/")
         assert resp.status_code == 200, resp.content
         oggi = datetime.date.today()
         assert resp.json()["anno"] == oggi.year
         assert resp.json()["mese"] == oggi.month
 
-    def test_default_resta_sul_mese_con_avvisi_pendenti(self):
+    def test_default_resta_sul_mese_con_avvisi_pendenti(self, immobile):
         # emette giugno 2025 ma NON invia gli avvisi -> il default resta giugno
-        _assignment_attivo()
-        _bolletta("luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
-        _bolletta("gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
-        c = _client()
+        _assignment_attivo(immobile)
+        _bolletta(immobile, "luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        _bolletta(immobile, "gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        c = _client(immobile)
         pid = c.get(
             "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
         ).json()["period"]["id"]
@@ -118,12 +125,12 @@ class TestPerMese:
         assert resp.json()["anno"] == 2025
         assert resp.json()["mese"] == 6
 
-    def test_default_mese_successivo_dopo_invio_avvisi(self):
+    def test_default_mese_successivo_dopo_invio_avvisi(self, immobile):
         # emessi gli addebiti e inviati gli avvisi -> il default propone luglio
-        _assignment_attivo()
-        _bolletta("luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
-        _bolletta("gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
-        c = _client()
+        _assignment_attivo(immobile)
+        _bolletta(immobile, "luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        _bolletta(immobile, "gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        c = _client(immobile)
         pid = c.get(
             "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
         ).json()["period"]["id"]
@@ -138,11 +145,11 @@ class TestPerMese:
         assert resp.json()["anno"] == 2025
         assert resp.json()["mese"] == 7
 
-    def test_default_dicembre_passa_a_gennaio_dopo_invio(self):
-        _assignment_attivo()
-        _bolletta("luce", "100.00", datetime.date(2025, 12, 1), datetime.date(2025, 12, 31))
-        _bolletta("gas", "60.00", datetime.date(2025, 12, 1), datetime.date(2025, 12, 31))
-        c = _client()
+    def test_default_dicembre_passa_a_gennaio_dopo_invio(self, immobile):
+        _assignment_attivo(immobile)
+        _bolletta(immobile, "luce", "100.00", datetime.date(2025, 12, 1), datetime.date(2025, 12, 31))
+        _bolletta(immobile, "gas", "60.00", datetime.date(2025, 12, 1), datetime.date(2025, 12, 31))
+        c = _client(immobile)
         pid = c.get(
             "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 12}
         ).json()["period"]["id"]
@@ -159,11 +166,11 @@ class TestPerMese:
 
 
 class TestAnteprimaEmetti:
-    def test_completezza_e_anteprima(self):
-        _assignment_attivo()
-        _bolletta("luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
-        _bolletta("gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
-        c = _client()
+    def test_completezza_e_anteprima(self, immobile):
+        _assignment_attivo(immobile)
+        _bolletta(immobile, "luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        _bolletta(immobile, "gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        c = _client(immobile)
 
         per_mese = c.get("/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6})
         body = per_mese.json()
@@ -185,13 +192,13 @@ class TestAnteprimaEmetti:
         assert Decimal(str(tpv["luce"])) > 0
         assert Decimal(str(tpv["gas"])) > 0
 
-    def test_emetti_crea_receivable_e_inviato(self):
+    def test_emetti_crea_receivable_e_inviato(self, immobile):
         from billing.models import Receivable
 
-        _assignment_attivo()
-        _bolletta("luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
-        _bolletta("gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
-        c = _client()
+        _assignment_attivo(immobile)
+        _bolletta(immobile, "luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        _bolletta(immobile, "gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        c = _client(immobile)
         pid = c.get(
             "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
         ).json()["period"]["id"]
@@ -205,8 +212,8 @@ class TestAnteprimaEmetti:
         assert rec.count() == 1
         assert rec.first().importo_dovuto > 0
 
-    def test_emetti_blocca_periodo_incompleto(self):
-        c = _client()
+    def test_emetti_blocca_periodo_incompleto(self, immobile):
+        c = _client(immobile)
         pid = c.get(
             "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 9}
         ).json()["period"]["id"]
@@ -215,11 +222,11 @@ class TestAnteprimaEmetti:
         assert resp.json()["completezza"]["completo"] is False
 
 
-def _setup_emesso(c, email="mario@example.com", mese=6):
+def _setup_emesso(c, immobile, email="mario@example.com", mese=6):
     """Crea inquilino+bollette, trova il periodo del mese e lo emette."""
-    _assignment_attivo(email=email)
-    _bolletta("luce", "100.00", datetime.date(2025, mese, 1), datetime.date(2025, mese, 28))
-    _bolletta("gas", "60.00", datetime.date(2025, mese, 1), datetime.date(2025, mese, 28))
+    _assignment_attivo(immobile, email=email)
+    _bolletta(immobile, "luce", "100.00", datetime.date(2025, mese, 1), datetime.date(2025, mese, 28))
+    _bolletta(immobile, "gas", "60.00", datetime.date(2025, mese, 1), datetime.date(2025, mese, 28))
     pid = c.get(
         "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": mese}
     ).json()["period"]["id"]
@@ -228,9 +235,9 @@ def _setup_emesso(c, email="mario@example.com", mese=6):
 
 
 class TestInvioAvvisi:
-    def test_dry_run_non_invia(self, mailoutbox):
-        c = _client()
-        pid = _setup_emesso(c)
+    def test_dry_run_non_invia(self, mailoutbox, immobile):
+        c = _client(immobile)
+        pid = _setup_emesso(c, immobile)
         resp = c.post(
             f"/api/v1/utility-periods/{pid}/invia-avvisi/",
             {"dry_run": True},
@@ -247,11 +254,11 @@ class TestInvioAvvisi:
         assert "Mario Rossi" in avviso["corpo"]
         assert len(mailoutbox) == 0
 
-    def test_invio_reale(self, mailoutbox):
+    def test_invio_reale(self, mailoutbox, immobile):
         from notifications.models import Notification
 
-        c = _client()
-        pid = _setup_emesso(c)
+        c = _client(immobile)
+        pid = _setup_emesso(c, immobile)
         resp = c.post(
             f"/api/v1/utility-periods/{pid}/invia-avvisi/",
             {"dry_run": False},
@@ -287,9 +294,9 @@ class TestInvioAvvisi:
         assert rec.scadenza == datetime.date.today() + datetime.timedelta(days=14)
         assert Notification.objects.filter(inviata_at__isnull=False).count() == 1
 
-    def test_senza_email(self, mailoutbox):
-        c = _client()
-        pid = _setup_emesso(c, email="")
+    def test_senza_email(self, mailoutbox, immobile):
+        c = _client(immobile)
+        pid = _setup_emesso(c, immobile, email="")
         resp = c.post(
             f"/api/v1/utility-periods/{pid}/invia-avvisi/",
             {"dry_run": False},
@@ -300,7 +307,7 @@ class TestInvioAvvisi:
         assert body["senza_email"] == ["Mario Rossi"]
         assert len(mailoutbox) == 0
 
-    def test_invio_reale_con_push(self, mailoutbox, settings):
+    def test_invio_reale_con_push(self, mailoutbox, settings, immobile):
         """Inquilino con device registrato: oltre all'email parte la push."""
         from unittest import mock
 
@@ -312,8 +319,8 @@ class TestInvioAvvisi:
         settings.VAPID_PUBLIC_KEY = "test-vapid-public"
         settings.VAPID_CLAIMS_SUB = "mailto:test@viapal.it"
 
-        c = _client()
-        pid = _setup_emesso(c)
+        c = _client(immobile)
+        pid = _setup_emesso(c, immobile)
         tenant_user = User.objects.get(username="tenant_em")
         PushSubscription.objects.create(
             user=tenant_user,

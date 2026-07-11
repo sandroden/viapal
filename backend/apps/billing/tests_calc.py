@@ -45,7 +45,7 @@ def owner(db, owner_user):
 
 
 @pytest.fixture
-def make_tenant(db):
+def make_tenant(db, immobile):
     """Factory che crea un TenantProfile con User dedicato."""
     counter = [0]
 
@@ -57,6 +57,7 @@ def make_tenant(db):
             password="pwd",
         )
         return TenantProfile.objects.create(
+            property=immobile,
             user=u,
             nominativo=nominativo,
             giorno_pagamento_affitto=giorno_pagamento,
@@ -66,13 +67,14 @@ def make_tenant(db):
 
 
 @pytest.fixture
-def make_room(db):
+def make_room(db, immobile):
     """Factory che crea una Room."""
     counter = [0]
 
     def _make(nome=None):
         counter[0] += 1
         return Room.objects.create(
+            property=immobile,
             nome=nome or f"Camera Calc {counter[0]}",
             ordinamento=counter[0],
         )
@@ -105,9 +107,10 @@ def make_assignment(db, make_room, make_tenant):
 
 
 @pytest.fixture
-def periodo_maggio(db):
+def periodo_maggio(db, immobile):
     """UtilityChargePeriod per maggio 2026 (31 giorni)."""
     return UtilityChargePeriod.objects.create(
+        property=immobile,
         periodo_da=datetime.date(2026, 5, 1),
         periodo_a=datetime.date(2026, 5, 31),
         criterio_ripartizione="pro_rata_giorni",
@@ -116,13 +119,13 @@ def periodo_maggio(db):
 
 
 @pytest.fixture
-def supplier_luce(db, owner):
-    return Supplier.objects.create(nome="Enel Test", tipo="energia")
+def supplier_luce(db, owner, immobile):
+    return Supplier.objects.create(property=immobile, nome="Enel Test", tipo="energia")
 
 
 @pytest.fixture
-def supplier_gas(db, owner):
-    return Supplier.objects.create(nome="Eni Test", tipo="gas")
+def supplier_gas(db, owner, immobile):
+    return Supplier.objects.create(property=immobile, nome="Eni Test", tipo="gas")
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +137,7 @@ class TestCasoBase5Inquilini:
     """5 inquilini presenti per l'intero mese, totale 250€ -> 50€ ciascuno."""
 
     @pytest.fixture
-    def setup_5_inquilini(self, db, make_assignment, periodo_maggio, supplier_luce, owner):
+    def setup_5_inquilini(self, db, make_assignment, periodo_maggio, supplier_luce, owner, immobile):
         """Crea 5 assignment per tutto maggio e una bolletta luce da 250€."""
         assignments = [
             make_assignment(
@@ -145,6 +148,7 @@ class TestCasoBase5Inquilini:
         ]
         # Bolletta luce da 250€ emessa nel periodo
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             numero_fattura="ENEL-TEST-BASE",
             data_emissione=datetime.date(2026, 5, 15),
@@ -194,7 +198,7 @@ class TestInquilinoParziale:
     """1 inquilino entra il 15 maggio (17 giorni su 31), 4 presenti tutto il mese."""
 
     @pytest.fixture
-    def setup_parziale(self, db, make_assignment, periodo_maggio, supplier_luce, owner):
+    def setup_parziale(self, db, make_assignment, periodo_maggio, supplier_luce, owner, immobile):
         # 4 inquilini da inizio mese
         full_month = [
             make_assignment(
@@ -210,6 +214,7 @@ class TestInquilinoParziale:
         )
         # Bolletta luce 155€
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             numero_fattura="ENEL-TEST-PARZ",
             data_emissione=datetime.date(2026, 5, 15),
@@ -271,7 +276,7 @@ class TestStanzaVuota:
     """Solo 3 inquilini attivi (2 stanze vuote) -> sum_giorni < 5*31."""
 
     @pytest.fixture
-    def setup_vuote(self, db, make_assignment, periodo_maggio, supplier_luce, owner):
+    def setup_vuote(self, db, make_assignment, periodo_maggio, supplier_luce, owner, immobile):
         # Solo 3 inquilini per tutto il mese
         assignments = [
             make_assignment(
@@ -281,6 +286,7 @@ class TestStanzaVuota:
             for _ in range(3)
         ]
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             numero_fattura="ENEL-TEST-VUOTE",
             data_emissione=datetime.date(2026, 5, 10),
@@ -322,14 +328,16 @@ class TestTARIProRata:
     indipendente dai giorni del mese e dagli altri periodi."""
 
     @pytest.fixture
-    def setup_tari(self, db, make_assignment, supplier_luce, owner):
+    def setup_tari(self, db, make_assignment, supplier_luce, owner, immobile):
         """Periodo di 30 giorni (giugno), TARI 510€/anno, 2 inquilini."""
         period = UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2026, 6, 1),
             periodo_a=datetime.date(2026, 6, 30),
             criterio_ripartizione="pro_rata_giorni",
         )
         AnnualUtilityCost.objects.create(
+            property=immobile,
             voce="tari",
             anno=2026,
             importo_annuale=Decimal("510.00"),
@@ -339,6 +347,7 @@ class TestTARIProRata:
         # Bolletta luce nel periodo: senza, il calcolo skippa per regola
         # "no bollette luce/gas → no Receivable" (commit 10554e5).
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             numero_fattura="ENEL-TARI-1",
             data_emissione=datetime.date(2026, 6, 15),
@@ -386,11 +395,13 @@ class TestTARIDistribuzioneAnnua:
 
     def _crea_periodo_con_bolletta(self, periodo_da, periodo_a, supplier_luce, owner, n=1):
         period = UtilityChargePeriod.objects.create(
+            property=supplier_luce.property,
             periodo_da=periodo_da,
             periodo_a=periodo_a,
             criterio_ripartizione="pro_rata_giorni",
         )
         UtilityBill.objects.create(
+            immobile=supplier_luce.property,
             supplier=supplier_luce,
             numero_fattura=f"ENEL-DISTR-{periodo_da}-{n}",
             data_emissione=periodo_da + datetime.timedelta(days=10),
@@ -402,12 +413,13 @@ class TestTARIDistribuzioneAnnua:
         return period
 
     def test_12_periodi_mensili_un_dodicesimo_ciascuno(
-        self, db, make_assignment, supplier_luce, owner
+        self, db, make_assignment, supplier_luce, owner, immobile
     ):
         """12 periodi mensili → ogni periodo riceve circa 1/12 della TARI annua."""
         from billing.calc.utility import calcola_conguaglio_periodo
 
         AnnualUtilityCost.objects.create(
+            property=immobile,
             voce="tari",
             anno=2026,
             importo_annuale=Decimal("1200.00"),
@@ -442,12 +454,13 @@ class TestTARIDistribuzioneAnnua:
         )
 
     def test_6_periodi_bimestrali_un_sesto_ciascuno(
-        self, db, make_assignment, supplier_luce, owner
+        self, db, make_assignment, supplier_luce, owner, immobile
     ):
         """6 periodi bimestrali → ogni periodo riceve circa 1/6 della TARI."""
         from billing.calc.utility import calcola_conguaglio_periodo
 
         AnnualUtilityCost.objects.create(
+            property=immobile,
             voce="tari",
             anno=2024,
             importo_annuale=Decimal("450.00"),
@@ -484,13 +497,14 @@ class TestTARIDistribuzioneAnnua:
         )
 
     def test_mix_bimestrali_e_mensili(
-        self, db, make_assignment, supplier_luce, owner
+        self, db, make_assignment, supplier_luce, owner, immobile
     ):
         """Mix: 2 bimestrali (gen-apr) + 8 mensili (mag-dic). Distribuzione
         proporzionale ai giorni. Un bimestrale prende ~2× di un mensile."""
         from billing.calc.utility import calcola_conguaglio_periodo
 
         AnnualUtilityCost.objects.create(
+            property=immobile,
             voce="tari",
             anno=2025,
             importo_annuale=Decimal("365.00"),
@@ -527,13 +541,14 @@ class TestTARIDistribuzioneAnnua:
         assert ris_bim1["totali_per_voce"]["tari"] > Decimal("1.8") * ris_mag["totali_per_voce"]["tari"]
 
     def test_periodo_mensile_prende_un_dodicesimo(
-        self, db, make_assignment, supplier_luce, owner
+        self, db, make_assignment, supplier_luce, owner, immobile
     ):
         """La TARI del mese è 1/12 dell'annua, indipendente da quanti altri
         periodi esistono o se hanno bollette."""
         from billing.calc.utility import calcola_conguaglio_periodo
 
         AnnualUtilityCost.objects.create(
+            property=immobile,
             voce="tari",
             anno=2026,
             importo_annuale=Decimal("120.00"),
@@ -542,6 +557,7 @@ class TestTARIDistribuzioneAnnua:
         )
         # Periodo senza bollette: non influenza il calcolo di febbraio
         UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2026, 1, 1),
             periodo_a=datetime.date(2026, 1, 31),
             criterio_ripartizione="pro_rata_giorni",
@@ -557,17 +573,18 @@ class TestTARIDistribuzioneAnnua:
         assert ris["totali_per_voce"]["tari"] == Decimal("10.00")
 
     def test_uscita_meta_mese_con_tari(
-        self, db, make_assignment, supplier_luce, owner
+        self, db, make_assignment, supplier_luce, owner, immobile
     ):
         """Mensilità parziale: A presente tutto il mese (31gg), B esce il 15
-        (15gg). TARI totale del periodo = annua (unico periodo attivo);
+        (15gg). TARI del periodo mensile = 1/12 dell'annua (5520/12 = 460);
         ripartizione fra inquilini proporzionale ai giorni di presenza."""
         from billing.calc.utility import calcola_conguaglio_periodo
 
         AnnualUtilityCost.objects.create(
+            property=immobile,
             voce="tari",
             anno=2026,
-            importo_annuale=Decimal("460.00"),
+            importo_annuale=Decimal("5520.00"),
             valid_from=datetime.date(2026, 1, 1),
             valid_to=datetime.date(2026, 12, 31),
         )
@@ -584,7 +601,7 @@ class TestTARIDistribuzioneAnnua:
         )
         ris = calcola_conguaglio_periodo(period.pk)
 
-        # Totale TARI = annuale (unico periodo attivo) = 460
+        # Totale TARI = 1/12 dell'annua = 5520 / 12 = 460
         assert ris["totali_per_voce"]["tari"] == Decimal("460.00")
         # sum_giorni = 31 (A) + 15 (B) = 46
         assert ris["sum_giorni_presenza"] == 46
@@ -602,7 +619,7 @@ class TestTARIDistribuzioneAnnua:
         )
 
     def test_cambio_stanza_dello_stesso_inquilino(
-        self, db, make_assignment, make_room, make_tenant, supplier_luce, owner
+        self, db, make_assignment, make_room, make_tenant, supplier_luce, owner, immobile
     ):
         """Cambio stanza: lo stesso inquilino ha due ``RoomAssignment``
         consecutivi nel mese (es. cambia camera il 15). I due assignment
@@ -611,9 +628,10 @@ class TestTARIDistribuzioneAnnua:
         from billing.calc.utility import calcola_conguaglio_periodo
 
         AnnualUtilityCost.objects.create(
+            property=immobile,
             voce="tari",
             anno=2026,
-            importo_annuale=Decimal("310.00"),
+            importo_annuale=Decimal("3720.00"),
             valid_from=datetime.date(2026, 1, 1),
             valid_to=datetime.date(2026, 12, 31),
         )
@@ -639,7 +657,7 @@ class TestTARIDistribuzioneAnnua:
 
         ris = calcola_conguaglio_periodo(period.pk)
 
-        # Totale TARI = 310 (unico periodo attivo)
+        # Totale TARI = 1/12 dell'annua = 3720 / 12 = 310
         assert ris["totali_per_voce"]["tari"] == Decimal("310.00")
         # 2 quote (una per assignment), giorni totali 31
         assert len(ris["quote"]) == 2
@@ -665,14 +683,16 @@ class TestConservazione:
     """Verifica che somma(quote) + diff_arrotondamento == totale_periodo."""
 
     @pytest.fixture
-    def setup_conservazione(self, db, make_assignment, supplier_luce, supplier_gas, owner):
+    def setup_conservazione(self, db, make_assignment, supplier_luce, supplier_gas, owner, immobile):
         """Totale volutamente non divisibile esattamente (per avere diff reale)."""
         period = UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2026, 5, 1),
             periodo_a=datetime.date(2026, 5, 31),
         )
         # 3 bollette di importi irregolari
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             numero_fattura="ENEL-CONS-1",
             data_emissione=datetime.date(2026, 5, 10),
@@ -682,6 +702,7 @@ class TestConservazione:
             pagata_da_owner=owner,
         )
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_gas,
             numero_fattura="ENI-CONS-1",
             data_emissione=datetime.date(2026, 5, 10),
@@ -720,13 +741,15 @@ class TestPersist:
     """persist=True deve creare Receivable utenze e popolare i totali sul Period."""
 
     @pytest.fixture
-    def setup_persist(self, db, make_assignment, supplier_luce, owner):
+    def setup_persist(self, db, make_assignment, supplier_luce, owner, immobile):
         period = UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2026, 5, 1),
             periodo_a=datetime.date(2026, 5, 31),
             data_invio=datetime.date(2026, 6, 1),
         )
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             numero_fattura="ENEL-PERSIST-1",
             data_emissione=datetime.date(2026, 5, 15),
@@ -796,13 +819,15 @@ class TestIdempotenza:
     """Ricalcolo con persist=True non duplica Receivable utenze."""
 
     @pytest.fixture
-    def setup_idempotenza(self, db, make_assignment, supplier_luce, owner):
+    def setup_idempotenza(self, db, make_assignment, supplier_luce, owner, immobile):
         period = UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2026, 5, 1),
             periodo_a=datetime.date(2026, 5, 31),
             data_invio=datetime.date(2026, 6, 1),
         )
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             numero_fattura="ENEL-IDEM-1",
             data_emissione=datetime.date(2026, 5, 15),
@@ -859,13 +884,15 @@ class TestGuardiaAllocation:
     calcola_conguaglio_periodo NON deve sovrascriverne importo/righe."""
 
     @pytest.fixture
-    def setup_allocato(self, db, make_assignment, supplier_luce, owner):
+    def setup_allocato(self, db, make_assignment, supplier_luce, owner, immobile):
         period = UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2026, 5, 1),
             periodo_a=datetime.date(2026, 5, 31),
             data_invio=datetime.date(2026, 6, 1),
         )
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             numero_fattura="ENEL-GUARD-1",
             data_emissione=datetime.date(2026, 5, 15),
@@ -982,17 +1009,19 @@ class TestAttribuzioneBolletta:
     """
 
     def test_prodotto_gas_va_su_voce_gas_anche_con_supplier_energia(
-        self, db, make_assignment, supplier_luce, owner
+        self, db, make_assignment, supplier_luce, owner, immobile
     ):
         """`bill.prodotto` è il discriminante luce/gas, non `supplier.tipo`.
         (regressione: bolletta gas erogata dallo stesso fornitore luce.)"""
         from billing.calc.utility import calcola_conguaglio_periodo
 
         period = UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2026, 5, 1),
             periodo_a=datetime.date(2026, 5, 31),
         )
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,  # tipo "energia"
             prodotto="gas",          # ma prodotto gas
             numero_fattura="WIND-GAS",
@@ -1011,7 +1040,7 @@ class TestAttribuzioneBolletta:
         assert ris["totali_per_voce"]["gas"] == Decimal("22.37")
 
     def test_bolletta_multi_mese_prorata_sul_periodo(
-        self, db, make_assignment, supplier_luce, owner
+        self, db, make_assignment, supplier_luce, owner, immobile
     ):
         """Bolletta gen-apr (120gg): il periodo mar-apr (61gg) prende solo la
         sua fetta del range bolletta, a prescindere da altri periodi (anche se
@@ -1020,15 +1049,18 @@ class TestAttribuzioneBolletta:
 
         # gen-feb chiuso: NON deve influenzare il calcolo di mar-apr
         UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2025, 1, 1),
             periodo_a=datetime.date(2025, 2, 28),
             stato=UtilityChargePeriod.StatoPeriodo.INVIATO,
         )
         mar_apr = UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2025, 3, 1),
             periodo_a=datetime.date(2025, 4, 30),
         )
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             prodotto="luce",
             numero_fattura="ENEL-GENAPR",
@@ -1047,7 +1079,7 @@ class TestAttribuzioneBolletta:
         )
 
     def test_bolletta_non_finisce_su_mese_che_non_copre(
-        self, db, make_assignment, supplier_luce, owner
+        self, db, make_assignment, supplier_luce, owner, immobile
     ):
         """Niente ribaltamento: una bolletta che riguarda mesi passati NON
         contribuisce a maggio, anche se emessa a maggio e anche se maggio è
@@ -1056,11 +1088,13 @@ class TestAttribuzioneBolletta:
 
         # maggio in calcolo (bozza)
         mag = UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2025, 5, 1),
             periodo_a=datetime.date(2025, 5, 31),
         )
         # Bolletta gen-apr emessa a maggio: NON copre maggio → non contribuisce
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             prodotto="luce",
             numero_fattura="ENEL-RETRO",
@@ -1072,6 +1106,7 @@ class TestAttribuzioneBolletta:
         )
         # Bolletta maggio "vera"
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             prodotto="luce",
             numero_fattura="WIND-MAG",
@@ -1090,7 +1125,7 @@ class TestAttribuzioneBolletta:
         )
 
     def test_bolletta_consumata_da_periodo_inviato_non_riconta(
-        self, db, make_assignment, supplier_luce, owner
+        self, db, make_assignment, supplier_luce, owner, immobile
     ):
         """Una bolletta già agganciata via M2M a un periodo `inviato` non
         rientra nel calcolo di un altro periodo (anche se il range bolletta
@@ -1099,11 +1134,13 @@ class TestAttribuzioneBolletta:
 
         # mar-apr inviato, con la sua bolletta gen-apr già "consumata"
         mar_apr = UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2025, 3, 1),
             periodo_a=datetime.date(2025, 4, 30),
             stato=UtilityChargePeriod.StatoPeriodo.INVIATO,
         )
         bolletta = UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             prodotto="luce",
             numero_fattura="ENEL-CONS",
@@ -1117,10 +1154,12 @@ class TestAttribuzioneBolletta:
 
         # Calcolo maggio: la bolletta NON deve essere riconteggiata
         mag = UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2025, 5, 1),
             periodo_a=datetime.date(2025, 5, 31),
         )
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             prodotto="luce",
             numero_fattura="WIND-MAG",
@@ -1139,7 +1178,7 @@ class TestAttribuzioneBolletta:
         )
 
     def test_pinning_manuale_override_algoritmo(
-        self, db, make_assignment, supplier_luce, owner
+        self, db, make_assignment, supplier_luce, owner, immobile
     ):
         """Se la M2M ``period.utility_bills`` è già popolata, il calcolo entra
         in modalità pinning: ogni bolletta agganciata contribuisce per
@@ -1151,10 +1190,12 @@ class TestAttribuzioneBolletta:
         # Setup: due bollette potenzialmente candidate per maggio, ma l'utente
         # vuole solo una agganciata.
         mag = UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2025, 5, 1),
             periodo_a=datetime.date(2025, 5, 31),
         )
         b_pinned = UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             prodotto="luce",
             numero_fattura="PIN-1",
@@ -1166,6 +1207,7 @@ class TestAttribuzioneBolletta:
         )
         # Bolletta "naturale" per maggio, NON pinnata: deve essere ignorata
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             prodotto="luce",
             numero_fattura="AUTO-MAG",
@@ -1186,7 +1228,7 @@ class TestAttribuzioneBolletta:
         )
 
     def test_ciclo_fatturazione_non_influenza_giorni_presenza(
-        self, db, make_assignment, make_room, make_tenant, supplier_luce, owner
+        self, db, make_assignment, make_room, make_tenant, supplier_luce, owner, immobile
     ):
         """Regressione: il calcolo utenze deve essere SEMPRE pro-rata sui
         giorni effettivi di RoomAssignment, indipendente da
@@ -1200,10 +1242,12 @@ class TestAttribuzioneBolletta:
         from properties.models import TenantProfile
 
         period = UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2025, 1, 1),
             periodo_a=datetime.date(2025, 2, 28),
         )
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             prodotto="luce",
             numero_fattura="REGR-CICLO-1",
@@ -1245,17 +1289,19 @@ class TestAttribuzioneBolletta:
         assert quote_by_id[ass_ingresso.pk]["quota"] == quote_by_id[ass_solare.pk]["quota"]
 
     def test_persist_popola_m2m_utility_bills(
-        self, db, make_assignment, supplier_luce, owner
+        self, db, make_assignment, supplier_luce, owner, immobile
     ):
         """``persist=True`` aggancia le bollette utilizzate alla M2M del periodo,
         così i ricalcoli successivi le riconoscono come "consumate"."""
         from billing.calc.utility import calcola_conguaglio_periodo
 
         period = UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2025, 5, 1),
             periodo_a=datetime.date(2025, 5, 31),
         )
         b1 = UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             prodotto="luce",
             numero_fattura="WIND-MAG-1",
@@ -1266,6 +1312,7 @@ class TestAttribuzioneBolletta:
             pagata_da_owner=owner,
         )
         b2 = UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             prodotto="gas",
             numero_fattura="WIND-MAG-2",
@@ -1293,7 +1340,7 @@ class TestQuoteImportoEsistente:
     distinguere nuovo/uguale/diverso in dry-run."""
 
     @pytest.fixture
-    def setup(self, db, make_assignment, make_tenant, make_room, periodo_maggio, supplier_luce, owner):
+    def setup(self, db, make_assignment, make_tenant, make_room, periodo_maggio, supplier_luce, owner, immobile):
         # 2 inquilini per maggio 2026
         t1 = make_tenant(nominativo="Aaa")
         t2 = make_tenant(nominativo="Bbb")
@@ -1306,6 +1353,7 @@ class TestQuoteImportoEsistente:
             valid_from=datetime.date(2026, 5, 1),
         )
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             numero_fattura="ENEL-TEST-DIVERG",
             data_emissione=datetime.date(2026, 5, 15),
@@ -1339,7 +1387,7 @@ class TestPersistContatoriUtility:
     """Persist popola contatori creati / aggiornati_diversi / aggiornati_uguali."""
 
     @pytest.fixture
-    def setup(self, db, make_assignment, make_tenant, make_room, periodo_maggio, supplier_luce, owner):
+    def setup(self, db, make_assignment, make_tenant, make_room, periodo_maggio, supplier_luce, owner, immobile):
         t1 = make_tenant(nominativo="Aaa")
         t2 = make_tenant(nominativo="Bbb")
         make_assignment(
@@ -1351,6 +1399,7 @@ class TestPersistContatoriUtility:
             valid_from=datetime.date(2026, 5, 1),
         )
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             numero_fattura="ENEL-PERSIST-CNT",
             data_emissione=datetime.date(2026, 5, 15),
@@ -1395,7 +1444,7 @@ class TestPersistContatoriUtility:
 class TestOrderingQuotePerNominativo:
     """Le quote escono in ordine alfabetico di nominativo per output stabile."""
 
-    def test_ordering(self, db, make_assignment, make_tenant, make_room, periodo_maggio, supplier_luce, owner):
+    def test_ordering(self, db, make_assignment, make_tenant, make_room, periodo_maggio, supplier_luce, owner, immobile):
         from billing.calc.utility import calcola_conguaglio_periodo
 
         # Tenant in ordine non alfabetico per pk
@@ -1415,6 +1464,7 @@ class TestOrderingQuotePerNominativo:
             valid_from=datetime.date(2026, 5, 1),
         )
         UtilityBill.objects.create(
+            immobile=immobile,
             supplier=supplier_luce,
             numero_fattura="ENEL-ORDER",
             data_emissione=datetime.date(2026, 5, 15),
