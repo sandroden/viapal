@@ -36,7 +36,7 @@ from django.db.models import Sum
 from accounting.models import OwnerLedgerEntry, OwnerSettlement
 from billing.models import Expense, Receivable
 from billing.models.payments import StatoPagamento
-from properties.models import OwnerProfile, quote_attive_at
+from properties.models import OwnerProfile, Property, quote_attive_at
 
 
 class SettlementGiaEsistente(Exception):
@@ -64,6 +64,7 @@ def _ripartisci(importo: Decimal, quote: dict[OwnerProfile, Decimal]) -> dict[Ow
 
 @transaction.atomic
 def genera_settlement(
+    property: Property,
     periodo_da: date,
     periodo_a: date,
     *,
@@ -71,8 +72,9 @@ def genera_settlement(
     reset: bool = False,
     dry_run: bool = False,
 ) -> OwnerSettlement:
-    """Crea o rigenera un OwnerSettlement per il periodo indicato."""
+    """Crea o rigenera un OwnerSettlement dell'immobile per il periodo indicato."""
     settlement, created = OwnerSettlement.objects.get_or_create(
+        property=property,
         periodo_da=periodo_da,
         periodo_a=periodo_a,
         defaults={
@@ -91,10 +93,11 @@ def genera_settlement(
         if descrizione:
             settlement.descrizione = descrizione
 
-    quote = quote_attive_at(periodo_a)
+    quote = quote_attive_at(property, periodo_a)
     if not quote:
         raise ValueError(
-            f"Nessuna quota di proprietà attiva al {periodo_a}: impossibile generare il settlement."
+            f"Nessuna quota di proprietà attiva su {property} al {periodo_a}: "
+            f"impossibile generare il settlement."
         )
 
     _crea_voci_da_receivable(settlement, periodo_da, periodo_a, quote)
@@ -116,6 +119,7 @@ def _crea_voci_da_receivable(
     quote: dict[OwnerProfile, Decimal],
 ) -> None:
     rec_qs = Receivable.objects.select_related("incassato_da_owner", "assignment__tenant").filter(
+        assignment__room__property=settlement.property,
         stato=StatoPagamento.PAGATO,
         data_pagamento__gte=periodo_da,
         data_pagamento__lte=periodo_a,
@@ -127,6 +131,7 @@ def _crea_voci_da_receivable(
         descr_base = f"{r.get_causale_display()} {r.assignment.tenant} {r.competenza_da or r.scadenza}"
         for owner, parte in _ripartisci(importo, quote).items():
             OwnerLedgerEntry.objects.create(
+                property=settlement.property,
                 owner=owner,
                 data=r.data_pagamento,
                 descrizione=f"Quota {descr_base}",
@@ -136,6 +141,7 @@ def _crea_voci_da_receivable(
                 riferimento_settlement=settlement,
             )
         OwnerLedgerEntry.objects.create(
+            property=settlement.property,
             owner=r.incassato_da_owner,
             data=r.data_pagamento,
             descrizione=f"Versamento alla cassa: {descr_base}",
@@ -155,6 +161,7 @@ def _crea_voci_da_expense(
     exp_qs = Expense.objects.select_related(
         "category", "anticipata_da_owner", "riferimento_quota_owner"
     ).filter(
+        property=settlement.property,
         data__gte=periodo_da,
         data__lte=periodo_a,
     )
@@ -168,6 +175,7 @@ def _crea_voci_da_expense(
             if e.riferimento_quota_owner_id == e.anticipata_da_owner_id:
                 continue  # spesa personale pagata da sé: nessuna voce
             OwnerLedgerEntry.objects.create(
+                property=settlement.property,
                 owner=owner_per_pk[e.riferimento_quota_owner_id],
                 data=e.data,
                 descrizione=f"Spesa personale {descr_base}",
@@ -177,6 +185,7 @@ def _crea_voci_da_expense(
                 riferimento_settlement=settlement,
             )
             OwnerLedgerEntry.objects.create(
+                property=settlement.property,
                 owner=e.anticipata_da_owner,
                 data=e.data,
                 descrizione=f"Anticipo {descr_base}",
@@ -188,6 +197,7 @@ def _crea_voci_da_expense(
             continue
         for owner, parte in _ripartisci(e.importo, quote).items():
             OwnerLedgerEntry.objects.create(
+                property=settlement.property,
                 owner=owner,
                 data=e.data,
                 descrizione=f"Quota {descr_base}",
@@ -197,6 +207,7 @@ def _crea_voci_da_expense(
                 riferimento_settlement=settlement,
             )
         OwnerLedgerEntry.objects.create(
+            property=settlement.property,
             owner=e.anticipata_da_owner,
             data=e.data,
             descrizione=f"Anticipo {descr_base}",
@@ -214,6 +225,7 @@ def _calcola_snapshot(
     """Saldo finale per owner: baseline da settlement precedente + voci di
     questo settlement. Espresso come stringhe Decimal nel JSON."""
     prev = OwnerSettlement.objects.filter(
+        property=settlement.property,
         data__lt=settlement.data,
     ).exclude(pk=settlement.pk).order_by("-data").first()
     snapshot: dict[str, str] = {}

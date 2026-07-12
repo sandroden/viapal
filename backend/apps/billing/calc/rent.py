@@ -76,6 +76,7 @@ def genera_pagamenti_mese(
     force: bool = False,
     persist: bool = True,
     tenant_id: int | None = None,
+    property=None,
 ) -> dict:
     """
     Per ogni RoomAssignment attivo (anche parzialmente) nel mese, crea un
@@ -124,6 +125,8 @@ def genera_pagamenti_mese(
         valid_to__gte=primo_del_mese,
     )
     assignments_qs = assignments_qs.distinct().select_related("tenant")
+    if property is not None:
+        assignments_qs = assignments_qs.filter(room__property=property)
     if tenant_id is not None:
         assignments_qs = assignments_qs.filter(tenant_id=tenant_id)
     # Ordine deterministico per output log cronologico/alfabetico.

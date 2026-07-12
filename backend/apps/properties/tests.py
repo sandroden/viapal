@@ -12,7 +12,15 @@ import pytest
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 
-from properties.models import OwnerBankAccount, OwnerProfile, OwnershipShare, Room, RoomAssignment, TenantProfile
+from properties.models import (
+    OwnerBankAccount,
+    OwnerProfile,
+    OwnershipShare,
+    PropertyMembership,
+    Room,
+    RoomAssignment,
+    TenantProfile,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -61,26 +69,42 @@ def owner_c(db, user_c):
 
 
 @pytest.fixture
-def tenant(db, user_inquilino):
+def tenant(db, user_inquilino, immobile):
     return TenantProfile.objects.create(
         user=user_inquilino,
+        property=immobile,
         nominativo="Mariasevera",
         giorno_pagamento_affitto=1,
     )
 
 
 @pytest.fixture
-def tenant_2(db, user_inquilino_2):
+def tenant_2(db, user_inquilino_2, immobile):
     return TenantProfile.objects.create(
         user=user_inquilino_2,
+        property=immobile,
         nominativo="Davide",
         giorno_pagamento_affitto=5,
     )
 
 
 @pytest.fixture
-def room(db):
-    return Room.objects.create(nome="Camera 1", ordinamento=1)
+def room(db, immobile):
+    return Room.objects.create(property=immobile, nome="Camera 1", ordinamento=1)
+
+
+@pytest.fixture
+def membership_proprietari(db, immobile, owner_a, owner_b, owner_c):
+    """Membership 'proprietario' sull'immobile per i tre owner: richiesta
+    da OwnershipShare.clean() per poter assegnare le quote."""
+    return [
+        PropertyMembership.objects.create(
+            property=immobile,
+            user=owner.user,
+            ruolo=PropertyMembership.Ruolo.PROPRIETARIO,
+        )
+        for owner in (owner_a, owner_b, owner_c)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -91,48 +115,60 @@ def room(db):
 class TestOwnershipShare:
     """Verifica il vincolo di somma quote = 1.0."""
 
-    def test_tre_quote_uguali_valide(self, db, owner_a, owner_b, owner_c):
+    def test_tre_quote_uguali_valide(self, db, immobile, owner_a, owner_b, owner_c, membership_proprietari):
         """Tre quote da 1/3 ciascuna devono superare clean()."""
         data = datetime.date(2024, 9, 1)
         quota = Decimal("0.3333")
 
-        OwnershipShare.objects.create(owner=owner_a, valid_from=data, quota=quota)
-        OwnershipShare.objects.create(owner=owner_b, valid_from=data, quota=quota)
+        OwnershipShare.objects.create(property=immobile, owner=owner_a, valid_from=data, quota=quota)
+        OwnershipShare.objects.create(property=immobile, owner=owner_b, valid_from=data, quota=quota)
 
         # La terza quota porta il totale a ~1.0 (0.3334 per arrotondamento)
-        share_c = OwnershipShare(owner=owner_c, valid_from=data, quota=Decimal("0.3334"))
+        share_c = OwnershipShare(property=immobile, owner=owner_c, valid_from=data, quota=Decimal("0.3334"))
         share_c.full_clean()  # non deve sollevare eccezioni
 
-    def test_somma_maggiore_di_uno_invalida(self, db, owner_a, owner_b):
+    def test_somma_maggiore_di_uno_invalida(self, db, immobile, owner_a, owner_b, membership_proprietari):
         """Una quota che porta il totale > 1.0 deve sollevare ValidationError."""
         data = datetime.date(2024, 9, 1)
-        OwnershipShare.objects.create(owner=owner_a, valid_from=data, quota=Decimal("0.6"))
+        OwnershipShare.objects.create(property=immobile, owner=owner_a, valid_from=data, quota=Decimal("0.6"))
 
-        share_b = OwnershipShare(owner=owner_b, valid_from=data, quota=Decimal("0.6"))
+        share_b = OwnershipShare(property=immobile, owner=owner_b, valid_from=data, quota=Decimal("0.6"))
         with pytest.raises(ValidationError):
             share_b.full_clean()
 
-    def test_stesso_owner_quota_duplicata_invalida(self, db, owner_a, owner_b):
+    def test_stesso_owner_quota_duplicata_invalida(self, db, immobile, owner_a, owner_b, membership_proprietari):
         """Lo stesso proprietario non può avere due quote attive nella stessa data."""
         data = datetime.date(2024, 9, 1)
-        OwnershipShare.objects.create(owner=owner_a, valid_from=data, quota=Decimal("0.5"))
+        OwnershipShare.objects.create(property=immobile, owner=owner_a, valid_from=data, quota=Decimal("0.5"))
 
         # Stessa data, stesso owner: deve fallire
-        share_dup = OwnershipShare(owner=owner_a, valid_from=data, quota=Decimal("0.3"))
+        share_dup = OwnershipShare(property=immobile, owner=owner_a, valid_from=data, quota=Decimal("0.3"))
         with pytest.raises(ValidationError):
             share_dup.full_clean()
 
-    def test_somma_quote_attive_uguale_a_uno(self, db, owner_a, owner_b, owner_c):
+    def test_owner_senza_membership_invalido(self, db, immobile, owner_a):
+        """Una quota per un owner senza membership 'proprietario' è rifiutata."""
+        share = OwnershipShare(
+            property=immobile,
+            owner=owner_a,
+            valid_from=datetime.date(2024, 9, 1),
+            quota=Decimal("0.5"),
+        )
+        with pytest.raises(ValidationError):
+            share.full_clean()
+
+    def test_somma_quote_attive_uguale_a_uno(self, db, immobile, owner_a, owner_b, owner_c, membership_proprietari):
         """Dopo aver inserito tutte le quote, la somma deve essere 1.0."""
         from django.db.models import Q
 
         data = datetime.date(2024, 9, 1)
-        OwnershipShare.objects.create(owner=owner_a, valid_from=data, quota=Decimal("0.3333"))
-        OwnershipShare.objects.create(owner=owner_b, valid_from=data, quota=Decimal("0.3333"))
-        OwnershipShare.objects.create(owner=owner_c, valid_from=data, quota=Decimal("0.3334"))
+        OwnershipShare.objects.create(property=immobile, owner=owner_a, valid_from=data, quota=Decimal("0.3333"))
+        OwnershipShare.objects.create(property=immobile, owner=owner_b, valid_from=data, quota=Decimal("0.3333"))
+        OwnershipShare.objects.create(property=immobile, owner=owner_c, valid_from=data, quota=Decimal("0.3334"))
 
         # Verifica diretta che la somma in DB sia 1.0
         quote_attive = OwnershipShare.objects.filter(
+            property=immobile,
             valid_from__lte=data,
         ).filter(
             Q(valid_to__isnull=True) | Q(valid_to__gt=data)
@@ -140,13 +176,15 @@ class TestOwnershipShare:
         somma = sum(s.quota for s in quote_attive)
         assert abs(somma - Decimal("1.0")) < Decimal("0.001")
 
-    def test_quota_zero_invalida(self, db, owner_a):
+    def test_quota_zero_invalida(self, db, immobile, owner_a, membership_proprietari):
         """Una quota pari a 0 deve essere rifiutata."""
-        share = OwnershipShare(owner=owner_a, valid_from=datetime.date(2024, 1, 1), quota=Decimal("0"))
+        share = OwnershipShare(
+            property=immobile, owner=owner_a, valid_from=datetime.date(2024, 1, 1), quota=Decimal("0")
+        )
         with pytest.raises(ValidationError):
             share.full_clean()
 
-    def test_quote_versionate_non_interferiscono(self, db, owner_a, owner_b, owner_c):
+    def test_quote_versionate_non_interferiscono(self, db, immobile, owner_a, owner_b, owner_c, membership_proprietari):
         """Quote del periodo 1 (valid_to=data_2) non influenzano il periodo 2 (valid_from=data_2).
 
         Semantica di valid_to: esclusiva. Una quota con valid_to=data_2 NON è più attiva
@@ -157,28 +195,49 @@ class TestOwnershipShare:
         data_2 = datetime.date(2025, 6, 1)
 
         # Periodo 1: tre quote da 1/3, valide fino a data_2 (esclusiva)
-        OwnershipShare.objects.create(owner=owner_a, valid_from=data_1, valid_to=data_2, quota=Decimal("0.3333"))
-        OwnershipShare.objects.create(owner=owner_b, valid_from=data_1, valid_to=data_2, quota=Decimal("0.3333"))
-        OwnershipShare.objects.create(owner=owner_c, valid_from=data_1, valid_to=data_2, quota=Decimal("0.3334"))
+        OwnershipShare.objects.create(property=immobile, owner=owner_a, valid_from=data_1, valid_to=data_2, quota=Decimal("0.3333"))
+        OwnershipShare.objects.create(property=immobile, owner=owner_b, valid_from=data_1, valid_to=data_2, quota=Decimal("0.3333"))
+        OwnershipShare.objects.create(property=immobile, owner=owner_c, valid_from=data_1, valid_to=data_2, quota=Decimal("0.3334"))
 
         # Periodo 2: Fabio esce, due quote da 0.5 (Sandro e Bruna)
         # La prima inserzione da sola (0.5) non supera 1.0 e non è duplicata -> passa
-        share_a2 = OwnershipShare(owner=owner_a, valid_from=data_2, quota=Decimal("0.5"))
+        share_a2 = OwnershipShare(property=immobile, owner=owner_a, valid_from=data_2, quota=Decimal("0.5"))
         share_a2.full_clean()
         share_a2.save()
 
         # La seconda completa il totale a 1.0 -> passa
-        share_b2 = OwnershipShare(owner=owner_b, valid_from=data_2, quota=Decimal("0.5"))
+        share_b2 = OwnershipShare(property=immobile, owner=owner_b, valid_from=data_2, quota=Decimal("0.5"))
         share_b2.full_clean()
         share_b2.save()
 
         # Verifica finale: somma a data_2 = 1.0
         from django.db.models import Q
         quote_at_data_2 = OwnershipShare.objects.filter(
+            property=immobile,
             valid_from__lte=data_2,
         ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=data_2))
         somma = sum(s.quota for s in quote_at_data_2)
         assert abs(somma - Decimal("1.0")) < Decimal("0.001")
+
+    def test_quote_su_property_diverse_non_interferiscono(
+        self, db, immobile, immobile2, owner_a, membership_proprietari
+    ):
+        """Somma quote e anti-duplicato sono PER immobile: una quota piena su
+        un immobile non blocca la quota piena dello stesso owner su un altro."""
+        data = datetime.date(2024, 9, 1)
+        OwnershipShare.objects.create(
+            property=immobile, owner=owner_a, valid_from=data, quota=Decimal("1")
+        )
+
+        PropertyMembership.objects.create(
+            property=immobile2,
+            user=owner_a.user,
+            ruolo=PropertyMembership.Ruolo.PROPRIETARIO,
+        )
+        share_altro = OwnershipShare(
+            property=immobile2, owner=owner_a, valid_from=data, quota=Decimal("1")
+        )
+        share_altro.full_clean()  # non deve sollevare eccezioni
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +320,7 @@ class TestRoomAssignment:
 
     def test_stanze_diverse_nessun_conflitto(self, db, room, tenant, tenant_2):
         """Assegnazioni sovrapposte ma su stanze diverse sono valide."""
-        room_2 = Room.objects.create(nome="Camera 2", ordinamento=2)
+        room_2 = Room.objects.create(property=room.property, nome="Camera 2", ordinamento=2)
 
         RoomAssignment.objects.create(
             room=room,
@@ -377,7 +436,7 @@ class TestDepositoSignal:
         """Tenant con 3 RoomAssignment consecutivi: una sola deposito."""
         from billing.models import Receivable
 
-        room_2 = Room.objects.create(nome="Camera 2", ordinamento=2)
+        room_2 = Room.objects.create(property=room.property, nome="Camera 2", ordinamento=2)
         # Deposito impostata sul tenant.
         tenant.deposito_versato = Decimal("900")
         tenant.data_versamento_deposito = datetime.date(2024, 9, 1)
@@ -437,7 +496,7 @@ class TestDepositoSignal:
     def test_restituzione_su_ultimo_assignment(self, db, tenant, room):
         from billing.models import Receivable
 
-        room_2 = Room.objects.create(nome="Camera 2", ordinamento=2)
+        room_2 = Room.objects.create(property=room.property, nome="Camera 2", ordinamento=2)
         RoomAssignment.objects.create(
             room=room,
             tenant=tenant,
@@ -545,8 +604,16 @@ class TestCostoCessioneSignal:
     """``RoomAssignment.costo_cessione`` valorizzato (costo TOTALE) genera, alla
     data di inizio occupazione: il 50% come Receivable REGISTRAZIONE
     all'inquilino entrante e il 50% come Expense ripartibile pro-quota tra i
-    proprietari (anticipante Sandro). Il contratto collettivo non valorizza il
-    campo → nessun effetto."""
+    proprietari (anticipante = ``Property.owner_anticipa_cessioni``). Il
+    contratto collettivo non valorizza il campo → nessun effetto."""
+
+    @pytest.fixture
+    def owner_anticipante(self, db, immobile, owner_a):
+        """Configura sull'immobile il proprietario che anticipa il 50%
+        dei costi di cessione (nuovo campo ``owner_anticipa_cessioni``)."""
+        immobile.owner_anticipa_cessioni = owner_a
+        immobile.save()
+        return owner_a
 
     def _receivables(self, assignment):
         from billing.models import Receivable
@@ -561,7 +628,7 @@ class TestCostoCessioneSignal:
 
         return Expense.objects.filter(note__contains=f"[auto:cessione:{assignment.pk}]")
 
-    def test_cessione_genera_receivable_e_expense(self, db, tenant, room, owner_a):
+    def test_cessione_genera_receivable_e_expense(self, db, tenant, room, owner_anticipante):
         assignment = RoomAssignment.objects.create(
             room=room,
             tenant=tenant,
@@ -583,11 +650,11 @@ class TestCostoCessioneSignal:
         e = exps.get()
         assert e.importo == Decimal("65.00")
         assert e.data == datetime.date(2025, 7, 10)
-        assert e.anticipata_da_owner == owner_a
+        assert e.anticipata_da_owner == owner_anticipante
         assert e.ripartibile_su_inquilini is False
         assert e.category.codice == "registrazione-contratti"
 
-    def test_split_somma_uguale_al_totale(self, db, tenant, room, owner_a):
+    def test_split_somma_uguale_al_totale(self, db, tenant, room, owner_anticipante):
         """Importo dispari: inquilino + proprietari = totale (no centesimi persi)."""
         assignment = RoomAssignment.objects.create(
             room=room,
@@ -600,7 +667,7 @@ class TestCostoCessioneSignal:
         e = self._expenses(assignment).get()
         assert r.importo_dovuto + e.importo == Decimal("130.01")
 
-    def test_collettivo_non_genera(self, db, tenant, room, owner_a):
+    def test_collettivo_non_genera(self, db, tenant, room, owner_anticipante):
         """costo_cessione vuoto (contratto collettivo) → nessun effetto."""
         assignment = RoomAssignment.objects.create(
             room=room,
@@ -611,7 +678,7 @@ class TestCostoCessioneSignal:
         assert self._receivables(assignment).count() == 0
         assert self._expenses(assignment).count() == 0
 
-    def test_idempotenza_save_multipli(self, db, tenant, room, owner_a):
+    def test_idempotenza_save_multipli(self, db, tenant, room, owner_anticipante):
         assignment = RoomAssignment.objects.create(
             room=room,
             tenant=tenant,
@@ -625,7 +692,7 @@ class TestCostoCessioneSignal:
         assert self._receivables(assignment).count() == 1
         assert self._expenses(assignment).count() == 1
 
-    def test_valorizzato_dopo_creazione(self, db, tenant, room, owner_a):
+    def test_valorizzato_dopo_creazione(self, db, tenant, room, owner_anticipante):
         """costo_cessione spesso valorizzato a mano dopo aver creato
         l'assegnazione: lo scatto avviene anche sull'update."""
         assignment = RoomAssignment.objects.create(
@@ -642,9 +709,10 @@ class TestCostoCessioneSignal:
         assert self._receivables(assignment).get().importo_dovuto == Decimal("65.00")
         assert self._expenses(assignment).count() == 1
 
-    def test_senza_owner_sandro_solo_receivable(self, db, tenant, room):
-        """Nessun proprietario 'Sandro': il Receivable inquilino c'è comunque,
-        la Expense proprietari no (nessun crash)."""
+    def test_senza_owner_anticipante_solo_receivable(self, db, tenant, room):
+        """``owner_anticipa_cessioni`` non configurato sull'immobile: il
+        Receivable inquilino c'è comunque, la Expense proprietari no
+        (nessun crash)."""
         assignment = RoomAssignment.objects.create(
             room=room,
             tenant=tenant,
@@ -655,7 +723,7 @@ class TestCostoCessioneSignal:
         assert self._receivables(assignment).count() == 1
         assert self._expenses(assignment).count() == 0
 
-    def test_due_cessioni_due_coppie(self, db, tenant, tenant_2, room, owner_a):
+    def test_due_cessioni_due_coppie(self, db, tenant, tenant_2, room, owner_anticipante):
         """Cambio inquilino sulla stessa stanza: una coppia per cessione."""
         a1 = RoomAssignment.objects.create(
             room=room,

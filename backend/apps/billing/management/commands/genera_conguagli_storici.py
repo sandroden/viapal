@@ -7,11 +7,12 @@ Uso:
 from calendar import monthrange
 from datetime import date
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from billing.calc.utility import calcola_conguaglio_periodo
 from billing.models import UtilityChargePeriod
+from properties.context import resolve_property_cli
 
 
 class Command(BaseCommand):
@@ -20,8 +21,16 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--dal", default="2024-01")
         parser.add_argument("--al", default=None)
+        parser.add_argument(
+            "--property", type=str, default=None,
+            help="Immobile (id o nome). Obbligatorio se ci sono più immobili.",
+        )
 
     def handle(self, *args, **opts):
+        try:
+            prop = resolve_property_cli(opts.get("property"))
+        except ValueError as e:
+            raise CommandError(str(e)) from e
         dal_y, dal_m = map(int, opts["dal"].split("-"))
         if opts["al"]:
             al_y, al_m = map(int, opts["al"].split("-"))
@@ -35,6 +44,7 @@ class Command(BaseCommand):
         while (anno, mese) <= (al_y, al_m):
             last = monthrange(anno, mese)[1]
             periodo, created = UtilityChargePeriod.objects.update_or_create(
+                property=prop,
                 periodo_da=date(anno, mese, 1),
                 periodo_a=date(anno, mese, last),
                 defaults={

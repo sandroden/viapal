@@ -3,7 +3,7 @@ Modelli per fornitori, categorie di spesa e spese dell'immobile.
 """
 from django.db import models
 
-from properties.models import Contract, OwnerProfile, TimestampedModel
+from properties.models import Contract, OwnerProfile, Property, TimestampedModel
 
 
 class Supplier(TimestampedModel):
@@ -16,6 +16,12 @@ class Supplier(TimestampedModel):
         CONDOMINIO = "condominio", "Condominio"
         ALTRO = "altro", "Altro"
 
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.CASCADE,
+        related_name="suppliers",
+        verbose_name="immobile",
+    )
     nome = models.CharField(
         max_length=200,
         verbose_name="nome",
@@ -48,12 +54,17 @@ class Supplier(TimestampedModel):
 class ExpenseCategory(TimestampedModel):
     """Categoria di spesa per l'immobile."""
 
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.CASCADE,
+        related_name="expense_categories",
+        verbose_name="immobile",
+    )
     nome = models.CharField(
         max_length=100,
         verbose_name="nome",
     )
     codice = models.SlugField(
-        unique=True,
         verbose_name="codice",
     )
     ripartibile_inquilini = models.BooleanField(
@@ -65,6 +76,12 @@ class ExpenseCategory(TimestampedModel):
         verbose_name = "categoria spesa"
         verbose_name_plural = "categorie spese"
         ordering = ["nome"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["property", "codice"],
+                name="expense_category_codice_unique_per_property",
+            ),
+        ]
 
     def __str__(self):
         return self.nome
@@ -73,6 +90,12 @@ class ExpenseCategory(TimestampedModel):
 class Expense(TimestampedModel):
     """Spesa relativa all'immobile (IMU, manutenzione, assicurazione, ecc.)."""
 
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.PROTECT,
+        related_name="expenses",
+        verbose_name="immobile",
+    )
     data = models.DateField(
         verbose_name="data",
     )

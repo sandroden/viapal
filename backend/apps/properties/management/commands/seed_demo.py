@@ -32,21 +32,23 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             self._seed_admin()
-            owners, owner_profiles, bank_accounts = self._seed_owners()
-            self._seed_ownership_shares(owner_profiles)
-            tenant_profiles, tenant_assignments_map = self._seed_tenants()
-            rooms = self._seed_rooms()
-            contract = self._seed_contract()
+            prop = self._seed_property()
+            owners, owner_profiles, bank_accounts = self._seed_owners(prop)
+            self._seed_ownership_shares(prop, owner_profiles)
+            tenant_profiles, tenant_assignments_map = self._seed_tenants(prop)
+            rooms = self._seed_rooms(prop)
+            contract = self._seed_contract(prop)
             room_assignments = self._seed_room_assignments(rooms, tenant_profiles, tenant_assignments_map)
-            self._seed_annual_utility_costs()
-            suppliers = self._seed_suppliers(owner_profiles)
-            self._seed_utility_bills(suppliers, owner_profiles)
-            periods = self._seed_utility_charge_periods()
+            self._seed_annual_utility_costs(prop)
+            suppliers = self._seed_suppliers(prop, owner_profiles)
+            self._seed_utility_bills(prop, suppliers, owner_profiles)
+            periods = self._seed_utility_charge_periods(prop)
             self._seed_utility_charges(periods, room_assignments, tenant_profiles)
             self._seed_rent_payments(room_assignments, owner_profiles, bank_accounts)
             self._seed_extra_charges(room_assignments)
-            self._seed_expenses(owner_profiles, suppliers)
-            self._seed_reminder_rules_and_templates()
+            self._seed_expenses(prop, owner_profiles, suppliers)
+            self._seed_reminder_rules_and_templates(prop)
+            self._seed_seconda_property(owner_profiles)
 
         self.stdout.write(self.style.SUCCESS("\nSeed completato con successo!"))
 
@@ -71,7 +73,17 @@ class Command(BaseCommand):
             UtilityChargePeriod,
         )
         from notifications.models import MessageTemplate, Notification, PushSubscription, ReminderRule
-        from properties.models import Contract, OwnerBankAccount, OwnerProfile, OwnershipShare, Room, RoomAssignment, TenantProfile
+        from properties.models import (
+            Contract,
+            OwnerBankAccount,
+            OwnerProfile,
+            OwnershipShare,
+            Property,
+            PropertyMembership,
+            Room,
+            RoomAssignment,
+            TenantProfile,
+        )
 
         Notification.objects.all().delete()
         PushSubscription.objects.all().delete()
@@ -93,13 +105,16 @@ class Command(BaseCommand):
         RoomAssignment.objects.all().delete()
         Contract.objects.all().delete()
         Room.objects.all().delete()
-        OwnerBankAccount.objects.all().delete()
         OwnershipShare.objects.all().delete()
-        OwnerProfile.objects.all().delete()
         TenantProfile.objects.all().delete()
+        PropertyMembership.objects.all().delete()
+        Property.objects.all().update(bank_account_utenze=None, owner_anticipa_cessioni=None)
+        Property.objects.all().delete()
+        OwnerBankAccount.objects.all().delete()
+        OwnerProfile.objects.all().delete()
         # Rimuovi utenti demo (non admin/superuser esistenti)
         User.objects.filter(
-            username__in=["sandro", "bruna", "fabio", "mariasevera", "davide", "diana", "arun", "eshani", "marco_vecchio"]
+            username__in=["sandro", "bruna", "fabio", "chiara", "mariasevera", "davide", "diana", "arun", "eshani", "marco_vecchio", "luca_lago"]
         ).delete()
 
         self.stdout.write(self.style.WARNING("   Dati dominio cancellati."))
@@ -121,12 +136,29 @@ class Command(BaseCommand):
             self.stdout.write("   [admin] Superuser 'admin' gia' esistente — skip")
 
     # -----------------------------------------------------------------------
+    # PROPERTY
+    # -----------------------------------------------------------------------
+
+    def _seed_property(self):
+        """Crea l'immobile principale."""
+        from properties.models import Property
+
+        prop, created = Property.objects.get_or_create(
+            nome="Via Palestrina",
+            defaults={"indirizzo": "Via Palestrina, Monza"},
+        )
+        self.stdout.write(
+            self.style.SUCCESS(f"   [property] Immobile {'creato' if created else 'trovato'}: {prop.nome}")
+        )
+        return prop
+
+    # -----------------------------------------------------------------------
     # OWNERS
     # -----------------------------------------------------------------------
 
-    def _seed_owners(self):
-        """Crea User + OwnerProfile + OwnerBankAccount per i 3 fratelli."""
-        from properties.models import OwnerBankAccount, OwnerProfile
+    def _seed_owners(self, prop):
+        """Crea User + OwnerProfile + membership + OwnerBankAccount per i 3 fratelli."""
+        from properties.models import OwnerBankAccount, OwnerProfile, PropertyMembership
 
         gruppo_proprietari, _ = Group.objects.get_or_create(name="proprietari")
 
@@ -198,6 +230,16 @@ class Command(BaseCommand):
                 },
             )
             owner_profiles[od["username"]] = profile
+            PropertyMembership.objects.get_or_create(
+                property=prop,
+                user=user,
+                defaults={"ruolo": PropertyMembership.Ruolo.PROPRIETARIO},
+            )
+
+        # Convenzione: Sandro anticipa i costi di cessione.
+        if prop.owner_anticipa_cessioni_id is None:
+            prop.owner_anticipa_cessioni = owner_profiles["sandro"]
+            prop.save(update_fields=["owner_anticipa_cessioni"])
 
         self.stdout.write(
             self.style.SUCCESS(f"   [owners] Proprietari creati/trovati: {list(owner_profiles.keys())}")
@@ -252,7 +294,7 @@ class Command(BaseCommand):
     # OWNERSHIP SHARES
     # -----------------------------------------------------------------------
 
-    def _seed_ownership_shares(self, owner_profiles):
+    def _seed_ownership_shares(self, prop, owner_profiles):
         """Crea le quote di proprieta' (valid_from 2024-09-01, nessun valid_to)."""
         from properties.models import OwnershipShare
 
@@ -267,12 +309,14 @@ class Command(BaseCommand):
         for owner_key, quota in shares_data:
             profile = owner_profiles[owner_key]
             exists = OwnershipShare.objects.filter(
+                property=prop,
                 owner=profile,
                 valid_from=valid_from,
                 valid_to__isnull=True,
             ).exists()
             if not exists:
                 OwnershipShare.objects.create(
+                    property=prop,
                     owner=profile,
                     valid_from=valid_from,
                     valid_to=None,
@@ -288,7 +332,7 @@ class Command(BaseCommand):
     # TENANTS
     # -----------------------------------------------------------------------
 
-    def _seed_tenants(self):
+    def _seed_tenants(self, prop):
         """Crea User + TenantProfile per i 5 inquilini + 1 storico (Marco Vecchio)."""
         from properties.models import TenantProfile
 
@@ -385,6 +429,7 @@ class Command(BaseCommand):
             profile, _ = TenantProfile.objects.get_or_create(
                 user=user,
                 defaults={
+                    "property": prop,
                     "nominativo": td["nominativo"],
                     "codice_fiscale": td["codice_fiscale"],
                     "telefono": td["telefono"],
@@ -413,6 +458,7 @@ class Command(BaseCommand):
         marco_profile, _ = TenantProfile.objects.get_or_create(
             user=marco_user,
             defaults={
+                "property": prop,
                 "nominativo": "Marco Vecchio",
                 "codice_fiscale": "VCCMRC88D15F205P",
                 "telefono": "+39 333 9998877",
@@ -433,7 +479,7 @@ class Command(BaseCommand):
     # ROOMS
     # -----------------------------------------------------------------------
 
-    def _seed_rooms(self):
+    def _seed_rooms(self, prop):
         """Crea le 5 stanze."""
         from properties.models import Room
 
@@ -448,6 +494,7 @@ class Command(BaseCommand):
         rooms = {}
         for rd in rooms_data:
             room, _ = Room.objects.get_or_create(
+                property=prop,
                 nome=rd["nome"],
                 defaults={
                     "superficie_mq": rd["superficie_mq"],
@@ -463,11 +510,12 @@ class Command(BaseCommand):
     # CONTRACT
     # -----------------------------------------------------------------------
 
-    def _seed_contract(self):
-        """Crea il contratto unico di locazione."""
+    def _seed_contract(self, prop):
+        """Crea il contratto di locazione dell'immobile."""
         from properties.models import Contract
 
         contract, created = Contract.objects.get_or_create(
+            property=prop,
             data_decorrenza=date(2024, 9, 20),
             defaults={
                 "data_stipula": date(2024, 9, 15),
@@ -591,7 +639,7 @@ class Command(BaseCommand):
     # ANNUAL UTILITY COSTS (TARI)
     # -----------------------------------------------------------------------
 
-    def _seed_annual_utility_costs(self):
+    def _seed_annual_utility_costs(self, prop):
         """Crea i costi annuali TARI per 2025 e 2026."""
         from billing.models import AnnualUtilityCost
 
@@ -615,6 +663,7 @@ class Command(BaseCommand):
         created = 0
         for td in tari_data:
             _, is_new = AnnualUtilityCost.objects.get_or_create(
+                property=prop,
                 voce=td["voce"],
                 anno=td["anno"],
                 defaults={
@@ -632,7 +681,7 @@ class Command(BaseCommand):
     # SUPPLIERS
     # -----------------------------------------------------------------------
 
-    def _seed_suppliers(self, owner_profiles):
+    def _seed_suppliers(self, prop, owner_profiles):
         """Crea i 3 fornitori principali."""
         from billing.models import Supplier
 
@@ -645,6 +694,7 @@ class Command(BaseCommand):
         suppliers = {}
         for sd in suppliers_data:
             supplier, _ = Supplier.objects.get_or_create(
+                property=prop,
                 nome=sd["nome"],
                 defaults={"tipo": sd["tipo"]},
             )
@@ -657,7 +707,7 @@ class Command(BaseCommand):
     # UTILITY BILLS
     # -----------------------------------------------------------------------
 
-    def _seed_utility_bills(self, suppliers, owner_profiles):
+    def _seed_utility_bills(self, prop, suppliers, owner_profiles):
         """
         Crea bollette luce (Enel, bimestrali) e gas (Eni, bimestrali) per gen-apr 2026.
 
@@ -758,6 +808,7 @@ class Command(BaseCommand):
             _, is_new = UtilityBill.objects.get_or_create(
                 numero_fattura=bd["numero_fattura"],
                 defaults={
+                    "immobile": prop,
                     "supplier": bd["supplier"],
                     "data_emissione": bd["data_emissione"],
                     "periodo_da": bd["periodo_da"],
@@ -775,7 +826,7 @@ class Command(BaseCommand):
     # UTILITY CHARGE PERIODS
     # -----------------------------------------------------------------------
 
-    def _seed_utility_charge_periods(self):
+    def _seed_utility_charge_periods(self, prop):
         """Crea 4 periodi mensili di conguaglio (gen-apr 2026)."""
         from billing.models import UtilityChargePeriod
 
@@ -813,6 +864,7 @@ class Command(BaseCommand):
         periods = {}
         for pd_data in periods_data:
             period, _ = UtilityChargePeriod.objects.get_or_create(
+                property=prop,
                 periodo_da=pd_data["periodo_da"],
                 periodo_a=pd_data["periodo_a"],
                 defaults={
@@ -1068,7 +1120,7 @@ class Command(BaseCommand):
     # EXPENSES + EXPENSE CATEGORIES
     # -----------------------------------------------------------------------
 
-    def _seed_expenses(self, owner_profiles, suppliers):
+    def _seed_expenses(self, prop, owner_profiles, suppliers):
         """Crea categorie spesa e ~6 spese di esempio."""
         from billing.models import Expense, ExpenseCategory
 
@@ -1089,6 +1141,7 @@ class Command(BaseCommand):
         cats = {}
         for cd in categories_data:
             cat, _ = ExpenseCategory.objects.get_or_create(
+                property=prop,
                 codice=cd["codice"],
                 defaults={
                     "nome": cd["nome"],
@@ -1172,6 +1225,7 @@ class Command(BaseCommand):
         created = 0
         for ed in expenses_data:
             _, is_new = Expense.objects.get_or_create(
+                property=prop,
                 data=ed["data"],
                 descrizione=ed["descrizione"],
                 defaults={
@@ -1193,7 +1247,7 @@ class Command(BaseCommand):
     # REMINDER RULES + MESSAGE TEMPLATES
     # -----------------------------------------------------------------------
 
-    def _seed_reminder_rules_and_templates(self):
+    def _seed_reminder_rules_and_templates(self, prop):
         """Crea template messaggi e regole sollecito per affitto e conguagli."""
         from notifications.models import MessageTemplate, ReminderRule
 
@@ -1251,6 +1305,7 @@ class Command(BaseCommand):
         templates = {}
         for td in templates_data:
             tmpl, _ = MessageTemplate.objects.get_or_create(
+                property=prop,
                 codice=td["codice"],
                 defaults={
                     "titolo": td["titolo"],
@@ -1332,6 +1387,7 @@ class Command(BaseCommand):
         for rd in all_rules:
             tmpl = templates.get(rd["template_codice"])
             _, is_new = ReminderRule.objects.get_or_create(
+                property=prop,
                 applicabile_a=rd["applicabile_a"],
                 giorni_offset=rd["giorni_offset"],
                 defaults={
@@ -1346,4 +1402,130 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(f"   [reminders] ReminderRule create: {created_rules} (su 8)")
+        )
+
+    # -----------------------------------------------------------------------
+    # SECONDA PROPERTY (test isolamento multi-proprietà)
+    # -----------------------------------------------------------------------
+
+    def _seed_seconda_property(self, owner_profiles):
+        """Crea 'Casa Lago': Chiara proprietaria unica, Sandro gestore.
+
+        Serve a sviluppare/verificare l'isolamento fra immobili: Bruna e
+        Fabio NON devono vederla; Sandro la gestisce senza quota.
+        """
+        from properties.models import (
+            Contract,
+            OwnerProfile,
+            OwnershipShare,
+            Property,
+            PropertyMembership,
+            Room,
+            RoomAssignment,
+            TenantProfile,
+        )
+
+        gruppo_proprietari, _ = Group.objects.get_or_create(name="proprietari")
+        gruppo_inquilini, _ = Group.objects.get_or_create(name="inquilini")
+
+        prop, _ = Property.objects.get_or_create(
+            nome="Casa Lago",
+            defaults={"indirizzo": "Via del Lago 7, Como"},
+        )
+
+        chiara_user, created = User.objects.get_or_create(
+            username="chiara",
+            defaults={
+                "first_name": "Chiara",
+                "last_name": "Rossi",
+                "email": "chiara@viapal.local",
+            },
+        )
+        if created:
+            chiara_user.set_password("chiarapwd")
+            chiara_user.save()
+            chiara_user.groups.add(gruppo_proprietari)
+
+        chiara_profile, _ = OwnerProfile.objects.get_or_create(
+            user=chiara_user,
+            defaults={
+                "nominativo": "Chiara Rossi",
+                "codice_fiscale": "RSSCHR75B45F205Q",
+                "telefono": "+39 333 5556677",
+            },
+        )
+
+        PropertyMembership.objects.get_or_create(
+            property=prop,
+            user=chiara_user,
+            defaults={"ruolo": PropertyMembership.Ruolo.PROPRIETARIO},
+        )
+        sandro_user = owner_profiles["sandro"].user
+        PropertyMembership.objects.get_or_create(
+            property=prop,
+            user=sandro_user,
+            defaults={
+                "ruolo": PropertyMembership.Ruolo.GESTORE,
+                "invitato_da": chiara_user,
+            },
+        )
+
+        if not OwnershipShare.objects.filter(property=prop, owner=chiara_profile).exists():
+            OwnershipShare.objects.create(
+                property=prop,
+                owner=chiara_profile,
+                valid_from=date(2025, 1, 1),
+                quota=Decimal("1.0000"),
+            )
+
+        room, _ = Room.objects.get_or_create(
+            property=prop,
+            nome="Appartamento intero",
+            defaults={"superficie_mq": Decimal("65.00"), "ordinamento": 1},
+        )
+        Contract.objects.get_or_create(
+            property=prop,
+            data_decorrenza=date(2025, 2, 1),
+            defaults={
+                "data_stipula": date(2025, 1, 20),
+                "durata_anni": 4,
+                "regime_fiscale": "cedolare_21",
+                "note": "Contratto Casa Lago",
+            },
+        )
+
+        luca_user, created = User.objects.get_or_create(
+            username="luca_lago",
+            defaults={
+                "first_name": "Luca",
+                "last_name": "Verdi",
+                "email": "luca.verdi@example.com",
+            },
+        )
+        if created:
+            luca_user.set_password("lucalagopwd")
+            luca_user.save()
+            luca_user.groups.add(gruppo_inquilini)
+
+        luca_profile, _ = TenantProfile.objects.get_or_create(
+            user=luca_user,
+            defaults={
+                "property": prop,
+                "nominativo": "Luca Verdi",
+                "giorno_pagamento_affitto": 1,
+                "frequenza_conguagli": "mensile",
+                "deposito_versato": Decimal("1400.00"),
+            },
+        )
+        RoomAssignment.objects.get_or_create(
+            room=room,
+            tenant=luca_profile,
+            valid_from=date(2025, 2, 1),
+            defaults={"canone_mensile": Decimal("700.00")},
+        )
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                "   [property2] Casa Lago: Chiara proprietaria, Sandro gestore, 1 inquilino"
+            )
         )

@@ -50,16 +50,48 @@ def superuser(db):
 
 
 @pytest.fixture
-def tenant_profile(db, inquilino):
+def tenant_profile(db, inquilino, immobile):
     from properties.models import TenantProfile
     return TenantProfile.objects.create(
-        user=inquilino, nominativo='Inquilino Test', giorno_pagamento_affitto=1)
+        user=inquilino, property=immobile,
+        nominativo='Inquilino Test', giorno_pagamento_affitto=1)
+
+
+@pytest.fixture
+def membership_proprietario(db, proprietario, immobile):
+    """Membership del proprietario sull'immobile in cui affitta l'inquilino.
+
+    Multiproprietà: senza questa membership il proprietario non può
+    impersonare gli inquilini di quell'immobile.
+    """
+    from properties.models import PropertyMembership
+    return PropertyMembership.objects.create(
+        property=immobile, user=proprietario,
+        ruolo=PropertyMembership.Ruolo.PROPRIETARIO)
 
 
 # --- unit: gate puo_impersonare ------------------------------------------
 
-def test_gate_proprietario_impersona_inquilino(proprietario, inquilino):
+def test_gate_proprietario_impersona_inquilino(
+        proprietario, inquilino, tenant_profile, membership_proprietario):
+    # il proprietario ha una membership sull'immobile dove l'inquilino affitta
     assert puo_impersonare(proprietario, inquilino) is True
+
+
+def test_gate_proprietario_senza_membership_non_impersona(
+        proprietario, inquilino, tenant_profile):
+    # niente PropertyMembership sull'immobile dell'inquilino: negato
+    assert puo_impersonare(proprietario, inquilino) is False
+
+
+def test_gate_proprietario_membership_su_altro_immobile(
+        proprietario, inquilino, tenant_profile, immobile2):
+    # membership su un immobile DIVERSO da quello dell'inquilino: negato
+    from properties.models import PropertyMembership
+    PropertyMembership.objects.create(
+        property=immobile2, user=proprietario,
+        ruolo=PropertyMembership.Ruolo.PROPRIETARIO)
+    assert puo_impersonare(proprietario, inquilino) is False
 
 
 def test_gate_proprietario_non_impersona_altro_proprietario(proprietario, proprietario2):
@@ -86,7 +118,8 @@ def test_gate_self(proprietario):
 
 # --- API: impersonate / stop ---------------------------------------------
 
-def test_proprietario_impersona_inquilino(client, proprietario, tenant_profile):
+def test_proprietario_impersona_inquilino(
+        client, proprietario, tenant_profile, membership_proprietario):
     client.post('/api/auth/login/',
                 {'username': 'test_prop', 'password': 'pwd123!'}, format='json')
 
@@ -101,7 +134,8 @@ def test_proprietario_impersona_inquilino(client, proprietario, tenant_profile):
     assert me['impersonator_username'] == 'test_prop'
 
 
-def test_stop_ripristina_proprietario(client, proprietario, tenant_profile):
+def test_stop_ripristina_proprietario(
+        client, proprietario, tenant_profile, membership_proprietario):
     client.post('/api/auth/login/',
                 {'username': 'test_prop', 'password': 'pwd123!'}, format='json')
     client.post(f'/api/auth/impersonate/{tenant_profile.pk}/')
@@ -114,6 +148,14 @@ def test_stop_ripristina_proprietario(client, proprietario, tenant_profile):
     assert me['role'] == 'proprietario'
     assert me['is_impersonated'] is False
     assert me['impersonator_username'] is None
+
+
+def test_proprietario_senza_membership_403(client, proprietario, tenant_profile):
+    # multiproprietà: senza membership sull'immobile dell'inquilino → 403
+    client.post('/api/auth/login/',
+                {'username': 'test_prop', 'password': 'pwd123!'}, format='json')
+    resp = client.post(f'/api/auth/impersonate/{tenant_profile.pk}/')
+    assert resp.status_code == 403
 
 
 def test_inquilino_non_puo_impersonare(client, inquilino, tenant_profile):

@@ -33,7 +33,7 @@ from decimal import Decimal
 from accounting.models import OwnerLedgerEntry, OwnerSettlement
 from billing.models import Expense, Receivable
 from billing.models.payments import StatoPagamento
-from properties.models import OwnerProfile, quote_attive_at
+from properties.models import OwnerProfile, Property, quote_attive_at
 
 
 @dataclass
@@ -64,9 +64,11 @@ class Quadratura:
     expense_orfane: list[dict] = field(default_factory=list)
 
 
-def _ultimo_settlement(at_date: date) -> tuple[OwnerSettlement | None, date | None]:
-    """Ultimo settlement chiuso ≤ at_date e inizio del periodo aperto."""
-    last_sett = OwnerSettlement.objects.filter(data__lte=at_date).order_by("-data").first()
+def _ultimo_settlement(property: Property, at_date: date) -> tuple[OwnerSettlement | None, date | None]:
+    """Ultimo settlement chiuso ≤ at_date dell'immobile e inizio del periodo aperto."""
+    last_sett = OwnerSettlement.objects.filter(
+        property=property, data__lte=at_date,
+    ).order_by("-data").first()
     periodo_da = last_sett.periodo_a + timedelta(days=1) if last_sett else None
     return last_sett, periodo_da
 
@@ -82,18 +84,18 @@ def _aggrega(d: dict[str, Decimal], chiave: str, importo: Decimal) -> None:
     d[chiave] = d.get(chiave, Decimal("0")) + importo
 
 
-def calcola_saldi_correnti(at_date: date) -> dict[OwnerProfile, SaldoLive]:
-    """Ritorna {owner: SaldoLive} per tutti i proprietari con quota attiva.
+def calcola_saldi_correnti(property: Property, at_date: date) -> dict[OwnerProfile, SaldoLive]:
+    """Ritorna {owner: SaldoLive} per i proprietari con quota attiva sull'immobile.
 
     Il periodo aperto va dal giorno dopo l'ultimo settlement chiuso ≤ at_date
     (incluso) a at_date stesso. Se non esiste alcun settlement, considera
     l'intera storia fino a at_date.
     """
-    quote = quote_attive_at(at_date)
+    quote = quote_attive_at(property, at_date)
     if not quote:
         return {}
 
-    last_sett, periodo_da = _ultimo_settlement(at_date)
+    last_sett, periodo_da = _ultimo_settlement(property, at_date)
 
     saldi = {
         owner: SaldoLive(
@@ -105,6 +107,7 @@ def calcola_saldi_correnti(at_date: date) -> dict[OwnerProfile, SaldoLive]:
     }
 
     rec_qs = Receivable.objects.select_related("incassato_da_owner").filter(
+        assignment__room__property=property,
         stato=StatoPagamento.PAGATO,
         data_pagamento__lte=at_date,
         data_pagamento__isnull=False,
@@ -127,6 +130,7 @@ def calcola_saldi_correnti(at_date: date) -> dict[OwnerProfile, SaldoLive]:
             _aggrega(saldo.incassi_per_causale, r.causale, contributo)
 
     exp_qs = Expense.objects.select_related("category", "anticipata_da_owner").filter(
+        property=property,
         data__lte=at_date,
     )
     if periodo_da:
@@ -156,6 +160,7 @@ def calcola_saldi_correnti(at_date: date) -> dict[OwnerProfile, SaldoLive]:
             _aggrega(saldo.spese_per_categoria, chiave, contributo)
 
     led_qs = OwnerLedgerEntry.objects.filter(
+        property=property,
         bank_transaction__isnull=False,
         data__lte=at_date,
     )
@@ -178,7 +183,7 @@ def calcola_saldi_correnti(at_date: date) -> dict[OwnerProfile, SaldoLive]:
     return saldi
 
 
-def verifica_quadratura(at_date: date, saldi: dict[OwnerProfile, SaldoLive]) -> Quadratura:
+def verifica_quadratura(property: Property, at_date: date, saldi: dict[OwnerProfile, SaldoLive]) -> Quadratura:
     """Controlla Σ saldi = 0 ed elenca i record orfani del periodo aperto.
 
     Orfani:
@@ -189,13 +194,14 @@ def verifica_quadratura(at_date: date, saldi: dict[OwnerProfile, SaldoLive]) -> 
     - Expense con anticipante senza quota attiva: tutti pagano la quota ma
       nessuno riceve il credito → idem.
     """
-    _, periodo_da = _ultimo_settlement(at_date)
+    _, periodo_da = _ultimo_settlement(property, at_date)
     owner_pks = {o.pk for o in saldi}
 
     receivable_orfani: list[dict] = []
     rec_qs = Receivable.objects.select_related(
         "incassato_da_owner", "assignment__tenant",
     ).filter(
+        assignment__room__property=property,
         stato=StatoPagamento.PAGATO,
         data_pagamento__lte=at_date,
         data_pagamento__isnull=False,
@@ -205,6 +211,8 @@ def verifica_quadratura(at_date: date, saldi: dict[OwnerProfile, SaldoLive]) -> 
     for r in rec_qs:
         if r.incassato_da_owner_id is None:
             motivo = "manca «incassato da»: escluso dai saldi"
+        elif r.importo_pagato is None:
+            motivo = "PAGATO senza importo pagato: escluso dai saldi"
         elif r.incassato_da_owner_id not in owner_pks:
             motivo = f"incassante {r.incassato_da_owner} senza quota attiva"
         else:
@@ -220,6 +228,7 @@ def verifica_quadratura(at_date: date, saldi: dict[OwnerProfile, SaldoLive]) -> 
 
     expense_orfane: list[dict] = []
     exp_qs = Expense.objects.select_related("category", "anticipata_da_owner").filter(
+        property=property,
         data__lte=at_date,
     )
     if periodo_da:

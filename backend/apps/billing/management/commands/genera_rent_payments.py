@@ -32,11 +32,26 @@ class Command(BaseCommand):
             default=False,
             help="Sovrascrive i Receivable affitto esistenti (update_or_create invece di skip).",
         )
+        parser.add_argument(
+            "--property",
+            type=str,
+            default=None,
+            help="Immobile (id o nome). Facoltativo: senza, genera per tutti gli immobili.",
+        )
 
     def handle(self, *args, **options):
         anno = options["anno"]
         mese = options["mese"]
         force = options["force"]
+
+        prop = None
+        if options.get("property"):
+            from properties.context import resolve_property_cli
+
+            try:
+                prop = resolve_property_cli(options["property"])
+            except ValueError as e:
+                raise CommandError(str(e)) from e
 
         if not (1 <= mese <= 12):
             raise CommandError(f"Mese non valido: {mese}. Usare un valore tra 1 e 12.")
@@ -46,12 +61,13 @@ class Command(BaseCommand):
         self.stdout.write(
             f"Generazione Receivable affitto per {anno}/{mese:02d}"
             + (" [FORCE]" if force else "")
+            + (f" [immobile: {prop.nome}]" if prop else "")
         )
 
         try:
             from billing.calc.rent import genera_pagamenti_mese
 
-            risultato = genera_pagamenti_mese(anno, mese, force=force)
+            risultato = genera_pagamenti_mese(anno, mese, force=force, property=prop)
         except Exception as e:
             raise CommandError(f"Errore nella generazione: {e}") from e
 

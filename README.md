@@ -58,8 +58,10 @@ Creati al `migrate` insieme ai gruppi `proprietari` e `inquilini`:
 | Username | Password | Ruolo |
 |---|---|---|
 | `admin` | `admin` | superuser |
-| `sandro` / `bruna` / `fabio` | `<username>pwd` | proprietari |
-| `mariasevera` / `davide` / `diana` / `arun` / `eshani` | `<username>pwd` | inquilini |
+| `sandro` / `bruna` / `fabio` | `<username>pwd` | proprietari Via Palestrina (sandro anche gestore di Casa Lago) |
+| `chiara` | `chiarapwd` | proprietaria Casa Lago (2ª property demo) |
+| `mariasevera` / `davide` / `diana` / `arun` / `eshani` | `<username>pwd` | inquilini Via Palestrina |
+| `luca_lago` | `lucalagopwd` | inquilino Casa Lago |
 
 Il login frontend redirige automaticamente in base al gruppo:
 proprietari → `/p/`, inquilini → `/i/`.

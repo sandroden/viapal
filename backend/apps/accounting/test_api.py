@@ -19,7 +19,7 @@ from rest_framework.test import APIClient
 
 from accounting.models import InterOwnerEntry, OwnerLedgerEntry
 from billing.models.payments import BankTransaction
-from properties.models import OwnerBankAccount, OwnerProfile, OwnershipShare
+from properties.models import OwnerBankAccount, OwnerProfile, OwnershipShare, PropertyMembership
 
 
 # ---------------------------------------------------------------------------
@@ -45,16 +45,22 @@ def gruppo_inquilini(db):
 
 
 @pytest.fixture
-def user_prop_1(db, gruppo_proprietari):
+def user_prop_1(db, gruppo_proprietari, immobile):
     u = User.objects.create_user("acc_prop1", email="ap1@v.it", password="pwd123!")
     u.groups.add(gruppo_proprietari)
+    PropertyMembership.objects.create(
+        property=immobile, user=u, ruolo=PropertyMembership.Ruolo.PROPRIETARIO,
+    )
     return u
 
 
 @pytest.fixture
-def user_prop_2(db, gruppo_proprietari):
+def user_prop_2(db, gruppo_proprietari, immobile):
     u = User.objects.create_user("acc_prop2", email="ap2@v.it", password="pwd123!")
     u.groups.add(gruppo_proprietari)
+    PropertyMembership.objects.create(
+        property=immobile, user=u, ruolo=PropertyMembership.Ruolo.PROPRIETARIO,
+    )
     return u
 
 
@@ -76,8 +82,9 @@ def owner_2(db, user_prop_2):
 
 
 @pytest.fixture
-def ledger_entry(db, owner_1):
+def ledger_entry(db, immobile, owner_1):
     return OwnerLedgerEntry.objects.create(
+        property=immobile,
         owner=owner_1,
         data=datetime.date(2026, 1, 15),
         descrizione="Incasso affitto gen 2026",
@@ -87,8 +94,9 @@ def ledger_entry(db, owner_1):
 
 
 @pytest.fixture
-def inter_entry(db, owner_1, owner_2):
+def inter_entry(db, immobile, owner_1, owner_2):
     return InterOwnerEntry.objects.create(
+        property=immobile,
         owner_da=owner_1,
         owner_a=owner_2,
         data=datetime.date(2026, 2, 1),
@@ -234,11 +242,12 @@ class TestActionBtInterOwner:
         assert entry.importo == Decimal("1707.00")
 
     def test_marca_bilaterale_associa_a_settlement_di_competenza(
-        self, client_prop, bt_owner_1, owner_1, owner_2,
+        self, client_prop, immobile, bt_owner_1, owner_1, owner_2,
     ):
         """Caso reale: la BT è del 2026 ma di competenza settlement 2025."""
         from accounting.models import OwnerSettlement
         sett_2025 = OwnerSettlement.objects.create(
+            property=immobile,
             data=datetime.date(2025, 12, 31),
             periodo_da=datetime.date(2025, 1, 1),
             periodo_a=datetime.date(2025, 12, 31),
@@ -331,9 +340,9 @@ class TestActionBtInterOwner:
 
 
 class TestActionSaldiLive:
-    def test_default_at_oggi(self, client_prop, owner_1):
+    def test_default_at_oggi(self, client_prop, immobile, owner_1):
         OwnershipShare.objects.create(
-            owner=owner_1, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
+            property=immobile, owner=owner_1, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
         )
         resp = client_prop.get("/api/v1/owner-ledger/saldi-live/")
         assert resp.status_code == 200
@@ -355,9 +364,9 @@ class TestActionSaldiLive:
 
 class TestActionGeneraSettlement:
     @pytest.fixture
-    def quota_unica(self, owner_1):
+    def quota_unica(self, immobile, owner_1):
         return OwnershipShare.objects.create(
-            owner=owner_1, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
+            property=immobile, owner=owner_1, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
         )
 
     def test_dry_run_non_persiste(self, client_prop, quota_unica):
@@ -441,26 +450,26 @@ class TestAdminGeneraSettlement:
         assert resp.status_code == 200
         assert b"Anno da chiudere" in resp.content
 
-    def test_post_dry_run(self, staff_client, owner_1):
+    def test_post_dry_run(self, staff_client, immobile, owner_1):
         OwnershipShare.objects.create(
-            owner=owner_1, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
+            property=immobile, owner=owner_1, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
         )
         resp = staff_client.post(
             "/admin/accounting/ownersettlement/genera-settlement/",
-            data={"anno": "2024", "dry_run": "on"},
+            data={"property": immobile.pk, "anno": "2024", "dry_run": "on"},
         )
         # Render della stessa pagina con il messaggio info; nessuna scrittura.
         assert resp.status_code == 200
         from accounting.models import OwnerSettlement
         assert OwnerSettlement.objects.count() == 0
 
-    def test_post_genera_e_redirect(self, staff_client, owner_1):
+    def test_post_genera_e_redirect(self, staff_client, immobile, owner_1):
         OwnershipShare.objects.create(
-            owner=owner_1, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
+            property=immobile, owner=owner_1, valid_from=datetime.date(2020, 1, 1), quota=Decimal("1.0"),
         )
         resp = staff_client.post(
             "/admin/accounting/ownersettlement/genera-settlement/",
-            data={"anno": "2024"},
+            data={"property": immobile.pk, "anno": "2024"},
         )
         assert resp.status_code == 302  # redirect al change form
         from accounting.models import OwnerSettlement

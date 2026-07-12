@@ -29,9 +29,10 @@ def inquilino_user(db):
 
 
 @pytest.fixture
-def tenant(db, inquilino_user):
+def tenant(db, inquilino_user, immobile):
     return TenantProfile.objects.create(
         user=inquilino_user,
+        property=immobile,
         nominativo="Demo Inquilino",
         giorno_pagamento_affitto=1,
     )
@@ -59,20 +60,22 @@ def test_invito_aggiunge_al_gruppo_inquilini(tenant):
     assert tenant.user.groups.filter(name="inquilini").exists()
 
 
-def test_invito_senza_email_da_errore(db):
+def test_invito_senza_email_da_errore(db, immobile):
     u = User.objects.create_user("senzaemail", password="pwd123!")
     t = TenantProfile.objects.create(
-        user=u, nominativo="Senza Email", giorno_pagamento_affitto=1
+        user=u, property=immobile, nominativo="Senza Email",
+        giorno_pagamento_affitto=1,
     )
     esito = invia_invito_inquilino(t)
     assert esito["esito"] == "errore"
     assert "email" in esito["errore"].lower()
 
 
-def test_invito_usa_email_alt_e_la_copia_su_user(db, mailoutbox):
+def test_invito_usa_email_alt_e_la_copia_su_user(db, mailoutbox, immobile):
     u = User.objects.create_user("soloalt", password="pwd123!")  # user.email vuoto
     t = TenantProfile.objects.create(
         user=u,
+        property=immobile,
         nominativo="Solo Alt",
         giorno_pagamento_affitto=1,
         email_alt="alt@v.it",

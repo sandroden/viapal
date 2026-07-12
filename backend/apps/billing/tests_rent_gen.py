@@ -36,7 +36,7 @@ from properties.models import (
 
 
 @pytest.fixture
-def make_tenant(db):
+def make_tenant(db, immobile):
     """Factory TenantProfile."""
     counter = [0]
 
@@ -48,6 +48,7 @@ def make_tenant(db):
             password="pwd",
         )
         return TenantProfile.objects.create(
+            property=immobile,
             user=u,
             nominativo=nominativo,
             giorno_pagamento_affitto=giorno_pagamento,
@@ -57,13 +58,14 @@ def make_tenant(db):
 
 
 @pytest.fixture
-def make_room(db):
+def make_room(db, immobile):
     """Factory Room."""
     counter = [0]
 
     def _make(nome=None):
         counter[0] += 1
         return Room.objects.create(
+            property=immobile,
             nome=nome or f"Camera Rent {counter[0]}",
             ordinamento=counter[0],
         )

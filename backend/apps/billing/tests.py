@@ -47,8 +47,9 @@ def owner(db, user_owner):
 
 
 @pytest.fixture
-def tenant(db, user_tenant):
+def tenant(db, user_tenant, immobile):
     return TenantProfile.objects.create(
+        property=immobile,
         user=user_tenant,
         nominativo="Arun",
         giorno_pagamento_affitto=1,
@@ -56,8 +57,8 @@ def tenant(db, user_tenant):
 
 
 @pytest.fixture
-def room(db):
-    return Room.objects.create(nome="Camera 3", ordinamento=3)
+def room(db, immobile):
+    return Room.objects.create(property=immobile, nome="Camera 3", ordinamento=3)
 
 
 @pytest.fixture
@@ -71,8 +72,8 @@ def assignment(db, room, tenant):
 
 
 @pytest.fixture
-def supplier_luce(db):
-    return Supplier.objects.create(nome="Enel Energia", tipo="energia")
+def supplier_luce(db, immobile):
+    return Supplier.objects.create(property=immobile, nome="Enel Energia", tipo="energia")
 
 
 # ---------------------------------------------------------------------------
@@ -163,8 +164,9 @@ class TestUtilityCharge:
     """Verifica UtilityChargePeriod (totali per voce + giorni_totali) e Receivable utenze (giorni_presenza)."""
 
     @pytest.fixture
-    def period(self, db):
+    def period(self, db, immobile):
         return UtilityChargePeriod.objects.create(
+            property=immobile,
             periodo_da=datetime.date(2024, 10, 1),
             periodo_a=datetime.date(2024, 10, 31),
             tot_luce=Decimal("100.00"),
@@ -240,8 +242,9 @@ class TestUtilityCharge:
 
 
 class TestAnnualUtilityCost:
-    def test_creazione_tari(self, db):
+    def test_creazione_tari(self, db, immobile):
         tari = AnnualUtilityCost.objects.create(
+            property=immobile,
             voce="tari",
             anno=2024,
             importo_annuale=Decimal("510.00"),
@@ -278,9 +281,10 @@ class TestExtraCharge:
 
 
 class TestExpense:
-    def test_creazione(self, db, owner):
-        cat = ExpenseCategory.objects.create(nome="IMU", codice="imu")
+    def test_creazione(self, db, owner, immobile):
+        cat = ExpenseCategory.objects.create(property=immobile, nome="IMU", codice="imu")
         expense = Expense.objects.create(
+            property=immobile,
             data=datetime.date(2024, 6, 17),
             category=cat,
             importo=Decimal("1200.00"),
@@ -290,15 +294,16 @@ class TestExpense:
         assert expense.pk is not None
         assert "IMU 2024" in str(expense)
 
-    def test_expense_con_riferimento_quota_owner(self, db):
+    def test_expense_con_riferimento_quota_owner(self, db, immobile):
         """Bruna paga IMU di Fabio: riferimento_quota_owner = Fabio."""
         user_bruna = User.objects.create_user("bruna2", email="b2@v.it", password="pwd")
         user_fabio = User.objects.create_user("fabio2", email="f2@v.it", password="pwd")
         bruna = OwnerProfile.objects.create(user=user_bruna, nominativo="Bruna")
         fabio = OwnerProfile.objects.create(user=user_fabio, nominativo="Fabio")
 
-        cat = ExpenseCategory.objects.create(nome="IMU", codice="imu2")
+        cat = ExpenseCategory.objects.create(property=immobile, nome="IMU", codice="imu2")
         expense = Expense.objects.create(
+            property=immobile,
             data=datetime.date(2024, 6, 17),
             category=cat,
             importo=Decimal("450.00"),
@@ -315,12 +320,13 @@ class TestExpense:
 
 
 @pytest.fixture
-def supplier_luce(db):
-    return Supplier.objects.create(nome="Enel", tipo=Supplier.TipoFornitore.ENERGIA)
+def supplier_luce(db, immobile):
+    return Supplier.objects.create(property=immobile, nome="Enel", tipo=Supplier.TipoFornitore.ENERGIA)
 
 
 def _crea_bolletta(supplier, owner=None, importo="120.00", numero="F-001"):
     return UtilityBill.objects.create(
+        immobile=supplier.property,
         supplier=supplier,
         prodotto=UtilityBill.Prodotto.LUCE,
         numero_fattura=numero,

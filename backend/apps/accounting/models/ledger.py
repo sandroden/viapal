@@ -18,6 +18,12 @@ class OwnerLedgerEntry(TimestampedModel):
         DISTRIBUZIONE = "distribuzione", "Distribuzione utili"
         AGGIUSTAMENTO = "aggiustamento", "Aggiustamento"
 
+    property = models.ForeignKey(
+        "properties.Property",
+        on_delete=models.PROTECT,
+        related_name="owner_ledger_entries",
+        verbose_name="immobile",
+    )
     owner = models.ForeignKey(
         "properties.OwnerProfile",
         on_delete=models.PROTECT,
@@ -102,8 +108,14 @@ class OwnerLedgerEntry(TimestampedModel):
 
 
 class OwnerSettlement(TimestampedModel):
-    """Chiusura periodica dei conti tra i proprietari."""
+    """Chiusura periodica dei conti tra i proprietari di un immobile."""
 
+    property = models.ForeignKey(
+        "properties.Property",
+        on_delete=models.PROTECT,
+        related_name="owner_settlements",
+        verbose_name="immobile",
+    )
     data = models.DateField(
         verbose_name="data",
     )

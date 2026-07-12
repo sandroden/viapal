@@ -155,10 +155,38 @@ class UtilityChargePeriodSerializer(serializers.ModelSerializer):
 
 class SupplierSerializer(serializers.ModelSerializer):
     tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
+    # La property è assegnata dal server (immobile attivo): mai in scrittura.
+    property = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = Supplier
-        fields = ["id", "nome", "tipo", "tipo_display", "partita_iva", "contatto"]
+        fields = [
+            "id", "property", "nome", "tipo", "tipo_display",
+            "partita_iva", "contatto",
+        ]
+
+
+class AnnualUtilityCostSerializer(serializers.ModelSerializer):
+    """Costo annuale spalmato (es. TARI) di un immobile."""
+
+    voce_display = serializers.CharField(source="get_voce_display", read_only=True)
+    property = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        from billing.models import AnnualUtilityCost
+
+        model = AnnualUtilityCost
+        fields = [
+            "id",
+            "property",
+            "voce",
+            "voce_display",
+            "anno",
+            "importo_annuale",
+            "valid_from",
+            "valid_to",
+            "note",
+        ]
 
 
 class UtilityBillSerializer(serializers.ModelSerializer):
@@ -223,9 +251,12 @@ class UtilityBillSerializer(serializers.ModelSerializer):
 
 
 class ExpenseCategorySerializer(serializers.ModelSerializer):
+    # La property è assegnata dal server (immobile attivo): mai in scrittura.
+    property = serializers.PrimaryKeyRelatedField(read_only=True)
+
     class Meta:
         model = ExpenseCategory
-        fields = ["id", "nome", "codice", "ripartibile_inquilini"]
+        fields = ["id", "property", "nome", "codice", "ripartibile_inquilini"]
 
 
 class ExpenseSerializer(serializers.ModelSerializer):

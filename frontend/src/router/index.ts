@@ -7,6 +7,7 @@ import {
 } from 'vue-router';
 import routes from './routes';
 import { useAuthStore } from 'stores/auth';
+import { usePropertiesStore } from 'stores/properties';
 
 export default defineRouter((/* { store, ssrContext } */) => {
   const createHistory = process.env.SERVER
@@ -24,6 +25,9 @@ export default defineRouter((/* { store, ssrContext } */) => {
     if (!auth.loaded) {
       await auth.fetchMe();
     }
+    // Multiproprietà: valida/ripiega l'immobile attivo persistito (vale
+    // anche dopo il login, quando fetchMe è già avvenuto fuori dal guard).
+    usePropertiesStore().sincronizza();
 
     const isPublic = to.meta.public === true;
 

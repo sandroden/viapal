@@ -1,6 +1,8 @@
 """
 Modelli per bollette, TARI, periodi e addebiti utenze inquilini.
 """
+import builtins
+
 from django.db import models
 from django.utils.text import slugify
 
@@ -42,10 +44,8 @@ class UtilityBill(TimestampedModel):
         Property,
         on_delete=models.PROTECT,
         related_name="utility_bills",
-        null=True,
-        blank=True,
         verbose_name="immobile",
-        help_text="Immobile a cui appartiene la bolletta (organizza i PDF su disco).",
+        help_text="Immobile a cui appartiene la bolletta.",
     )
     supplier = models.ForeignKey(
         Supplier,
@@ -135,6 +135,12 @@ class AnnualUtilityCost(TimestampedModel):
         TARI = "tari", "TARI (tassa rifiuti)"
         ALTRO = "altro", "Altro"
 
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.PROTECT,
+        related_name="annual_utility_costs",
+        verbose_name="immobile",
+    )
     voce = models.CharField(
         max_length=20,
         choices=VoceAnnuale.choices,
@@ -172,7 +178,14 @@ class AnnualUtilityCost(TimestampedModel):
 
 
 class UtilityChargePeriod(TimestampedModel):
-    """Periodo utenze (mensile o bimestrale)."""
+    """Periodo utenze (mensile o bimestrale) di un immobile."""
+
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.PROTECT,
+        related_name="utility_periods",
+        verbose_name="immobile",
+    )
 
     class CriterioRipartizione(models.TextChoices):
         A_TESTA = "a_testa", "A testa (uguale per tutti)"
@@ -272,6 +285,7 @@ class UtilityChargePeriod(TimestampedModel):
     def __str__(self):
         return f"Utenze {self.periodo_da} / {self.periodo_a} ({self.get_stato_display()})"
 
-    @property
+    # builtins.property: il campo `property` oscura il builtin nel corpo classe
+    @builtins.property
     def totale_periodo(self):
         return self.tot_luce + self.tot_gas + self.tot_tari + self.tot_altro

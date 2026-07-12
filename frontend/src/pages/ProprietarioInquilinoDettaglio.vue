@@ -696,6 +696,19 @@
                         </span>
                       </q-item-label>
                     </q-item-section>
+                    <q-item-section v-if="puoModificare && a.valid_to === null" side>
+                      <q-btn
+                        flat
+                        dense
+                        no-caps
+                        size="sm"
+                        color="primary"
+                        icon="swap_horiz"
+                        label="Cessione…"
+                        data-testid="apri-cessione"
+                        @click="apriDialogCessione(a)"
+                      />
+                    </q-item-section>
                   </q-item>
                 </q-list>
                 <EmptyState
@@ -736,19 +749,101 @@
       :previsionale-id="previsionaleApertoId"
       @saved="dopoSalvataggioPagamento"
     />
+
+    <!-- Dialog cessione stanza -->
+    <q-dialog v-model="dialogCessione">
+      <q-card style="min-width: 440px">
+        <q-card-section>
+          <div class="vp-p-id__dialog-titolo">
+            Cessione {{ assignmentCessione?.room_nome ?? 'stanza' }}
+          </div>
+          <div class="vp-p-id__popup-nota">
+            Chiude l'assegnazione corrente alla data indicata e apre dal giorno
+            dopo una nuova assegnazione per il nuovo inquilino.
+          </div>
+        </q-card-section>
+        <q-card-section class="q-gutter-md">
+          <q-input
+            v-model="formCessione.data_fine"
+            label="Data fine occupazione"
+            type="date"
+            outlined
+            dense
+            data-testid="cessione-data-fine"
+          />
+          <q-select
+            v-model="formCessione.nuovo_tenant"
+            :options="opzioniNuovoTenant"
+            label="Nuovo inquilino"
+            outlined
+            dense
+            emit-value
+            map-options
+            :loading="loadingCandidati"
+            data-testid="cessione-nuovo-tenant"
+          />
+          <q-input
+            v-model="formCessione.canone_mensile"
+            label="Canone mensile"
+            type="number"
+            min="0"
+            step="0.01"
+            suffix="€"
+            outlined
+            dense
+            data-testid="cessione-canone"
+          />
+          <q-input
+            v-model="formCessione.costo_cessione"
+            label="Costo cessione (facoltativo)"
+            type="number"
+            min="0"
+            step="0.01"
+            suffix="€"
+            outlined
+            dense
+            clearable
+          />
+          <q-input
+            v-model="formCessione.data_atto_cessione"
+            label="Data atto di cessione (facoltativa)"
+            type="date"
+            outlined
+            dense
+            clearable
+          />
+          <q-banner v-if="erroreCessione" class="vp-p-id__banner-errore" rounded dense>
+            {{ erroreCessione }}
+          </q-banner>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn v-close-popup flat label="Annulla" />
+          <q-btn
+            color="primary"
+            label="Esegui cessione"
+            :loading="salvandoCessione"
+            data-testid="cessione-esegui"
+            @click="eseguiCessione"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { isAxiosError } from 'axios';
 import { useQuasar, type QTableProps } from 'quasar';
+import { api } from 'boot/axios';
 import {
   useTenantSituazioneStore,
   type AssignmentRiga,
 } from 'stores/tenantSituazione';
 import { useTenantsStore, type Tenant } from 'stores/tenants';
 import { useAuthStore } from 'stores/auth';
+import { usePropertiesStore } from 'stores/properties';
 import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
 import KpiCard from 'src/components/KpiCard.vue';
 import StatoPagamentoBadge from 'src/components/StatoPagamentoBadge.vue';
@@ -1230,6 +1325,119 @@ async function dopoSalvataggioPagamento(): Promise<void> {
   await store.loadSituazione(tenantId.value, annoSelezionato.value, true);
 }
 
+// --- Cessione stanza (assignment attivo, solo ruoli operativi) -------------
+
+const propStore = usePropertiesStore();
+const puoModificare = computed(
+  () => propStore.mioRuolo === 'proprietario' || propStore.mioRuolo === 'gestore',
+);
+
+const dialogCessione = ref(false);
+const assignmentCessione = ref<AssignmentRiga | null>(null);
+const salvandoCessione = ref(false);
+const erroreCessione = ref('');
+const loadingCandidati = ref(false);
+const candidatiCessione = ref<Tenant[]>([]);
+const formCessione = ref({
+  data_fine: '',
+  nuovo_tenant: null as number | null,
+  canone_mensile: '',
+  costo_cessione: '',
+  data_atto_cessione: '',
+});
+
+const opzioniNuovoTenant = computed(() =>
+  candidatiCessione.value
+    .filter((t) => t.id !== tenantId.value)
+    .map((t) => ({ label: t.nominativo, value: t.id })),
+);
+
+function messaggioErroreCessione(e: unknown, fallback: string): string {
+  if (isAxiosError(e)) {
+    const data = e.response?.data as Record<string, unknown> | undefined;
+    if (data && typeof data === 'object') {
+      if (typeof data.detail === 'string') return data.detail;
+      for (const valore of Object.values(data)) {
+        if (typeof valore === 'string') return valore;
+        if (Array.isArray(valore) && typeof valore[0] === 'string') return valore[0];
+      }
+    }
+  }
+  return fallback;
+}
+
+function apriDialogCessione(a: AssignmentRiga): void {
+  assignmentCessione.value = a;
+  erroreCessione.value = '';
+  formCessione.value = {
+    data_fine: new Date().toISOString().slice(0, 10),
+    nuovo_tenant: null,
+    canone_mensile: String(a.canone_mensile),
+    costo_cessione: '',
+    data_atto_cessione: '',
+  };
+  dialogCessione.value = true;
+  void caricaCandidatiCessione();
+}
+
+async function caricaCandidatiCessione(): Promise<void> {
+  loadingCandidati.value = true;
+  try {
+    const { data } = await api.get<Tenant[] | { results: Tenant[] }>(
+      '/api/v1/tenants/',
+      { params: { solo_attivi: 0 } },
+    );
+    const lista = Array.isArray(data) ? data : (data.results ?? []);
+    candidatiCessione.value = [...lista].sort((a, b) =>
+      a.nominativo.localeCompare(b.nominativo),
+    );
+  } catch {
+    candidatiCessione.value = [];
+    $q.notify({
+      type: 'negative',
+      message: 'Caricamento inquilini non riuscito.',
+    });
+  } finally {
+    loadingCandidati.value = false;
+  }
+}
+
+async function eseguiCessione(): Promise<void> {
+  erroreCessione.value = '';
+  const a = assignmentCessione.value;
+  if (!a) return;
+  const f = formCessione.value;
+  if (!f.data_fine) {
+    erroreCessione.value = 'La data di fine occupazione è obbligatoria.';
+    return;
+  }
+  if (!f.nuovo_tenant) {
+    erroreCessione.value = 'Selezionare il nuovo inquilino.';
+    return;
+  }
+  if (f.canone_mensile === '' || Number(f.canone_mensile) < 0) {
+    erroreCessione.value = 'Indicare il canone mensile del nuovo inquilino.';
+    return;
+  }
+  salvandoCessione.value = true;
+  try {
+    await api.post(`/api/v1/room-assignments/${a.id}/cessione/`, {
+      data_fine: f.data_fine,
+      nuovo_tenant: f.nuovo_tenant,
+      canone_mensile: f.canone_mensile,
+      costo_cessione: f.costo_cessione !== '' ? f.costo_cessione : null,
+      data_atto_cessione: f.data_atto_cessione || null,
+    });
+    dialogCessione.value = false;
+    $q.notify({ type: 'positive', message: 'Cessione registrata.' });
+    await store.loadSituazione(tenantId.value, annoSelezionato.value, true);
+  } catch (e: unknown) {
+    erroreCessione.value = messaggioErroreCessione(e, 'Cessione non riuscita.');
+  } finally {
+    salvandoCessione.value = false;
+  }
+}
+
 const contiUtente = computed(() =>
   contiStore.accounts.length > 0
     ? contiStore.accounts
@@ -1428,6 +1636,15 @@ const contoDiDefaultUtente = computed(
 .vp-p-id__sim-warn {
   color: var(--vp-terra, #b56a3b);
   font-size: var(--vp-text-sm);
+}
+.vp-p-id__dialog-titolo {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--vp-ink-1);
+}
+.vp-p-id__banner-errore {
+  background: var(--vp-clay-soft, #fbeae5);
+  color: var(--vp-clay-deep, #8c3b21);
 }
 .vp-p-id__griglia {
   display: grid;

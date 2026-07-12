@@ -54,24 +54,26 @@ def fabio(db):
 
 
 @pytest.fixture
-def quote_terzi(db, sandro, bruna, fabio):
+def quote_terzi(db, immobile, sandro, bruna, fabio):
     # Quote esatte 1/2 / 1/4 / 1/4: somme intere e cifre stabili nei test.
     OwnershipShare.objects.create(
-        owner=sandro, valid_from=datetime.date(2020, 1, 1), quota=Decimal("0.5"),
+        property=immobile, owner=sandro, valid_from=datetime.date(2020, 1, 1), quota=Decimal("0.5"),
     )
     OwnershipShare.objects.create(
-        owner=bruna, valid_from=datetime.date(2020, 1, 1), quota=Decimal("0.25"),
+        property=immobile, owner=bruna, valid_from=datetime.date(2020, 1, 1), quota=Decimal("0.25"),
     )
     OwnershipShare.objects.create(
-        owner=fabio, valid_from=datetime.date(2020, 1, 1), quota=Decimal("0.25"),
+        property=immobile, owner=fabio, valid_from=datetime.date(2020, 1, 1), quota=Decimal("0.25"),
     )
 
 
 @pytest.fixture
-def assignment(db):
+def assignment(db, immobile):
     u = User.objects.create_user("inq_sl", email="inq_sl@v.it", password="pwd")
-    tenant = TenantProfile.objects.create(user=u, nominativo="Inq", giorno_pagamento_affitto=1)
-    room = Room.objects.create(nome="Camera SL", ordinamento=80)
+    tenant = TenantProfile.objects.create(
+        user=u, property=immobile, nominativo="Inq", giorno_pagamento_affitto=1,
+    )
+    room = Room.objects.create(property=immobile, nome="Camera SL", ordinamento=80)
     return RoomAssignment.objects.create(
         room=room,
         tenant=tenant,
@@ -87,15 +89,15 @@ def conto_bruna(db, bruna):
     )
 
 
-def test_nessun_flusso_saldi_zero(db, quote_terzi, sandro, bruna, fabio):
-    saldi = calcola_saldi_correnti(datetime.date(2025, 6, 30))
+def test_nessun_flusso_saldi_zero(db, immobile, quote_terzi, sandro, bruna, fabio):
+    saldi = calcola_saldi_correnti(immobile, datetime.date(2025, 6, 30))
     assert set(saldi.keys()) == {sandro, bruna, fabio}
     for s in saldi.values():
         assert s.totale == Decimal("0")
         assert s.baseline_settlement == Decimal("0")
 
 
-def test_incasso_su_un_solo_owner(db, quote_terzi, sandro, bruna, fabio, assignment):
+def test_incasso_su_un_solo_owner(db, immobile, quote_terzi, sandro, bruna, fabio, assignment):
     """Bruna incassa 400€ di affitto: tiene i soldi pro-quota di tutti, quindi
     deve la fetta degli altri. Sandro/Fabio vantano credito su Bruna."""
     Receivable.objects.create(
@@ -110,7 +112,7 @@ def test_incasso_su_un_solo_owner(db, quote_terzi, sandro, bruna, fabio, assignm
         stato=StatoPagamento.PAGATO,
         incassato_da_owner=bruna,
     )
-    saldi = calcola_saldi_correnti(datetime.date(2025, 6, 30))
+    saldi = calcola_saldi_correnti(immobile, datetime.date(2025, 6, 30))
     # Bruna (quota 0.25): debito -(1-0.25)*400 = -300 (deve restituire agli altri)
     assert saldi[bruna].totale == Decimal("-300.00")
     # Sandro (quota 0.5): credito 0.5*400 = 200 (sua fetta che Bruna le deve)
@@ -121,17 +123,18 @@ def test_incasso_su_un_solo_owner(db, quote_terzi, sandro, bruna, fabio, assignm
     assert saldi[sandro].incassi_per_causale["affitto"] == Decimal("200.00")
 
 
-def test_spesa_anticipata_genera_anticipi(db, quote_terzi, sandro, bruna, fabio):
+def test_spesa_anticipata_genera_anticipi(db, immobile, quote_terzi, sandro, bruna, fabio):
     """Sandro anticipa 1200 IMU: anticipi_pendenti = (1-0.5)*1200 = 600."""
-    cat = ExpenseCategory.objects.create(nome="IMU", codice="imu")
+    cat = ExpenseCategory.objects.create(property=immobile, nome="IMU", codice="imu")
     Expense.objects.create(
+        property=immobile,
         data=datetime.date(2025, 6, 16),
         category=cat,
         importo=Decimal("1200"),
         descrizione="IMU 2025 acconto",
         anticipata_da_owner=sandro,
     )
-    saldi = calcola_saldi_correnti(datetime.date(2025, 6, 30))
+    saldi = calcola_saldi_correnti(immobile, datetime.date(2025, 6, 30))
     assert saldi[sandro].totale == Decimal("600.00")
     assert saldi[sandro].anticipi_pendenti == Decimal("600.00")
     assert saldi[bruna].totale == Decimal("-300.00")
@@ -141,11 +144,12 @@ def test_spesa_anticipata_genera_anticipi(db, quote_terzi, sandro, bruna, fabio)
     assert saldi[bruna].spese_per_categoria[chiave] == Decimal("-300.00")
 
 
-def test_spesa_con_riferimento_quota_owner(db, quote_terzi, sandro, bruna, fabio):
+def test_spesa_con_riferimento_quota_owner(db, immobile, quote_terzi, sandro, bruna, fabio):
     """Bruna paga 1200 di IMU *di Fabio*: niente pro-quota. Bruna vanta
     credito intero su Fabio, Sandro non c'entra."""
-    cat = ExpenseCategory.objects.create(nome="IMU", codice="imu")
+    cat = ExpenseCategory.objects.create(property=immobile, nome="IMU", codice="imu")
     Expense.objects.create(
+        property=immobile,
         data=datetime.date(2025, 6, 16),
         category=cat,
         importo=Decimal("1200"),
@@ -153,7 +157,7 @@ def test_spesa_con_riferimento_quota_owner(db, quote_terzi, sandro, bruna, fabio
         anticipata_da_owner=bruna,
         riferimento_quota_owner=fabio,
     )
-    saldi = calcola_saldi_correnti(datetime.date(2025, 6, 30))
+    saldi = calcola_saldi_correnti(immobile, datetime.date(2025, 6, 30))
     assert saldi[bruna].totale == Decimal("1200")
     assert saldi[bruna].anticipi_pendenti == Decimal("1200")
     assert saldi[fabio].totale == Decimal("-1200")
@@ -164,10 +168,11 @@ def test_spesa_con_riferimento_quota_owner(db, quote_terzi, sandro, bruna, fabio
     assert chiave not in saldi[sandro].spese_per_categoria
 
 
-def test_spesa_personale_pagata_da_se_non_tocca_i_saldi(db, quote_terzi, sandro, bruna, fabio):
+def test_spesa_personale_pagata_da_se_non_tocca_i_saldi(db, immobile, quote_terzi, sandro, bruna, fabio):
     """Fabio paga la propria IMU (riferimento = anticipante): nessun effetto."""
-    cat = ExpenseCategory.objects.create(nome="IMU", codice="imu")
+    cat = ExpenseCategory.objects.create(property=immobile, nome="IMU", codice="imu")
     Expense.objects.create(
+        property=immobile,
         data=datetime.date(2025, 6, 16),
         category=cat,
         importo=Decimal("1200"),
@@ -175,16 +180,17 @@ def test_spesa_personale_pagata_da_se_non_tocca_i_saldi(db, quote_terzi, sandro,
         anticipata_da_owner=fabio,
         riferimento_quota_owner=fabio,
     )
-    saldi = calcola_saldi_correnti(datetime.date(2025, 6, 30))
+    saldi = calcola_saldi_correnti(immobile, datetime.date(2025, 6, 30))
     for s in saldi.values():
         assert s.totale == Decimal("0")
         assert s.spese_per_categoria == {}
 
 
-def test_settlement_baseline_e_periodo_aperto(db, quote_terzi, sandro, bruna, fabio, assignment):
+def test_settlement_baseline_e_periodo_aperto(db, immobile, quote_terzi, sandro, bruna, fabio, assignment):
     """Settlement 2024 chiude i conti: i flussi precedenti non entrano nel
     calcolo live, baseline_settlement esprime la posizione di partenza."""
     OwnerSettlement.objects.create(
+        property=immobile,
         data=datetime.date(2024, 12, 31),
         periodo_da=datetime.date(2024, 1, 1),
         periodo_a=datetime.date(2024, 12, 31),
@@ -204,7 +210,7 @@ def test_settlement_baseline_e_periodo_aperto(db, quote_terzi, sandro, bruna, fa
         stato=StatoPagamento.PAGATO,
         incassato_da_owner=bruna,
     )
-    saldi = calcola_saldi_correnti(datetime.date(2025, 6, 30))
+    saldi = calcola_saldi_correnti(immobile, datetime.date(2025, 6, 30))
     # Solo baseline, niente flussi nel periodo
     assert saldi[sandro].totale == Decimal("100.00")
     assert saldi[sandro].baseline_settlement == Decimal("100.00")
@@ -212,7 +218,7 @@ def test_settlement_baseline_e_periodo_aperto(db, quote_terzi, sandro, bruna, fa
     assert saldi[bruna].incassi_per_causale == {}
 
 
-def test_bt_inter_owner_marcata(db, quote_terzi, sandro, bruna, fabio, conto_bruna):
+def test_bt_inter_owner_marcata(db, immobile, quote_terzi, sandro, bruna, fabio, conto_bruna):
     """Una BT marcata genera voci ledger A che entrano nel saldo."""
     bt = BankTransaction.objects.create(
         data=datetime.date(2025, 5, 10),
@@ -222,6 +228,7 @@ def test_bt_inter_owner_marcata(db, quote_terzi, sandro, bruna, fabio, conto_bru
     )
     # Sandro paga 700 a Bruna come conguaglio: Bruna riceve, Sandro paga
     OwnerLedgerEntry.objects.create(
+        property=immobile,
         owner=bruna,
         data=bt.data,
         descrizione="Conguaglio da Sandro",
@@ -230,6 +237,7 @@ def test_bt_inter_owner_marcata(db, quote_terzi, sandro, bruna, fabio, conto_bru
         bank_transaction=bt,
     )
     OwnerLedgerEntry.objects.create(
+        property=immobile,
         owner=sandro,
         data=bt.data,
         descrizione="Pagamento conguaglio a Bruna",
@@ -237,7 +245,7 @@ def test_bt_inter_owner_marcata(db, quote_terzi, sandro, bruna, fabio, conto_bru
         tipo=OwnerLedgerEntry.TipoVoce.AGGIUSTAMENTO,
         bank_transaction=bt,
     )
-    saldi = calcola_saldi_correnti(datetime.date(2025, 6, 30))
+    saldi = calcola_saldi_correnti(immobile, datetime.date(2025, 6, 30))
     assert saldi[bruna].bt_inter_owner == Decimal("700")
     assert saldi[sandro].bt_inter_owner == Decimal("-700")
     assert saldi[fabio].bt_inter_owner == Decimal("0")
@@ -245,9 +253,9 @@ def test_bt_inter_owner_marcata(db, quote_terzi, sandro, bruna, fabio, conto_bru
     assert saldi[sandro].totale == Decimal("-700")
 
 
-def test_at_date_anteriore_a_quote_torna_dict_vuoto(db, quote_terzi):
+def test_at_date_anteriore_a_quote_torna_dict_vuoto(db, immobile, quote_terzi):
     """Prima del valid_from delle quote nessun saldo è calcolabile."""
-    saldi = calcola_saldi_correnti(datetime.date(2019, 1, 1))
+    saldi = calcola_saldi_correnti(immobile, datetime.date(2019, 1, 1))
     assert saldi == {}
 
 
@@ -256,7 +264,7 @@ def test_at_date_anteriore_a_quote_torna_dict_vuoto(db, quote_terzi):
 # ---------------------------------------------------------------------------
 
 
-def test_quadratura_ok_con_flussi_completi(db, quote_terzi, sandro, bruna, fabio, assignment):
+def test_quadratura_ok_con_flussi_completi(db, immobile, quote_terzi, sandro, bruna, fabio, assignment):
     Receivable.objects.create(
         assignment=assignment,
         causale=Receivable.Causale.AFFITTO,
@@ -270,15 +278,15 @@ def test_quadratura_ok_con_flussi_completi(db, quote_terzi, sandro, bruna, fabio
         incassato_da_owner=bruna,
     )
     at = datetime.date(2025, 6, 30)
-    saldi = calcola_saldi_correnti(at)
-    q = verifica_quadratura(at, saldi)
+    saldi = calcola_saldi_correnti(immobile, at)
+    q = verifica_quadratura(immobile, at, saldi)
     assert q.quadra is True
     assert q.somma_saldi == Decimal("0.00")
     assert q.receivable_orfani == []
     assert q.expense_orfane == []
 
 
-def test_quadratura_segnala_receivable_senza_incassante(db, quote_terzi, assignment):
+def test_quadratura_segnala_receivable_senza_incassante(db, immobile, quote_terzi, assignment):
     """Receivable pagato senza incassato_da_owner: escluso dai saldi, ma la
     quadratura lo porta a galla."""
     r = Receivable.objects.create(
@@ -294,20 +302,21 @@ def test_quadratura_segnala_receivable_senza_incassante(db, quote_terzi, assignm
         incassato_da_owner=None,
     )
     at = datetime.date(2025, 6, 30)
-    saldi = calcola_saldi_correnti(at)
-    q = verifica_quadratura(at, saldi)
+    saldi = calcola_saldi_correnti(immobile, at)
+    q = verifica_quadratura(immobile, at, saldi)
     assert q.quadra is False
     assert [o["id"] for o in q.receivable_orfani] == [r.pk]
     assert "incassato da" in q.receivable_orfani[0]["motivo"]
 
 
-def test_quadratura_segnala_anticipante_senza_quota(db, quote_terzi, sandro, bruna, fabio):
+def test_quadratura_segnala_anticipante_senza_quota(db, immobile, quote_terzi, sandro, bruna, fabio):
     """Spesa anticipata da un owner senza quota attiva: la somma dei saldi
     non fa più zero e la spesa è elencata fra le orfane."""
     u = User.objects.create_user("x_sl", email="x_sl@v.it", password="pwd")
     esterno = OwnerProfile.objects.create(user=u, nominativo="Esterno")
-    cat = ExpenseCategory.objects.create(nome="IMU", codice="imu")
+    cat = ExpenseCategory.objects.create(property=immobile, nome="IMU", codice="imu")
     e = Expense.objects.create(
+        property=immobile,
         data=datetime.date(2025, 6, 16),
         category=cat,
         importo=Decimal("1200"),
@@ -315,8 +324,8 @@ def test_quadratura_segnala_anticipante_senza_quota(db, quote_terzi, sandro, bru
         anticipata_da_owner=esterno,
     )
     at = datetime.date(2025, 6, 30)
-    saldi = calcola_saldi_correnti(at)
-    q = verifica_quadratura(at, saldi)
+    saldi = calcola_saldi_correnti(immobile, at)
+    q = verifica_quadratura(immobile, at, saldi)
     assert q.quadra is False
     assert q.somma_saldi == Decimal("-1200.00")
     assert [o["id"] for o in q.expense_orfane] == [e.pk]
@@ -327,12 +336,12 @@ def test_quadratura_segnala_anticipante_senza_quota(db, quote_terzi, sandro, bru
 # ---------------------------------------------------------------------------
 
 
-def test_piano_rientro_saldi_zero_vuoto(db, quote_terzi):
-    saldi = calcola_saldi_correnti(datetime.date(2025, 6, 30))
+def test_piano_rientro_saldi_zero_vuoto(db, immobile, quote_terzi):
+    saldi = calcola_saldi_correnti(immobile, datetime.date(2025, 6, 30))
     assert calcola_piano_rientro(saldi) == []
 
 
-def test_piano_rientro_un_debitore_due_creditori(db, quote_terzi, sandro, bruna, fabio, assignment):
+def test_piano_rientro_un_debitore_due_creditori(db, immobile, quote_terzi, sandro, bruna, fabio, assignment):
     """Bruna incassa 400: deve 200 a Sandro e 100 a Fabio (max creditore prima)."""
     Receivable.objects.create(
         assignment=assignment,
@@ -346,7 +355,7 @@ def test_piano_rientro_un_debitore_due_creditori(db, quote_terzi, sandro, bruna,
         stato=StatoPagamento.PAGATO,
         incassato_da_owner=bruna,
     )
-    saldi = calcola_saldi_correnti(datetime.date(2025, 6, 30))
+    saldi = calcola_saldi_correnti(immobile, datetime.date(2025, 6, 30))
     piano = calcola_piano_rientro(saldi)
     assert [(v["da"], v["a"], v["importo"]) for v in piano] == [
         (bruna, sandro, Decimal("200.00")),
@@ -354,7 +363,7 @@ def test_piano_rientro_un_debitore_due_creditori(db, quote_terzi, sandro, bruna,
     ]
 
 
-def test_piano_rientro_compensa_flussi_incrociati(db, quote_terzi, sandro, bruna, fabio, assignment):
+def test_piano_rientro_compensa_flussi_incrociati(db, immobile, quote_terzi, sandro, bruna, fabio, assignment):
     """Incasso di Bruna (400) + spesa anticipata da Bruna (1200): saldi netti
     Bruna +600, Sandro -400, Fabio -200 → due bonifici verso Bruna."""
     Receivable.objects.create(
@@ -369,15 +378,16 @@ def test_piano_rientro_compensa_flussi_incrociati(db, quote_terzi, sandro, bruna
         stato=StatoPagamento.PAGATO,
         incassato_da_owner=bruna,
     )
-    cat = ExpenseCategory.objects.create(nome="IMU", codice="imu")
+    cat = ExpenseCategory.objects.create(property=immobile, nome="IMU", codice="imu")
     Expense.objects.create(
+        property=immobile,
         data=datetime.date(2025, 6, 16),
         category=cat,
         importo=Decimal("1200"),
         descrizione="IMU 2025 acconto",
         anticipata_da_owner=bruna,
     )
-    saldi = calcola_saldi_correnti(datetime.date(2025, 6, 30))
+    saldi = calcola_saldi_correnti(immobile, datetime.date(2025, 6, 30))
     assert saldi[bruna].totale == Decimal("600.00")
     assert saldi[sandro].totale == Decimal("-400.00")
     assert saldi[fabio].totale == Decimal("-200.00")

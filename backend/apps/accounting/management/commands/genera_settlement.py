@@ -12,6 +12,7 @@ import datetime
 from django.core.management.base import BaseCommand, CommandError
 
 from accounting.services.settlement import SettlementGiaEsistente, genera_settlement
+from properties.context import resolve_property_cli
 
 
 class Command(BaseCommand):
@@ -33,6 +34,12 @@ class Command(BaseCommand):
             "--periodo-a",
             type=datetime.date.fromisoformat,
             help="Fine periodo (YYYY-MM-DD).",
+        )
+        parser.add_argument(
+            "--property",
+            type=str,
+            default=None,
+            help="Immobile (id o nome). Obbligatorio se ci sono più immobili.",
         )
         parser.add_argument(
             "--descrizione",
@@ -61,7 +68,13 @@ class Command(BaseCommand):
                 raise CommandError("Con --periodo-da serve anche --periodo-a.")
 
         try:
+            prop = resolve_property_cli(opts["property"])
+        except ValueError as exc:
+            raise CommandError(str(exc)) from exc
+
+        try:
             settlement = genera_settlement(
+                prop,
                 periodo_da,
                 periodo_a,
                 descrizione=opts["descrizione"],

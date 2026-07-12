@@ -85,6 +85,7 @@ def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list]:
     # periodo_da <= P_a AND periodo_a >= P_da.
     bills = (
         UtilityBill.objects.filter(
+            immobile_id=period.property_id,
             prodotto__in=VOCI_FATTURABILI,
             periodo_da__lte=P_a,
             periodo_a__gte=P_da,
@@ -121,7 +122,7 @@ def _mesi_coperti(da: date, a: date) -> int:
     return (a.year - da.year) * 12 + (a.month - da.month) + 1
 
 
-def _raccoglie_voci_annual(periodo_da: date, periodo_a: date) -> dict[str, Decimal]:
+def _raccoglie_voci_annual(property_id: int, periodo_da: date, periodo_a: date) -> dict[str, Decimal]:
     """
     Calcola la quota TARI (AnnualUtilityCost) per il periodo corrente.
 
@@ -140,10 +141,12 @@ def _raccoglie_voci_annual(periodo_da: date, periodo_a: date) -> dict[str, Decim
     totali: dict[str, Decimal] = {}
 
     annual_costs = AnnualUtilityCost.objects.filter(
+        property_id=property_id,
         valid_from__lte=periodo_a,
     ).filter(
         valid_to__isnull=True,
     ) | AnnualUtilityCost.objects.filter(
+        property_id=property_id,
         valid_from__lte=periodo_a,
         valid_to__gte=periodo_da,
     )
@@ -236,7 +239,7 @@ def calcola_conguaglio_periodo(
         }
     totali_per_voce: dict[str, Decimal] = dict(contributi)
     # TARI e altri costi annuali (aggiunti solo se ci sono bollette)
-    totali_annual = _raccoglie_voci_annual(periodo_da, periodo_a)
+    totali_annual = _raccoglie_voci_annual(period.property_id, periodo_da, periodo_a)
     for voce, importo in totali_annual.items():
         totali_per_voce[voce] = totali_per_voce.get(voce, Decimal("0.00")) + importo
 
@@ -246,10 +249,12 @@ def calcola_conguaglio_periodo(
     # Un assignment e' attivo nel periodo se:
     #   valid_from <= periodo_a AND (valid_to IS NULL OR valid_to >= periodo_da)
     assignments_qs = RoomAssignment.objects.filter(
+        room__property_id=period.property_id,
         valid_from__lte=periodo_a,
     ).filter(
         valid_to__isnull=True,
     ) | RoomAssignment.objects.filter(
+        room__property_id=period.property_id,
         valid_from__lte=periodo_a,
         valid_to__gte=periodo_da,
     )

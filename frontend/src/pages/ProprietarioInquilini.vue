@@ -7,6 +7,16 @@
       </div>
       <div class="vp-p-inq__controls">
         <q-btn
+          v-if="puoModificare"
+          unelevated
+          color="primary"
+          icon="person_add"
+          label="Nuovo inquilino"
+          no-caps
+          data-testid="nuovo-inquilino"
+          @click="apriDialogNuovoInquilino"
+        />
+        <q-btn
           unelevated
           color="primary"
           icon="payments"
@@ -100,15 +110,83 @@
         </q-td>
       </template>
     </q-table>
+
+    <!-- Dialog nuovo inquilino -->
+    <q-dialog v-model="dialogNuovo">
+      <q-card style="min-width: 420px">
+        <q-card-section>
+          <div class="vp-p-inq__dialog-titolo">Nuovo inquilino</div>
+        </q-card-section>
+        <q-card-section class="q-gutter-md">
+          <q-input
+            v-model="formNuovo.nominativo"
+            label="Nominativo"
+            outlined
+            dense
+            autofocus
+            data-testid="nuovo-inquilino-nominativo"
+          />
+          <q-input
+            v-model="formNuovo.email"
+            label="Email (facoltativa, serve per l'invito)"
+            type="email"
+            outlined
+            dense
+            data-testid="nuovo-inquilino-email"
+          />
+          <q-input
+            v-model="formNuovo.telefono"
+            label="Telefono"
+            outlined
+            dense
+          />
+          <q-input
+            v-model="formNuovo.giorno_pagamento_affitto"
+            label="Giorno pagamento affitto (1-28)"
+            type="number"
+            min="1"
+            max="28"
+            outlined
+            dense
+            data-testid="nuovo-inquilino-giorno"
+          />
+          <q-select
+            v-model="formNuovo.frequenza_conguagli"
+            :options="opzioniFrequenzaConguagli"
+            label="Frequenza conguagli utenze"
+            outlined
+            dense
+            emit-value
+            map-options
+          />
+          <q-banner v-if="erroreNuovo" class="vp-p-inq__banner-errore" rounded dense>
+            {{ erroreNuovo }}
+          </q-banner>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn v-close-popup flat label="Annulla" />
+          <q-btn
+            color="primary"
+            label="Crea inquilino"
+            :loading="salvandoNuovo"
+            data-testid="nuovo-inquilino-salva"
+            @click="creaInquilino"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { isAxiosError } from 'axios';
 import { useQuasar, type QTableProps } from 'quasar';
+import { api } from 'boot/axios';
 import { useTenantsStore, type Tenant } from 'stores/tenants';
 import { useAuthStore } from 'stores/auth';
+import { usePropertiesStore } from 'stores/properties';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 
 const { formattaEuro } = useFormatoEuro();
@@ -117,7 +195,12 @@ const router = useRouter();
 const route = useRoute();
 const store = useTenantsStore();
 const auth = useAuthStore();
+const propStore = usePropertiesStore();
 const $q = useQuasar();
+
+const puoModificare = computed(
+  () => propStore.mioRuolo === 'proprietario' || propStore.mioRuolo === 'gestore',
+);
 
 const annoCorrente = new Date().getFullYear();
 const annoMin = annoCorrente - 5;
@@ -231,6 +314,115 @@ function apri(t: Tenant, tab: 'pagamenti' | 'profilo' = 'pagamenti') {
   });
 }
 
+// --- Nuovo inquilino (dialog additivo) -------------------------------------
+
+const dialogNuovo = ref(false);
+const salvandoNuovo = ref(false);
+const erroreNuovo = ref('');
+interface FormNuovoInquilino {
+  nominativo: string;
+  email: string;
+  telefono: string;
+  giorno_pagamento_affitto: string;
+  frequenza_conguagli: 'mensile' | 'bimestrale';
+}
+
+const formNuovo = ref<FormNuovoInquilino>({
+  nominativo: '',
+  email: '',
+  telefono: '',
+  giorno_pagamento_affitto: '5',
+  frequenza_conguagli: 'mensile',
+});
+
+const opzioniFrequenzaConguagli = [
+  { label: 'Mensile', value: 'mensile' },
+  { label: 'Bimestrale', value: 'bimestrale' },
+];
+
+function messaggioErrore(e: unknown, fallback: string): string {
+  if (isAxiosError(e)) {
+    const data = e.response?.data as Record<string, unknown> | undefined;
+    if (data && typeof data === 'object') {
+      if (typeof data.detail === 'string') return data.detail;
+      for (const valore of Object.values(data)) {
+        if (typeof valore === 'string') return valore;
+        if (Array.isArray(valore) && typeof valore[0] === 'string') return valore[0];
+      }
+    }
+  }
+  return fallback;
+}
+
+function apriDialogNuovoInquilino() {
+  erroreNuovo.value = '';
+  formNuovo.value = {
+    nominativo: '',
+    email: '',
+    telefono: '',
+    giorno_pagamento_affitto: '5',
+    frequenza_conguagli: 'mensile',
+  };
+  dialogNuovo.value = true;
+}
+
+async function creaInquilino() {
+  erroreNuovo.value = '';
+  const f = formNuovo.value;
+  if (!f.nominativo.trim()) {
+    erroreNuovo.value = 'Il nominativo è obbligatorio.';
+    return;
+  }
+  const giorno = Number(f.giorno_pagamento_affitto);
+  if (!Number.isInteger(giorno) || giorno < 1 || giorno > 28) {
+    erroreNuovo.value = 'Il giorno di pagamento deve essere tra 1 e 28.';
+    return;
+  }
+  salvandoNuovo.value = true;
+  try {
+    const { data: creato } = await api.post<Tenant>('/api/v1/tenants/', {
+      nominativo: f.nominativo.trim(),
+      email: f.email.trim(),
+      telefono: f.telefono.trim(),
+      giorno_pagamento_affitto: giorno,
+      frequenza_conguagli: f.frequenza_conguagli,
+    });
+    dialogNuovo.value = false;
+    $q.notify({ type: 'positive', message: `Inquilino ${creato.nominativo} creato.` });
+    // Ricarica le liste correnti (la vista attiva e l'eventuale "tutti").
+    void store.fetchTenantsAnno(annoSelezionato.value, true);
+    if (mostraTutti.value) void store.fetchTenants(false, true);
+    if (f.email.trim()) proponiInvito(creato);
+  } catch (e: unknown) {
+    erroreNuovo.value = messaggioErrore(e, 'Creazione non riuscita.');
+  } finally {
+    salvandoNuovo.value = false;
+  }
+}
+
+function proponiInvito(t: Tenant) {
+  $q.dialog({
+    title: 'Inviare l\'invito?',
+    message: `Inviare a ${t.nominativo} l'email di primo accesso (${t.email ?? ''})?`,
+    cancel: { flat: true, label: 'Più tardi' },
+    ok: { color: 'primary', label: 'Invia invito' },
+  }).onOk(() => {
+    void (async () => {
+      try {
+        const { data } = await api.post<{ esito: string; email: string; errore?: string }>(
+          `/api/v1/tenants/${t.id}/invita/`,
+        );
+        $q.notify({ type: 'positive', message: `Invito inviato a ${data.email}.` });
+      } catch (e: unknown) {
+        $q.notify({
+          type: 'negative',
+          message: messaggioErrore(e, 'Invio dell\'invito non riuscito.'),
+        });
+      }
+    })();
+  });
+}
+
 // Impersonation diretta dalla lista ("vedi come questo inquilino").
 const impersonandoId = ref<number | null>(null);
 async function impersona(t: Tenant) {
@@ -292,5 +484,14 @@ async function impersona(t: Tenant) {
 }
 .vp-mono {
   font-variant-numeric: tabular-nums;
+}
+.vp-p-inq__dialog-titolo {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--vp-ink-1);
+}
+.vp-p-inq__banner-errore {
+  background: var(--vp-clay-soft, #fbeae5);
+  color: var(--vp-clay-deep, #8c3b21);
 }
 </style>

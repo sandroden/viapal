@@ -248,20 +248,21 @@ class Command(BaseCommand):
             self.reset_db()
 
         self.crea_gruppi()
-        owner_profiles = self.crea_proprietari()
-        self.crea_quote(owner_profiles)
+        prop = self.crea_property()
+        owner_profiles = self.crea_proprietari(prop)
+        self.crea_quote(prop, owner_profiles)
         self.crea_iban(owner_profiles)
-        tenant_profiles = self.crea_inquilini()
-        rooms = self.crea_stanze()
-        contratto_vecchio = self.crea_contratto(CONTRATTO_VECCHIO, "vecchio")
-        contratto_nuovo = self.crea_contratto(CONTRATTO_NUOVO, "nuovo")
+        tenant_profiles = self.crea_inquilini(prop)
+        rooms = self.crea_stanze(prop)
+        contratto_vecchio = self.crea_contratto(prop, CONTRATTO_VECCHIO, "vecchio")
+        contratto_nuovo = self.crea_contratto(prop, CONTRATTO_NUOVO, "nuovo")
         self.crea_assignment(rooms, tenant_profiles, contratto_vecchio, contratto_nuovo)
-        self.crea_tari()
-        self.crea_supplier()
-        self.crea_template_e_reminder()
+        self.crea_tari(prop)
+        self.crea_supplier(prop)
+        self.crea_template_e_reminder(prop)
 
         if not opts["skip_bills"]:
-            self.import_bollette()
+            self.import_bollette(prop)
         if not opts["skip_bank"]:
             self.import_bank()
 
@@ -301,7 +302,19 @@ class Command(BaseCommand):
         Group.objects.get_or_create(name="proprietari")
         Group.objects.get_or_create(name="inquilini")
 
-    def crea_proprietari(self):
+    def crea_property(self):
+        from properties.models import Property
+
+        prop, _ = Property.objects.get_or_create(
+            nome="Via Palestrina",
+            defaults={"indirizzo": "Via Palestrina, Monza"},
+        )
+        self.stdout.write(f"  immobile: {prop.nome}")
+        return prop
+
+    def crea_proprietari(self, prop):
+        from properties.models import PropertyMembership
+
         gruppo = Group.objects.get(name="proprietari")
         out = {}
         for p in PROPRIETARI:
@@ -325,17 +338,29 @@ class Command(BaseCommand):
                 },
             )
             out[p["username"]] = op
+            PropertyMembership.objects.get_or_create(
+                property=prop,
+                user=user,
+                defaults={"ruolo": PropertyMembership.Ruolo.PROPRIETARIO},
+            )
+
+        # Convenzione: Sandro anticipa i costi di cessione.
+        sandro = out.get("sandro")
+        if sandro and prop.owner_anticipa_cessioni_id is None:
+            prop.owner_anticipa_cessioni = sandro
+            prop.save(update_fields=["owner_anticipa_cessioni"])
+
         self.stdout.write(self.style.SUCCESS(f"  proprietari: {len(out)}"))
         return out
 
-    def crea_quote(self, owner_profiles):
+    def crea_quote(self, prop, owner_profiles):
         # 1/3 ognuno dal 2023-09-01 (inizio contratto vecchio), valid_to=None
         # NB: il modello accetta che la somma sia <= 1, qui mettiamo esattamente 1
         from decimal import ROUND_HALF_UP
         quote = [Decimal("0.3334"), Decimal("0.3333"), Decimal("0.3333")]
         for op, q in zip(owner_profiles.values(), quote):
             OwnershipShare.objects.update_or_create(
-                owner=op, valid_from=date(2023, 9, 1),
+                property=prop, owner=op, valid_from=date(2023, 9, 1),
                 defaults={"valid_to": None, "quota": q},
             )
         self.stdout.write("  quote: 1/3 cadauno dal 2023-09-01")
@@ -356,7 +381,7 @@ class Command(BaseCommand):
             )
         self.stdout.write("  IBAN proprietari: aggiornati")
 
-    def crea_inquilini(self):
+    def crea_inquilini(self, prop):
         gruppo = Group.objects.get(name="inquilini")
         out = {}
         for p in INQUILINI:
@@ -374,6 +399,7 @@ class Command(BaseCommand):
             tp, _ = TenantProfile.objects.update_or_create(
                 user=user,
                 defaults={
+                    "property": prop,
                     "nominativo": p["nominativo"],
                     "codice_fiscale": p["cf"],
                     "giorno_pagamento_affitto": p["giorno_pagamento"],
@@ -385,21 +411,22 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"  inquilini: {len(out)}"))
         return out
 
-    def crea_stanze(self):
+    def crea_stanze(self, prop):
         out = {}
         for s in STANZE:
             r, _ = Room.objects.update_or_create(
                 nome=s["nome"],
-                defaults={"ordinamento": s["ordinamento"]},
+                defaults={"property": prop, "ordinamento": s["ordinamento"]},
             )
             out[s["codice"]] = r
         self.stdout.write(self.style.SUCCESS(f"  stanze: {len(out)}"))
         return out
 
-    def crea_contratto(self, cfg, label):
+    def crea_contratto(self, prop, cfg, label):
         c, _ = Contract.objects.update_or_create(
             data_stipula=cfg["data_stipula"],
             defaults={
+                "property": prop,
                 "data_decorrenza": cfg["data_decorrenza"],
                 "durata_anni": cfg["durata_anni"],
                 "asseverato": cfg["asseverato"],
@@ -504,34 +531,36 @@ class Command(BaseCommand):
         n = RoomAssignment.objects.count()
         self.stdout.write(self.style.SUCCESS(f"  assignment: {n}"))
 
-    def crea_tari(self):
+    def crea_tari(self, prop):
         AnnualUtilityCost.objects.update_or_create(
-            voce="tari", anno=2024,
+            property=prop, voce="tari", anno=2024,
             defaults={"importo_annuale": Decimal("510.00"),
                       "valid_from": date(2024, 1, 1), "valid_to": date(2024, 12, 31)},
         )
         AnnualUtilityCost.objects.update_or_create(
-            voce="tari", anno=2025,
+            property=prop, voce="tari", anno=2025,
             defaults={"importo_annuale": Decimal("510.00"),
                       "valid_from": date(2025, 1, 1), "valid_to": date(2025, 12, 31)},
         )
         AnnualUtilityCost.objects.update_or_create(
-            voce="tari", anno=2026,
+            property=prop, voce="tari", anno=2026,
             defaults={"importo_annuale": Decimal("520.00"),
                       "valid_from": date(2026, 1, 1), "valid_to": None},
         )
         self.stdout.write("  TARI: 2024+2025+2026")
 
-    def crea_supplier(self):
+    def crea_supplier(self, prop):
         for nome, tipo in [
             ("Enel Energia", "energia"), ("Acea Energia", "energia"),
             ("Edison", "energia"), ("Wind/WindTre", "energia"),
             ("Eni Plenitude", "gas"),
         ]:
-            Supplier.objects.update_or_create(nome=nome, defaults={"tipo": tipo})
+            Supplier.objects.update_or_create(
+                property=prop, nome=nome, defaults={"tipo": tipo},
+            )
         self.stdout.write("  supplier: 5")
 
-    def crea_template_e_reminder(self):
+    def crea_template_e_reminder(self, prop):
         templates = [
             ("promemoria_affitto_pre", "Affitto in scadenza",
              "Ciao {{nominativo}}, manca 1 giorno alla scadenza del canone di {{importo}} per {{periodo}}."),
@@ -544,7 +573,7 @@ class Command(BaseCommand):
         ]
         for codice, titolo, corpo in templates:
             MessageTemplate.objects.update_or_create(
-                codice=codice,
+                property=prop, codice=codice,
                 defaults={"titolo": titolo, "corpo": corpo, "canale": "push"},
             )
 
@@ -560,7 +589,7 @@ class Command(BaseCommand):
         ]
         for app, off, can, dest, attiva in regole:
             ReminderRule.objects.get_or_create(
-                applicabile_a=app, giorni_offset=off, canale=can,
+                property=prop, applicabile_a=app, giorni_offset=off, canale=can,
                 destinatario=dest, defaults={"attiva": attiva},
             )
         self.stdout.write("  template + reminder rules: 4 + 8")
@@ -601,7 +630,7 @@ class Command(BaseCommand):
                     n_creati += 1
         return n_creati
 
-    def import_bollette(self):
+    def import_bollette(self, prop):
         path = DATI_DIR / "bollette.csv"
         if not path.exists():
             self.stdout.write(self.style.WARNING(f"  bollette: {path} mancante, skip"))
@@ -633,6 +662,7 @@ class Command(BaseCommand):
                 bill, created = UtilityBill.objects.get_or_create(
                     supplier=supp, numero_fattura=numero,
                     defaults={
+                        "immobile": prop,
                         "data_emissione": data_emiss,
                         "periodo_da": periodo_da,
                         "periodo_a": periodo_a,

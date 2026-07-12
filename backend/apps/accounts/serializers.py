@@ -28,6 +28,8 @@ class UserSerializer(serializers.ModelSerializer):
     modo che il frontend possa pre-compilare il conto destinatario quando
     l'utente registra un pagamento o una spesa."""
     role = serializers.SerializerMethodField()
+    properties = serializers.SerializerMethodField()
+    default_property_id = serializers.SerializerMethodField()
     owner_profile_id = serializers.SerializerMethodField()
     bank_accounts = serializers.SerializerMethodField()
     is_impersonated = serializers.SerializerMethodField()
@@ -37,9 +39,11 @@ class UserSerializer(serializers.ModelSerializer):
         model = get_user_model()
         fields = ('id', 'username', 'email', 'first_name', 'last_name',
                   'is_staff', 'is_superuser', 'role',
+                  'properties', 'default_property_id',
                   'owner_profile_id', 'bank_accounts',
                   'is_impersonated', 'impersonator_username')
         read_only_fields = ('id', 'is_staff', 'is_superuser', 'role',
+                            'properties', 'default_property_id',
                             'owner_profile_id', 'bank_accounts',
                             'is_impersonated', 'impersonator_username')
 
@@ -63,14 +67,37 @@ class UserSerializer(serializers.ModelSerializer):
         return orig.username
 
     def get_role(self, user):
+        # Lato gestione se membro di almeno un immobile (o gruppo legacy).
+        if user.is_superuser or user.property_memberships.exists():
+            return 'proprietario'
         groups = set(user.groups.values_list('name', flat=True))
         if 'proprietari' in groups:
             return 'proprietario'
         if 'inquilini' in groups:
             return 'inquilino'
-        if user.is_superuser:
-            return 'proprietario'
         return None
+
+    def get_properties(self, user):
+        """Immobili accessibili all'utente, col suo ruolo su ciascuno."""
+        from properties.context import properties_accessibili
+        from properties.models import PropertyMembership
+
+        ruoli = dict(
+            PropertyMembership.objects.filter(user=user).values_list(
+                'property_id', 'ruolo',
+            )
+        )
+        out = []
+        for p in properties_accessibili(user):
+            ruolo = ruoli.get(p.id)
+            if ruolo is None and user.is_superuser:
+                ruolo = PropertyMembership.Ruolo.PROPRIETARIO
+            out.append({'id': p.id, 'nome': p.nome, 'ruolo': ruolo})
+        return out
+
+    def get_default_property_id(self, user):
+        props = self.get_properties(user)
+        return props[0]['id'] if props else None
 
     def _owner_profile(self, user):
         from properties.models import OwnerProfile

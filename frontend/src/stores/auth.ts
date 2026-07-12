@@ -3,6 +3,14 @@ import { api } from 'boot/axios';
 
 export type Role = 'proprietario' | 'inquilino' | null;
 
+export type RuoloProperty = 'proprietario' | 'gestore' | 'sola_lettura';
+
+export interface PropertyInfo {
+  id: number;
+  nome: string;
+  ruolo: RuoloProperty | null;
+}
+
 export interface BankAccountInfo {
   id: number;
   banca: string;
@@ -20,6 +28,8 @@ export interface User {
   is_staff: boolean;
   is_superuser: boolean;
   role: Role;
+  properties: PropertyInfo[];
+  default_property_id: number | null;
   owner_profile_id: number | null;
   bank_accounts: BankAccountInfo[];
   // Impersonation ("vedi come inquilino"): valorizzati quando un proprietario

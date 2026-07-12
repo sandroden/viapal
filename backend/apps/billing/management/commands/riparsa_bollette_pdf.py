@@ -289,10 +289,12 @@ class Command(BaseCommand):
                     or bill.supplier.nome.lower() != dati["fornitore"].lower()
                 ):
                     sup = Supplier.objects.filter(
-                        nome__iexact=dati["fornitore"]
+                        property=bill.immobile,
+                        nome__iexact=dati["fornitore"],
                     ).first()
                     if not sup:
                         sup = Supplier.objects.create(
+                            property=bill.immobile,
                             nome=dati["fornitore"],
                             tipo=Supplier.TipoFornitore.ALTRO,
                         )

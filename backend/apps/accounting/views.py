@@ -33,6 +33,7 @@ from accounting.services.saldi_live import (
 from accounting.services.settlement import SettlementGiaEsistente, genera_settlement
 from accounts.permissions import IsProprietario
 from billing.models.payments import BankTransaction
+from properties.context import get_request_property
 from properties.models import OwnerProfile
 
 
@@ -49,6 +50,9 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
         "bank_transaction",
     ).order_by("-data")
 
+    def get_queryset(self):
+        return super().get_queryset().filter(property=get_request_property(self.request))
+
     @action(detail=False, methods=["post"], url_path="bt-inter-owner")
     def bt_inter_owner_create(self, request):
         """Marca una BankTransaction come transazione inter-owner.
@@ -60,17 +64,34 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
 
+        prop = get_request_property(request)
         bt = get_object_or_404(BankTransaction, pk=d["bank_transaction"])
+        # La BT e l'eventuale controparte devono appartenere al perimetro
+        # dell'immobile della richiesta: niente scritture cross-property.
+        membri = prop.memberships.values_list("user_id", flat=True)
+        if bt.owner_account.owner.user_id not in membri:
+            return Response(
+                {"detail": "La transazione appartiene a un conto estraneo a questo immobile."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         controparte = None
         if d.get("controparte_owner"):
             controparte = get_object_or_404(OwnerProfile, pk=d["controparte_owner"])
+            if controparte.user_id not in membri:
+                return Response(
+                    {"detail": "La controparte non è membro di questo immobile."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
         settlement = None
         if d.get("settlement"):
-            settlement = get_object_or_404(OwnerSettlement, pk=d["settlement"])
+            settlement = get_object_or_404(
+                OwnerSettlement, pk=d["settlement"], property=prop,
+            )
 
         try:
             voci = marca_bt_come_ledger(
                 bt,
+                property=prop,
                 tipo=d["tipo"],
                 controparte_owner=controparte,
                 settlement=settlement,
@@ -93,7 +114,18 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
 
     @action(detail=False, methods=["delete"], url_path=r"bt-inter-owner/(?P<bt_id>\d+)")
     def bt_inter_owner_delete(self, request, bt_id=None):
+        prop = get_request_property(request)
         bt = get_object_or_404(BankTransaction, pk=bt_id)
+        # Le marcature di un altro immobile non si toccano da qui.
+        estranee = (
+            bt.ledger_entries.exclude(property=prop).exists()
+            or bt.inter_owner_entries.exclude(property=prop).exists()
+        )
+        if estranee:
+            return Response(
+                {"detail": "La transazione ha marcature di un altro immobile."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         n = disfa_marcatura(bt)
         return Response({"voci_cancellate": n}, status=status.HTTP_200_OK)
 
@@ -111,8 +143,9 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
                 {"detail": "Parametro `at` non valido (atteso YYYY-MM-DD)."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        saldi = calcola_saldi_correnti(at_date)
-        quadratura = verifica_quadratura(at_date, saldi)
+        prop = get_request_property(request)
+        saldi = calcola_saldi_correnti(prop, at_date)
+        quadratura = verifica_quadratura(prop, at_date, saldi)
         piano = calcola_piano_rientro(saldi)
         items = [
             {
@@ -151,6 +184,9 @@ class OwnerSettlementViewSet(ReadOnlyModelViewSet):
     permission_classes = [IsProprietario]
     queryset = OwnerSettlement.objects.order_by("-data")
 
+    def get_queryset(self):
+        return super().get_queryset().filter(property=get_request_property(self.request))
+
     @action(detail=False, methods=["post"], url_path="genera")
     def genera(self, request):
         """Genera/rigenera un settlement. Con dry_run=True calcola lo
@@ -167,6 +203,7 @@ class OwnerSettlementViewSet(ReadOnlyModelViewSet):
 
         try:
             settlement = genera_settlement(
+                get_request_property(request),
                 periodo_da,
                 periodo_a,
                 descrizione=d.get("descrizione") or None,
@@ -201,3 +238,9 @@ class InterOwnerEntryViewSet(ModelViewSet):
         "riferimento_expense",
         "bank_transaction",
     ).order_by("-data")
+
+    def get_queryset(self):
+        return super().get_queryset().filter(property=get_request_property(self.request))
+
+    def perform_create(self, serializer):
+        serializer.save(property=get_request_property(self.request))

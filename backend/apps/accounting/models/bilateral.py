@@ -4,12 +4,18 @@ Gestisce prestiti personali, trattenute e voci bilaterali.
 """
 from django.db import models
 
-from properties.models import OwnerProfile, TimestampedModel
+from properties.models import OwnerProfile, Property, TimestampedModel
 
 
 class InterOwnerLoan(TimestampedModel):
     """Prestito personale tra due proprietari (es. Sandro a Fabio)."""
 
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.PROTECT,
+        related_name="inter_owner_loans",
+        verbose_name="immobile",
+    )
     owner_da = models.ForeignKey(
         OwnerProfile,
         on_delete=models.PROTECT,
@@ -56,6 +62,12 @@ class InterOwnerLoan(TimestampedModel):
 class InterOwnerEntry(TimestampedModel):
     """Voce del partitario bilaterale tra due proprietari."""
 
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.PROTECT,
+        related_name="inter_owner_entries",
+        verbose_name="immobile",
+    )
     owner_da = models.ForeignKey(
         OwnerProfile,
         on_delete=models.PROTECT,
@@ -135,6 +147,12 @@ class InterOwnerEntry(TimestampedModel):
 class WithholdingRule(TimestampedModel):
     """Regola di trattenuta automatica su distribuzioni tra proprietari."""
 
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.PROTECT,
+        related_name="withholding_rules",
+        verbose_name="immobile",
+    )
     owner_da = models.ForeignKey(
         OwnerProfile,
         on_delete=models.PROTECT,

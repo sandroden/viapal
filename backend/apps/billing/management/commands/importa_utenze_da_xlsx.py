@@ -55,12 +55,23 @@ class Command(BaseCommand):
             "--crea-tenant-mancanti", action="store_true",
             help="Crea TenantProfile per nomi non presenti nel db (storici).",
         )
+        parser.add_argument(
+            "--property", type=str, default=None,
+            help="Immobile (id o nome). Obbligatorio se ci sono più immobili.",
+        )
 
     def handle(self, *args, **opts):
         try:
             from openpyxl import load_workbook
         except ImportError as e:  # noqa
             raise CommandError("openpyxl non installato: `uv add openpyxl`") from e
+
+        from properties.context import resolve_property_cli
+
+        try:
+            prop = resolve_property_cli(opts.get("property"))
+        except ValueError as e:
+            raise CommandError(str(e)) from e
 
         xlsx_path = Path(opts["xlsx_path"]).expanduser().resolve()
         if not xlsx_path.exists():
@@ -81,6 +92,7 @@ class Command(BaseCommand):
                     continue
                 summary = self._import_sheet(
                     wb[sheet_name], anno, dry_run=dry_run, crea_tenant=crea_tenant,
+                    prop=prop,
                 )
                 report.append(summary)
 
@@ -93,7 +105,7 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
     # parser di un foglio
     # ------------------------------------------------------------------
-    def _import_sheet(self, ws, anno: int, dry_run: bool, crea_tenant: bool) -> dict:
+    def _import_sheet(self, ws, anno: int, dry_run: bool, crea_tenant: bool, prop) -> dict:
         from billing.models import Receivable, UtilityChargePeriod
         from properties.models import RoomAssignment, TenantProfile
 
@@ -178,6 +190,7 @@ class Command(BaseCommand):
 
             # ---- persist ----
             period, created = UtilityChargePeriod.objects.update_or_create(
+                property=prop,
                 periodo_da=periodo_da,
                 periodo_a=periodo_a,
                 defaults={
@@ -196,7 +209,7 @@ class Command(BaseCommand):
             scadenza = self._scadenza_periodo(periodo_a)
 
             for nome, quota in quote_per_inq.items():
-                tenant = self._find_tenant(nome, crea_tenant=crea_tenant)
+                tenant = self._find_tenant(nome, crea_tenant=crea_tenant, prop=prop)
                 if tenant is None:
                     tenant_mancanti.add(nome)
                     continue
@@ -298,25 +311,26 @@ class Command(BaseCommand):
         return periodo_a + dt.timedelta(days=5)
 
     @staticmethod
-    def _find_tenant(nominativo_foglio: str, *, crea_tenant: bool):
+    def _find_tenant(nominativo_foglio: str, *, crea_tenant: bool, prop):
         """Cerca TenantProfile per nominativo (case-insensitive, alias gestiti)."""
         from django.contrib.auth.models import User
 
         from properties.models import TenantProfile
 
         nome_norm = nominativo_foglio.strip().lower()
+        base_qs = TenantProfile.objects.filter(property=prop)
 
         # 1) mapping esplicito (più affidabile, preferito su match euristici)
         nome_db = TENANT_DB_NAME.get(nome_norm)
         if nome_db:
-            t = TenantProfile.objects.filter(nominativo__iexact=nome_db).first()
+            t = base_qs.filter(nominativo__iexact=nome_db).first()
             if t:
                 return t
 
         # 2) iexact sui candidati (alias o nome originale)
         candidati = TENANT_ALIASES.get(nome_norm, [nome_norm])
         for cand in candidati:
-            t = TenantProfile.objects.filter(nominativo__iexact=cand).first()
+            t = base_qs.filter(nominativo__iexact=cand).first()
             if t:
                 return t
 
@@ -324,7 +338,7 @@ class Command(BaseCommand):
         # scegliere a caso, l'utente vedrà il warning e aggiungerà l'alias
         # in TENANT_DB_NAME.
         for cand in candidati:
-            qs = TenantProfile.objects.filter(nominativo__icontains=cand)
+            qs = base_qs.filter(nominativo__icontains=cand)
             if qs.count() == 1:
                 return qs.first()
 
@@ -347,6 +361,7 @@ class Command(BaseCommand):
         user.save()
         return TenantProfile.objects.create(
             user=user,
+            property=prop,
             nominativo=nominativo_foglio.title(),
             giorno_pagamento_affitto=1,
             note_pagamento="Inquilino storico, importato da ContiAffittoUtenze.xlsx",

@@ -11,10 +11,11 @@ Uso:
 import datetime
 from decimal import Decimal
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from billing.models import AnnualUtilityCost, Expense, ExpenseCategory
+from properties.context import resolve_property_cli
 from properties.models import OwnerProfile
 
 # (esercizio, data ISO, importo, descrizione)
@@ -58,10 +59,18 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true")
+        parser.add_argument(
+            "--property", type=str, default=None,
+            help="Immobile (id o nome). Obbligatorio se ci sono più immobili.",
+        )
 
     @transaction.atomic
     def handle(self, *args, **opts):
         dry = opts["dry_run"]
+        try:
+            prop = resolve_property_cli(opts.get("property"))
+        except ValueError as e:
+            raise CommandError(str(e)) from e
 
         bruna = OwnerProfile.objects.filter(nominativo__icontains="Bruna").first()
         if not bruna:
@@ -69,6 +78,7 @@ class Command(BaseCommand):
             return
 
         cat_cond, _ = ExpenseCategory.objects.get_or_create(
+            property=prop,
             codice="condominio",
             defaults={
                 "nome": "Spese condominiali",
@@ -76,6 +86,7 @@ class Command(BaseCommand):
             },
         )
         cat_tari, _ = ExpenseCategory.objects.get_or_create(
+            property=prop,
             codice="tari",
             defaults={"nome": "TARI", "ripartibile_inquilini": True},
         )
@@ -87,6 +98,7 @@ class Command(BaseCommand):
             data = datetime.date.fromisoformat(data_iso)
             descrizione = f"Condominio {esercizio} — {sublabel}"
             obj, was_created = Expense.objects.update_or_create(
+                property=prop,
                 data=data,
                 descrizione=descrizione,
                 defaults={
@@ -108,6 +120,7 @@ class Command(BaseCommand):
             data = datetime.date(anno, 10, 16)  # F24 saldo TARI (Sandro)
             descrizione = f"TARI {anno} (F24)"
             obj, was_created = Expense.objects.update_or_create(
+                property=prop,
                 data=data,
                 descrizione=descrizione,
                 defaults={
@@ -126,6 +139,7 @@ class Command(BaseCommand):
 
             # AnnualUtilityCost: importo reale (sostituisce la stima 510)
             auc, auc_created = AnnualUtilityCost.objects.update_or_create(
+                property=prop,
                 voce="tari",
                 anno=anno,
                 defaults={

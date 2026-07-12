@@ -15,6 +15,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from billing.models import Receivable, StatoPagamento
+from properties.context import resolve_property_cli
 from properties.models import RoomAssignment, TenantProfile  # noqa: F401
 
 
@@ -51,9 +52,19 @@ class Command(BaseCommand):
             action="store_true",
             help="Stampa cosa farebbe senza scrivere.",
         )
+        parser.add_argument(
+            "--property",
+            type=str,
+            default=None,
+            help="Immobile (id o nome). Obbligatorio se ci sono più immobili.",
+        )
 
     @transaction.atomic
     def handle(self, *args, **opts):
+        try:
+            prop = resolve_property_cli(opts.get("property"))
+        except ValueError as e:
+            raise CommandError(str(e)) from e
         anno = opts["anno"]
         importo = Decimal(opts["importo"])
         data_invio = _parse_date(opts["data_invio"])
@@ -73,6 +84,7 @@ class Command(BaseCommand):
 
         assignments = (
             RoomAssignment.objects
+            .filter(room__property=prop)
             .filter(valid_from__lte=riferimento)
             .filter(
                 # attivo a fine anno: senza valid_to oppure valid_to dopo riferimento
