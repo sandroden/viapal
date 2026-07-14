@@ -213,8 +213,8 @@
             Foto non disponibili — stanza attualmente occupata
           </div>
           <div v-else class="pgrid">
-            <div v-for="foto in r.foto" :key="foto.id" class="ph">
-              <ImageSlot :url="foto.url" :editable="editMode" :expandable="true" @expand="openLB" @remove="removeImage(foto.id)" />
+            <div v-for="(foto, fi) in r.foto" :key="foto.id" class="ph">
+              <ImageSlot :url="foto.url" :editable="editMode" :expandable="true" @expand="openLB(r.foto, fi)" @remove="removeImage(foto.id)" />
             </div>
             <div v-if="editMode" class="ph ph-add">
               <ImageSlot
@@ -258,8 +258,8 @@
             </EditableText>
           </p>
           <div class="pgrid">
-            <div v-for="foto in a.foto" :key="foto.id" class="ph">
-              <ImageSlot :url="foto.url" :editable="editMode" :expandable="true" @expand="openLB" @remove="removeImage(foto.id)" />
+            <div v-for="(foto, fi) in a.foto" :key="foto.id" class="ph">
+              <ImageSlot :url="foto.url" :editable="editMode" :expandable="true" @expand="openLB(a.foto, fi)" @remove="removeImage(foto.id)" />
             </div>
             <div v-if="editMode" class="ph ph-add">
               <ImageSlot
@@ -320,10 +320,26 @@
         Pagina pubblica · nessun accesso richiesto — per candidarti scrivi tramite il modulo di contatto.
       </footer>
 
-      <!-- Lightbox -->
-      <div class="lightbox" :class="{ open: lbUrl }" @click.self="lbUrl = null">
-        <button class="lightbox-close" @click="lbUrl = null">✕</button>
-        <img v-if="lbUrl" :src="lbUrl" alt="" />
+      <!-- Lightbox: galleria ingrandita navigabile -->
+      <div class="lightbox" :class="{ open: lbOpen }" @click.self="closeLB">
+        <button class="lightbox-close" title="Chiudi (Esc)" @click="closeLB">✕</button>
+        <button
+          v-if="lbList.length > 1"
+          class="lightbox-nav lightbox-prev"
+          title="Precedente (←)"
+          @click.stop="lbPrev"
+        >‹</button>
+        <figure v-if="lbCurrent" class="lightbox-fig" :key="lbCurrent.id">
+          <img :src="lbCurrent.url" alt="" />
+          <figcaption v-if="lbCurrent.didascalia" class="lightbox-cap">{{ lbCurrent.didascalia }}</figcaption>
+        </figure>
+        <button
+          v-if="lbList.length > 1"
+          class="lightbox-nav lightbox-next"
+          title="Successiva (→)"
+          @click.stop="lbNext"
+        >›</button>
+        <div v-if="lbList.length > 1" class="lightbox-count">{{ lbIndex + 1 }} / {{ lbList.length }}</div>
       </div>
 
       <!-- Errore inline -->
@@ -333,7 +349,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import {
@@ -342,6 +358,7 @@ import {
   type AreaPubblica,
   type FactsPubblici,
   type PosizionePubblica,
+  type FotoGalleria,
 } from 'stores/galleria';
 import { useAuthStore } from 'stores/auth';
 import ImageSlot from 'components/ImageSlot.vue';
@@ -353,7 +370,12 @@ const auth = useAuthStore();
 const { galleria: g, loading, uploading, errore } = storeToRefs(store);
 
 const editMode = ref(false);
-const lbUrl = ref<string | null>(null);
+
+// Lightbox: mostra una collezione di foto navigabile (frecce, tasti, contatore).
+const lbList = ref<FotoGalleria[]>([]);
+const lbIndex = ref(0);
+const lbOpen = computed(() => lbList.value.length > 0);
+const lbCurrent = computed<FotoGalleria | null>(() => lbList.value[lbIndex.value] ?? null);
 
 const canEdit = computed(
   () => auth.role === 'proprietario' && !auth.isImpersonating,
@@ -467,8 +489,26 @@ async function eliminaAmbiente(a: AreaPubblica) {
   }
 }
 
-function openLB(url: string) {
-  lbUrl.value = url;
+function openLB(foto: FotoGalleria[], index: number) {
+  lbList.value = foto;
+  lbIndex.value = index;
+}
+function closeLB() {
+  lbList.value = [];
+}
+function lbPrev() {
+  if (!lbList.value.length) return;
+  lbIndex.value = (lbIndex.value - 1 + lbList.value.length) % lbList.value.length;
+}
+function lbNext() {
+  if (!lbList.value.length) return;
+  lbIndex.value = (lbIndex.value + 1) % lbList.value.length;
+}
+function onLBKey(e: KeyboardEvent) {
+  if (!lbOpen.value) return;
+  if (e.key === 'Escape') closeLB();
+  else if (e.key === 'ArrowLeft') lbPrev();
+  else if (e.key === 'ArrowRight') lbNext();
 }
 
 async function load() {
@@ -477,7 +517,11 @@ async function load() {
   if (!auth.loaded) await auth.fetchMe();
 }
 
-onMounted(load);
+onMounted(() => {
+  void load();
+  window.addEventListener('keydown', onLBKey);
+});
+onBeforeUnmount(() => window.removeEventListener('keydown', onLBKey));
 watch(() => route.params.slug, load);
 </script>
 
@@ -584,8 +628,15 @@ watch(() => route.params.slug, load);
 
 .lightbox { position: fixed; inset: 0; background: rgba(15,12,9,.92); z-index: 100; display: none; align-items: center; justify-content: center; padding: 40px; }
 .lightbox.open { display: flex; }
-.lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; }
-.lightbox-close { position: absolute; top: 24px; right: 28px; width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(255,255,255,.12); color: #fff; cursor: pointer; font-size: 18px; }
+.lightbox-fig { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 100%; max-height: 100%; }
+.lightbox-fig img { max-width: min(100%, 1400px); max-height: 82vh; border-radius: 8px; object-fit: contain; }
+.lightbox-cap { color: #f3ede3; font-size: 14px; text-align: center; max-width: 720px; opacity: .92; }
+.lightbox-close { position: absolute; top: 24px; right: 28px; width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(255,255,255,.12); color: #fff; cursor: pointer; font-size: 18px; z-index: 2; }
+.lightbox-close:hover, .lightbox-nav:hover { background: rgba(255,255,255,.24); }
+.lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 52px; height: 52px; border-radius: 50%; border: none; background: rgba(255,255,255,.12); color: #fff; cursor: pointer; font-size: 30px; line-height: 1; display: flex; align-items: center; justify-content: center; z-index: 2; }
+.lightbox-prev { left: 24px; }
+.lightbox-next { right: 24px; }
+.lightbox-count { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); color: #f3ede3; font-family: var(--vp-font-mono); font-size: 13px; background: rgba(0,0,0,.35); padding: 4px 12px; border-radius: 999px; }
 
 .gal-err { position: fixed; bottom: 12px; left: 12px; right: 12px; z-index: 120; background: var(--vp-clay-soft); color: var(--vp-clay); border-radius: 12px; }
 
@@ -595,5 +646,9 @@ watch(() => route.params.slug, load);
   .pgrid { grid-template-columns: repeat(2, 1fr); }
   .pgrid .ph:nth-child(4n+1) { grid-column: span 2; grid-row: span 1; }
   .hero-cta { right: 16px; bottom: 20px; }
+  .lightbox { padding: 16px; }
+  .lightbox-nav { width: 42px; height: 42px; font-size: 24px; }
+  .lightbox-prev { left: 8px; }
+  .lightbox-next { right: 8px; }
 }
 </style>
