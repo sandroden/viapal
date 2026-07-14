@@ -17,6 +17,7 @@ from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from accounts.permissions import IsProprietario, IsInquilinoSelf
 from properties.models import (
     Contract,
+    GalleryArea,
     GalleryImage,
     OwnerBankAccount,
     OwnerProfile,
@@ -28,6 +29,7 @@ from properties.models import (
 )
 from properties.serializers import (
     ContractSerializer,
+    GalleryAreaSerializer,
     GalleryImageSerializer,
     OwnerBankAccountSerializer,
     OwnerProfileSerializer,
@@ -343,17 +345,38 @@ class GalleryImageViewSet(ModelViewSet):
     parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
-        qs = GalleryImage.objects.select_related("property", "room")
+        qs = GalleryImage.objects.select_related("property", "room", "area")
         property_id = self.request.query_params.get("property")
         if property_id:
             qs = qs.filter(property_id=property_id)
         room_id = self.request.query_params.get("room")
         if room_id:
             qs = qs.filter(room_id=room_id)
+        area_id = self.request.query_params.get("area")
+        if area_id:
+            qs = qs.filter(area_id=area_id)
         return qs
 
     def perform_create(self, serializer):
         serializer.save(caricato_da=self.request.user)
+
+
+class GalleryAreaViewSet(ModelViewSet):
+    """Ambienti comuni della galleria (cucina, soggiorno, bagni…).
+
+    Scrittura riservata ai proprietari. Non sono oggetti d'affitto: nessun
+    legame con assegnazioni/canone.
+    """
+
+    serializer_class = GalleryAreaSerializer
+    permission_classes = [IsProprietario]
+
+    def get_queryset(self):
+        qs = GalleryArea.objects.select_related("property")
+        property_id = self.request.query_params.get("property")
+        if property_id:
+            qs = qs.filter(property_id=property_id)
+        return qs
 
 
 class PublicGalleryView(RetrieveAPIView):
@@ -370,5 +393,5 @@ class PublicGalleryView(RetrieveAPIView):
 
     def get_queryset(self):
         return Property.objects.filter(pubblica=True).prefetch_related(
-            "rooms", "rooms__gallery_images", "gallery_images"
+            "rooms", "rooms__gallery_images", "gallery_areas", "gallery_areas__gallery_images"
         )

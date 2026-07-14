@@ -91,6 +91,12 @@
             :class="{ 'is-unavail': !r.disponibile }"
             :href="`#room-${r.id}`"
           >{{ r.nome }}<template v-if="!r.disponibile"> · occupata</template></a>
+          <a
+            v-for="a in aree"
+            :key="'pilla' + a.id"
+            class="pill"
+            :href="`#area-${a.id}`"
+          >{{ a.nome }}</a>
           <a class="pill" href="#posizione">Posizione</a>
         </div>
       </nav>
@@ -132,6 +138,15 @@
                 <span class="legend-name">{{ r.nome }}</span>
                 <span v-if="!r.disponibile" class="legend-tag">Occupata</span>
                 <span class="legend-mq">{{ r.superficie_mq ? `${fmtMq(r.superficie_mq)} mq` : '' }}</span>
+              </a>
+              <a
+                v-for="(a, j) in aree"
+                :key="'lega' + a.id"
+                class="legend-item"
+                :href="`#area-${a.id}`"
+              >
+                <span class="legend-num" :style="{ background: a.colore || 'var(--vp-wood)' }">{{ roomsPubbliche.length + j + 1 }}</span>
+                <span class="legend-name">{{ a.nome }}</span>
               </a>
             </div>
           </div>
@@ -212,6 +227,54 @@
           </div>
         </section>
 
+        <!-- Ambienti comuni (cucina, soggiorno, bagni…): NON oggetti d'affitto -->
+        <section
+          v-for="(a, j) in aree"
+          :key="'area' + a.id"
+          class="room"
+          :id="`area-${a.id}`"
+        >
+          <div class="room-head">
+            <span class="room-dot" :style="{ background: a.colore || 'var(--vp-wood)' }"></span>
+            <h3 class="room-name">
+              {{ roomsPubbliche.length + j + 1 }}.
+              <EditableText :value="a.nome" :editable="editMode" @save="(v) => setArea(a, 'nome', v)">{{ a.nome }}</EditableText>
+            </h3>
+            <q-btn
+              v-if="editMode"
+              flat
+              dense
+              round
+              size="sm"
+              icon="delete_outline"
+              color="negative"
+              @click="eliminaAmbiente(a)"
+            />
+          </div>
+          <p class="room-desc">
+            <EditableText :value="a.descrizione" :editable="editMode" textarea @save="(v) => setArea(a, 'descrizione', v)">
+              {{ a.descrizione || (editMode ? 'Aggiungi una descrizione…' : '') }}
+            </EditableText>
+          </p>
+          <div class="pgrid">
+            <div v-for="foto in a.foto" :key="foto.id" class="ph">
+              <ImageSlot :url="foto.url" :editable="editMode" :expandable="true" @expand="openLB" @remove="removeImage(foto.id)" />
+            </div>
+            <div v-if="editMode" class="ph ph-add">
+              <ImageSlot
+                :editable="true"
+                :uploading="uploading"
+                :placeholder="`Aggiungi foto ${a.nome.toLowerCase()}`"
+                @upload="(f) => uploadAreaImage(a.id, f)"
+              />
+            </div>
+          </div>
+        </section>
+
+        <div v-if="editMode" class="area-add-row">
+          <q-btn outline no-caps color="primary" icon="add" label="Aggiungi ambiente comune" @click="aggiungiAmbiente" />
+        </div>
+
         <!-- Posizione -->
         <section class="block" id="posizione">
           <div class="block-head">
@@ -274,6 +337,7 @@ import { storeToRefs } from 'pinia';
 import {
   useGalleriaStore,
   type StanzaPubblica,
+  type AreaPubblica,
   type FactsPubblici,
   type PosizionePubblica,
 } from 'stores/galleria';
@@ -294,6 +358,7 @@ const canEdit = computed(
 );
 
 const roomsPubbliche = computed(() => g.value?.rooms ?? []);
+const aree = computed(() => g.value?.aree ?? []);
 
 const factsDef = [
   { key: 'mq_totali', label: 'mq totali' },
@@ -377,8 +442,27 @@ async function uploadRoomImage(roomId: number, file: File) {
   if (!g.value) return;
   await store.uploadImage({ propertyId: g.value.id, roomId, file });
 }
+async function uploadAreaImage(areaId: number, file: File) {
+  if (!g.value) return;
+  await store.uploadImage({ propertyId: g.value.id, areaId, file });
+}
 async function removeImage(id: number) {
   await store.deleteImage(id);
+}
+
+// --- Ambienti comuni ------------------------------------------------------
+async function setArea(a: AreaPubblica, key: string, value: unknown) {
+  await store.patchArea(a.id, { [key]: value });
+}
+async function aggiungiAmbiente() {
+  if (!g.value) return;
+  const nome = window.prompt('Nome del nuovo ambiente comune (es. Cucina, Soggiorno, Bagni):');
+  if (nome && nome.trim()) await store.createArea(g.value.id, nome.trim());
+}
+async function eliminaAmbiente(a: AreaPubblica) {
+  if (window.confirm(`Eliminare l'ambiente "${a.nome}" e le sue foto?`)) {
+    await store.deleteArea(a.id);
+  }
 }
 
 function openLB(url: string) {
@@ -477,6 +561,7 @@ watch(() => route.params.slug, load);
 .room-edit-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 13px; color: var(--vp-ink-3); }
 .room-edit-lbl { font-size: 12px; }
 .room-unavail-note { padding: 28px; border-radius: 14px; background: var(--vp-paper-2); color: var(--vp-ink-3); font-size: 13.5px; text-align: center; border: 1px dashed var(--vp-paper-3); }
+.area-add-row { padding: 24px 0 8px; border-top: 1px solid var(--vp-paper-3); }
 
 .pgrid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 150px; gap: 10px; }
 .pgrid .ph:nth-child(4n+1) { grid-column: span 2; grid-row: span 2; }

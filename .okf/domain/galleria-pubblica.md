@@ -23,20 +23,25 @@ Estende [properties](/models/properties.md):
   `foto_hero`/`foto_planimetria`/`foto_mappa`, `testi_pubblici` (JSONField: hero, `facts`
   mq/camere/bagni/letti, `posizione` indirizzo/mezzi/parcheggio/regole). Slug auto in
   `save()`; migration 0015 popola gli esistenti.
-- **`Room`**: campi d'annuncio espliciti `colore`, `descrizione`, `disponibile`,
-  `libera_dal`, `prezzo_mensile`, `pubblica` — **indipendenti** dalle `RoomAssignment`
-  contabili (si annuncia una stanza a prescindere dal contratto in corso). `disponibile=False`
-  → badge "Non disponibile" e **niente foto** (regola di design).
-- **`GalleryImage`**: foto multiple, `property` FK + `room` FK **nullable** (`room=None` =
-  spazio comune). Upload in `media/galleria/<slug>/`.
+- **`Room`** (= **oggetto d'affitto**, la camera): campi d'annuncio espliciti `colore`,
+  `descrizione`, `disponibile`, `libera_dal`, `prezzo_mensile`, `pubblica` — **indipendenti**
+  dalle `RoomAssignment` contabili. `disponibile=False` → badge "Non disponibile" e **niente
+  foto**.
+- **`GalleryArea`** (= **ambiente comune**: cucina, soggiorno, bagni…): `property`, `nome`,
+  `colore`, `descrizione`, `ordinamento`, `pubblica`. **NON** è un oggetto d'affitto (niente
+  assegnazioni/canone): è solo un raggruppamento di foto. Scelta deliberata per non assimilare
+  la classificazione di una foto all'oggetto della locazione.
+- **`GalleryImage`**: foto multiple, `property` FK + UNO fra `room` FK (camera) e `area` FK
+  (ambiente comune), entrambi nullable, mutuamente esclusivi (validati). Upload in
+  `media/galleria/<slug>/`.
 
 # API
 
 - **Pubblica**: `GET /api/v1/public/galleria/<slug>/` — **AllowAny** (unica del progetto),
   `PublicGallerySerializer` dedicato, 404 se `pubblica=False`. Espone solo campi pubblici.
 - **Scrittura** (proprietari): `PATCH` su `properties`/`rooms` (testi, campi, immagini
-  singleton), `GalleryImageViewSet` CRUD foto (MultiPartParser). Clear di un'immagine
-  singleton = PATCH con `null` (non `''` → 400).
+  singleton), `gallery-areas` CRUD (ambienti comuni), `GalleryImageViewSet` CRUD foto
+  (MultiPartParser). Clear di un'immagine singleton = PATCH con `null` (non `''` → 400).
 
 # Frontend
 

@@ -193,12 +193,57 @@ class Room(TimestampedModel):
         return self.nome
 
 
-class GalleryImage(TimestampedModel):
-    """Foto della galleria pubblica, legata a un immobile e opzionalmente a una stanza.
+class GalleryArea(TimestampedModel):
+    """Ambiente comune dell'immobile nella galleria (cucina, soggiorno, bagni…).
 
-    ``room=None`` indica una foto di uno spazio comune / dell'immobile nel suo
-    complesso. Hero, planimetria e mappa (singleton) stanno invece direttamente
-    su ``Property``.
+    A differenza di ``Room``, NON è un oggetto d'affitto: non ha assegnazioni,
+    canone né disponibilità. È solo un raggruppamento di foto della galleria
+    pubblica, con la stessa presentazione delle camere ma senza dati di locazione.
+    """
+
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.CASCADE,
+        related_name="gallery_areas",
+        verbose_name="immobile",
+    )
+    nome = models.CharField(
+        max_length=100,
+        verbose_name="nome",
+    )
+    colore = models.CharField(
+        max_length=40,
+        blank=True,
+        verbose_name="colore identificativo",
+    )
+    descrizione = models.TextField(
+        blank=True,
+        verbose_name="descrizione",
+    )
+    ordinamento = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name="ordinamento",
+    )
+    pubblica = models.BooleanField(
+        default=True,
+        verbose_name="mostra in galleria",
+    )
+
+    class Meta:
+        verbose_name = "ambiente comune"
+        verbose_name_plural = "ambienti comuni"
+        ordering = ["ordinamento", "nome"]
+
+    def __str__(self):
+        return self.nome
+
+
+class GalleryImage(TimestampedModel):
+    """Foto della galleria pubblica.
+
+    Legata all'immobile e a UNO fra: una ``room`` (camera, oggetto d'affitto che
+    la foto ritrae) oppure una ``area`` (ambiente comune). Hero, planimetria e
+    mappa (singleton) stanno invece direttamente su ``Property``.
     """
 
     property = models.ForeignKey(
@@ -213,8 +258,17 @@ class GalleryImage(TimestampedModel):
         related_name="gallery_images",
         null=True,
         blank=True,
-        verbose_name="stanza",
-        help_text="Se vuoto, foto di uno spazio comune dell'immobile.",
+        verbose_name="camera",
+        help_text="Camera (oggetto d'affitto) ritratta dalla foto.",
+    )
+    area = models.ForeignKey(
+        GalleryArea,
+        on_delete=models.CASCADE,
+        related_name="gallery_images",
+        null=True,
+        blank=True,
+        verbose_name="ambiente comune",
+        help_text="Ambiente comune (cucina, soggiorno, bagni…) ritratto dalla foto.",
     )
     image = models.ImageField(
         upload_to=galleria_upload_to,
@@ -245,16 +299,22 @@ class GalleryImage(TimestampedModel):
     class Meta:
         verbose_name = "foto galleria"
         verbose_name_plural = "foto galleria"
-        ordering = ["room__ordinamento", "ordinamento", "id"]
+        ordering = ["room__ordinamento", "area__ordinamento", "ordinamento", "id"]
 
     def __str__(self):
-        dove = self.room.nome if self.room_id else "spazio comune"
+        dove = self.room.nome if self.room_id else (self.area.nome if self.area_id else "immobile")
         return f"Foto {self.property} / {dove}"
 
     def clean(self):
         super().clean()
+        if self.room_id and self.area_id:
+            raise ValidationError(
+                "Una foto può essere legata a una camera oppure a un ambiente comune, non a entrambi."
+            )
         if self.room_id and self.property_id and self.room.property_id != self.property_id:
-            raise ValidationError({"room": "La stanza non appartiene all'immobile indicato."})
+            raise ValidationError({"room": "La camera non appartiene all'immobile indicato."})
+        if self.area_id and self.property_id and self.area.property_id != self.property_id:
+            raise ValidationError({"area": "L'ambiente non appartiene all'immobile indicato."})
 
 
 class Contract(TimestampedModel):

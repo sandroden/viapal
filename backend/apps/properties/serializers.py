@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from properties.models import (
     Contract,
+    GalleryArea,
     GalleryImage,
     OwnerBankAccount,
     OwnerProfile,
@@ -147,8 +148,24 @@ class RoomSerializer(serializers.ModelSerializer):
         ]
 
 
+class GalleryAreaSerializer(serializers.ModelSerializer):
+    """Ambiente comune (cucina, soggiorno, bagni…) — no dati di locazione."""
+
+    class Meta:
+        model = GalleryArea
+        fields = [
+            "id",
+            "property",
+            "nome",
+            "colore",
+            "descrizione",
+            "ordinamento",
+            "pubblica",
+        ]
+
+
 class GalleryImageSerializer(serializers.ModelSerializer):
-    """Foto della galleria. ``property``/``room`` sono validati dalla view."""
+    """Foto della galleria. ``property``/``room``/``area`` validati dalla view."""
 
     class Meta:
         model = GalleryImage
@@ -156,11 +173,26 @@ class GalleryImageSerializer(serializers.ModelSerializer):
             "id",
             "property",
             "room",
+            "area",
             "image",
             "didascalia",
             "ordinamento",
             "created_at",
         ]
+
+    def validate(self, attrs):
+        prop = attrs.get("property") or getattr(self.instance, "property", None)
+        room = attrs.get("room") if "room" in attrs else getattr(self.instance, "room", None)
+        area = attrs.get("area") if "area" in attrs else getattr(self.instance, "area", None)
+        if room and area:
+            raise serializers.ValidationError(
+                "Indica una camera oppure un ambiente comune, non entrambi."
+            )
+        if room and prop and room.property_id != prop.id:
+            raise serializers.ValidationError({"room": "La camera non appartiene all'immobile."})
+        if area and prop and area.property_id != prop.id:
+            raise serializers.ValidationError({"area": "L'ambiente non appartiene all'immobile."})
+        return attrs
 
 
 class PropertySerializer(serializers.ModelSerializer):
@@ -217,11 +249,32 @@ class PublicGalleryRoomSerializer(serializers.ModelSerializer):
         ]
 
 
+class PublicGalleryAreaSerializer(serializers.ModelSerializer):
+    """Ambiente comune come esposto nella pagina pubblica (sola lettura)."""
+
+    foto = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GalleryArea
+        fields = ["id", "nome", "colore", "descrizione", "ordinamento", "foto"]
+
+    def get_foto(self, obj):
+        request = self.context.get("request")
+        return [
+            {
+                "id": img.id,
+                "url": request.build_absolute_uri(img.image.url) if request else img.image.url,
+                "didascalia": img.didascalia,
+            }
+            for img in obj.gallery_images.all()
+        ]
+
+
 class PublicGallerySerializer(serializers.ModelSerializer):
     """Payload completo e pubblico della galleria di un immobile."""
 
     rooms = serializers.SerializerMethodField()
-    foto_comuni = serializers.SerializerMethodField()
+    aree = serializers.SerializerMethodField()
     foto_hero = serializers.SerializerMethodField()
     foto_planimetria = serializers.SerializerMethodField()
     foto_mappa = serializers.SerializerMethodField()
@@ -238,7 +291,7 @@ class PublicGallerySerializer(serializers.ModelSerializer):
             "foto_planimetria",
             "foto_mappa",
             "rooms",
-            "foto_comuni",
+            "aree",
         ]
 
     def _url(self, filefield):
@@ -260,16 +313,9 @@ class PublicGallerySerializer(serializers.ModelSerializer):
         rooms = obj.rooms.filter(pubblica=True).prefetch_related("gallery_images")
         return PublicGalleryRoomSerializer(rooms, many=True, context=self.context).data
 
-    def get_foto_comuni(self, obj):
-        request = self.context.get("request")
-        return [
-            {
-                "id": img.id,
-                "url": request.build_absolute_uri(img.image.url) if request else img.image.url,
-                "didascalia": img.didascalia,
-            }
-            for img in obj.gallery_images.filter(room__isnull=True)
-        ]
+    def get_aree(self, obj):
+        aree = obj.gallery_areas.filter(pubblica=True).prefetch_related("gallery_images")
+        return PublicGalleryAreaSerializer(aree, many=True, context=self.context).data
 
 
 class RoomAssignmentSerializer(serializers.ModelSerializer):
