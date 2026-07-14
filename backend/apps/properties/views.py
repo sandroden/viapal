@@ -342,7 +342,9 @@ class GalleryImageViewSet(ModelViewSet):
 
     serializer_class = GalleryImageSerializer
     permission_classes = [IsProprietario]
-    parser_classes = [MultiPartParser, FormParser]
+    # MultiPart per l'upload (file), JSON per i PATCH di metadati (formato,
+    # didascalia, ordinamento) senza reinviare l'immagine.
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
         qs = GalleryImage.objects.select_related("property", "room", "area")

@@ -3,10 +3,13 @@ import { api } from 'boot/axios';
 
 // --- Tipi -----------------------------------------------------------------
 
+export type FormatoFoto = 'quadrato' | 'orizzontale' | 'verticale';
+
 export interface FotoGalleria {
   id: number;
   url: string;
   didascalia: string;
+  formato: FormatoFoto;
 }
 
 export interface StanzaPubblica {
@@ -178,6 +181,19 @@ export const useGalleriaStore = defineStore('galleria', {
         return false;
       } finally {
         this.uploading = false;
+      }
+    },
+
+    /** PATCH dei campi di una foto (formato, didascalia, ordinamento…). */
+    async patchImage(id: number, payload: Record<string, unknown>): Promise<boolean> {
+      this.errore = null;
+      try {
+        await api.patch(`/api/v1/gallery-images/${id}/`, payload);
+        await this._refresh();
+        return true;
+      } catch (e: unknown) {
+        this.errore = messaggioErrore(e, 'Errore salvataggio foto');
+        return false;
       }
     },
 

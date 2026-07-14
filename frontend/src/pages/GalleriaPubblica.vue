@@ -213,8 +213,21 @@
             Foto non disponibili — stanza attualmente occupata
           </div>
           <div v-else class="pgrid">
-            <div v-for="(foto, fi) in r.foto" :key="foto.id" class="ph">
+            <div v-for="(foto, fi) in r.foto" :key="foto.id" class="ph" :class="`ph--${foto.formato}`">
               <ImageSlot :url="foto.url" :editable="editMode" :expandable="true" @expand="openLB(r.foto, fi)" @remove="removeImage(foto.id)" />
+              <div v-if="editMode" class="ph-fmt">
+                <button
+                  v-for="opt in formatiDef"
+                  :key="opt.val"
+                  type="button"
+                  class="ph-fmt-btn"
+                  :class="{ on: foto.formato === opt.val }"
+                  :title="opt.label"
+                  @click.stop="setFormato(foto.id, opt.val)"
+                >
+                  <q-icon :name="opt.icon" size="15px" />
+                </button>
+              </div>
             </div>
             <div v-if="editMode" class="ph ph-add">
               <ImageSlot
@@ -258,8 +271,21 @@
             </EditableText>
           </p>
           <div class="pgrid">
-            <div v-for="(foto, fi) in a.foto" :key="foto.id" class="ph">
+            <div v-for="(foto, fi) in a.foto" :key="foto.id" class="ph" :class="`ph--${foto.formato}`">
               <ImageSlot :url="foto.url" :editable="editMode" :expandable="true" @expand="openLB(a.foto, fi)" @remove="removeImage(foto.id)" />
+              <div v-if="editMode" class="ph-fmt">
+                <button
+                  v-for="opt in formatiDef"
+                  :key="opt.val"
+                  type="button"
+                  class="ph-fmt-btn"
+                  :class="{ on: foto.formato === opt.val }"
+                  :title="opt.label"
+                  @click.stop="setFormato(foto.id, opt.val)"
+                >
+                  <q-icon :name="opt.icon" size="15px" />
+                </button>
+              </div>
             </div>
             <div v-if="editMode" class="ph ph-add">
               <ImageSlot
@@ -359,6 +385,7 @@ import {
   type FactsPubblici,
   type PosizionePubblica,
   type FotoGalleria,
+  type FormatoFoto,
 } from 'stores/galleria';
 import { useAuthStore } from 'stores/auth';
 import ImageSlot from 'components/ImageSlot.vue';
@@ -390,6 +417,12 @@ const factsDef = [
   { key: 'n_bagni', label: 'bagni' },
   { key: 'n_posti_letto', label: 'posti letto' },
 ] as const;
+
+const formatiDef: { val: FormatoFoto; label: string; icon: string }[] = [
+  { val: 'orizzontale', label: 'Orizzontale', icon: 'crop_landscape' },
+  { val: 'quadrato', label: 'Quadrato', icon: 'crop_square' },
+  { val: 'verticale', label: 'Verticale', icon: 'crop_portrait' },
+];
 
 const posizioneCards = [
   { key: 'indirizzo', title: 'Indirizzo', icon: 'place' },
@@ -485,6 +518,9 @@ async function uploadAreaImages(areaId: number, files: File[]) {
 }
 async function removeImage(id: number) {
   await store.deleteImage(id);
+}
+async function setFormato(id: number, formato: FormatoFoto) {
+  await store.patchImage(id, { formato });
 }
 
 // --- Ambienti comuni ------------------------------------------------------
@@ -622,10 +658,16 @@ watch(() => route.params.slug, load);
 .room-unavail-note { padding: 28px; border-radius: 14px; background: var(--vp-paper-2); color: var(--vp-ink-3); font-size: 13.5px; text-align: center; border: 1px dashed var(--vp-paper-3); }
 .area-add-row { padding: 24px 0 8px; border-top: 1px solid var(--vp-paper-3); }
 
-.pgrid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 150px; gap: 10px; }
-.pgrid .ph:nth-child(4n+1) { grid-column: span 2; grid-row: span 2; }
-.ph { position: relative; border-radius: 14px; overflow: hidden; }
-.ph-add { grid-column: span 1 !important; grid-row: span 1 !important; }
+.pgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; grid-auto-flow: dense; align-items: start; }
+.ph { position: relative; border-radius: 14px; overflow: hidden; aspect-ratio: 1 / 1; }
+.ph--orizzontale { grid-column: span 2; aspect-ratio: 3 / 2; }
+.ph--verticale { grid-column: span 1; aspect-ratio: 2 / 3; }
+.ph--quadrato { grid-column: span 1; aspect-ratio: 1 / 1; }
+.ph-add { grid-column: span 1; aspect-ratio: 1 / 1; }
+.ph-fmt { position: absolute; left: 8px; bottom: 8px; display: flex; gap: 4px; z-index: 6; }
+.ph-fmt-btn { width: 26px; height: 26px; border-radius: 7px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #fff; background: rgba(20,15,10,.55); backdrop-filter: blur(3px); }
+.ph-fmt-btn:hover { background: rgba(20,15,10,.78); }
+.ph-fmt-btn.on { background: var(--vp-terra); }
 
 .locate { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .map-slot { width: 100%; height: 340px; }
@@ -657,7 +699,7 @@ watch(() => route.params.slug, load);
   .plan-grid { grid-template-columns: 1fr; }
   .locate { grid-template-columns: 1fr; }
   .pgrid { grid-template-columns: repeat(2, 1fr); }
-  .pgrid .ph:nth-child(4n+1) { grid-column: span 2; grid-row: span 1; }
+  .ph--orizzontale { grid-column: span 2; }
   .hero-cta { right: 16px; bottom: 20px; }
   .lightbox { padding: 16px; }
   .lightbox-nav { width: 42px; height: 42px; font-size: 24px; }

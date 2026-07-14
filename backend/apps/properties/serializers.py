@@ -176,6 +176,7 @@ class GalleryImageSerializer(serializers.ModelSerializer):
             "area",
             "image",
             "didascalia",
+            "formato",
             "ordinamento",
             "created_at",
         ]
@@ -245,6 +246,7 @@ class PublicGalleryRoomSerializer(serializers.ModelSerializer):
                 "id": img.id,
                 "url": request.build_absolute_uri(img.image.url) if request else img.image.url,
                 "didascalia": img.didascalia,
+                "formato": img.formato,
             }
             for img in obj.gallery_images.all()
         ]
@@ -266,6 +268,7 @@ class PublicGalleryAreaSerializer(serializers.ModelSerializer):
                 "id": img.id,
                 "url": request.build_absolute_uri(img.image.url) if request else img.image.url,
                 "didascalia": img.didascalia,
+                "formato": img.formato,
             }
             for img in obj.gallery_images.all()
         ]

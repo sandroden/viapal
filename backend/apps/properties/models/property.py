@@ -301,6 +301,19 @@ class GalleryImage(TimestampedModel):
         blank=True,
         verbose_name="didascalia",
     )
+
+    class Formato(models.TextChoices):
+        QUADRATO = "quadrato", "Quadrato"
+        ORIZZONTALE = "orizzontale", "Orizzontale"
+        VERTICALE = "verticale", "Verticale"
+
+    formato = models.CharField(
+        max_length=12,
+        choices=Formato.choices,
+        default=Formato.QUADRATO,
+        verbose_name="formato riquadro",
+        help_text="Forma del riquadro in galleria: quadrato, orizzontale o verticale.",
+    )
     ordinamento = models.PositiveSmallIntegerField(
         default=0,
         verbose_name="ordinamento",
