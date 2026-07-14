@@ -88,9 +88,9 @@
             v-for="r in roomsPubbliche"
             :key="'pill' + r.id"
             class="pill"
-            :class="{ 'is-unavail': !r.disponibile }"
+            :class="{ 'is-unavail': !mostraFoto(r) }"
             :href="`#room-${r.id}`"
-          >{{ r.nome }}<template v-if="!r.disponibile"> · occupata</template></a>
+          >{{ r.nome }}<template v-if="!mostraFoto(r)"> · occupata</template></a>
           <a
             v-for="a in aree"
             :key="'pilla' + a.id"
@@ -131,12 +131,12 @@
                 v-for="(r, i) in roomsPubbliche"
                 :key="'leg' + r.id"
                 class="legend-item"
-                :class="{ 'is-unavail': !r.disponibile }"
+                :class="{ 'is-unavail': !mostraFoto(r) }"
                 :href="`#room-${r.id}`"
               >
                 <span class="legend-num" :style="{ background: r.colore || 'var(--vp-ink-3)' }">{{ i + 1 }}</span>
                 <span class="legend-name">{{ r.nome }}</span>
-                <span v-if="!r.disponibile" class="legend-tag">Occupata</span>
+                <span v-if="!mostraFoto(r)" class="legend-tag">Occupata</span>
                 <span class="legend-mq">{{ r.superficie_mq ? `${fmtMq(r.superficie_mq)} mq` : '' }}</span>
               </a>
               <a
@@ -157,7 +157,7 @@
           v-for="(r, i) in roomsPubbliche"
           :key="r.id"
           class="room"
-          :class="{ 'is-unavail': !r.disponibile }"
+          :class="{ 'is-unavail': !mostraFoto(r) }"
           :id="`room-${r.id}`"
         >
           <div class="room-head">
@@ -182,10 +182,10 @@
               label="prezzo"
               @click="setRoom(r, 'prezzo_mensile', '0')"
             />
-            <span v-if="!r.disponibile" class="room-unavail">
+            <span v-if="liberaDalFutura(r)" class="room-free">Libera dal {{ fmtData(r.libera_dal!) }}</span>
+            <span v-else-if="!r.disponibile" class="room-unavail">
               <q-icon name="lock" size="14px" /> Non disponibile
             </span>
-            <span v-else-if="r.libera_dal" class="room-free">Libera dal {{ fmtData(r.libera_dal) }}</span>
             <q-toggle
               v-if="editMode"
               :model-value="r.disponibile"
@@ -209,7 +209,7 @@
             </EditableText>
           </div>
 
-          <div v-if="!r.disponibile && !editMode" class="room-unavail-note">
+          <div v-if="!mostraFoto(r) && !editMode" class="room-unavail-note">
             Foto non disponibili — stanza attualmente occupata
           </div>
           <div v-else class="pgrid">
@@ -422,6 +422,19 @@ function fmtEuro(v: string | null): string {
 function fmtData(v: string): string {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? v : d.toLocaleDateString('it-IT');
+}
+
+// --- Disponibilità stanza --------------------------------------------------
+// La data "libera dal" implica che la stanza sia occupata ora ma con rilascio
+// noto: ha priorità sul badge e mantiene visibili le foto (annuncio anticipato).
+function oggiISO(): string {
+  return new Date().toLocaleDateString('sv'); // YYYY-MM-DD locale
+}
+function liberaDalFutura(r: StanzaPubblica): boolean {
+  return !!r.libera_dal && r.libera_dal >= oggiISO();
+}
+function mostraFoto(r: StanzaPubblica): boolean {
+  return r.disponibile || liberaDalFutura(r);
 }
 
 // --- Salvataggi testi -----------------------------------------------------
