@@ -6,16 +6,21 @@ from decimal import Decimal
 
 from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
+from django.shortcuts import get_object_or_404
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.generics import RetrieveAPIView
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from accounts.permissions import IsProprietario, IsInquilinoSelf
 from properties.models import (
     Contract,
+    GalleryImage,
     OwnerBankAccount,
     OwnerProfile,
+    Property,
     Room,
     RoomAssignment,
     TenantDocument,
@@ -23,8 +28,11 @@ from properties.models import (
 )
 from properties.serializers import (
     ContractSerializer,
+    GalleryImageSerializer,
     OwnerBankAccountSerializer,
     OwnerProfileSerializer,
+    PropertySerializer,
+    PublicGallerySerializer,
     RoomAssignmentSerializer,
     RoomSerializer,
     TenantDocumentSerializer,
@@ -238,16 +246,20 @@ class TenantDocumentViewSet(ModelViewSet):
         serializer.save(tenant=tenant, caricato_da=user)
 
 
-class RoomViewSet(ReadOnlyModelViewSet):
+class RoomViewSet(ModelViewSet):
     """
     Stanze.
-    - Proprietari: tutte.
-    - Inquilini: solo le stanze con assignment attivo per sé.
+    - Proprietari: tutte; possono aggiornare i campi galleria (PATCH).
+    - Inquilini: solo le stanze con assignment attivo per sé (sola lettura).
     """
 
     serializer_class = RoomSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    http_method_names = ["get", "patch", "head", "options"]
 
     def get_permissions(self):
+        if self.request.method in ("PATCH",):
+            return [IsProprietario()]
         return [IsInquilinoSelf()]
 
     def get_queryset(self):
@@ -302,3 +314,61 @@ class OwnerBankAccountViewSet(ReadOnlyModelViewSet):
     queryset = OwnerBankAccount.objects.select_related("owner").order_by(
         "owner__nominativo", "ordinamento"
     )
+
+
+class PropertyViewSet(ModelViewSet):
+    """Immobili. Accesso e scrittura riservati ai proprietari.
+
+    Consente il PATCH dei campi della galleria pubblica: testi
+    (``testi_pubblici``), toggle ``pubblica`` e immagini singleton
+    (hero/planimetria/mappa).
+    """
+
+    serializer_class = PropertySerializer
+    permission_classes = [IsProprietario]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    http_method_names = ["get", "patch", "head", "options"]
+    queryset = Property.objects.all()
+
+
+class GalleryImageViewSet(ModelViewSet):
+    """Foto della galleria pubblica (spazi comuni e stanze).
+
+    Scrittura riservata ai proprietari. L'upload accetta sia file (``q-file``,
+    drag&drop) sia blob incollati (Ctrl-V): è sempre una POST multipart.
+    """
+
+    serializer_class = GalleryImageSerializer
+    permission_classes = [IsProprietario]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        qs = GalleryImage.objects.select_related("property", "room")
+        property_id = self.request.query_params.get("property")
+        if property_id:
+            qs = qs.filter(property_id=property_id)
+        room_id = self.request.query_params.get("room")
+        if room_id:
+            qs = qs.filter(room_id=room_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(caricato_da=self.request.user)
+
+
+class PublicGalleryView(RetrieveAPIView):
+    """Payload pubblico della galleria di un immobile, senza autenticazione.
+
+    Unica view AllowAny del progetto: espone solo i campi pubblici tramite
+    ``PublicGallerySerializer``. 404 se l'immobile non è pubblicato.
+    """
+
+    serializer_class = PublicGallerySerializer
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    lookup_field = "slug"
+
+    def get_queryset(self):
+        return Property.objects.filter(pubblica=True).prefetch_related(
+            "rooms", "rooms__gallery_images", "gallery_images"
+        )

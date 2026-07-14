@@ -5,8 +5,10 @@ from rest_framework import serializers
 
 from properties.models import (
     Contract,
+    GalleryImage,
     OwnerBankAccount,
     OwnerProfile,
+    Property,
     Room,
     RoomAssignment,
     TenantDocument,
@@ -135,6 +137,138 @@ class RoomSerializer(serializers.ModelSerializer):
             "superficie_mq",
             "foto",
             "ordinamento",
+            # ── Galleria pubblica ──
+            "colore",
+            "descrizione",
+            "disponibile",
+            "libera_dal",
+            "prezzo_mensile",
+            "pubblica",
+        ]
+
+
+class GalleryImageSerializer(serializers.ModelSerializer):
+    """Foto della galleria. ``property``/``room`` sono validati dalla view."""
+
+    class Meta:
+        model = GalleryImage
+        fields = [
+            "id",
+            "property",
+            "room",
+            "image",
+            "didascalia",
+            "ordinamento",
+            "created_at",
+        ]
+
+
+class PropertySerializer(serializers.ModelSerializer):
+    """Serializer di scrittura/lettura per l'immobile (area proprietario)."""
+
+    class Meta:
+        model = Property
+        fields = [
+            "id",
+            "nome",
+            "slug",
+            "indirizzo",
+            "pubblica",
+            "foto_hero",
+            "foto_planimetria",
+            "foto_mappa",
+            "testi_pubblici",
+        ]
+        extra_kwargs = {"slug": {"required": False}}
+
+
+class PublicGalleryRoomSerializer(serializers.ModelSerializer):
+    """Stanza come esposta nella pagina pubblica (sola lettura, senza dati sensibili)."""
+
+    foto = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Room
+        fields = [
+            "id",
+            "nome",
+            "superficie_mq",
+            "colore",
+            "descrizione",
+            "disponibile",
+            "libera_dal",
+            "prezzo_mensile",
+            "ordinamento",
+            "foto",
+        ]
+
+    def get_foto(self, obj):
+        # Nessuna foto per le stanze non disponibili (da design).
+        if not obj.disponibile:
+            return []
+        request = self.context.get("request")
+        return [
+            {
+                "id": img.id,
+                "url": request.build_absolute_uri(img.image.url) if request else img.image.url,
+                "didascalia": img.didascalia,
+            }
+            for img in obj.gallery_images.all()
+        ]
+
+
+class PublicGallerySerializer(serializers.ModelSerializer):
+    """Payload completo e pubblico della galleria di un immobile."""
+
+    rooms = serializers.SerializerMethodField()
+    foto_comuni = serializers.SerializerMethodField()
+    foto_hero = serializers.SerializerMethodField()
+    foto_planimetria = serializers.SerializerMethodField()
+    foto_mappa = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Property
+        fields = [
+            "id",
+            "nome",
+            "slug",
+            "indirizzo",
+            "testi_pubblici",
+            "foto_hero",
+            "foto_planimetria",
+            "foto_mappa",
+            "rooms",
+            "foto_comuni",
+        ]
+
+    def _url(self, filefield):
+        if not filefield:
+            return None
+        request = self.context.get("request")
+        return request.build_absolute_uri(filefield.url) if request else filefield.url
+
+    def get_foto_hero(self, obj):
+        return self._url(obj.foto_hero)
+
+    def get_foto_planimetria(self, obj):
+        return self._url(obj.foto_planimetria)
+
+    def get_foto_mappa(self, obj):
+        return self._url(obj.foto_mappa)
+
+    def get_rooms(self, obj):
+        rooms = obj.rooms.filter(pubblica=True).prefetch_related("gallery_images")
+        return PublicGalleryRoomSerializer(rooms, many=True, context=self.context).data
+
+    def get_foto_comuni(self, obj):
+        request = self.context.get("request")
+        return [
+            {
+                "id": img.id,
+                "url": request.build_absolute_uri(img.image.url) if request else img.image.url,
+                "didascalia": img.didascalia,
+            }
+            for img in obj.gallery_images.filter(room__isnull=True)
         ]
 
 

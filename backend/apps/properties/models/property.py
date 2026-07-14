@@ -1,12 +1,28 @@
 """
 Modelli relativi all'immobile: stanze, contratto, assegnazioni.
 """
+import os
+
+from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
 from django.db import models
+from django.utils.text import slugify
 
 from ._base import TimestampedModel
 from .owner import OwnerBankAccount, OwnerProfile
-from .tenant import TenantProfile
+from .tenant import TenantProfile, valida_dimensione_documento
+
+
+def galleria_upload_to(instance, filename):
+    """Percorso di upload delle immagini galleria: ``galleria/<slug immobile>/<filename>``.
+
+    Sottocartella dedicata: le foto galleria sono pubbliche, separate dai
+    documenti privati sotto ``MEDIA_ROOT``.
+    """
+    prop = getattr(instance, "property", None)
+    slug = (prop.slug if prop and prop.slug else slugify(getattr(prop, "nome", "")) or "immobile")
+    return os.path.join("galleria", slug, filename)
 
 
 class Property(TimestampedModel):
@@ -35,6 +51,50 @@ class Property(TimestampedModel):
         help_text="Conto su cui gli inquilini versano le utenze/conguagli di questo immobile.",
     )
 
+    # ── Galleria pubblica (annuncio affitto) ─────────────────────────────
+    slug = models.SlugField(
+        max_length=140,
+        unique=True,
+        null=True,
+        blank=True,
+        verbose_name="slug pubblico",
+        help_text="Identificativo per l'URL pubblico della galleria (/g/<slug>). "
+        "Se vuoto viene generato dal nome.",
+    )
+    pubblica = models.BooleanField(
+        default=False,
+        verbose_name="galleria pubblica",
+        help_text="Se attiva, la galleria è raggiungibile pubblicamente senza login.",
+    )
+    foto_hero = models.ImageField(
+        upload_to=galleria_upload_to,
+        validators=[FileExtensionValidator(["jpg", "jpeg", "png", "webp"]), valida_dimensione_documento],
+        null=True,
+        blank=True,
+        verbose_name="foto principale (hero)",
+    )
+    foto_planimetria = models.ImageField(
+        upload_to=galleria_upload_to,
+        validators=[FileExtensionValidator(["jpg", "jpeg", "png", "webp"]), valida_dimensione_documento],
+        null=True,
+        blank=True,
+        verbose_name="planimetria",
+    )
+    foto_mappa = models.ImageField(
+        upload_to=galleria_upload_to,
+        validators=[FileExtensionValidator(["jpg", "jpeg", "png", "webp"]), valida_dimensione_documento],
+        null=True,
+        blank=True,
+        verbose_name="screenshot mappa",
+    )
+    testi_pubblici = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="testi pubblici",
+        help_text="Testi liberi editabili della pagina pubblica (hero, facts, posizione). "
+        "Le chiavi mancanti usano i fallback del frontend.",
+    )
+
     class Meta:
         verbose_name = "immobile"
         verbose_name_plural = "immobili"
@@ -42,6 +102,17 @@ class Property(TimestampedModel):
 
     def __str__(self):
         return self.nome
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base = slugify(self.nome) or "immobile"
+            slug = base
+            n = 2
+            while Property.objects.exclude(pk=self.pk).filter(slug=slug).exists():
+                slug = f"{base}-{n}"
+                n += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
 
 
 class Room(TimestampedModel):
@@ -77,6 +148,42 @@ class Room(TimestampedModel):
         verbose_name="ordinamento",
     )
 
+    # ── Galleria pubblica (annuncio affitto) ─────────────────────────────
+    colore = models.CharField(
+        max_length=40,
+        blank=True,
+        verbose_name="colore identificativo",
+        help_text="Colore del pallino/legenda in galleria (es. 'var(--vp-terra)' o '#c96f4a').",
+    )
+    descrizione = models.TextField(
+        blank=True,
+        verbose_name="descrizione",
+        help_text="Descrizione breve della stanza mostrata nell'annuncio.",
+    )
+    disponibile = models.BooleanField(
+        default=True,
+        verbose_name="disponibile (annuncio)",
+        help_text="Se disattiva: badge 'Non disponibile' e nessuna foto in galleria.",
+    )
+    libera_dal = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="libera dal",
+        help_text="Data indicativa da cui la stanza è disponibile (facoltativa).",
+    )
+    prezzo_mensile = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="prezzo mensile (annuncio)",
+        help_text="Prezzo d'annuncio, distinto dal canone effettivo delle assegnazioni.",
+    )
+    pubblica = models.BooleanField(
+        default=True,
+        verbose_name="mostra in galleria",
+    )
+
     class Meta:
         verbose_name = "stanza"
         verbose_name_plural = "stanze"
@@ -84,6 +191,70 @@ class Room(TimestampedModel):
 
     def __str__(self):
         return self.nome
+
+
+class GalleryImage(TimestampedModel):
+    """Foto della galleria pubblica, legata a un immobile e opzionalmente a una stanza.
+
+    ``room=None`` indica una foto di uno spazio comune / dell'immobile nel suo
+    complesso. Hero, planimetria e mappa (singleton) stanno invece direttamente
+    su ``Property``.
+    """
+
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.CASCADE,
+        related_name="gallery_images",
+        verbose_name="immobile",
+    )
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="gallery_images",
+        null=True,
+        blank=True,
+        verbose_name="stanza",
+        help_text="Se vuoto, foto di uno spazio comune dell'immobile.",
+    )
+    image = models.ImageField(
+        upload_to=galleria_upload_to,
+        validators=[
+            FileExtensionValidator(["jpg", "jpeg", "png", "webp"]),
+            valida_dimensione_documento,
+        ],
+        verbose_name="immagine",
+    )
+    didascalia = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="didascalia",
+    )
+    ordinamento = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name="ordinamento",
+    )
+    caricato_da = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="gallery_images_caricate",
+        verbose_name="caricato da",
+    )
+
+    class Meta:
+        verbose_name = "foto galleria"
+        verbose_name_plural = "foto galleria"
+        ordering = ["room__ordinamento", "ordinamento", "id"]
+
+    def __str__(self):
+        dove = self.room.nome if self.room_id else "spazio comune"
+        return f"Foto {self.property} / {dove}"
+
+    def clean(self):
+        super().clean()
+        if self.room_id and self.property_id and self.room.property_id != self.property_id:
+            raise ValidationError({"room": "La stanza non appartiene all'immobile indicato."})
 
 
 class Contract(TimestampedModel):

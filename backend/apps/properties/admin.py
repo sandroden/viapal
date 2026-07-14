@@ -15,6 +15,7 @@ from jmb.jadmin import JumboModelAdmin, ModalEditMixin
 
 from .models import (
     Contract,
+    GalleryImage,
     OwnerBankAccount,
     OwnerProfile,
     OwnershipShare,
@@ -81,6 +82,27 @@ class RoomAssignmentInlineForRoom(admin.TabularInline):
     autocomplete_fields = ("tenant",)
     ordering = ("-valid_from",)
     show_change_link = True
+
+
+class GalleryImageInlineForRoom(admin.TabularInline):
+    """Foto galleria in linea nella stanza."""
+
+    model = GalleryImage
+    fk_name = "room"
+    extra = 0
+    fields = ("image", "didascalia", "ordinamento")
+    ordering = ("ordinamento", "id")
+
+
+class GalleryImageInlineForProperty(admin.TabularInline):
+    """Foto galleria degli spazi comuni (room vuoto) in linea nell'immobile."""
+
+    model = GalleryImage
+    fk_name = "property"
+    extra = 0
+    fields = ("room", "image", "didascalia", "ordinamento")
+    autocomplete_fields = ("room",)
+    ordering = ("room", "ordinamento", "id")
 
 
 # ---------------------------------------------------------------------------
@@ -282,35 +304,58 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
 
 @admin.register(Property)
 class PropertyAdmin(ModalEditMixin, JumboModelAdmin):
-    modal_edit_width = 700
+    modal_edit_width = 800
     list_display = (
-        "nome", "indirizzo", "bank_account_utenze",
+        "nome", "indirizzo", "pubblica", "slug", "bank_account_utenze",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
-    search_fields = ("nome", "indirizzo")
+    list_filter = ("pubblica",)
+    search_fields = ("nome", "indirizzo", "slug")
+    prepopulated_fields = {"slug": ("nome",)}
     autocomplete_fields = ("bank_account_utenze",)
+    inlines = (GalleryImageInlineForProperty,)
     fieldsets = (
         ("Immobile", {
             "fields": ("nome", "indirizzo", "bank_account_utenze"),
+        }),
+        ("Galleria pubblica", {
+            "fields": (
+                ("pubblica", "slug"),
+                ("foto_hero", "foto_planimetria", "foto_mappa"),
+                "testi_pubblici",
+            ),
+            "description": (
+                "Se 'pubblica' è attiva, la galleria è raggiungibile senza login "
+                "su /g/&lt;slug&gt;. 'testi pubblici' è un JSON con hero/facts/posizione."
+            ),
         }),
     )
 
 
 @admin.register(Room)
 class RoomAdmin(ModalEditMixin, JumboModelAdmin):
-    modal_edit_width = 700
+    modal_edit_width = 800
     list_display = (
-        "nome", "property", "superficie_mq", "ordinamento",
+        "nome", "property", "superficie_mq", "prezzo_mensile",
+        "disponibile", "pubblica", "ordinamento",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
     search_fields = ("nome",)
-    list_filter = ("property",)
+    list_filter = ("property", "disponibile", "pubblica")
     autocomplete_fields = ("property",)
     ordering = ("ordinamento", "nome")
-    inlines = (RoomAssignmentInlineForRoom,)
+    inlines = (GalleryImageInlineForRoom, RoomAssignmentInlineForRoom)
     fieldsets = (
         ("Stanza", {
             "fields": ("property", "nome", "superficie_mq", "ordinamento", "foto"),
+        }),
+        ("Galleria pubblica", {
+            "fields": (
+                ("pubblica", "disponibile"),
+                ("prezzo_mensile", "libera_dal"),
+                "colore",
+                "descrizione",
+            ),
         }),
     )
 
