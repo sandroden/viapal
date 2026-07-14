@@ -215,6 +215,8 @@
           <div v-else class="pgrid">
             <div v-for="(foto, fi) in r.foto" :key="foto.id" class="ph" :class="`ph--${foto.formato}`">
               <ImageSlot :url="foto.url" :editable="editMode" :expandable="true" @expand="openLB(r.foto, fi)" @remove="removeImage(foto.id)" />
+              <button v-if="editMode && fi > 0" type="button" class="ph-move prev" title="Sposta prima" @click.stop="moveFoto(r.foto, fi, -1)">‹</button>
+              <button v-if="editMode && fi < r.foto.length - 1" type="button" class="ph-move next" title="Sposta dopo" @click.stop="moveFoto(r.foto, fi, 1)">›</button>
               <div v-if="foto.didascalia || editMode" class="ph-cap">
                 <EditableText v-if="editMode" :value="foto.didascalia" :editable="true" @save="(v) => setDidascalia(foto.id, v)">
                   {{ foto.didascalia || 'Aggiungi didascalia…' }}
@@ -279,6 +281,8 @@
           <div class="pgrid">
             <div v-for="(foto, fi) in a.foto" :key="foto.id" class="ph" :class="`ph--${foto.formato}`">
               <ImageSlot :url="foto.url" :editable="editMode" :expandable="true" @expand="openLB(a.foto, fi)" @remove="removeImage(foto.id)" />
+              <button v-if="editMode && fi > 0" type="button" class="ph-move prev" title="Sposta prima" @click.stop="moveFoto(a.foto, fi, -1)">‹</button>
+              <button v-if="editMode && fi < a.foto.length - 1" type="button" class="ph-move next" title="Sposta dopo" @click.stop="moveFoto(a.foto, fi, 1)">›</button>
               <div v-if="foto.didascalia || editMode" class="ph-cap">
                 <EditableText v-if="editMode" :value="foto.didascalia" :editable="true" @save="(v) => setDidascalia(foto.id, v)">
                   {{ foto.didascalia || 'Aggiungi didascalia…' }}
@@ -537,6 +541,13 @@ async function setFormato(id: number, formato: FormatoFoto) {
 async function setDidascalia(id: number, didascalia: string) {
   await store.patchImage(id, { didascalia });
 }
+async function moveFoto(foto: FotoGalleria[], index: number, dir: -1 | 1) {
+  const j = index + dir;
+  if (j < 0 || j >= foto.length) return;
+  const ids = foto.map((f) => f.id);
+  [ids[index], ids[j]] = [ids[j]!, ids[index]!];
+  await store.reorderImages(ids);
+}
 
 // --- Ambienti comuni ------------------------------------------------------
 async function setArea(a: AreaPubblica, key: string, value: unknown) {
@@ -687,6 +698,16 @@ watch(() => route.params.slug, load);
   color: #fbf7f0; font-size: 12.5px; line-height: 1.3;
 }
 .ph-cap :deep(.editable) { color: #fbf7f0; }
+.ph-move {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 30px; height: 30px; border-radius: 8px; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; background: rgba(20, 15, 10, 0.55); backdrop-filter: blur(3px);
+  font-size: 20px; line-height: 1; z-index: 6;
+}
+.ph-move:hover { background: rgba(20, 15, 10, 0.78); }
+.ph-move.prev { left: 8px; }
+.ph-move.next { right: 8px; }
 .ph-fmt-btn { width: 26px; height: 26px; border-radius: 7px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #fff; background: rgba(20,15,10,.55); backdrop-filter: blur(3px); }
 .ph-fmt-btn:hover { background: rgba(20,15,10,.78); }
 .ph-fmt-btn.on { background: var(--vp-terra); }

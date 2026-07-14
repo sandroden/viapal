@@ -184,6 +184,24 @@ export const useGalleriaStore = defineStore('galleria', {
       }
     },
 
+    /** Riordina le foto di una sezione: assegna a ciascun id l'ordinamento
+     *  pari alla sua posizione nella lista, con un solo refresh finale. */
+    async reorderImages(fotoIds: number[]): Promise<boolean> {
+      this.errore = null;
+      try {
+        await Promise.all(
+          fotoIds.map((id, idx) =>
+            api.patch(`/api/v1/gallery-images/${id}/`, { ordinamento: idx }),
+          ),
+        );
+        await this._refresh();
+        return true;
+      } catch (e: unknown) {
+        this.errore = messaggioErrore(e, 'Errore riordino foto');
+        return false;
+      }
+    },
+
     /** PATCH dei campi di una foto (formato, didascalia, ordinamento…). */
     async patchImage(id: number, payload: Record<string, unknown>): Promise<boolean> {
       this.errore = null;
