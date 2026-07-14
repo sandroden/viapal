@@ -58,26 +58,50 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from 'stores/auth';
+import { api } from 'boot/axios';
 
 const auth = useAuthStore();
 const router = useRouter();
 const drawerOpen = ref(true);
+const galleriaSlug = ref<string | null>(null);
 
-const vociMenu = [
-  { to: '/p/', label: 'Dashboard', icon: 'dashboard' },
-  { to: '/p/ritardi', label: 'Ritardi', icon: 'warning_amber' },
-  { to: '/p/inquilini', label: 'Inquilini', icon: 'group' },
-  { to: '/p/quadro-annuale', label: 'Quadro annuale', icon: 'table_view' },
-  { to: '/p/spese', label: 'Spese', icon: 'shopping_cart' },
-  { to: '/p/utenze', label: 'Utenze', icon: 'bolt' },
-  { to: '/p/riconciliazione', label: 'Riconciliazione', icon: 'compare_arrows' },
-  { to: '/p/saldi-fratelli', label: 'Saldi fratelli', icon: 'account_balance' },
-  { to: '/p/conto-economico', label: 'Conto economico', icon: 'assessment' },
-  { to: '/p/quick-add', label: 'Aggiungi rapida', icon: 'add_circle' },
-];
+const vociMenu = computed(() => {
+  const voci = [
+    { to: '/p/', label: 'Dashboard', icon: 'dashboard' },
+    { to: '/p/ritardi', label: 'Ritardi', icon: 'warning_amber' },
+    { to: '/p/inquilini', label: 'Inquilini', icon: 'group' },
+    { to: '/p/quadro-annuale', label: 'Quadro annuale', icon: 'table_view' },
+    { to: '/p/spese', label: 'Spese', icon: 'shopping_cart' },
+    { to: '/p/utenze', label: 'Utenze', icon: 'bolt' },
+    { to: '/p/riconciliazione', label: 'Riconciliazione', icon: 'compare_arrows' },
+    { to: '/p/saldi-fratelli', label: 'Saldi fratelli', icon: 'account_balance' },
+    { to: '/p/conto-economico', label: 'Conto economico', icon: 'assessment' },
+    { to: '/p/quick-add', label: 'Aggiungi rapida', icon: 'add_circle' },
+  ];
+  if (galleriaSlug.value) {
+    voci.push({
+      to: `/g/${galleriaSlug.value}`,
+      label: 'Galleria annuncio',
+      icon: 'photo_library',
+    });
+  }
+  return voci;
+});
+
+onMounted(async () => {
+  try {
+    const { data } = await api.get<{ results?: { slug: string }[] } | { slug: string }[]>(
+      '/api/v1/properties/',
+    );
+    const list = Array.isArray(data) ? data : (data.results ?? []);
+    galleriaSlug.value = list[0]?.slug ?? null;
+  } catch {
+    galleriaSlug.value = null;
+  }
+});
 
 function toggleDrawer() {
   drawerOpen.value = !drawerOpen.value;
