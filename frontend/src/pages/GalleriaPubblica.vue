@@ -220,8 +220,9 @@
               <ImageSlot
                 :editable="true"
                 :uploading="uploading"
+                :multiple="true"
                 :placeholder="`Aggiungi foto ${r.nome.toLowerCase()}`"
-                @upload="(f) => uploadRoomImage(r.id, f)"
+                @upload-many="(files) => uploadRoomImages(r.id, files)"
               />
             </div>
           </div>
@@ -264,8 +265,9 @@
               <ImageSlot
                 :editable="true"
                 :uploading="uploading"
+                :multiple="true"
                 :placeholder="`Aggiungi foto ${a.nome.toLowerCase()}`"
-                @upload="(f) => uploadAreaImage(a.id, f)"
+                @upload-many="(files) => uploadAreaImages(a.id, files)"
               />
             </div>
           </div>
@@ -438,13 +440,13 @@ async function removeSingolare(campo: 'foto_hero' | 'foto_planimetria' | 'foto_m
   // Rimuovere = PATCH del campo immagine a null (ImageField allow_null).
   await store.patchProperty(g.value.id, { [campo]: null });
 }
-async function uploadRoomImage(roomId: number, file: File) {
+async function uploadRoomImages(roomId: number, files: File[]) {
   if (!g.value) return;
-  await store.uploadImage({ propertyId: g.value.id, roomId, file });
+  await store.uploadImages({ propertyId: g.value.id, roomId, files });
 }
-async function uploadAreaImage(areaId: number, file: File) {
+async function uploadAreaImages(areaId: number, files: File[]) {
   if (!g.value) return;
-  await store.uploadImage({ propertyId: g.value.id, areaId, file });
+  await store.uploadImages({ propertyId: g.value.id, areaId, files });
 }
 async function removeImage(id: number) {
   await store.deleteImage(id);

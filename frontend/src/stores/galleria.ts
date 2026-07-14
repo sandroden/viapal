@@ -148,6 +148,39 @@ export const useGalleriaStore = defineStore('galleria', {
       }
     },
 
+    /** Carica più foto in un'unica operazione (selezione multipla, drag o
+     *  paste). Esegue N POST in sequenza — preservando l'ordine di selezione —
+     *  e fa un solo refresh alla fine (niente flicker per ogni immagine). */
+    async uploadImages(payload: {
+      propertyId: number;
+      roomId?: number;
+      areaId?: number;
+      files: File[];
+    }): Promise<boolean> {
+      if (!payload.files.length) return true;
+      this.uploading = true;
+      this.errore = null;
+      try {
+        for (const file of payload.files) {
+          const form = new FormData();
+          form.append('property', String(payload.propertyId));
+          form.append('image', file);
+          if (payload.roomId) form.append('room', String(payload.roomId));
+          if (payload.areaId) form.append('area', String(payload.areaId));
+          await api.post('/api/v1/gallery-images/', form);
+        }
+        await this._refresh();
+        return true;
+      } catch (e: unknown) {
+        // Alcune foto potrebbero essere già state caricate: aggiorno comunque.
+        await this._refresh();
+        this.errore = messaggioErrore(e, 'Errore caricamento immagini');
+        return false;
+      } finally {
+        this.uploading = false;
+      }
+    },
+
     /** Crea un ambiente comune (cucina, soggiorno, bagni…). */
     async createArea(propertyId: number, nome: string): Promise<boolean> {
       this.errore = null;

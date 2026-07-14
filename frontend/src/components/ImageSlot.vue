@@ -53,6 +53,7 @@
       ref="fileInput"
       type="file"
       accept="image/*"
+      :multiple="multiple"
       class="imgslot-file"
       @change="onFileChange"
     />
@@ -70,6 +71,7 @@ const props = withDefaults(
     expandable?: boolean;
     uploading?: boolean;
     radius?: number;
+    multiple?: boolean;
   }>(),
   {
     url: null,
@@ -78,11 +80,13 @@ const props = withDefaults(
     expandable: false,
     uploading: false,
     radius: 14,
+    multiple: false,
   },
 );
 
 const emit = defineEmits<{
   (e: 'upload', file: File): void;
+  (e: 'upload-many', files: File[]): void;
   (e: 'remove'): void;
   (e: 'expand', url: string): void;
 }>();
@@ -94,8 +98,13 @@ const focused = ref(false);
 
 const rootStyle = computed(() => ({ borderRadius: `${props.radius}px` }));
 
-function emitFile(file: File | null | undefined) {
-  if (file && file.type.startsWith('image/')) emit('upload', file);
+// Smista i file selezionati (input/drop/paste) verso l'evento giusto:
+// `upload-many` in modalità multipla, `upload` singolo altrimenti.
+function handleFiles(files: File[]) {
+  const imgs = files.filter((f) => f.type.startsWith('image/'));
+  if (!imgs.length) return;
+  if (props.multiple) emit('upload-many', imgs);
+  else if (imgs[0]) emit('upload', imgs[0]);
 }
 
 function onClick() {
@@ -104,7 +113,7 @@ function onClick() {
 
 function onFileChange(e: Event) {
   const target = e.target as HTMLInputElement;
-  emitFile(target.files?.[0]);
+  handleFiles(Array.from(target.files ?? []));
   target.value = '';
 }
 
@@ -118,7 +127,7 @@ function onDrop(e: DragEvent) {
   if (!props.editable) return;
   e.preventDefault();
   dragOver.value = false;
-  emitFile(e.dataTransfer?.files?.[0]);
+  handleFiles(Array.from(e.dataTransfer?.files ?? []));
 }
 
 // Paste a livello di documento: agisce solo se questo slot è sotto il mouse
@@ -129,15 +138,16 @@ function onDocPaste(e: ClipboardEvent) {
   if (!hovered.value && !focused.value) return;
   const items = e.clipboardData?.items;
   if (!items) return;
+  const files: File[] = [];
   for (const item of items) {
     if (item.kind === 'file' && item.type.startsWith('image/')) {
       const file = item.getAsFile();
-      if (file) {
-        e.preventDefault();
-        emitFile(file);
-        return;
-      }
+      if (file) files.push(file);
     }
+  }
+  if (files.length) {
+    e.preventDefault();
+    handleFiles(files);
   }
 }
 
