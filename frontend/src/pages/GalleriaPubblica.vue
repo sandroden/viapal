@@ -212,22 +212,6 @@
           </div>
         </section>
 
-        <!-- Spazi comuni extra (foto property-level senza stanza) -->
-        <section v-if="g.foto_comuni.length || editMode" class="room">
-          <div class="room-head">
-            <span class="room-dot" style="background: var(--vp-wood)"></span>
-            <h3 class="room-name">Spazi comuni</h3>
-          </div>
-          <div class="pgrid">
-            <div v-for="foto in g.foto_comuni" :key="foto.id" class="ph">
-              <ImageSlot :url="foto.url" :editable="editMode" :expandable="true" @expand="openLB" @remove="removeImage(foto.id)" />
-            </div>
-            <div v-if="editMode" class="ph ph-add">
-              <ImageSlot :editable="true" :uploading="uploading" placeholder="Aggiungi foto spazio comune" @upload="(f) => uploadCommonImage(f)" />
-            </div>
-          </div>
-        </section>
-
         <!-- Posizione -->
         <section class="block" id="posizione">
           <div class="block-head">
@@ -392,10 +376,6 @@ async function removeSingolare(campo: 'foto_hero' | 'foto_planimetria' | 'foto_m
 async function uploadRoomImage(roomId: number, file: File) {
   if (!g.value) return;
   await store.uploadImage({ propertyId: g.value.id, roomId, file });
-}
-async function uploadCommonImage(file: File) {
-  if (!g.value) return;
-  await store.uploadImage({ propertyId: g.value.id, file });
 }
 async function removeImage(id: number) {
   await store.deleteImage(id);
