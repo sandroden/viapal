@@ -215,6 +215,12 @@
           <div v-else class="pgrid">
             <div v-for="(foto, fi) in r.foto" :key="foto.id" class="ph" :class="`ph--${foto.formato}`">
               <ImageSlot :url="foto.url" :editable="editMode" :expandable="true" @expand="openLB(r.foto, fi)" @remove="removeImage(foto.id)" />
+              <div v-if="foto.didascalia || editMode" class="ph-cap">
+                <EditableText v-if="editMode" :value="foto.didascalia" :editable="true" @save="(v) => setDidascalia(foto.id, v)">
+                  {{ foto.didascalia || 'Aggiungi didascalia…' }}
+                </EditableText>
+                <span v-else>{{ foto.didascalia }}</span>
+              </div>
               <div v-if="editMode" class="ph-fmt">
                 <button
                   v-for="opt in formatiDef"
@@ -273,6 +279,12 @@
           <div class="pgrid">
             <div v-for="(foto, fi) in a.foto" :key="foto.id" class="ph" :class="`ph--${foto.formato}`">
               <ImageSlot :url="foto.url" :editable="editMode" :expandable="true" @expand="openLB(a.foto, fi)" @remove="removeImage(foto.id)" />
+              <div v-if="foto.didascalia || editMode" class="ph-cap">
+                <EditableText v-if="editMode" :value="foto.didascalia" :editable="true" @save="(v) => setDidascalia(foto.id, v)">
+                  {{ foto.didascalia || 'Aggiungi didascalia…' }}
+                </EditableText>
+                <span v-else>{{ foto.didascalia }}</span>
+              </div>
               <div v-if="editMode" class="ph-fmt">
                 <button
                   v-for="opt in formatiDef"
@@ -522,6 +534,9 @@ async function removeImage(id: number) {
 async function setFormato(id: number, formato: FormatoFoto) {
   await store.patchImage(id, { formato });
 }
+async function setDidascalia(id: number, didascalia: string) {
+  await store.patchImage(id, { didascalia });
+}
 
 // --- Ambienti comuni ------------------------------------------------------
 async function setArea(a: AreaPubblica, key: string, value: unknown) {
@@ -664,7 +679,14 @@ watch(() => route.params.slug, load);
 .ph--verticale { grid-column: span 1; aspect-ratio: 2 / 3; }
 .ph--quadrato { grid-column: span 1; aspect-ratio: 1 / 1; }
 .ph-add { grid-column: span 1; aspect-ratio: 1 / 1; }
-.ph-fmt { position: absolute; left: 8px; bottom: 8px; display: flex; gap: 4px; z-index: 6; }
+.ph-fmt { position: absolute; left: 8px; top: 8px; display: flex; gap: 4px; z-index: 6; }
+.ph-cap {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 4;
+  padding: 20px 44px 8px 12px;
+  background: linear-gradient(180deg, transparent, rgba(15, 12, 9, 0.78));
+  color: #fbf7f0; font-size: 12.5px; line-height: 1.3;
+}
+.ph-cap :deep(.editable) { color: #fbf7f0; }
 .ph-fmt-btn { width: 26px; height: 26px; border-radius: 7px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #fff; background: rgba(20,15,10,.55); backdrop-filter: blur(3px); }
 .ph-fmt-btn:hover { background: rgba(20,15,10,.78); }
 .ph-fmt-btn.on { background: var(--vp-terra); }
