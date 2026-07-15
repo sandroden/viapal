@@ -117,9 +117,22 @@ export const useGalleriaStore = defineStore('galleria', {
       }
     },
 
-    /** Ricarica la galleria dopo una modifica (uso interno). */
+    /** Ricarica la galleria dopo una modifica (uso interno) in modo
+     *  **silenzioso**: aggiorna i dati senza attivare `loading`, così la
+     *  pagina non viene smontata/rimostrata (spinner) — lo scroll e il punto
+     *  in cui si stava lavorando restano invariati. Con le `:key` stabili
+     *  (room/foto) Vue applica solo un patch minimale del DOM. */
     async _refresh(): Promise<void> {
-      if (this.galleria) await this.fetchPublic(this.galleria.slug);
+      if (!this.galleria) return;
+      try {
+        const { data } = await api.get<GalleriaPubblica>(
+          `/api/v1/public/galleria/${this.galleria.slug}/`,
+        );
+        this.galleria = data;
+      } catch (e: unknown) {
+        // In caso di errore mantengo lo stato corrente (niente unmount).
+        this.errore = messaggioErrore(e, 'Errore aggiornamento');
+      }
     },
 
     /** Carica una foto legata a una camera (roomId) o a un ambiente comune
