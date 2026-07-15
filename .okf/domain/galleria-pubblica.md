@@ -25,13 +25,12 @@ Estende [properties](/models/properties.md):
   `save()`; migration 0015 popola gli esistenti.
 - **`Room`** (= **oggetto d'affitto**, la camera): campi d'annuncio espliciti `colore`,
   `descrizione`, `disponibile`, `libera_dal`, `prezzo_mensile`, `pubblica` — **indipendenti**
-  dalle `RoomAssignment` contabili. La visibilità è decisa da due property di dominio:
-  `Room.si_libera_a_data` (c'è una `libera_dal` futura/odierna) e `Room.mostra_foto_pubbliche`
-  (`disponibile OR si_libera_a_data`). **`libera_dal` ha priorità sul toggle**: una data futura
-  implica "occupata ora ma con rilascio noto" → badge "Libera dal &lt;data&gt;" **con foto
-  visibili** (annuncio anticipato, messo alla disdetta ~2 mesi prima). Solo `disponibile=False`
-  **senza** data → "Non disponibile" e **niente foto**. (Gotcha: dentro `class Room` il campo FK
-  `property` shadowa il built-in `property`, quindi le due usano l'alias `builtin_property`.)
+  dalle `RoomAssignment` contabili. **Il toggle `disponibile` è il comando principale di
+  visibilità**: se spento → badge "Non disponibile", **niente foto e data ignorata** (a
+  prescindere da `libera_dal`). Se acceso, `libera_dal` è solo un'etichetta: con una data
+  **futura** mostra "Libera dal &lt;data&gt;" (stanza in annuncio con ingresso posticipato,
+  messa alla disdetta ~2 mesi prima), altrimenti nessun badge. La regola "data futura" è nel
+  frontend (`liberaDalFutura`), la visibilità foto nel serializer (`if not obj.disponibile`).
 - **`GalleryArea`** (= **ambiente comune**: cucina, soggiorno, bagni…): `property`, `nome`,
   `colore`, `descrizione`, `ordinamento`, `pubblica`. **NON** è un oggetto d'affitto (niente
   assegnazioni/canone): è solo un raggruppamento di foto. Scelta deliberata per non assimilare
