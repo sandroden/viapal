@@ -4,7 +4,7 @@ ViewSet per l'app properties.
 import datetime
 from decimal import Decimal
 
-from django.db.models import Q, Sum
+from django.db.models import Max, Q, Sum
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import action
@@ -360,7 +360,22 @@ class GalleryImageViewSet(ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(caricato_da=self.request.user)
+        # Nuove foto in coda alla loro sezione (camera/ambiente/immobile): con
+        # l'ordinamento a 0 di default, in una sezione già riordinata si
+        # infilerebbero dopo la prima foto invece che in fondo.
+        data = serializer.validated_data
+        qs = GalleryImage.objects.filter(property=data.get("property"))
+        if data.get("room"):
+            qs = qs.filter(room=data["room"])
+        elif data.get("area"):
+            qs = qs.filter(area=data["area"])
+        else:
+            qs = qs.filter(room__isnull=True, area__isnull=True)
+        ultimo = qs.aggregate(m=Max("ordinamento"))["m"]
+        serializer.save(
+            caricato_da=self.request.user,
+            ordinamento=0 if ultimo is None else ultimo + 1,
+        )
 
 
 class GalleryAreaViewSet(ModelViewSet):
