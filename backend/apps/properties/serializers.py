@@ -236,9 +236,9 @@ class PublicGalleryRoomSerializer(serializers.ModelSerializer):
         ]
 
     def get_foto(self, obj):
-        # Foto nascoste solo se 'Non disponibile' senza data di rilascio: una
-        # stanza che si libera a una data nota resta un annuncio attivo.
-        if not obj.mostra_foto_pubbliche:
+        # 'Non disponibile' (toggle spento) nasconde l'interno, a prescindere
+        # da eventuali date: il toggle è il comando principale.
+        if not obj.disponibile:
             return []
         request = self.context.get("request")
         return [

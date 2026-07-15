@@ -182,10 +182,10 @@
               label="prezzo"
               @click="setRoom(r, 'prezzo_mensile', '0')"
             />
-            <span v-if="liberaDalFutura(r)" class="room-free">Libera dal {{ fmtData(r.libera_dal!) }}</span>
-            <span v-else-if="!r.disponibile" class="room-unavail">
+            <span v-if="!r.disponibile" class="room-unavail">
               <q-icon name="lock" size="14px" /> Non disponibile
             </span>
+            <span v-else-if="liberaDalFutura(r)" class="room-free">Libera dal {{ fmtData(r.libera_dal!) }}</span>
             <q-toggle
               v-if="editMode"
               :model-value="r.disponibile"
@@ -474,16 +474,17 @@ function fmtData(v: string): string {
 }
 
 // --- Disponibilità stanza --------------------------------------------------
-// La data "libera dal" implica che la stanza sia occupata ora ma con rilascio
-// noto: ha priorità sul badge e mantiene visibili le foto (annuncio anticipato).
+// Il toggle "disponibile" è il comando principale: se spento ("Non
+// disponibile") la stanza è nascosta, a prescindere da eventuali date.
+// Se acceso e con una data futura, mostra "Libera dal <data>".
 function oggiISO(): string {
   return new Date().toLocaleDateString('sv'); // YYYY-MM-DD locale
 }
 function liberaDalFutura(r: StanzaPubblica): boolean {
-  return !!r.libera_dal && r.libera_dal >= oggiISO();
+  return r.disponibile && !!r.libera_dal && r.libera_dal >= oggiISO();
 }
 function mostraFoto(r: StanzaPubblica): boolean {
-  return r.disponibile || liberaDalFutura(r);
+  return r.disponibile;
 }
 
 // --- Salvataggi testi -----------------------------------------------------

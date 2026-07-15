@@ -7,16 +7,11 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
 from django.db import models
-from django.utils import timezone
 from django.utils.text import slugify
 
 from ._base import TimestampedModel
 from .owner import OwnerBankAccount, OwnerProfile
 from .tenant import TenantProfile, valida_dimensione_documento
-
-# Alias del built-in: dentro le classi con un campo FK ``property`` il nome
-# ``property`` è shadowato, quindi ``@property`` non è utilizzabile lì.
-builtin_property = property
 
 
 def galleria_upload_to(instance, filename):
@@ -196,19 +191,6 @@ class Room(TimestampedModel):
 
     def __str__(self):
         return self.nome
-
-    @builtin_property
-    def si_libera_a_data(self):
-        """La stanza è occupata ora ma con una data di rilascio nota (futura o
-        odierna). ``libera_dal`` implica di per sé che ora sia occupata."""
-        return bool(self.libera_dal and self.libera_dal >= timezone.localdate())
-
-    @builtin_property
-    def mostra_foto_pubbliche(self):
-        """Le foto della stanza vanno esposte in galleria: quando è disponibile
-        oppure quando si libererà a una data nota (annuncio anticipato).
-        'Non disponibile' (senza data) nasconde invece l'interno."""
-        return self.disponibile or self.si_libera_a_data
 
 
 class GalleryArea(TimestampedModel):
