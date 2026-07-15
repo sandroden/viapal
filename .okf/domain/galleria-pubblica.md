@@ -25,29 +25,45 @@ Estende [properties](/models/properties.md):
   `save()`; migration 0015 popola gli esistenti.
 - **`Room`** (= **oggetto d'affitto**, la camera): campi d'annuncio espliciti `colore`,
   `descrizione`, `disponibile`, `libera_dal`, `prezzo_mensile`, `pubblica` — **indipendenti**
-  dalle `RoomAssignment` contabili. `disponibile=False` → badge "Non disponibile" e **niente
-  foto**.
+  dalle `RoomAssignment` contabili. La visibilità è decisa da due property di dominio:
+  `Room.si_libera_a_data` (c'è una `libera_dal` futura/odierna) e `Room.mostra_foto_pubbliche`
+  (`disponibile OR si_libera_a_data`). **`libera_dal` ha priorità sul toggle**: una data futura
+  implica "occupata ora ma con rilascio noto" → badge "Libera dal &lt;data&gt;" **con foto
+  visibili** (annuncio anticipato, messo alla disdetta ~2 mesi prima). Solo `disponibile=False`
+  **senza** data → "Non disponibile" e **niente foto**. (Gotcha: dentro `class Room` il campo FK
+  `property` shadowa il built-in `property`, quindi le due usano l'alias `builtin_property`.)
 - **`GalleryArea`** (= **ambiente comune**: cucina, soggiorno, bagni…): `property`, `nome`,
   `colore`, `descrizione`, `ordinamento`, `pubblica`. **NON** è un oggetto d'affitto (niente
   assegnazioni/canone): è solo un raggruppamento di foto. Scelta deliberata per non assimilare
   la classificazione di una foto all'oggetto della locazione.
 - **`GalleryImage`**: foto multiple, `property` FK + UNO fra `room` FK (camera) e `area` FK
   (ambiente comune), entrambi nullable, mutuamente esclusivi (validati). Upload in
-  `media/galleria/<slug>/`.
+  `media/galleria/<slug>/`. Campi d'annuncio: `didascalia`, `ordinamento` e **`formato`**
+  (`quadrato`/`orizzontale`/`verticale`, default `quadrato`) — il formato governa lo span nella
+  griglia (aspect-ratio + `grid-column`), **sostituendo il vecchio mosaico automatico**. Nuove
+  foto vanno **in coda** alla sezione (`perform_create` assegna `max(ordinamento)+1`).
 
 # API
 
 - **Pubblica**: `GET /api/v1/public/galleria/<slug>/` — **AllowAny** (unica del progetto),
   `PublicGallerySerializer` dedicato, 404 se `pubblica=False`. Espone solo campi pubblici.
 - **Scrittura** (proprietari): `PATCH` su `properties`/`rooms` (testi, campi, immagini
-  singleton), `gallery-areas` CRUD (ambienti comuni), `GalleryImageViewSet` CRUD foto
-  (MultiPartParser). Clear di un'immagine singleton = PATCH con `null` (non `''` → 400).
+  singleton), `gallery-areas` CRUD (ambienti comuni), `GalleryImageViewSet` CRUD foto.
+  Quest'ultimo accetta **sia MultiPart (upload file) sia JSON** (`JSONParser`) per i PATCH di
+  metadati — formato/didascalia/ordinamento — senza reinviare l'immagine. Clear di un'immagine
+  singleton = PATCH con `null` (non `''` → 400).
 
 # Frontend
 
 Route `/g/:slug` `meta.public`, `GalleriaPubblica.vue` (sola lettura per anonimi). Edit-mode
 per proprietario: `ImageSlot.vue` (upload file/drag/**paste Ctrl-V** via listener `document`
-+ hover), `EditableText.vue` (`q-popup-edit`, **no contenteditable**). Store `galleria.ts`.
++ hover; prop `multiple` opt-in → evento `upload-many` per l'**upload multiplo simultaneo**,
+i singleton restano a file singolo), `EditableText.vue` (`q-popup-edit`, **no contenteditable**).
+Store `galleria.ts` (`uploadImages` batch = N POST + 1 refresh; `patchImage`; `reorderImages`).
+Per ogni foto in edit: controlli **formato** (3 pulsanti crop), **didascalia** (overlay in basso,
+editabile), **riordino** con frecce laterali `‹ ›` (scelta deliberata vs drag: robusta con le
+celle a span variabile dei formati e verificabile). **Lightbox** navigabile (frecce, tasti
+← → Esc, contatore, didascalia); scope = la sezione da cui si apre.
 
 # Note operative
 
