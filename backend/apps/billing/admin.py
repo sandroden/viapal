@@ -217,12 +217,20 @@ class ReceivableAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboMode
     def get_urls(self):
         from django.urls import path
 
-        from .admin_views import genera_receivables_affitto_view
+        from .admin_views import (
+            genera_affitto_tenants_json,
+            genera_receivables_affitto_view,
+        )
         return [
             path(
                 "genera-affitto/",
                 self.admin_site.admin_view(genera_receivables_affitto_view),
                 name="billing_receivable_genera_affitto",
+            ),
+            path(
+                "genera-affitto/tenants/",
+                self.admin_site.admin_view(genera_affitto_tenants_json),
+                name="billing_receivable_genera_affitto_tenants",
             ),
         ] + super().get_urls()
     list_display = (

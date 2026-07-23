@@ -54,6 +54,46 @@
     </div>
   </form>
 
+  <script>
+    (function () {
+      // Tendina dipendente: "Solo inquilino" mostra solo i tenant con una
+      // RoomAssignment attiva nel mese scelto (endpoint genera-affitto/tenants/).
+      var anno = document.getElementById("id_anno");
+      var mese = document.getElementById("id_mese");
+      var tenant = document.getElementById("id_tenant");
+      var url = "{% url 'admin:billing_receivable_genera_affitto_tenants' %}";
+      if (!anno || !mese || !tenant) return;
+
+      function aggiornaTenants() {
+        if (!anno.value || !mese.value) return;
+        fetch(url + "?anno=" + encodeURIComponent(anno.value) +
+                    "&mese=" + encodeURIComponent(mese.value),
+              { credentials: "same-origin" })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (data) {
+            if (!data) return;
+            var selezionato = tenant.value;
+            Array.prototype.slice.call(tenant.options).forEach(function (o) {
+              if (o.value !== "") o.remove();
+            });
+            data.tenants.forEach(function (t) {
+              var opt = document.createElement("option");
+              opt.value = t.id;
+              opt.textContent = t.nominativo;
+              tenant.appendChild(opt);
+            });
+            // Mantiene la selezione se ancora valida, altrimenti azzera.
+            tenant.value = selezionato;
+            if (tenant.value !== selezionato) tenant.value = "";
+          });
+      }
+
+      anno.addEventListener("change", aggiornaTenants);
+      mese.addEventListener("change", aggiornaTenants);
+      aggiornaTenants();
+    })();
+  </script>
+
   {% if risultato.sim %}
     <h2 style="margin-top: 2em;">Dettaglio dry-run — {{ risultato.etichetta }}</h2>
     <table style="border-collapse: collapse;">

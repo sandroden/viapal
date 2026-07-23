@@ -1,14 +1,39 @@
 """
 View admin custom dell'app billing.
 """
+import calendar
+from datetime import date
+
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin.views.decorators import staff_member_required
+from django.db.models import Q
+from django.http import JsonResponse
 from django.shortcuts import render
+from django.utils import timezone
 
 from billing.calc.rent import genera_pagamenti_mese
 from billing.models import Receivable
 from properties.models import TenantProfile
+
+
+def _tenants_attivi_nel_mese(anno: int, mese: int):
+    """Tenant con almeno una ``RoomAssignment`` che interseca il mese
+    (anno, mese): stessa condizione di overlap di
+    ``genera_pagamenti_mese``."""
+    primo = date(anno, mese, 1)
+    ultimo = date(anno, mese, calendar.monthrange(anno, mese)[1])
+    return (
+        TenantProfile.objects.filter(
+            Q(assignments__valid_from__lte=ultimo)
+            & (
+                Q(assignments__valid_to__isnull=True)
+                | Q(assignments__valid_to__gte=primo)
+            )
+        )
+        .distinct()
+        .order_by("nominativo")
+    )
 
 
 class GeneraReceivableAffittoForm(forms.Form):
@@ -31,7 +56,8 @@ class GeneraReceivableAffittoForm(forms.Form):
         queryset=TenantProfile.objects.all(),
         required=False,
         label="Solo inquilino",
-        help_text="Se valorizzato, genera solo per questo inquilino (debug).",
+        help_text="Se valorizzato, genera solo per questo inquilino. "
+        "La lista mostra solo chi ha una stanza assegnata nel mese scelto.",
     )
     force = forms.BooleanField(
         required=False,
@@ -44,6 +70,39 @@ class GeneraReceivableAffittoForm(forms.Form):
         label="Solo simulazione (dry-run)",
         help_text="Mostra cosa verrebbe scritto, senza toccare il DB.",
     )
+
+    def clean(self):
+        cleaned = super().clean()
+        tenant = cleaned.get("tenant")
+        anno = cleaned.get("anno")
+        mese = cleaned.get("mese")
+        if tenant and anno and mese:
+            attivi = _tenants_attivi_nel_mese(anno, mese)
+            if not attivi.filter(pk=tenant.pk).exists():
+                self.add_error(
+                    "tenant",
+                    f"{tenant.nominativo} non ha una stanza assegnata "
+                    f"nel {mese:02d}/{anno}: nessun Receivable verrebbe generato.",
+                )
+        return cleaned
+
+
+@staff_member_required
+def genera_affitto_tenants_json(request):
+    """Endpoint JSON per la tendina dipendente della pagina
+    "Genera Receivable affitto": dato ``?anno=&mese=`` ritorna i tenant con
+    una stanza assegnata in quel mese."""
+    try:
+        anno = int(request.GET.get("anno", ""))
+        mese = int(request.GET.get("mese", ""))
+        date(anno, mese, 1)
+    except ValueError:
+        return JsonResponse({"error": "Parametri anno/mese non validi."}, status=400)
+    tenants = [
+        {"id": t.pk, "nominativo": t.nominativo}
+        for t in _tenants_attivi_nel_mese(anno, mese)
+    ]
+    return JsonResponse({"tenants": tenants})
 
 
 @staff_member_required
@@ -109,7 +168,10 @@ def genera_receivables_affitto_view(request):
                         )
                     risultato = {"esito": ris, "etichetta": etichetta}
     else:
-        form = GeneraReceivableAffittoForm()
+        oggi = timezone.localdate()
+        form = GeneraReceivableAffittoForm(
+            initial={"anno": oggi.year, "mese": oggi.month}
+        )
 
     return render(
         request,
