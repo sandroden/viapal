@@ -14,8 +14,18 @@
           emit-value
           map-options
           :loading="loadingStanze"
+          hint="Solo stanze libere o in liberazione entro 2 mesi."
           data-testid="assegna-stanza"
         />
+        <q-banner
+          v-if="!loadingStanze && opzioniStanze.length === 0"
+          class="vp-asg__banner-warn"
+          rounded
+          dense
+        >
+          Nessuna stanza libera o in liberazione entro 2 mesi. Per un subentro
+          in una stanza occupata usa il wizard "Cessione" dalla stanza stessa.
+        </q-banner>
         <q-input
           v-model="form.validFrom"
           label="Data inizio"
@@ -170,6 +180,13 @@ interface Stanza {
   nome: string;
 }
 
+interface AssignmentApi {
+  id: number;
+  room: number;
+  valid_from: string;
+  valid_to: string | null;
+}
+
 type CicloFatturazione = 'solare' | 'ingresso';
 
 interface RataDeposito {
@@ -248,10 +265,66 @@ const errore = ref('');
 const salvando = ref(false);
 
 const stanze = ref<Stanza[]>([]);
+const assignments = ref<AssignmentApi[]>([]);
 const loadingStanze = ref(false);
-const opzioniStanze = computed(() =>
-  stanze.value.map((s) => ({ label: s.nome, value: s.id })),
-);
+
+// Stato di occupazione per stanza: si mostrano solo le stanze libere alla
+// data di inizio scelta o liberabili entro 2 mesi da oggi (fine assegnazione
+// già fissata). Le occupate a tempo indeterminato non compaiono: per il
+// subentro c'è il wizard Cessione.
+const ORIZZONTE_MESI = 2;
+
+function liberaDal(roomId: number): string | null | undefined {
+  // undefined = occupata a tempo indeterminato; null = libera (mai occupata
+  // o solo assegnazioni chiuse nel passato... la data la calcola il chiamante)
+  const delle = assignments.value.filter((a) => a.room === roomId);
+  if (delle.some((a) => a.valid_to === null)) return undefined;
+  const fini = delle.map((a) => a.valid_to as string).sort();
+  const ultimaFine = fini[fini.length - 1];
+  if (!ultimaFine) return null;
+  const giornoDopo = new Date(ultimaFine + 'T00:00:00Z');
+  giornoDopo.setUTCDate(giornoDopo.getUTCDate() + 1);
+  return giornoDopo.toISOString().slice(0, 10);
+}
+
+const opzioniStanze = computed(() => {
+  const oggi = oggiISO();
+  const limite = addMonthsClamped(oggi, ORIZZONTE_MESI);
+  const inizio = form.value.validFrom || oggi;
+  const opzioni: { label: string; value: number; disable?: boolean }[] = [];
+  for (const s of stanze.value) {
+    const dal = liberaDal(s.id);
+    if (dal === undefined) continue; // occupata senza fine nota: non mostrata
+    if (dal === null || dal <= oggi) {
+      // Già libera oggi: nessuna annotazione.
+      opzioni.push({ label: s.nome, value: s.id });
+    } else if (dal <= limite || dal <= inizio) {
+      // Si libera in futuro (entro l'orizzonte o comunque prima della data
+      // scelta): selezionabile solo se l'inizio è dopo la liberazione.
+      opzioni.push({
+        label: `${s.nome} — libera dal ${formattaDataIt(dal)}`,
+        value: s.id,
+        disable: dal > inizio,
+      });
+    }
+    // Si libera oltre l'orizzonte e dopo la data scelta: non mostrata.
+  }
+  return opzioni;
+});
+
+function formattaDataIt(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+// Se cambiando la data di inizio la stanza scelta non è più selezionabile,
+// deselezionala per non lasciare un valore invalido nel form.
+watch(opzioniStanze, (opts) => {
+  const scelta = opts.find((o) => o.value === form.value.room);
+  if (form.value.room !== null && (!scelta || scelta.disable)) {
+    form.value.room = null;
+  }
+});
 
 const hintQuota = computed(() =>
   props.quotaGenerica !== null
@@ -262,8 +335,12 @@ const hintQuota = computed(() =>
 async function caricaStanze(): Promise<void> {
   loadingStanze.value = true;
   try {
-    const { data } = await api.get<Stanza[] | { results: Stanza[] }>('/api/v1/rooms/');
-    stanze.value = asArray(data);
+    const [rooms, assegn] = await Promise.all([
+      api.get<Stanza[] | { results: Stanza[] }>('/api/v1/rooms/'),
+      api.get<AssignmentApi[] | { results: AssignmentApi[] }>('/api/v1/room-assignments/'),
+    ]);
+    stanze.value = asArray(rooms.data);
+    assignments.value = asArray(assegn.data);
   } catch (e: unknown) {
     $q.notify({
       type: 'negative',
