@@ -1,6 +1,8 @@
 """
 Modelli relativi all'immobile: stanze, contratto, assegnazioni.
 """
+import datetime
+
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -54,6 +56,21 @@ class Property(TimestampedModel):
 
     def __str__(self):
         return self.nome
+
+    def contratto_attivo(self, alla_data=None):
+        """Contratto dell'immobile in vigore a ``alla_data`` (default oggi):
+        quello con ``data_decorrenza`` più recente non successiva alla data.
+        ``None`` se nessun contratto dell'immobile è ancora iniziato a
+        quella data.
+        """
+        if alla_data is None:
+            alla_data = datetime.date.today()
+        return (
+            self.contracts.filter(data_decorrenza__lte=alla_data)
+            .select_related("default_pagatore_bollette")
+            .order_by("-data_decorrenza")
+            .first()
+        )
 
 
 class Room(TimestampedModel):

@@ -21,7 +21,7 @@ from billing.models import (
     TenantCondominioRate,
     UtilityChargePeriod,
 )
-from properties.models import Contract, OwnerProfile, RoomAssignment, TenantProfile
+from properties.models import OwnerProfile, RoomAssignment, TenantProfile
 from properties.serializers import TenantProfileSerializer  # noqa: F401
 
 
@@ -991,7 +991,7 @@ class TenantSituazioneView(APIView):
             )
 
         try:
-            tenant = TenantProfile.objects.select_related("user").get(pk=tenant_id)
+            tenant = TenantProfile.objects.select_related("user", "property").get(pk=tenant_id)
         except TenantProfile.DoesNotExist:
             return Response(
                 {"detail": "Inquilino non trovato."}, status=404
@@ -1249,15 +1249,7 @@ class TenantSituazioneView(APIView):
                 saldo_totale_globale = x["saldo_progressivo"]
 
         # Quota condominio: dal contratto attivo dell'immobile dell'inquilino
-        contract_attivo = (
-            Contract.objects.filter(
-                property_id=tenant.property_id,
-                data_decorrenza__lte=oggi,
-            )
-            .select_related("default_pagatore_bollette")
-            .order_by("-data_decorrenza")
-            .first()
-        )
+        contract_attivo = tenant.property.contratto_attivo(oggi)
         quota_condominio = {
             "corrente": None,
             "storico": [],
@@ -1273,24 +1265,38 @@ class TenantSituazioneView(APIView):
                     else None
                 ),
             }
+            # Solo la base dell'immobile (tenant vuoto) e le eventuali
+            # eccezioni di QUESTO inquilino: mai le eccezioni di altri.
             quote_qs = (
                 TenantCondominioRate.objects
                 .filter(contract=contract_attivo)
+                .filter(Q(tenant__isnull=True) | Q(tenant=tenant))
                 .order_by("-valid_from")
             )
             quote_storico = []
+            attive_specifiche = []
+            attive_generiche = []
             for q in quote_qs:
+                specifica = q.tenant_id is not None
                 row = {
                     "valid_from": q.valid_from.isoformat(),
                     "valid_to": q.valid_to.isoformat() if q.valid_to else None,
                     "importo_mensile": float(q.importo_mensile),
                     "note": q.note,
+                    "specifica": specifica,
                 }
                 quote_storico.append(row)
                 attiva = q.valid_from <= oggi and (q.valid_to is None or q.valid_to >= oggi)
-                if attiva and not quota_condominio["corrente"]:
-                    quota_condominio["corrente"] = row
+                if attiva:
+                    (attive_specifiche if specifica else attive_generiche).append(row)
             quota_condominio["storico"] = quote_storico
+            # La quota specifica dell'inquilino prevale sulla base
+            # dell'immobile; tra righe valide alla stessa data vince quella
+            # con valid_from più recente (quote_qs è ordinato -valid_from).
+            if attive_specifiche:
+                quota_condominio["corrente"] = attive_specifiche[0]
+            elif attive_generiche:
+                quota_condominio["corrente"] = attive_generiche[0]
 
         return Response({
             "tenant": TenantProfileSerializer(tenant).data,

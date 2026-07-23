@@ -172,8 +172,11 @@ class TenantCondominioRate(TimestampedModel):
     Quota mensile delle spese condominiali a carico degli inquilini, definita
     dal contratto e aggiornata dopo ogni consuntivo dell'amministratore.
 
-    Storicizzato per contratto: ogni record vale dalla data valid_from fino
-    a valid_to (incluso), o indefinitamente se valid_to nullo.
+    Storicizzato per contratto e, opzionalmente, per inquilino: la riga con
+    ``tenant`` vuoto è la quota base dell'immobile, quella con ``tenant``
+    valorizzato è un'eccezione per il singolo inquilino (es. tetto ridotto
+    per i nuovi ingressi) e prevale sulla base. Ogni record vale dalla data
+    valid_from fino a valid_to (incluso), o indefinitamente se valid_to nullo.
     """
 
     contract = models.ForeignKey(
@@ -181,6 +184,18 @@ class TenantCondominioRate(TimestampedModel):
         on_delete=models.CASCADE,
         related_name="quote_condominio_inquilini",
         verbose_name="contratto",
+    )
+    tenant = models.ForeignKey(
+        "properties.TenantProfile",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="quote_condominio",
+        verbose_name="inquilino",
+        help_text=(
+            "Vuoto = quota base dell'immobile; valorizzato = eccezione "
+            "valida solo per questo inquilino."
+        ),
     )
     valid_from = models.DateField(verbose_name="valido dal")
     valid_to = models.DateField(
@@ -202,4 +217,7 @@ class TenantCondominioRate(TimestampedModel):
         ordering = ["-valid_from"]
 
     def __str__(self):
-        return f"{self.importo_mensile}€/mese dal {self.valid_from}"
+        base = f"{self.importo_mensile}€/mese dal {self.valid_from}"
+        if self.tenant_id:
+            return f"{base} ({self.tenant})"
+        return base

@@ -22,6 +22,7 @@ class TenantCondominioRateAjaxInline(AjaxInline):
     list_display = (
         "valid_from",
         "valid_to",
+        "tenant",
         "importo_mensile",
         "note",
         "get_edit_icon_iframe",

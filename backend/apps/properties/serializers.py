@@ -1,6 +1,8 @@
 """
 Serializer per l'app properties.
 """
+from decimal import Decimal
+
 from django.utils.text import slugify
 from rest_framework import serializers
 
@@ -261,6 +263,76 @@ class CessioneAssignmentSerializer(serializers.Serializer):
         max_digits=10, decimal_places=2, required=False, allow_null=True,
     )
     data_atto_cessione = serializers.DateField(required=False, allow_null=True)
+
+
+class RataDepositoSerializer(serializers.Serializer):
+    importo = serializers.DecimalField(
+        max_digits=10, decimal_places=2, min_value=Decimal("0.01")
+    )
+    scadenza = serializers.DateField()
+
+
+class PrimaAssegnazioneSerializer(serializers.Serializer):
+    """Input dell'azione POST room-assignments/prima-assegnazione/: crea in
+    un colpo solo il primo RoomAssignment di un inquilino nuovo, con canone,
+    ciclo di fatturazione, deposito (eventualmente rateizzato) e quota
+    condominio specifica opzionali.
+    """
+
+    tenant = serializers.PrimaryKeyRelatedField(queryset=TenantProfile.objects.all())
+    room = serializers.PrimaryKeyRelatedField(queryset=Room.objects.all())
+    valid_from = serializers.DateField()
+    canone_mensile = serializers.DecimalField(
+        max_digits=10, decimal_places=2, min_value=Decimal("0")
+    )
+    ciclo_fatturazione = serializers.ChoiceField(
+        choices=TenantProfile.CicloFatturazione.choices
+    )
+    deposito_totale = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        min_value=Decimal("0.01"),
+    )
+    rate_deposito = RataDepositoSerializer(many=True, required=False)
+    data_versamento_deposito = serializers.DateField(required=False, allow_null=True)
+    quota_condominio_mensile = serializers.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        min_value=Decimal("0"),
+    )
+
+    def validate(self, attrs):
+        rate = attrs.get("rate_deposito") or []
+        deposito_totale = attrs.get("deposito_totale")
+        if rate:
+            if deposito_totale is None:
+                raise serializers.ValidationError(
+                    {
+                        "deposito_totale": (
+                            "Obbligatorio se sono indicate le rate del deposito."
+                        )
+                    }
+                )
+            somma = sum((r["importo"] for r in rate), Decimal("0"))
+            if somma != deposito_totale:
+                raise serializers.ValidationError(
+                    "Le rate non sommano al totale del deposito."
+                )
+            scadenze = [r["scadenza"] for r in rate]
+            if scadenze != sorted(scadenze):
+                raise serializers.ValidationError(
+                    "Le scadenze delle rate devono essere in ordine non decrescente."
+                )
+        elif deposito_totale is not None:
+            scadenza = attrs.get("data_versamento_deposito") or attrs["valid_from"]
+            attrs["rate_deposito"] = [
+                {"importo": deposito_totale, "scadenza": scadenza}
+            ]
+        return attrs
 
 
 class ContractSerializer(serializers.ModelSerializer):

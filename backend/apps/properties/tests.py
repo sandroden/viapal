@@ -594,6 +594,44 @@ class TestDepositoSignal:
         )
         assert negativo.importo_dovuto == Decimal("-530")
 
+    def test_rate_manuali_preesistenti_poi_set_deposito_non_duplica(
+        self, db, tenant, room
+    ):
+        """Rate DEPOSITO create a mano (come fa l'azione prima-assegnazione)
+        PRIMA di valorizzare ``tenant.deposito_versato``: il signal, quando
+        scatta al save del tenant, deve trovarle già presenti (idempotenza
+        via ``importo_dovuto__gt=0``) e non aggiungerne una quarta."""
+        from billing.models import Receivable, StatoPagamento
+
+        assignment = RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=datetime.date(2024, 9, 1),
+            canone_mensile=Decimal("450"),
+        )
+        for i, importo in enumerate((Decimal("300"), Decimal("300"), Decimal("300")), start=1):
+            Receivable.objects.create(
+                assignment=assignment,
+                causale=Receivable.Causale.DEPOSITO,
+                descrizione=f"Deposito (versamento) — rata {i}/3",
+                competenza_da=datetime.date(2024, 9, 1),
+                competenza_a=None,
+                scadenza=datetime.date(2024, 9, 1),
+                importo_dovuto=importo,
+                stato=StatoPagamento.ATTESO,
+            )
+
+        tenant.deposito_versato = Decimal("900")
+        tenant.data_versamento_deposito = datetime.date(2024, 9, 1)
+        tenant.save()
+
+        recs = Receivable.objects.filter(
+            assignment__tenant=tenant,
+            causale=Receivable.Causale.DEPOSITO,
+            importo_dovuto__gt=0,
+        )
+        assert recs.count() == 3
+
 
 # ---------------------------------------------------------------------------
 # Test signal costo cessione → Receivable inquilino 50% + Expense proprietari 50%

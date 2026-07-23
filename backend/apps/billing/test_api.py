@@ -18,9 +18,11 @@ from rest_framework.test import APIClient
 from billing.models import (
     Receivable,
     StatoPagamento,
+    TenantCondominioRate,
     UtilityChargePeriod,
 )
 from properties.models import (
+    Contract,
     OwnerProfile,
     PropertyMembership,
     Room,
@@ -88,6 +90,16 @@ def tenant_2(db, user_inq_2, immobile):
     return TenantProfile.objects.create(
         property=immobile,
         user=user_inq_2, nominativo="Inquilino Billing 2", giorno_pagamento_affitto=5
+    )
+
+
+@pytest.fixture
+def contract(db, immobile):
+    return Contract.objects.create(
+        property=immobile,
+        data_stipula=datetime.date(2024, 9, 15),
+        data_decorrenza=datetime.date(2024, 9, 20),
+        durata_anni=4,
     )
 
 
@@ -984,6 +996,33 @@ class TestTenantSituazione:
         assert data["deposito"]["dovuto_anno"] == -1500.0
         # Il deposito (anche la restituzione) è escluso dai totali dell'anno.
         assert data["totali_anno"]["dovuto"] == 0.0
+
+    def test_situazione_quota_condominio_specifica_prevale(
+        self, client_prop, tenant_1, tenant_2, assignment_1, assignment_2, contract
+    ):
+        TenantCondominioRate.objects.create(
+            contract=contract,
+            valid_from=datetime.date(2024, 1, 1),
+            importo_mensile=Decimal("90.00"),
+        )
+        TenantCondominioRate.objects.create(
+            contract=contract,
+            tenant=tenant_1,
+            valid_from=datetime.date(2024, 1, 1),
+            importo_mensile=Decimal("70.00"),
+        )
+
+        resp_a = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/situazione/")
+        assert resp_a.status_code == 200
+        corrente_a = resp_a.json()["quota_condominio"]["corrente"]
+        assert corrente_a["importo_mensile"] == 70.0
+        assert corrente_a["specifica"] is True
+
+        resp_b = client_prop.get(f"/api/v1/tenants/{tenant_2.id}/situazione/")
+        assert resp_b.status_code == 200
+        corrente_b = resp_b.json()["quota_condominio"]["corrente"]
+        assert corrente_b["importo_mensile"] == 90.0
+        assert corrente_b["specifica"] is False
 
 
 class TestRendiconto:

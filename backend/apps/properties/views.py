@@ -30,6 +30,7 @@ from properties.serializers import (
     ContractSerializer,
     OwnerBankAccountSerializer,
     OwnerProfileSerializer,
+    PrimaAssegnazioneSerializer,
     RoomAssignmentSerializer,
     RoomSerializer,
     TenantDocumentSerializer,
@@ -502,6 +503,168 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
         out = self.get_serializer
         return Response(
             {"chiuso": out(corrente).data, "nuovo": out(nuovo).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=False, methods=["post"], url_path="prima-assegnazione")
+    def prima_assegnazione(self, request):
+        """Crea il primo RoomAssignment di un inquilino nuovo: canone,
+        ciclo di fatturazione, deposito (con rate opzionali) e quota
+        condominio specifica opzionale, in un'unica operazione atomica.
+
+        Ordine critico per i signal di ``properties/signals.py``
+        (``genera_receivable_deposito_da_*``, idempotenti sulla presenza di
+        un Receivable DEPOSITO positivo): il ciclo di fatturazione e
+        l'assignment sono salvati PRIMA di valorizzare il deposito sul
+        tenant, cosicché i signal risultino no-op quando scattano; le rate
+        vengono create qui a mano e solo alla fine si imposta
+        ``tenant.deposito_versato``, che fa ripartire il signal ma lo trova
+        già idempotente (le rate esistono già) e non duplica nulla.
+        """
+        from django.db import transaction
+        from rest_framework.exceptions import ValidationError
+
+        prop = get_request_property(request)
+        ser = PrimaAssegnazioneSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        v = ser.validated_data
+
+        tenant = v["tenant"]
+        room = v["room"]
+        valid_from = v["valid_from"]
+
+        if room.property_id != prop.pk:
+            raise ValidationError(
+                {"room": "La stanza appartiene a un altro immobile."}
+            )
+        if tenant.property_id != prop.pk:
+            raise ValidationError(
+                {"tenant": "L'inquilino appartiene a un altro immobile."}
+            )
+        if tenant.assignments.filter(valid_to__isnull=True).exists():
+            raise ValidationError(
+                {"tenant": "L'inquilino ha già un'assegnazione in corso."}
+            )
+
+        deposito_totale = v.get("deposito_totale")
+        rate_deposito = v.get("rate_deposito") or []
+        if deposito_totale is not None:
+            from billing.models import Receivable
+
+            deposito_gia_registrato = (
+                Receivable.objects.filter(
+                    assignment__tenant=tenant,
+                    causale=Receivable.Causale.DEPOSITO,
+                    importo_dovuto__gt=0,
+                ).exists()
+                or tenant.deposito_versato > 0
+            )
+            if deposito_gia_registrato:
+                raise ValidationError(
+                    {"deposito_totale": "Deposito già registrato per questo inquilino."}
+                )
+
+        quota_condominio_mensile = v.get("quota_condominio_mensile")
+        contratto_attivo_quota = None
+        quota_diversa = False
+        if quota_condominio_mensile is not None:
+            from billing.models import TenantCondominioRate
+
+            contratto_attivo_quota = prop.contratto_attivo(valid_from)
+            quota_generica_corrente = None
+            if contratto_attivo_quota is not None:
+                quota_generica_corrente = (
+                    TenantCondominioRate.objects.filter(
+                        contract=contratto_attivo_quota,
+                        tenant__isnull=True,
+                        valid_from__lte=valid_from,
+                    )
+                    .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=valid_from))
+                    .order_by("-valid_from")
+                    .first()
+                )
+            quota_diversa = (
+                quota_generica_corrente is None
+                or quota_generica_corrente.importo_mensile.quantize(Decimal("0.01"))
+                != quota_condominio_mensile.quantize(Decimal("0.01"))
+            )
+            if quota_diversa and contratto_attivo_quota is None:
+                raise ValidationError(
+                    {
+                        "quota_condominio_mensile": (
+                            "Nessun contratto attivo: impossibile registrare "
+                            "la quota condominio."
+                        )
+                    }
+                )
+
+        with transaction.atomic():
+            tenant.ciclo_fatturazione = v["ciclo_fatturazione"]
+            tenant.save(update_fields=["ciclo_fatturazione", "updated_at"])
+
+            nuovo = RoomAssignment(
+                room=room,
+                tenant=tenant,
+                valid_from=valid_from,
+                canone_mensile=v["canone_mensile"],
+            )
+            self._full_clean_o_400(nuovo)
+            nuovo.save()
+
+            rate_deposito_ids: list[int] = []
+            if deposito_totale is not None:
+                from billing.models import Receivable, StatoPagamento
+
+                n = len(rate_deposito)
+                for i, rata in enumerate(rate_deposito, start=1):
+                    descrizione = (
+                        "Deposito (versamento)"
+                        if n == 1
+                        else f"Deposito (versamento) — rata {i}/{n}"
+                    )
+                    rec = Receivable.objects.create(
+                        assignment=nuovo,
+                        causale=Receivable.Causale.DEPOSITO,
+                        descrizione=descrizione,
+                        competenza_da=rata["scadenza"],
+                        competenza_a=None,
+                        scadenza=rata["scadenza"],
+                        importo_dovuto=rata["importo"],
+                        stato=StatoPagamento.ATTESO,
+                    )
+                    rate_deposito_ids.append(rec.pk)
+
+                tenant.deposito_versato = deposito_totale
+                tenant.data_versamento_deposito = (
+                    v.get("data_versamento_deposito") or valid_from
+                )
+                tenant.save(
+                    update_fields=[
+                        "deposito_versato",
+                        "data_versamento_deposito",
+                        "updated_at",
+                    ]
+                )
+
+            quota_condominio_creata = False
+            if quota_condominio_mensile is not None and quota_diversa:
+                from billing.models import TenantCondominioRate
+
+                TenantCondominioRate.objects.create(
+                    contract=contratto_attivo_quota,
+                    tenant=tenant,
+                    valid_from=valid_from,
+                    importo_mensile=quota_condominio_mensile,
+                    note="Creata da prima assegnazione",
+                )
+                quota_condominio_creata = True
+
+        return Response(
+            {
+                "assignment": self.get_serializer(nuovo).data,
+                "rate_deposito_ids": rate_deposito_ids,
+                "quota_condominio_creata": quota_condominio_creata,
+            },
             status=status.HTTP_201_CREATED,
         )
 

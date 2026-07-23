@@ -490,3 +490,177 @@ class TestTenantDocumentViewSet:
         client = APIClient()
         resp = client.get("/api/v1/tenant-documents/")
         assert resp.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
+# Test action RoomAssignmentViewSet.prima_assegnazione
+# ---------------------------------------------------------------------------
+
+
+class TestPrimaAssegnazioneAPI:
+    URL = "/api/v1/room-assignments/prima-assegnazione/"
+
+    def _payload(self, tenant_id, room_id, **overrides):
+        payload = {
+            "tenant": tenant_id,
+            "room": room_id,
+            "valid_from": "2026-08-01",
+            "canone_mensile": "450.00",
+            "ciclo_fatturazione": "solare",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_happy_path_3_rate(self, client_prop, tenant_2, room_2):
+        from billing.models import Receivable
+
+        payload = self._payload(
+            tenant_2.id,
+            room_2.id,
+            deposito_totale="900.00",
+            rate_deposito=[
+                {"importo": "300.00", "scadenza": "2026-08-01"},
+                {"importo": "300.00", "scadenza": "2026-09-01"},
+                {"importo": "300.00", "scadenza": "2026-10-01"},
+            ],
+        )
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 201, resp.content
+        data = resp.json()
+        assert len(data["rate_deposito_ids"]) == 3
+
+        recs = Receivable.objects.filter(
+            assignment__tenant=tenant_2,
+            causale=Receivable.Causale.DEPOSITO,
+            importo_dovuto__gt=0,
+        )
+        # Esattamente 3 rate: il signal non ne aggiunge una quarta.
+        assert recs.count() == 3
+        assert sum((r.importo_dovuto for r in recs), Decimal("0")) == Decimal("900.00")
+
+        tenant_2.refresh_from_db()
+        assert tenant_2.ciclo_fatturazione == "solare"
+        assert tenant_2.deposito_versato == Decimal("900.00")
+
+    def test_rate_non_sommano_400_e_niente_creato(self, client_prop, tenant_2, room_2):
+        from billing.models import Receivable
+
+        payload = self._payload(
+            tenant_2.id,
+            room_2.id,
+            deposito_totale="900.00",
+            rate_deposito=[
+                {"importo": "300.00", "scadenza": "2026-08-01"},
+                {"importo": "300.00", "scadenza": "2026-09-01"},
+            ],
+        )
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 400
+        assert not RoomAssignment.objects.filter(tenant=tenant_2).exists()
+        assert not Receivable.objects.filter(assignment__tenant=tenant_2).exists()
+        tenant_2.refresh_from_db()
+        assert tenant_2.deposito_versato == Decimal("0")
+
+    def test_tenant_con_assignment_in_corso_400(
+        self, client_prop, tenant_2, room_2, assignment_2
+    ):
+        payload = self._payload(tenant_2.id, room_2.id)
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 400
+        assert "tenant" in resp.json()
+
+    def test_room_di_altra_property_400(self, client_prop, tenant_2, immobile2):
+        altra_room = Room.objects.create(
+            property=immobile2, nome="Camera altra property", ordinamento=1
+        )
+        payload = self._payload(tenant_2.id, altra_room.id)
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 400
+        assert "room" in resp.json()
+
+    def test_overlap_stanza_occupata_400_rollback(
+        self, client_prop, tenant_2, room_1, assignment_1
+    ):
+        # room_1 è già occupata (assignment_1, aperta dal 2024-09-01).
+        payload = self._payload(tenant_2.id, room_1.id, ciclo_fatturazione="ingresso")
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 400
+        assert not RoomAssignment.objects.filter(tenant=tenant_2).exists()
+        # Rollback: anche il ciclo_fatturazione salvato prima dell'errore
+        # deve tornare indietro (transazione atomica).
+        tenant_2.refresh_from_db()
+        assert tenant_2.ciclo_fatturazione == "solare"
+
+    def test_quota_diversa_dalla_generica_crea_specifica(
+        self, client_prop, tenant_2, room_2, contract
+    ):
+        from billing.models import TenantCondominioRate
+
+        TenantCondominioRate.objects.create(
+            contract=contract,
+            valid_from=datetime.date(2024, 1, 1),
+            importo_mensile=Decimal("90.00"),
+        )
+        payload = self._payload(
+            tenant_2.id, room_2.id, quota_condominio_mensile="70.00"
+        )
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 201, resp.content
+        assert resp.json()["quota_condominio_creata"] is True
+        rata = TenantCondominioRate.objects.get(tenant=tenant_2)
+        assert rata.importo_mensile == Decimal("70.00")
+        assert rata.valid_from == datetime.date(2026, 8, 1)
+        assert rata.contract_id == contract.id
+
+    def test_quota_uguale_alla_generica_non_crea_riga(
+        self, client_prop, tenant_2, room_2, contract
+    ):
+        from billing.models import TenantCondominioRate
+
+        TenantCondominioRate.objects.create(
+            contract=contract,
+            valid_from=datetime.date(2024, 1, 1),
+            importo_mensile=Decimal("90.00"),
+        )
+        payload = self._payload(
+            tenant_2.id, room_2.id, quota_condominio_mensile="90.00"
+        )
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 201, resp.content
+        assert resp.json()["quota_condominio_creata"] is False
+        assert not TenantCondominioRate.objects.filter(tenant=tenant_2).exists()
+
+    def test_quota_diversa_senza_contratto_attivo_400(
+        self, client_prop, tenant_2, room_2
+    ):
+        # Nessun Contract creato per questo immobile in questo test.
+        payload = self._payload(
+            tenant_2.id, room_2.id, quota_condominio_mensile="70.00"
+        )
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 400
+        assert "quota_condominio_mensile" in resp.json()
+
+    def test_deposito_gia_esistente_con_payload_deposito_400(
+        self, client_prop, tenant_2, room_2
+    ):
+        tenant_2.deposito_versato = Decimal("500.00")
+        tenant_2.save()
+        payload = self._payload(tenant_2.id, room_2.id, deposito_totale="900.00")
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 400
+        assert "deposito_totale" in resp.json()
+
+    def test_deposito_gia_esistente_senza_payload_deposito_201(
+        self, client_prop, tenant_2, room_2
+    ):
+        tenant_2.deposito_versato = Decimal("500.00")
+        tenant_2.save()
+        payload = self._payload(tenant_2.id, room_2.id)
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 201, resp.content
+
+    def test_utente_inquilino_403(self, client_inq_1, tenant_2, room_2):
+        payload = self._payload(tenant_2.id, room_2.id)
+        resp = client_inq_1.post(self.URL, payload, format="json")
+        assert resp.status_code == 403

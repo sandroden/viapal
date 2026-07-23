@@ -51,23 +51,35 @@ def _anniversary_periodo(
     return competenza_da, prossimo_inizio - timedelta(days=1)
 
 
-def _quota_condominio_per(competenza_da: date) -> Decimal:
+def _quota_condominio_per(assignment, competenza_da: date) -> Decimal:
     """Ritorna la quota mensile di spese condominio a carico dell'inquilino
     (``TenantCondominioRate``) valida per la data di competenza, o 0 se non
     è configurata.
 
-    Se più record sono validi (es. contratti diversi che si sovrappongono),
-    sommiamo: deve esserci una sola quota per inquilino-mese in pratica.
+    La quota è definita per immobile tramite il contratto
+    (``TenantCondominioRate.contract.property``): si considerano solo le
+    righe del contratto/i dell'immobile di ``assignment``. Ogni riga con
+    ``tenant`` vuoto è la base dell'immobile; una riga con ``tenant``
+    valorizzato è un'eccezione per quell'inquilino e PREVALE sulla base. Se
+    più righe dello stesso tipo (base o eccezione) sono valide alla data
+    (es. contratti sovrapposti), vince quella con ``valid_from`` più
+    recente. Non si sommano mai più righe.
     """
     from billing.models import TenantCondominioRate
 
-    qs = TenantCondominioRate.objects.filter(valid_from__lte=competenza_da).filter(
-        Q(valid_to__isnull=True) | Q(valid_to__gte=competenza_da)
+    qs = TenantCondominioRate.objects.filter(
+        contract__property_id=assignment.room.property_id,
+        valid_from__lte=competenza_da,
+    ).filter(Q(valid_to__isnull=True) | Q(valid_to__gte=competenza_da))
+
+    specifica = (
+        qs.filter(tenant_id=assignment.tenant_id).order_by("-valid_from").first()
     )
-    tot = Decimal("0")
-    for r in qs:
-        tot += r.importo_mensile
-    return tot
+    if specifica is not None:
+        return specifica.importo_mensile
+
+    generica = qs.filter(tenant__isnull=True).order_by("-valid_from").first()
+    return generica.importo_mensile if generica else Decimal("0")
 
 
 def genera_pagamenti_mese(
@@ -91,8 +103,10 @@ def genera_pagamenti_mese(
     3. Importo:
        - giorni_mese = giorni effettivi del mese (28-31)
        - giorni_competenza = (competenza_a - competenza_da).days + 1
-       - canone_dovuto = canone_mensile + quota_condominio_per(competenza_da)
+       - canone_dovuto = canone_mensile + quota_condominio_per(assignment, competenza_da)
          dove quota_condominio = ``TenantCondominioRate`` valido nel periodo
+         per l'immobile dell'assignment (eccezione tenant, se presente,
+         prevale sulla base dell'immobile; mai sommate)
        - se giorni_competenza < giorni_mese: is_aggiustamento=True,
          importo_dovuto = round(canone_dovuto * giorni_competenza / giorni_mese, 2)
        - altrimenti: is_aggiustamento=False, importo_dovuto = canone_dovuto
@@ -124,7 +138,7 @@ def genera_pagamenti_mese(
         valid_from__lte=ultimo_mese,
         valid_to__gte=primo_del_mese,
     )
-    assignments_qs = assignments_qs.distinct().select_related("tenant")
+    assignments_qs = assignments_qs.distinct().select_related("tenant", "room")
     if property is not None:
         assignments_qs = assignments_qs.filter(room__property=property)
     if tenant_id is not None:
@@ -170,7 +184,7 @@ def genera_pagamenti_mese(
                 giorni_competenza = (competenza_a - competenza_da).days + 1
                 is_aggiustamento = True
                 canone_pieno = assignment.canone_mensile + _quota_condominio_per(
-                    competenza_da
+                    assignment, competenza_da
                 )
                 importo_dovuto = _arrotonda(
                     canone_pieno
@@ -181,7 +195,7 @@ def genera_pagamenti_mese(
                 competenza_a = mensilita_completa_a
                 is_aggiustamento = False
                 canone_pieno = assignment.canone_mensile + _quota_condominio_per(
-                    competenza_da
+                    assignment, competenza_da
                 )
                 importo_dovuto = canone_pieno
 
@@ -195,7 +209,7 @@ def genera_pagamenti_mese(
 
             giorni_competenza = (competenza_a - competenza_da).days + 1
             canone_pieno = assignment.canone_mensile + _quota_condominio_per(
-                competenza_da
+                assignment, competenza_da
             )
 
             if giorni_competenza < n_giorni_mese:
