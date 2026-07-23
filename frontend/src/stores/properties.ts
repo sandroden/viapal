@@ -28,6 +28,7 @@ export interface Quota {
 export interface PropertyDettaglio {
   id: number;
   nome: string;
+  slug: string | null;
   indirizzo: string;
   bank_account_utenze: number | null;
   owner_anticipa_cessioni: number | null;

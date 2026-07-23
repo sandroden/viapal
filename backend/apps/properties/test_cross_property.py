@@ -302,6 +302,8 @@ ENDPOINT_GESTIONE = [
     "/api/v1/dashboard/proprietario/",
     "/api/v1/dashboard/conto-economico/",
     "/api/v1/quadro-annuale/2026/",
+    "/api/v1/gallery-areas/",
+    "/api/v1/gallery-images/",
 ]
 
 

@@ -5,12 +5,14 @@ import datetime
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Q, Sum
+from django.db.models import Max, Q, Sum
 from django.db.models.functions import Coalesce
+from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import SAFE_METHODS
+from rest_framework.generics import RetrieveAPIView
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.permissions import SAFE_METHODS, AllowAny
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
@@ -18,8 +20,11 @@ from accounts.permissions import IsInquilinoSelf, IsPropertyMember
 from properties.context import get_request_property
 from properties.models import (
     Contract,
+    GalleryArea,
+    GalleryImage,
     OwnerBankAccount,
     OwnerProfile,
+    Property,
     Room,
     RoomAssignment,
     TenantDocument,
@@ -28,9 +33,13 @@ from properties.models import (
 from properties.serializers import (
     CessioneAssignmentSerializer,
     ContractSerializer,
+    GalleryAreaSerializer,
+    GalleryImageSerializer,
     OwnerBankAccountSerializer,
     OwnerProfileSerializer,
     PrimaAssegnazioneSerializer,
+    PropertySerializer,
+    PublicGallerySerializer,
     RoomAssignmentSerializer,
     RoomSerializer,
     TenantDocumentSerializer,
@@ -324,11 +333,13 @@ class RoomViewSet(ProtectedDestroyMixin, ModelViewSet):
     """
     Stanze.
     - Proprietari: tutte, con CRUD completo (scrittura riservata ai membri
-      operativi; la property è assegnata dal server sull'immobile attivo).
+      operativi; la property è assegnata dal server sull'immobile attivo),
+      inclusi i campi galleria (upload foto via multipart).
     - Inquilini: solo lettura delle stanze con assignment attivo per sé.
     """
 
     serializer_class = RoomSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     protected_detail = (
         "Impossibile eliminare la stanza: ha assegnazioni collegate. "
         "Rimuovere prima le assegnazioni."
@@ -776,6 +787,9 @@ class PropertyViewSet(ModelViewSet):
     from properties.serializers import PropertySerializer
 
     serializer_class = PropertySerializer
+    # MultiPart per l'upload delle immagini singleton della galleria
+    # (hero/planimetria/mappa), JSON per il resto.
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
         from properties.context import properties_accessibili
@@ -1088,3 +1102,113 @@ class PropertyViewSet(ModelViewSet):
                 {"detail": esito["errore"]}, status=st.HTTP_400_BAD_REQUEST
             )
         return Response(esito, status=st.HTTP_201_CREATED)
+
+
+class _GalleryPropertyScopedMixin:
+    """Scoping multiproprietà per i viewset della galleria: si lavora sempre
+    sull'immobile attivo della richiesta, mai su quello indicato dal client."""
+
+    def _property_attiva(self, serializer=None):
+        from rest_framework.exceptions import ValidationError
+
+        prop = get_request_property(self.request)
+        if serializer is not None:
+            inviata = serializer.validated_data.get("property")
+            if inviata is not None and inviata.pk != prop.pk:
+                raise ValidationError(
+                    {"property": "Immobile diverso da quello attivo."}
+                )
+        return prop
+
+
+class GalleryImageViewSet(_GalleryPropertyScopedMixin, ModelViewSet):
+    """Foto della galleria pubblica (spazi comuni e stanze).
+
+    Scrittura riservata ai membri operativi dell'immobile attivo. L'upload
+    accetta sia file (``q-file``, drag&drop) sia blob incollati (Ctrl-V):
+    è sempre una POST multipart.
+    """
+
+    serializer_class = GalleryImageSerializer
+    permission_classes = [IsPropertyMember]
+    # MultiPart per l'upload (file), JSON per i PATCH di metadati (formato,
+    # didascalia, ordinamento) senza reinviare l'immagine.
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_queryset(self):
+        qs = GalleryImage.objects.select_related("property", "room", "area").filter(
+            property=get_request_property(self.request)
+        )
+        room_id = self.request.query_params.get("room")
+        if room_id:
+            qs = qs.filter(room_id=room_id)
+        area_id = self.request.query_params.get("area")
+        if area_id:
+            qs = qs.filter(area_id=area_id)
+        return qs
+
+    def perform_create(self, serializer):
+        prop = self._property_attiva(serializer)
+        # Nuove foto in coda alla loro sezione (camera/ambiente/immobile): con
+        # l'ordinamento a 0 di default, in una sezione già riordinata si
+        # infilerebbero dopo la prima foto invece che in fondo.
+        data = serializer.validated_data
+        qs = GalleryImage.objects.filter(property=prop)
+        if data.get("room"):
+            qs = qs.filter(room=data["room"])
+        elif data.get("area"):
+            qs = qs.filter(area=data["area"])
+        else:
+            qs = qs.filter(room__isnull=True, area__isnull=True)
+        ultimo = qs.aggregate(m=Max("ordinamento"))["m"]
+        serializer.save(
+            property=prop,
+            caricato_da=self.request.user,
+            ordinamento=0 if ultimo is None else ultimo + 1,
+        )
+
+    def perform_update(self, serializer):
+        self._property_attiva(serializer)
+        serializer.save()
+
+
+class GalleryAreaViewSet(_GalleryPropertyScopedMixin, ModelViewSet):
+    """Ambienti comuni della galleria (cucina, soggiorno, bagni…).
+
+    Scrittura riservata ai membri operativi dell'immobile attivo. Non sono
+    oggetti d'affitto: nessun legame con assegnazioni/canone.
+    """
+
+    serializer_class = GalleryAreaSerializer
+    permission_classes = [IsPropertyMember]
+
+    def get_queryset(self):
+        return GalleryArea.objects.select_related("property").filter(
+            property=get_request_property(self.request)
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(property=self._property_attiva(serializer))
+
+    def perform_update(self, serializer):
+        self._property_attiva(serializer)
+        serializer.save()
+
+
+class PublicGalleryView(RetrieveAPIView):
+    """Payload pubblico della galleria di un immobile, senza autenticazione.
+
+    Unica view AllowAny del progetto: espone solo i campi pubblici tramite
+    ``PublicGallerySerializer``. 404 se l'immobile non è pubblicato. Lo
+    slug identifica l'immobile: intrinsecamente per-property.
+    """
+
+    serializer_class = PublicGallerySerializer
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    lookup_field = "slug"
+
+    def get_queryset(self):
+        return Property.objects.filter(pubblica=True).prefetch_related(
+            "rooms", "rooms__gallery_images", "gallery_areas", "gallery_areas__gallery_images"
+        )

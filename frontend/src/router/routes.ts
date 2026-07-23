@@ -35,6 +35,21 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // Galleria pubblica dell'immobile (annuncio affitto). Nessuna
+    // autenticazione: l'editing in-place appare solo se un proprietario è
+    // loggato.
+    path: '/g/:slug',
+    component: () => import('layouts/PublicLayout.vue'),
+    meta: { public: true },
+    children: [
+      {
+        path: '',
+        name: 'galleria-pubblica',
+        component: () => import('pages/GalleriaPubblica.vue'),
+      },
+    ],
+  },
+  {
     path: '/p',
     component: () => import('layouts/ProprietarioLayout.vue'),
     meta: { role: 'proprietario' },

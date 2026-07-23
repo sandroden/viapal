@@ -12,6 +12,7 @@ from billing.dashboard_views import (
     PrevisionaleUtenzeView,
     QuadroAnnualeView,
     RendicontoView,
+    RestituzioneDepositoView,
     TenantSituazioneView,
 )
 
@@ -48,5 +49,10 @@ urlpatterns = [
         "tenants/<int:tenant_id>/conguaglia-previsionale/",
         ConguagliaPrevisionaleView.as_view(),
         name="tenant-conguaglia-previsionale",
+    ),
+    path(
+        "tenants/<int:tenant_id>/restituzione-deposito/",
+        RestituzioneDepositoView.as_view(),
+        name="tenant-restituzione-deposito",
     ),
 ]

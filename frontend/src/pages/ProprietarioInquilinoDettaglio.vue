@@ -648,6 +648,18 @@
                 </template>
 
                 <q-btn
+                  v-if="puoGestireRestituzione"
+                  flat
+                  dense
+                  no-caps
+                  size="sm"
+                  color="primary"
+                  icon="savings"
+                  :label="rigaRestituzione ? 'Modifica restituzione deposito' : 'Genera addebito restituzione deposito'"
+                  class="vp-p-id__rendiconto-btn"
+                  @click="dialogRestituzione = true"
+                />
+                <q-btn
                   v-if="puoCrearePrevisionale"
                   flat
                   dense
@@ -861,6 +873,12 @@
       :deposito-gia-registrato="depositoGiaRegistrato"
       @saved="dopoAssegnazioneStanza"
     />
+
+    <RestituzioneDepositoDialog
+      v-model="dialogRestituzione"
+      :tenant-id="tenantId"
+      @saved="dopoSalvataggioPagamento"
+    />
   </q-page>
 </template>
 
@@ -885,6 +903,7 @@ import RegistraPagamentoDialog from 'src/components/RegistraPagamentoDialog.vue'
 import PrevisionaleUtenzeDialog from 'src/components/PrevisionaleUtenzeDialog.vue';
 import ConguagliaPrevisionaleDialog from 'src/components/ConguagliaPrevisionaleDialog.vue';
 import AssegnaStanzaDialog from 'src/components/AssegnaStanzaDialog.vue';
+import RestituzioneDepositoDialog from 'src/components/RestituzioneDepositoDialog.vue';
 
 type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'deposito';
 
@@ -1292,6 +1311,7 @@ const receivableSelezionato = ref<ReceivableInput | null>(null);
 
 const dialogPrevisionale = ref(false);
 const dialogConguaglio = ref(false);
+const dialogRestituzione = ref(false);
 // Giorni prima della fine occupazione in cui ha senso preparare i conti
 // (previsionale) anche se la restituzione del deposito non è ancora stata
 // fissata. Allineato alla finestra "in scadenza" del backend.
@@ -1343,6 +1363,19 @@ const puoCrearePrevisionale = computed(
     !restituzioneEffettuata.value &&
     assignmentAttivoId.value !== null &&
     previsionaleApertoId.value === null,
+);
+
+// Generazione/modifica esplicita dell'addebito di restituzione deposito:
+// possibile quando l'inquilino è in uscita (finestra, data prevista o riga
+// già presente) e la restituzione non è ancora stata effettivamente pagata.
+const puoGestireRestituzione = computed(
+  () =>
+    simulazioneUscita.value !== null &&
+    !restituzioneEffettuata.value &&
+    assignmentAttivoId.value !== null &&
+    (!!situazione.value?.tenant?.data_restituzione_prevista ||
+      inFinestraUscita.value ||
+      rigaRestituzione.value !== null),
 );
 
 function aprireRegistraPagamento(riga: RigaPagamento): void {

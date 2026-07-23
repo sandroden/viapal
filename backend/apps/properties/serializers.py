@@ -8,8 +8,11 @@ from rest_framework import serializers
 
 from properties.models import (
     Contract,
+    GalleryArea,
+    GalleryImage,
     OwnerBankAccount,
     OwnerProfile,
+    Property,
     Room,
     RoomAssignment,
     TenantDocument,
@@ -222,7 +225,169 @@ class RoomSerializer(serializers.ModelSerializer):
             "superficie_mq",
             "foto",
             "ordinamento",
+            # ── Galleria pubblica ──
+            "colore",
+            "descrizione",
+            "disponibile",
+            "libera_dal",
+            "prezzo_mensile",
+            "pubblica",
         ]
+
+
+class GalleryAreaSerializer(serializers.ModelSerializer):
+    """Ambiente comune (cucina, soggiorno, bagni…) — no dati di locazione."""
+
+    class Meta:
+        model = GalleryArea
+        fields = [
+            "id",
+            "property",
+            "nome",
+            "colore",
+            "descrizione",
+            "ordinamento",
+            "pubblica",
+        ]
+
+
+class GalleryImageSerializer(serializers.ModelSerializer):
+    """Foto della galleria. ``property``/``room``/``area`` validati dalla view."""
+
+    class Meta:
+        model = GalleryImage
+        fields = [
+            "id",
+            "property",
+            "room",
+            "area",
+            "image",
+            "didascalia",
+            "formato",
+            "ordinamento",
+            "created_at",
+        ]
+
+    def validate(self, attrs):
+        prop = attrs.get("property") or getattr(self.instance, "property", None)
+        room = attrs.get("room") if "room" in attrs else getattr(self.instance, "room", None)
+        area = attrs.get("area") if "area" in attrs else getattr(self.instance, "area", None)
+        if room and area:
+            raise serializers.ValidationError(
+                "Indica una camera oppure un ambiente comune, non entrambi."
+            )
+        if room and prop and room.property_id != prop.id:
+            raise serializers.ValidationError({"room": "La camera non appartiene all'immobile."})
+        if area and prop and area.property_id != prop.id:
+            raise serializers.ValidationError({"area": "L'ambiente non appartiene all'immobile."})
+        return attrs
+
+
+class PublicGalleryRoomSerializer(serializers.ModelSerializer):
+    """Stanza come esposta nella pagina pubblica (sola lettura, senza dati sensibili)."""
+
+    foto = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Room
+        fields = [
+            "id",
+            "nome",
+            "superficie_mq",
+            "colore",
+            "descrizione",
+            "disponibile",
+            "libera_dal",
+            "prezzo_mensile",
+            "ordinamento",
+            "foto",
+        ]
+
+    def get_foto(self, obj):
+        # 'Non disponibile' (toggle spento) nasconde l'interno, a prescindere
+        # da eventuali date: il toggle è il comando principale.
+        if not obj.disponibile:
+            return []
+        request = self.context.get("request")
+        return [
+            {
+                "id": img.id,
+                "url": request.build_absolute_uri(img.image.url) if request else img.image.url,
+                "didascalia": img.didascalia,
+                "formato": img.formato,
+            }
+            for img in obj.gallery_images.all()
+        ]
+
+
+class PublicGalleryAreaSerializer(serializers.ModelSerializer):
+    """Ambiente comune come esposto nella pagina pubblica (sola lettura)."""
+
+    foto = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GalleryArea
+        fields = ["id", "nome", "colore", "descrizione", "ordinamento", "foto"]
+
+    def get_foto(self, obj):
+        request = self.context.get("request")
+        return [
+            {
+                "id": img.id,
+                "url": request.build_absolute_uri(img.image.url) if request else img.image.url,
+                "didascalia": img.didascalia,
+                "formato": img.formato,
+            }
+            for img in obj.gallery_images.all()
+        ]
+
+
+class PublicGallerySerializer(serializers.ModelSerializer):
+    """Payload completo e pubblico della galleria di un immobile."""
+
+    rooms = serializers.SerializerMethodField()
+    aree = serializers.SerializerMethodField()
+    foto_hero = serializers.SerializerMethodField()
+    foto_planimetria = serializers.SerializerMethodField()
+    foto_mappa = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Property
+        fields = [
+            "id",
+            "nome",
+            "slug",
+            "indirizzo",
+            "testi_pubblici",
+            "foto_hero",
+            "foto_planimetria",
+            "foto_mappa",
+            "rooms",
+            "aree",
+        ]
+
+    def _url(self, filefield):
+        if not filefield:
+            return None
+        request = self.context.get("request")
+        return request.build_absolute_uri(filefield.url) if request else filefield.url
+
+    def get_foto_hero(self, obj):
+        return self._url(obj.foto_hero)
+
+    def get_foto_planimetria(self, obj):
+        return self._url(obj.foto_planimetria)
+
+    def get_foto_mappa(self, obj):
+        return self._url(obj.foto_mappa)
+
+    def get_rooms(self, obj):
+        rooms = obj.rooms.filter(pubblica=True).prefetch_related("gallery_images")
+        return PublicGalleryRoomSerializer(rooms, many=True, context=self.context).data
+
+    def get_aree(self, obj):
+        aree = obj.gallery_areas.filter(pubblica=True).prefetch_related("gallery_images")
+        return PublicGalleryAreaSerializer(aree, many=True, context=self.context).data
 
 
 class RoomAssignmentSerializer(serializers.ModelSerializer):
@@ -380,7 +545,10 @@ class OwnerBankAccountSerializer(serializers.ModelSerializer):
 
 
 class PropertySerializer(serializers.ModelSerializer):
-    """Immobile con il ruolo dell'utente corrente."""
+    """Immobile con il ruolo dell'utente corrente.
+
+    Include i campi della galleria pubblica (slug, toggle, foto singleton,
+    testi), editabili via PATCH dai membri operativi."""
 
     mio_ruolo = serializers.SerializerMethodField()
     n_stanze = serializers.SerializerMethodField()
@@ -392,12 +560,19 @@ class PropertySerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "nome",
+            "slug",
             "indirizzo",
+            "pubblica",
+            "foto_hero",
+            "foto_planimetria",
+            "foto_mappa",
+            "testi_pubblici",
             "bank_account_utenze",
             "owner_anticipa_cessioni",
             "mio_ruolo",
             "n_stanze",
         ]
+        extra_kwargs = {"slug": {"required": False}}
 
     def get_mio_ruolo(self, obj):
         from .context import ruolo_su_property

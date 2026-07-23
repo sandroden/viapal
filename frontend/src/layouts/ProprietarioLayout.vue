@@ -105,7 +105,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore, type RuoloProperty } from 'stores/auth';
 import { usePropertiesStore } from 'stores/properties';
@@ -114,6 +114,7 @@ const auth = useAuthStore();
 const propStore = usePropertiesStore();
 const router = useRouter();
 const drawerOpen = ref(true);
+const galleriaSlug = ref<string | null>(null);
 
 function etichettaRuolo(ruolo: RuoloProperty | null): string {
   if (ruolo === 'proprietario') return 'Proprietario';
@@ -122,20 +123,42 @@ function etichettaRuolo(ruolo: RuoloProperty | null): string {
   return '';
 }
 
-const vociMenu = [
-  { to: '/p/', label: 'Dashboard', icon: 'dashboard' },
-  { to: '/p/ritardi', label: 'Ritardi', icon: 'warning_amber' },
-  { to: '/p/inquilini', label: 'Inquilini', icon: 'group' },
-  { to: '/p/quadro-annuale', label: 'Quadro annuale', icon: 'table_view' },
-  { to: '/p/spese', label: 'Spese', icon: 'shopping_cart' },
-  { to: '/p/utenze', label: 'Utenze', icon: 'bolt' },
-  { to: '/p/riconciliazione', label: 'Riconciliazione', icon: 'compare_arrows' },
-  { to: '/p/saldi-fratelli', label: 'Saldi fratelli', icon: 'account_balance' },
-  { to: '/p/conto-economico', label: 'Conto economico', icon: 'assessment' },
-  { to: '/p/quick-add', label: 'Aggiungi rapida', icon: 'add_circle' },
-  { to: '/p/impostazioni/proprieta', label: 'Immobile e membri', icon: 'home_work' },
-  { to: '/p/impostazioni/casa', label: 'La casa', icon: 'meeting_room' },
-];
+const vociMenu = computed(() => {
+  const voci = [
+    { to: '/p/', label: 'Dashboard', icon: 'dashboard' },
+    { to: '/p/ritardi', label: 'Ritardi', icon: 'warning_amber' },
+    { to: '/p/inquilini', label: 'Inquilini', icon: 'group' },
+    { to: '/p/quadro-annuale', label: 'Quadro annuale', icon: 'table_view' },
+    { to: '/p/spese', label: 'Spese', icon: 'shopping_cart' },
+    { to: '/p/utenze', label: 'Utenze', icon: 'bolt' },
+    { to: '/p/riconciliazione', label: 'Riconciliazione', icon: 'compare_arrows' },
+    { to: '/p/saldi-fratelli', label: 'Saldi fratelli', icon: 'account_balance' },
+    { to: '/p/conto-economico', label: 'Conto economico', icon: 'assessment' },
+    { to: '/p/quick-add', label: 'Aggiungi rapida', icon: 'add_circle' },
+    { to: '/p/impostazioni/proprieta', label: 'Immobile e membri', icon: 'home_work' },
+    { to: '/p/impostazioni/casa', label: 'La casa', icon: 'meeting_room' },
+  ];
+  if (galleriaSlug.value) {
+    voci.push({
+      to: `/g/${galleriaSlug.value}`,
+      label: 'Galleria annuncio',
+      icon: 'photo_library',
+    });
+  }
+  return voci;
+});
+
+// Slug della galleria dell'immobile ATTIVO (multiproprietà: mai list[0]).
+onMounted(async () => {
+  const id = propStore.activePropertyId;
+  if (!id) return;
+  try {
+    const dettaglio = await propStore.caricaDettaglio(id);
+    galleriaSlug.value = dettaglio.slug ?? null;
+  } catch {
+    galleriaSlug.value = null;
+  }
+});
 
 function toggleDrawer() {
   drawerOpen.value = !drawerOpen.value;

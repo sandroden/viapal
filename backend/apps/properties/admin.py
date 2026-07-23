@@ -15,6 +15,8 @@ from jmb.jadmin import JumboModelAdmin, ModalEditMixin
 
 from .models import (
     Contract,
+    GalleryArea,
+    GalleryImage,
     OwnerBankAccount,
     OwnerProfile,
     OwnershipShare,
@@ -81,6 +83,36 @@ class RoomAssignmentInlineForRoom(admin.TabularInline):
     fields = ("tenant", "valid_from", "valid_to", "canone_mensile")
     autocomplete_fields = ("tenant",)
     ordering = ("-valid_from",)
+    show_change_link = True
+
+
+class GalleryImageInlineForRoom(admin.TabularInline):
+    """Foto galleria in linea nella stanza."""
+
+    model = GalleryImage
+    fk_name = "room"
+    extra = 0
+    fields = ("image", "didascalia", "ordinamento")
+    ordering = ("ordinamento", "id")
+
+
+class GalleryImageInlineForArea(admin.TabularInline):
+    """Foto in linea nell'ambiente comune."""
+
+    model = GalleryImage
+    fk_name = "area"
+    extra = 0
+    fields = ("image", "didascalia", "ordinamento")
+    ordering = ("ordinamento", "id")
+
+
+class GalleryAreaInlineForProperty(admin.TabularInline):
+    """Ambienti comuni in linea nell'immobile."""
+
+    model = GalleryArea
+    extra = 0
+    fields = ("nome", "colore", "ordinamento", "pubblica")
+    ordering = ("ordinamento", "nome")
     show_change_link = True
 
 
@@ -291,17 +323,30 @@ class PropertyMembershipInline(admin.TabularInline):
 
 @admin.register(Property)
 class PropertyAdmin(ModalEditMixin, JumboModelAdmin):
-    modal_edit_width = 700
+    modal_edit_width = 800
     list_display = (
-        "nome", "indirizzo", "bank_account_utenze",
+        "nome", "indirizzo", "pubblica", "slug", "bank_account_utenze",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
-    search_fields = ("nome", "indirizzo")
+    list_filter = ("pubblica",)
+    search_fields = ("nome", "indirizzo", "slug")
+    prepopulated_fields = {"slug": ("nome",)}
     autocomplete_fields = ("bank_account_utenze", "owner_anticipa_cessioni")
-    inlines = (PropertyMembershipInline,)
+    inlines = (PropertyMembershipInline, GalleryAreaInlineForProperty)
     fieldsets = (
         ("Immobile", {
             "fields": ("nome", "indirizzo", "bank_account_utenze", "owner_anticipa_cessioni"),
+        }),
+        ("Galleria pubblica", {
+            "fields": (
+                ("pubblica", "slug"),
+                ("foto_hero", "foto_planimetria", "foto_mappa"),
+                "testi_pubblici",
+            ),
+            "description": (
+                "Se 'pubblica' è attiva, la galleria è raggiungibile senza login "
+                "su /g/&lt;slug&gt;. 'testi pubblici' è un JSON con hero/facts/posizione."
+            ),
         }),
     )
 
@@ -321,19 +366,47 @@ class PropertyMembershipAdmin(ModalEditMixin, JumboModelAdmin):
 
 @admin.register(Room)
 class RoomAdmin(ModalEditMixin, JumboModelAdmin):
-    modal_edit_width = 700
+    modal_edit_width = 800
     list_display = (
-        "nome", "property", "superficie_mq", "ordinamento",
+        "nome", "property", "superficie_mq", "prezzo_mensile",
+        "disponibile", "pubblica", "ordinamento",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
     search_fields = ("nome",)
-    list_filter = ("property",)
+    list_filter = ("property", "disponibile", "pubblica")
     autocomplete_fields = ("property",)
     ordering = ("ordinamento", "nome")
-    inlines = (RoomAssignmentInlineForRoom,)
+    inlines = (GalleryImageInlineForRoom, RoomAssignmentInlineForRoom)
     fieldsets = (
         ("Stanza", {
             "fields": ("property", "nome", "superficie_mq", "ordinamento", "foto"),
+        }),
+        ("Galleria pubblica", {
+            "fields": (
+                ("pubblica", "disponibile"),
+                ("prezzo_mensile", "libera_dal"),
+                "colore",
+                "descrizione",
+            ),
+        }),
+    )
+
+
+@admin.register(GalleryArea)
+class GalleryAreaAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 800
+    list_display = (
+        "nome", "property", "ordinamento", "pubblica",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
+    list_filter = ("property", "pubblica")
+    search_fields = ("nome",)
+    autocomplete_fields = ("property",)
+    ordering = ("property", "ordinamento", "nome")
+    inlines = (GalleryImageInlineForArea,)
+    fieldsets = (
+        ("Ambiente comune", {
+            "fields": ("property", "nome", "colore", "ordinamento", "pubblica", "descrizione"),
         }),
     )
 
