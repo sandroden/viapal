@@ -130,6 +130,8 @@ const tipoLabel = computed(() => {
       return 'Utenze';
     case 'extra':
       return 'Spesa extra';
+    case 'deposit':
+      return 'Deposito';
     default:
       return 'Pagamento';
   }

@@ -43,10 +43,13 @@ TIPO_PER_CAUSALE = {
     Receivable.Causale.EXTRA: "extra",
     # La registrazione contratto viaggia come un addebito "extra" lato FE.
     Receivable.Causale.REGISTRAZIONE: "extra",
+    Receivable.Causale.DEPOSITO: "deposit",
 }
 
 # Causali "di gestione" mostrate nelle dashboard rendita/pagamenti.
 # DEPOSITO è escluso: i depositi cauzionali non sono entrate operative.
+# La home inquilino però aggiunge esplicitamente le rate di versamento
+# (DEPOSITO con importo positivo): l'inquilino le deve pagare come il resto.
 # REGISTRAZIONE è inclusa: è un addebito una-tantum che l'inquilino deve
 # (la sua metà del costo di registrazione), pagabile come un extra; senza
 # di essa pesava sullo sbilancio reale ma non compariva in nessuna lista.
@@ -205,7 +208,16 @@ class DashboardInquilinoView(APIView):
             Receivable.objects.filter(
                 assignment__in=assignments,
                 stato__in=STATI_DA_PAGARE,
-                causale__in=CAUSALI_OPERATIVE,
+            )
+            .filter(
+                # Oltre alle causali operative, le rate di versamento del
+                # deposito (importo positivo). Le restituzioni (negative)
+                # non sono un debito dell'inquilino e restano fuori.
+                Q(causale__in=CAUSALI_OPERATIVE)
+                | Q(
+                    causale=Receivable.Causale.DEPOSITO,
+                    importo_dovuto__gt=0,
+                )
             )
             .select_related(
                 "assignment__tenant",

@@ -200,6 +200,22 @@ class ExtraChargeViewSet(_ReceivableMixin, ModelViewSet):
     pagination_class = None  # comportamento legacy: lista plain
 
 
+class DepositChargeViewSet(_ReceivableMixin, ReadOnlyModelViewSet):
+    """Rate di versamento del deposito (Receivable causale=deposito, > 0).
+
+    Sola lettura + dichiara/conferma pagato: le rate nascono dalla prima
+    assegnazione o dai signal sul tenant, mai da questo endpoint. Le
+    restituzioni (importo negativo) restano fuori.
+    """
+
+    causale = Receivable.Causale.DEPOSITO
+    serializer_class = ExtraChargeSerializer
+    pagination_class = None
+
+    def _base_queryset(self):
+        return super()._base_queryset().filter(importo_dovuto__gt=0)
+
+
 class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
     """Periodi utenze. Solo proprietari.
 

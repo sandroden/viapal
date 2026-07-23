@@ -88,6 +88,7 @@ const LABEL_TIPO: Record<TipoPagamento, string> = {
   rent: 'Affitto',
   utility_charge: 'Utenze',
   extra: 'Addebito extra',
+  deposit: 'Deposito',
 };
 const tipoLabel = computed(() => LABEL_TIPO[props.item.tipo] ?? 'Pagamento');
 
@@ -99,6 +100,8 @@ const iconaTipo = computed(() => {
       return 'bolt';
     case 'extra':
       return 'note_add';
+    case 'deposit':
+      return 'savings';
     default:
       return 'payments';
   }

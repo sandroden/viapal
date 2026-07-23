@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
 
-export type TipoPagamentoApi = 'rent' | 'utility_charge' | 'extra';
+export type TipoPagamentoApi = 'rent' | 'utility_charge' | 'extra' | 'deposit';
 
 export interface UtilityCharge {
   id: number;
@@ -31,6 +31,7 @@ interface State {
 function endpointPerTipo(tipo: TipoPagamentoApi): string {
   if (tipo === 'rent') return '/api/v1/rent-payments';
   if (tipo === 'utility_charge') return '/api/v1/utility-charges';
+  if (tipo === 'deposit') return '/api/v1/deposit-charges';
   return '/api/v1/extra-charges';
 }
 

@@ -8,6 +8,7 @@ from billing.views import (
     AnnualUtilityCostViewSet,
     BankTransactionBulkImportView,
     BankTransactionViewSet,
+    DepositChargeViewSet,
     ExpenseCategoryViewSet,
     ExpenseViewSet,
     ExtraChargeViewSet,
@@ -34,6 +35,7 @@ router.register(
 )
 router.register(r"expenses", ExpenseViewSet, basename="expense")
 router.register(r"extra-charges", ExtraChargeViewSet, basename="extra-charge")
+router.register(r"deposit-charges", DepositChargeViewSet, basename="deposit-charge")
 router.register(r"bank-transactions", BankTransactionViewSet, basename="bank-transaction")
 router.register(r"receivables", ReceivableViewSet, basename="receivable")
 

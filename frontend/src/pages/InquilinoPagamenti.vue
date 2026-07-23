@@ -62,6 +62,7 @@ onMounted(async () => {
 function iconaPer(tipo: string): string {
   if (tipo === 'rent') return 'home';
   if (tipo === 'utility_charge') return 'bolt';
+  if (tipo === 'deposit') return 'savings';
   return 'note_add';
 }
 

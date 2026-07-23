@@ -87,6 +87,8 @@ const tipoLabel = computed(() => {
       return 'Utenze';
     case 'extra':
       return 'Spesa extra';
+    case 'deposit':
+      return 'Deposito';
     default:
       return 'Pagamento';
   }
@@ -100,6 +102,8 @@ const iconaTipo = computed(() => {
       return 'bolt';
     case 'extra':
       return 'note_add';
+    case 'deposit':
+      return 'savings';
     default:
       return 'payments';
   }

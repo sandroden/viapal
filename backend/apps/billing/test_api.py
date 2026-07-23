@@ -558,6 +558,77 @@ class TestDashboardInquilino:
         item = resp.json()["da_pagare"][0]
         assert item["pagamento"] is None
 
+    def test_da_pagare_include_rate_deposito(
+        self, client_inq_1, tenant_1, assignment_1
+    ):
+        """Le rate di versamento del deposito (importo positivo) compaiono fra
+        le voci da pagare con tipo 'deposit'; la restituzione (negativa) no."""
+        Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.DEPOSITO,
+            descrizione="Deposito (versamento) — rata 1/2",
+            competenza_da=datetime.date(2026, 5, 1),
+            importo_dovuto=Decimal("300"),
+            scadenza=datetime.date(2026, 5, 1),
+            stato=StatoPagamento.ATTESO,
+        )
+        Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.DEPOSITO,
+            descrizione="Deposito (restituzione)",
+            competenza_da=datetime.date(2026, 12, 1),
+            importo_dovuto=Decimal("-600"),
+            scadenza=datetime.date(2026, 12, 1),
+            stato=StatoPagamento.ATTESO,
+        )
+        resp = client_inq_1.get("/api/v1/dashboard/inquilino/")
+        da_pagare = resp.json()["da_pagare"]
+        depositi = [x for x in da_pagare if x["tipo"] == "deposit"]
+        assert len(depositi) == 1
+        assert depositi[0]["descrizione"] == "Deposito (versamento) — rata 1/2"
+        assert depositi[0]["importo"] == 300.0
+        assert resp.json()["saldo_totale"]["lordo"] == 300.0
+
+    def test_dichiara_pagato_rata_deposito(
+        self, client_inq_1, tenant_1, assignment_1
+    ):
+        """L'inquilino può dichiarare pagata una rata deposito via
+        /deposit-charges/."""
+        rata = Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.DEPOSITO,
+            descrizione="Deposito (versamento) — rata 1/2",
+            competenza_da=datetime.date(2026, 5, 1),
+            importo_dovuto=Decimal("300"),
+            scadenza=datetime.date(2026, 5, 1),
+            stato=StatoPagamento.ATTESO,
+        )
+        resp = client_inq_1.post(
+            f"/api/v1/deposit-charges/{rata.id}/dichiara_pagato/",
+            {},
+            format="json",
+        )
+        assert resp.status_code == 200
+        rata.refresh_from_db()
+        assert rata.stato == StatoPagamento.DICHIARATO
+
+    def test_deposit_charges_esclude_restituzioni(
+        self, client_inq_1, tenant_1, assignment_1
+    ):
+        """L'endpoint deposit-charges espone solo i versamenti (positivi)."""
+        Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.DEPOSITO,
+            descrizione="Deposito (restituzione)",
+            competenza_da=datetime.date(2026, 12, 1),
+            importo_dovuto=Decimal("-600"),
+            scadenza=datetime.date(2026, 12, 1),
+            stato=StatoPagamento.ATTESO,
+        )
+        resp = client_inq_1.get("/api/v1/deposit-charges/")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
     def test_pagamento_qr_con_conto_valido(
         self, client_inq_1, tenant_1, charge_1, room_1, owner_prop, immobile
     ):

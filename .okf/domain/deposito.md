@@ -36,6 +36,17 @@ del signal ("esiste già un DEPOSITO positivo") vede le rate e non crea
 il receivable unico. Un tenant con deposito già registrato non può
 riceverne un secondo dall'action (400).
 
+# Visibilità lato inquilino
+
+`CAUSALI_OPERATIVE` (dashboard di gestione) esclude DEPOSITO per scelta:
+i depositi non sono entrate operative. La **home inquilino** però
+aggiunge esplicitamente i DEPOSITO con `importo_dovuto > 0` al blocco
+`da_pagare` (tipo API `"deposit"`): l'inquilino le paga come ogni altro
+addebito, QR bonifico incluso (conto utenze della proprietà). Il flusso
+"Ho pagato" passa da `/api/v1/deposit-charges/` (read-only +
+dichiara/conferma pagato, sole rate positive). Le restituzioni
+(negative) non compaiono mai fra i "da pagare".
+
 # Restituzione
 
 La restituzione è un [Receivable](/domain/receivable.md) con causale dedicata e

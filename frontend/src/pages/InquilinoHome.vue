@@ -184,6 +184,7 @@ const pagamentiFatti = computed(() => store.inquilinoData?.ultimi_pagamenti ?? [
 function iconaPer(tipo: string): string {
   if (tipo === 'rent') return 'home';
   if (tipo === 'utility_charge') return 'bolt';
+  if (tipo === 'deposit') return 'savings';
   return 'note_add';
 }
 function livelloPer(stato: string): SemaforoLivello {
@@ -231,6 +232,7 @@ const GRUPPO_LABEL: Record<TipoPagamento, string> = {
   rent: 'Affitto',
   utility_charge: 'Utenze',
   extra: 'Extra',
+  deposit: 'Deposito',
 };
 function meseBreve(iso: string): string {
   const [anno, mese] = iso.split('-');
