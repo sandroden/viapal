@@ -4,7 +4,7 @@ title: Galleria pubblica (annuncio affitto)
 description: Pagina pubblica /g/<slug> con foto per stanza/spazi comuni, editabile in-place dal proprietario.
 resource: backend/apps/properties/
 tags: [feature, public, gallery, frontend]
-timestamp: 2026-07-14T00:00:00Z
+timestamp: 2026-07-23T00:00:00Z
 ---
 
 # Overview
@@ -46,11 +46,17 @@ Estende [properties](/models/properties.md):
 
 - **Pubblica**: `GET /api/v1/public/galleria/<slug>/` — **AllowAny** (unica del progetto),
   `PublicGallerySerializer` dedicato, 404 se `pubblica=False`. Espone solo campi pubblici.
-- **Scrittura** (proprietari): `PATCH` su `properties`/`rooms` (testi, campi, immagini
+- **Scrittura** (membri operativi): `PATCH` su `properties`/`rooms` (testi, campi, immagini
   singleton), `gallery-areas` CRUD (ambienti comuni), `GalleryImageViewSet` CRUD foto.
   Quest'ultimo accetta **sia MultiPart (upload file) sia JSON** (`JSONParser`) per i PATCH di
   metadati — formato/didascalia/ordinamento — senza reinviare l'immagine. Clear di un'immagine
   singleton = PATCH con `null` (non `''` → 400).
+- **Scoping multiproprietà** (dal merge 2026-07-23): i viewset galleria lavorano
+  sempre sull'**immobile attivo** della richiesta (`get_request_property`, permesso
+  `IsPropertyMember`); il `property` inviato dal client è validato contro l'attivo
+  e forzato server-side in create. La suite `test_cross_property.py` copre
+  `gallery-areas` e `gallery-images`. Il link "Galleria annuncio" nel menu
+  proprietari usa lo slug dell'immobile attivo, mai `list[0]`.
 
 # Frontend
 

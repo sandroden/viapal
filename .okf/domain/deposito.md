@@ -4,7 +4,7 @@ title: Deposito cauzionale
 description: Versamento e restituzione del deposito, con trigger da data prevista.
 resource: backend/apps/properties/models/tenant.py
 tags: [domain, deposito, billing]
-timestamp: 2026-07-08T00:00:00Z
+timestamp: 2026-07-23T00:00:00Z
 ---
 
 # Overview
@@ -21,6 +21,20 @@ dall'inquilino a garanzia e restituito all'uscita. I campi vivono su
 | `data_versamento_deposito` | data del versamento |
 | `data_restituzione_prevista` | **trigger**: alla sua valorizzazione si genera il Receivable di restituzione |
 | `deposito_da_restituire` | override opzionale (se si restituisce importo diverso dal versato) |
+
+# Versamento a rate (dilazione)
+
+Il versamento può essere **dilazionato**: N Receivable DEPOSITO positivi
+("Deposito (versamento) — rata i/N") con scadenze diverse, struttura DB
+invariata. Li crea l'action `POST room-assignments/prima-assegnazione/`
+(che in un'unica transazione crea assignment, ciclo di fatturazione,
+rate e quota condominio specifica). Ordine anti-duplicazione con i
+signal di `properties/signals.py`: l'assignment è salvato quando
+`deposito_versato` è ancora 0 (signal no-op), le rate sono create a
+mano, e `deposito_versato` è valorizzato **per ultimo** — l'idempotenza
+del signal ("esiste già un DEPOSITO positivo") vede le rate e non crea
+il receivable unico. Un tenant con deposito già registrato non può
+riceverne un secondo dall'action (400).
 
 # Restituzione
 
