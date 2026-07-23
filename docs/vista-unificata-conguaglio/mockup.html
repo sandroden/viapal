@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conguaglio fratelli — mockup</title>
+<style>
+  :root {
+    --ink-1: #23201c;
+    --ink-2: #6b6459;
+    --paper: #faf7f2;
+    --cream: #fffdf9;
+    --line: #e6ded2;
+    --terra: #6c3a18;
+    --terra-soft: #ead0bd;
+    --pos: #2e7a39;   /* riceve / credito */
+    --neg: #b14a2b;   /* versa / debito */
+    --accent: #8a5a2b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink-1);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.45;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 20px 16px 64px; }
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.7rem;
+    color: var(--ink-2);
+    font-weight: 600;
+  }
+  h1 { font-size: 1.6rem; margin: 4px 0 0; font-weight: 650; }
+  .head {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+  }
+  .anno-sel {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--cream); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 12px; font-weight: 600;
+  }
+  .anno-sel select { border: none; background: transparent; font: inherit; font-weight: 600; color: var(--ink-1); }
+  .hint { color: var(--ink-2); font-size: 0.85rem; margin: 0 0 18px; }
+  .banner-ok {
+    display: flex; align-items: center; gap: 6px;
+    color: var(--pos); font-size: 0.82rem; margin-bottom: 18px;
+  }
+  .mono { font-variant-numeric: tabular-nums; }
+  .pos { color: var(--pos); }
+  .neg { color: var(--neg); }
+
+  /* ---- riepilogo immobile ---- */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 22px; }
+  .kpi { background: var(--cream); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .kpi .k-label { font-size: 0.72rem; color: var(--ink-2); }
+  .kpi .k-val { font-size: 1.15rem; font-weight: 650; margin-top: 2px; }
+
+  /* ---- flusso concettuale ---- */
+  .flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; font-size: 0.78rem; color: var(--ink-2); }
+  .flow .step { background: var(--terra-soft); color: var(--terra); padding: 3px 10px; border-radius: 999px; font-weight: 600; }
+  .flow .arr { color: var(--accent); font-weight: 700; }
+
+  /* ---- tabella ---- */
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.9rem; }
+  th, td { padding: 10px 12px; text-align: right; white-space: nowrap; }
+  th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-2); font-weight: 600; border-bottom: 2px solid var(--line); vertical-align: bottom; }
+  td:first-child, th:first-child { text-align: left; }
+  tbody tr + tr td { border-top: 1px solid var(--line); }
+  tbody tr:hover td { background: #fffaf2; }
+  .name { font-weight: 600; }
+  .quota { color: var(--ink-2); font-size: 0.75rem; font-weight: 400; }
+  .col-comp { background: rgba(138,90,43,0.04); }
+  .col-conguaglio { font-weight: 700; }
+  .badge { display: inline-block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
+  .badge.versa { background: #f6ddd2; color: var(--neg); }
+  .badge.riceve { background: #d7ead9; color: var(--pos); }
+  tfoot td { border-top: 2px solid var(--line); font-weight: 650; background: #f6efe4; }
+  .subval { display:block; font-size: 0.7rem; color: var(--ink-2); font-weight: 400; }
+
+  /* ---- riconciliazione nota ---- */
+  .note {
+    background: #fbf3e8; border: 1px solid var(--terra-soft); border-radius: 10px;
+    padding: 12px 14px; font-size: 0.82rem; color: #5a4327; margin: 16px 0 26px;
+  }
+  .note code { background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+
+  /* ---- piano rientro ---- */
+  h2 { font-size: 1.05rem; margin: 26px 0 4px; }
+  .piano { list-style: none; margin: 10px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); overflow: hidden; }
+  .piano li { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
+  .piano li + li { border-top: 1px solid var(--line); }
+  .piano .swap { color: var(--accent); font-size: 1.1rem; }
+  .piano .pay { flex: 1; }
+  .piano .pay strong { font-weight: 600; }
+  .piano .to { color: var(--accent); margin: 0 4px; }
+  .piano .imp { font-weight: 650; }
+  .piano-tot { display: flex; justify-content: space-between; padding: 12px 14px; border-top: 2px solid var(--line); font-weight: 650; background: #f6efe4; }
+  .foot-note { color: var(--ink-2); font-size: 0.78rem; margin-top: 10px; }
+
+  @media (max-width: 520px) {
+    h1 { font-size: 1.35rem; }
+    th, td { padding: 8px 9px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div>
+      <div class="eyebrow">Contabilità tra fratelli</div>
+      <h1>Conguaglio fratelli</h1>
+    </div>
+    <label class="anno-sel">
+      Anno
+      <select><option>2026</option><option>2025</option><option>2024</option></select>
+    </label>
+  </div>
+
+  <p class="hint">
+    Collega quanto ciascun fratello ha <em>guadagnato</em> (utile di competenza,
+    pro-quota) con quanto ha <em>incassato di persona</em> (cassa netta), e
+    conclude con il conguaglio: chi deve versare e chi ricevere. I bonifici
+    concreti sono nel piano di rientro in fondo.
+  </p>
+
+  <div class="banner-ok">
+    <span>&#10003;</span> Conguaglio di cassa quadrato: la somma fa zero e ogni movimento ha un responsabile.
+  </div>
+
+  <!-- riepilogo immobile -->
+  <div class="kpis">
+    <div class="kpi"><div class="k-label">Utile immobile (competenza)</div><div class="k-val mono">30.000,00&nbsp;&euro;</div></div>
+    <div class="kpi"><div class="k-label">Utile immobile (cassa)</div><div class="k-val mono">27.000,00&nbsp;&euro;</div></div>
+    <div class="kpi"><div class="k-label">Scarto di timing</div><div class="k-val mono neg">&minus;3.000,00&nbsp;&euro;</div></div>
+  </div>
+
+  <!-- flusso concettuale -->
+  <div class="flow">
+    <span class="step">Utile spettante (competenza)</span>
+    <span class="arr">&rarr;</span>
+    <span class="step">Cassa netta incassata</span>
+    <span class="arr">&rarr;</span>
+    <span class="step">Conguaglio: versa / riceve</span>
+  </div>
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Fratello</th>
+          <th class="col-comp">Utile spettante<br>(competenza)</th>
+          <th>Cassa netta<br>(incassato &minus; anticipato)</th>
+          <th>Scarto<br>timing</th>
+          <th class="col-conguaglio">Conguaglio<br>(di cassa)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="name">Alessandro</span> <span class="quota">33,34%</span></td>
+          <td class="mono col-comp">10.002,00</td>
+          <td class="mono">20.000,00
+            <span class="subval">25.000,00 &minus; 5.000,00</span>
+          </td>
+          <td class="mono neg">&minus;1.000,20</td>
+          <td class="mono col-conguaglio neg">+10.998,20<span class="badge versa">versa</span></td>
+        </tr>
+        <tr>
+          <td><span class="name">Bruna</span> <span class="quota">33,33%</span></td>
+          <td class="mono col-comp">9.999,00</td>
+          <td class="mono">4.000,00
+            <span class="subval">5.000,00 &minus; 1.000,00</span>
+          </td>
+          <td class="mono neg">&minus;999,90</td>
+          <td class="mono col-conguaglio pos">&minus;4.999,10<span class="badge riceve">riceve</span></td>
+        </tr>
+        <tr>
+          <td><span class="name">Fabio</span> <span class="quota">33,33%</span></td>
+          <td class="mono col-comp">9.999,00</td>
+          <td class="mono">3.000,00
+            <span class="subval">3.000,00 &minus; 0,00</span>
+          </td>
+          <td class="mono neg">&minus;999,90</td>
+          <td class="mono col-conguaglio pos">&minus;5.999,10<span class="badge riceve">riceve</span></td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>Totale</td>
+          <td class="mono col-comp">30.000,00</td>
+          <td class="mono">27.000,00</td>
+          <td class="mono neg">&minus;3.000,00</td>
+          <td class="mono">0,00</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="note">
+    <strong>Come leggere lo scarto di timing.</strong> Il conguaglio azionabile
+    &egrave; quello <em>di cassa</em> (colonna a destra): somma a zero, sono soldi
+    realmente trasferibili. La differenza con l'utile di competenza &egrave; lo
+    <em>scarto di timing</em> = <code>quota &times; (utile_cassa &minus; utile_competenza)</code>:
+    la fetta di ricavi gi&agrave; maturati ma non ancora incassati
+    (3.000,00&nbsp;&euro; complessivi). Non si bonifica: si riassorbe da solo
+    quando quei soldi entrano. Per questo il conguaglio <em>di competenza</em>
+    (cassa netta &minus; utile spettante) <strong>non</strong> farebbe zero e non
+    viene usato per i bonifici.
+  </div>
+
+  <!-- piano di rientro -->
+  <h2>Chi deve a chi &mdash; piano di rientro (di cassa)</h2>
+  <p class="hint" style="margin-bottom:0">
+    Bonifici minimi per azzerare il conguaglio di cassa. Una volta eseguiti,
+    marcali come inter-owner dalla Riconciliazione: i saldi si aggiornano da soli.
+  </p>
+  <ul class="piano">
+    <li>
+      <span class="swap">&#8646;</span>
+      <span class="pay"><strong>Alessandro</strong> <span class="to">&rarr;</span> <strong>Fabio</strong></span>
+      <span class="imp mono">5.999,10&nbsp;&euro;</span>
+    </li>
+    <li>
+      <span class="swap">&#8646;</span>
+      <span class="pay"><strong>Alessandro</strong> <span class="to">&rarr;</span> <strong>Bruna</strong></span>
+      <span class="imp mono">4.999,10&nbsp;&euro;</span>
+    </li>
+    <div class="piano-tot"><span>Totale bonifici</span><span class="mono">10.998,20&nbsp;&euro;</span></div>
+  </ul>
+  <p class="foot-note">
+    Il piano riprende <code>calcola_piano_rientro</code> sui saldi live (segni
+    invertiti rispetto a <code>saldi_live.totale</code>). Se ci fossero incassi
+    senza &laquo;incassato da&raquo; o spese senza anticipante, il banner in alto
+    segnalerebbe che il conguaglio non quadra, con link alla Riconciliazione.
+  </p>
+
+</div>
+</body>
+</html>
