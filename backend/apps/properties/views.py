@@ -520,8 +520,9 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
     @action(detail=False, methods=["post"], url_path="prima-assegnazione")
     def prima_assegnazione(self, request):
         """Crea il primo RoomAssignment di un inquilino nuovo: canone,
-        ciclo di fatturazione, deposito (con rate opzionali) e quota
-        condominio specifica opzionale, in un'unica operazione atomica.
+        ciclo di fatturazione, deposito (con rate opzionali), quota
+        condominio specifica opzionale e primo addebito affitto (pro-rata
+        sul mese parziale), in un'unica operazione atomica.
 
         Ordine critico per i signal di ``properties/signals.py``
         (``genera_receivable_deposito_da_*``, idempotenti sulla presenza di
@@ -670,10 +671,36 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
                 )
                 quota_condominio_creata = True
 
+            # Primo addebito affitto: genera i canoni dal mese di ingresso
+            # fino al mese corrente (uno solo, se l'ingresso è futuro), con
+            # il pro-rata sul mese parziale già gestito dal calcolo. Va fatto
+            # DOPO la quota specifica, che entra nel canone pieno; la
+            # generazione è idempotente per (assignment, competenza).
+            from billing.calc.rent import genera_pagamenti_mese
+
+            rent_receivable_ids: list[int] = []
+            oggi = datetime.date.today()
+            cursore = valid_from.replace(day=1)
+            fine = max(oggi.replace(day=1), cursore)
+            while cursore <= fine:
+                esito = genera_pagamenti_mese(
+                    cursore.year,
+                    cursore.month,
+                    tenant_id=tenant.pk,
+                    property=prop,
+                )
+                rent_receivable_ids.extend(esito.get("payments", []))
+                cursore = (
+                    cursore.replace(year=cursore.year + 1, month=1)
+                    if cursore.month == 12
+                    else cursore.replace(month=cursore.month + 1)
+                )
+
         return Response(
             {
                 "assignment": self.get_serializer(nuovo).data,
                 "rate_deposito_ids": rate_deposito_ids,
+                "rent_receivable_ids": rent_receivable_ids,
                 "quota_condominio_creata": quota_condominio_creata,
             },
             status=status.HTTP_201_CREATED,

@@ -225,6 +225,9 @@ def genera_pagamenti_mese(
             giorno_eff = min(giorno_pagamento, n_giorni_mese)
             data_scadenza_base = date(anno, mese, giorno_eff)
             scadenza = data_scadenza_base + timedelta(days=5)
+            # Ingresso a metà mese: la scadenza non può precedere l'inizio
+            # dell'occupazione (il giorno-pagamento cadrebbe nel passato).
+            scadenza = max(scadenza, competenza_da + timedelta(days=5))
 
         defaults_base = {
             "competenza_a": competenza_a,

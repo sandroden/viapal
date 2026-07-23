@@ -542,6 +542,70 @@ class TestPrimaAssegnazioneAPI:
         assert tenant_2.ciclo_fatturazione == "solare"
         assert tenant_2.deposito_versato == Decimal("900.00")
 
+        # Primo addebito affitto: mese di ingresso (agosto, intero) generato
+        # contestualmente. valid_from 2026-08-01 → canone pieno, no pro-rata.
+        affitti = Receivable.objects.filter(
+            assignment__tenant=tenant_2, causale=Receivable.Causale.AFFITTO
+        )
+        assert affitti.count() == 1
+        assert affitti[0].importo_dovuto == Decimal("450.00")
+        assert affitti[0].id in data["rent_receivable_ids"]
+
+    def test_primo_affitto_pro_rata_meta_mese(self, client_prop, tenant_2, room_2):
+        """Ingresso a metà mese, ciclo solare: il primo addebito copre la
+        parte finale del mese in pro-rata giorni."""
+        import calendar
+
+        from billing.models import Receivable
+
+        oggi = datetime.date.today()
+        n_giorni = calendar.monthrange(oggi.year, oggi.month)[1]
+        payload = self._payload(
+            tenant_2.id, room_2.id, valid_from=oggi.isoformat()
+        )
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 201, resp.content
+
+        affitti = Receivable.objects.filter(
+            assignment__tenant=tenant_2, causale=Receivable.Causale.AFFITTO
+        )
+        assert affitti.count() == 1
+        rec = affitti[0]
+        giorni = n_giorni - oggi.day + 1
+        atteso = (Decimal("450.00") * giorni / n_giorni).quantize(Decimal("0.01"))
+        if giorni == n_giorni:
+            assert rec.importo_dovuto == Decimal("450.00")
+        else:
+            assert rec.is_aggiustamento is True
+            assert rec.importo_dovuto == atteso
+        assert rec.competenza_da == oggi
+        # La scadenza non precede mai l'ingresso (clamp per metà mese).
+        assert rec.scadenza >= oggi
+
+    def test_primo_affitto_include_quota_specifica(
+        self, client_prop, tenant_2, room_2, contract
+    ):
+        """La quota condominio specifica creata dall'azione entra già nel
+        primo canone generato (70, non la generica 90)."""
+        from billing.models import Receivable, TenantCondominioRate
+
+        TenantCondominioRate.objects.create(
+            contract=contract,
+            valid_from=datetime.date(2024, 1, 1),
+            importo_mensile=Decimal("90.00"),
+        )
+        payload = self._payload(
+            tenant_2.id, room_2.id, quota_condominio_mensile="70.00"
+        )
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 201, resp.content
+
+        rec = Receivable.objects.get(
+            assignment__tenant=tenant_2, causale=Receivable.Causale.AFFITTO
+        )
+        # Mese intero (2026-08-01): 450 canone + 70 quota specifica.
+        assert rec.importo_dovuto == Decimal("520.00")
+
     def test_rate_non_sommano_400_e_niente_creato(self, client_prop, tenant_2, room_2):
         from billing.models import Receivable
 
