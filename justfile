@@ -72,6 +72,26 @@ install-frontend:
     source ~/.nvm/nvm.sh
     cd frontend && nvm use > /dev/null && bun install
 
+# === MailHog (SMTP catcher per email in dev) ===
+# UI web: http://localhost:8025 (login sandro/vicie) — SMTP su :1025 (vedi local.py)
+
+# Avvia MailHog (crea il container se non esiste, altrimenti lo riavvia)
+mailhog:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if docker ps -a --format '{{ '{{' }}.Names{{ '}}' }}' | grep -qx viapal-mailhog; then
+        docker start viapal-mailhog
+    else
+        docker run -d --name viapal-mailhog -p 1025:1025 -p 8025:8025 \
+            -v ~/.config/mailhog/auth.txt:/tmp/auth.txt:ro mailhog/mailhog \
+            -auth-file=/tmp/auth.txt
+    fi
+    echo "MailHog attivo: UI http://localhost:8025 (sandro/vicie), SMTP :1025"
+
+# Ferma MailHog
+mailhog-stop:
+    docker stop viapal-mailhog
+
 # === Stack completo ===
 
 # Avvia backend + frontend in parallelo (Ctrl-C per fermare entrambi)
