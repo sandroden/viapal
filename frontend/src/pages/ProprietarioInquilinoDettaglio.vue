@@ -492,6 +492,14 @@
                         <q-item-label caption>In vigore</q-item-label>
                         <q-item-label class="vp-mono">
                           {{ formattaEuro(situazione.quota_condominio.corrente.importo_mensile) }}/mese
+                          <q-badge
+                            v-if="situazione.quota_condominio.corrente.specifica"
+                            outline
+                            color="primary"
+                            class="q-ml-xs"
+                          >
+                            specifica
+                          </q-badge>
                         </q-item-label>
                         <q-item-label caption>
                           dal {{ formattaData(situazione.quota_condominio.corrente.valid_from) }}
@@ -682,7 +690,22 @@
 
             <q-card flat bordered class="vp-p-id__card-info vp-p-id__card-info--full">
               <q-card-section>
-                <div class="vp-eyebrow">Stanze</div>
+                <div class="row items-center">
+                  <div class="vp-eyebrow">Stanze</div>
+                  <q-space />
+                  <q-btn
+                    v-if="puoModificare && !assignmentInCorso"
+                    flat
+                    dense
+                    no-caps
+                    size="sm"
+                    color="primary"
+                    icon="add_home"
+                    label="Assegna stanza"
+                    data-testid="assegna-stanza-apri"
+                    @click="dialogAssegnaStanza = true"
+                  />
+                </div>
                 <q-list separator dense>
                   <q-item v-for="a in situazione.assignments" :key="a.id">
                     <q-item-section>
@@ -828,13 +851,22 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <AssegnaStanzaDialog
+      v-if="situazione"
+      v-model="dialogAssegnaStanza"
+      :tenant-id="tenantId"
+      :tenant-nominativo="situazione.tenant.nominativo"
+      :quota-generica="situazione.quota_condominio?.corrente?.importo_mensile ?? null"
+      :deposito-gia-registrato="depositoGiaRegistrato"
+      @saved="dopoAssegnazioneStanza"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { isAxiosError } from 'axios';
 import { useQuasar, type QTableProps } from 'quasar';
 import { api } from 'boot/axios';
 import {
@@ -845,12 +877,14 @@ import { useTenantsStore, type Tenant } from 'stores/tenants';
 import { useAuthStore } from 'stores/auth';
 import { usePropertiesStore } from 'stores/properties';
 import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
+import { messaggioErrore } from 'src/utils/apiErrors';
 import KpiCard from 'src/components/KpiCard.vue';
 import StatoPagamentoBadge from 'src/components/StatoPagamentoBadge.vue';
 import EmptyState from 'src/components/EmptyState.vue';
 import RegistraPagamentoDialog from 'src/components/RegistraPagamentoDialog.vue';
 import PrevisionaleUtenzeDialog from 'src/components/PrevisionaleUtenzeDialog.vue';
 import ConguagliaPrevisionaleDialog from 'src/components/ConguagliaPrevisionaleDialog.vue';
+import AssegnaStanzaDialog from 'src/components/AssegnaStanzaDialog.vue';
 
 type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'deposito';
 
@@ -1138,9 +1172,16 @@ function vaiInquilinoSuccessivo(): void {
 }
 
 onMounted(() => {
+  // Catturato prima di aggiornaQuery(), che riscrive la query string e
+  // "consuma" così il param assegna (non fa parte di {anno, tab, tipo}).
+  const vieneDaAssegnazione = route.query.assegna === '1';
   // force=true così, rientrando in pagina dopo aver modificato
   // riconciliazioni/pagamenti altrove, vediamo subito lo stato aggiornato.
-  void store.loadSituazione(tenantId.value, annoSelezionato.value, true);
+  void store.loadSituazione(tenantId.value, annoSelezionato.value, true).then(() => {
+    if (vieneDaAssegnazione && !assignmentInCorso.value) {
+      dialogAssegnaStanza.value = true;
+    }
+  });
   void tenantsStore.fetchTenantsAnno(annoSelezionato.value);
   void contiStore.ensureLoaded();
   aggiornaQuery();
@@ -1332,6 +1373,22 @@ const puoModificare = computed(
   () => propStore.mioRuolo === 'proprietario' || propStore.mioRuolo === 'gestore',
 );
 
+// --- Assegna stanza (prima assegnazione, nessun assignment attivo) --------
+
+const dialogAssegnaStanza = ref(false);
+const assignmentInCorso = computed(
+  () => situazione.value?.assignments?.some((a) => a.valid_to === null) ?? false,
+);
+// Deposito già registrato = esiste almeno una riga con importo positivo
+// (le righe negative sono restituzioni, non versamenti).
+const depositoGiaRegistrato = computed(() =>
+  (situazione.value?.deposito?.righe ?? []).some((r) => r.importo > 0),
+);
+
+function dopoAssegnazioneStanza(): void {
+  void store.loadSituazione(tenantId.value, annoSelezionato.value, true);
+}
+
 const dialogCessione = ref(false);
 const assignmentCessione = ref<AssignmentRiga | null>(null);
 const salvandoCessione = ref(false);
@@ -1351,20 +1408,6 @@ const opzioniNuovoTenant = computed(() =>
     .filter((t) => t.id !== tenantId.value)
     .map((t) => ({ label: t.nominativo, value: t.id })),
 );
-
-function messaggioErroreCessione(e: unknown, fallback: string): string {
-  if (isAxiosError(e)) {
-    const data = e.response?.data as Record<string, unknown> | undefined;
-    if (data && typeof data === 'object') {
-      if (typeof data.detail === 'string') return data.detail;
-      for (const valore of Object.values(data)) {
-        if (typeof valore === 'string') return valore;
-        if (Array.isArray(valore) && typeof valore[0] === 'string') return valore[0];
-      }
-    }
-  }
-  return fallback;
-}
 
 function apriDialogCessione(a: AssignmentRiga): void {
   assignmentCessione.value = a;
@@ -1432,7 +1475,7 @@ async function eseguiCessione(): Promise<void> {
     $q.notify({ type: 'positive', message: 'Cessione registrata.' });
     await store.loadSituazione(tenantId.value, annoSelezionato.value, true);
   } catch (e: unknown) {
-    erroreCessione.value = messaggioErroreCessione(e, 'Cessione non riuscita.');
+    erroreCessione.value = messaggioErrore(e, 'Cessione non riuscita.');
   } finally {
     salvandoCessione.value = false;
   }

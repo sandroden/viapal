@@ -74,6 +74,7 @@ export interface QuotaCondominioRiga {
   valid_to: string | null;
   importo_mensile: number;
   note: string;
+  specifica?: boolean;
 }
 
 export interface QuotaCondominio {

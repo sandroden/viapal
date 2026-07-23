@@ -181,13 +181,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { isAxiosError } from 'axios';
 import { useQuasar, type QTableProps } from 'quasar';
 import { api } from 'boot/axios';
 import { useTenantsStore, type Tenant } from 'stores/tenants';
 import { useAuthStore } from 'stores/auth';
 import { usePropertiesStore } from 'stores/properties';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
+import { messaggioErrore } from 'src/utils/apiErrors';
 
 const { formattaEuro } = useFormatoEuro();
 
@@ -340,20 +340,6 @@ const opzioniFrequenzaConguagli = [
   { label: 'Bimestrale', value: 'bimestrale' },
 ];
 
-function messaggioErrore(e: unknown, fallback: string): string {
-  if (isAxiosError(e)) {
-    const data = e.response?.data as Record<string, unknown> | undefined;
-    if (data && typeof data === 'object') {
-      if (typeof data.detail === 'string') return data.detail;
-      for (const valore of Object.values(data)) {
-        if (typeof valore === 'string') return valore;
-        if (Array.isArray(valore) && typeof valore[0] === 'string') return valore[0];
-      }
-    }
-  }
-  return fallback;
-}
-
 function apriDialogNuovoInquilino() {
   erroreNuovo.value = '';
   formNuovo.value = {
@@ -392,12 +378,27 @@ async function creaInquilino() {
     // Ricarica le liste correnti (la vista attiva e l'eventuale "tutti").
     void store.fetchTenantsAnno(annoSelezionato.value, true);
     if (mostraTutti.value) void store.fetchTenants(false, true);
-    if (f.email.trim()) proponiInvito(creato);
+    if (f.email.trim()) {
+      proponiInvito(creato);
+    } else {
+      vaiAssegnaStanza(creato);
+    }
   } catch (e: unknown) {
     erroreNuovo.value = messaggioErrore(e, 'Creazione non riuscita.');
   } finally {
     salvandoNuovo.value = false;
   }
+}
+
+// Dopo la creazione (con o senza invito) si passa diretti all'assegnazione
+// della stanza: query `assegna=1` letta da ProprietarioInquilinoDettaglio.vue
+// per aprire subito il dialog "Assegna stanza".
+function vaiAssegnaStanza(t: Tenant): void {
+  void router.push({
+    name: 'p-inquilino-dettaglio',
+    params: { id: t.id },
+    query: { assegna: '1' },
+  });
 }
 
 function proponiInvito(t: Tenant) {
@@ -406,21 +407,25 @@ function proponiInvito(t: Tenant) {
     message: `Inviare a ${t.nominativo} l'email di primo accesso (${t.email ?? ''})?`,
     cancel: { flat: true, label: 'Più tardi' },
     ok: { color: 'primary', label: 'Invia invito' },
-  }).onOk(() => {
-    void (async () => {
-      try {
-        const { data } = await api.post<{ esito: string; email: string; errore?: string }>(
-          `/api/v1/tenants/${t.id}/invita/`,
-        );
-        $q.notify({ type: 'positive', message: `Invito inviato a ${data.email}.` });
-      } catch (e: unknown) {
-        $q.notify({
-          type: 'negative',
-          message: messaggioErrore(e, 'Invio dell\'invito non riuscito.'),
-        });
-      }
-    })();
-  });
+  })
+    .onOk(() => {
+      void (async () => {
+        try {
+          const { data } = await api.post<{ esito: string; email: string; errore?: string }>(
+            `/api/v1/tenants/${t.id}/invita/`,
+          );
+          $q.notify({ type: 'positive', message: `Invito inviato a ${data.email}.` });
+        } catch (e: unknown) {
+          $q.notify({
+            type: 'negative',
+            message: messaggioErrore(e, 'Invio dell\'invito non riuscito.'),
+          });
+        }
+      })();
+    })
+    .onDismiss(() => {
+      vaiAssegnaStanza(t);
+    });
 }
 
 // Impersonation diretta dalla lista ("vedi come questo inquilino").
