@@ -5,6 +5,16 @@
       <q-chip v-if="dettaglio" dense outline data-testid="chip-ruolo">
         {{ etichettaRuolo(dettaglio.mio_ruolo) }}
       </q-chip>
+      <q-space />
+      <q-btn
+        dense
+        flat
+        color="primary"
+        icon="add_home"
+        label="Nuova proprietà"
+        to="/p/proprieta/nuova"
+        data-testid="nuova-proprieta"
+      />
     </div>
 
     <div v-if="loading" class="q-pa-lg flex flex-center">
