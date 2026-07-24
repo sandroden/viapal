@@ -4,6 +4,7 @@ from .owner import (
     OwnerBankAccount,
     OwnerProfile,
     OwnershipShare,
+    get_or_create_owner_profile,
     quote_attive_at,
 )
 from .property import Contract, GalleryArea, GalleryImage, Property, Room, RoomAssignment
@@ -24,5 +25,6 @@ __all__ = [
     "Contract",
     "RoomAssignment",
     "quote_attive_at",
+    "get_or_create_owner_profile",
     "user_property_ids",
 ]

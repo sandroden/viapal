@@ -328,6 +328,56 @@ class TestMembri:
         assert resp.status_code == 200, resp.content
         assert PropertyMembership.objects.get(pk=mid).ruolo == "proprietario"
 
+    def test_patch_promozione_gestore_crea_owner_profile_e_sblocca_quota(
+        self, client_prop, immobile, user_gestore
+    ):
+        """La promozione gestore→proprietario deve creare l'OwnerProfile:
+        altrimenti l'utente resta 'proprietario' senza poter ricevere
+        quote (endpoint /quote risponderebbe 400)."""
+        assert not OwnerProfile.objects.filter(user=user_gestore).exists()
+        mid = _membership_id(immobile, user_gestore)
+        resp = client_prop.patch(
+            f"/api/v1/properties/{immobile.id}/membri/{mid}/",
+            {"ruolo": "proprietario"},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        assert OwnerProfile.objects.filter(user=user_gestore).exists()
+
+        resp_quote = client_prop.post(
+            f"/api/v1/properties/{immobile.id}/quote/",
+            {
+                "valid_from": "2026-01-01",
+                "quote": [{"user": user_gestore.id, "quota": "1.0"}],
+            },
+            format="json",
+        )
+        assert resp_quote.status_code == 201, resp_quote.content
+
+    def test_post_membro_proprietario_crea_owner_profile_e_sblocca_quota(
+        self, client_prop, immobile, user_altro
+    ):
+        """L'aggiunta diretta di un membro come 'proprietario' deve creare
+        l'OwnerProfile con lo stesso pattern dell'invito."""
+        assert not OwnerProfile.objects.filter(user=user_altro).exists()
+        resp = client_prop.post(
+            f"/api/v1/properties/{immobile.id}/membri/",
+            {"user": user_altro.id, "ruolo": "proprietario"},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        assert OwnerProfile.objects.filter(user=user_altro).exists()
+
+        resp_quote = client_prop.post(
+            f"/api/v1/properties/{immobile.id}/quote/",
+            {
+                "valid_from": "2026-01-01",
+                "quote": [{"user": user_altro.id, "quota": "1.0"}],
+            },
+            format="json",
+        )
+        assert resp_quote.status_code == 201, resp_quote.content
+
 
 # ---------------------------------------------------------------------------
 # Quote

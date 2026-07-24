@@ -1026,6 +1026,10 @@ class PropertyViewSet(ModelViewSet):
                 {"detail": "; ".join(e.messages)}, status=st.HTTP_400_BAD_REQUEST
             )
         membership.save()
+        if membership.ruolo == PropertyMembership.Ruolo.PROPRIETARIO:
+            from properties.models import get_or_create_owner_profile
+
+            get_or_create_owner_profile(membership.user)
         return Response(
             PropertyMembershipSerializer(membership).data, status=st.HTTP_201_CREATED
         )
@@ -1067,6 +1071,10 @@ class PropertyViewSet(ModelViewSet):
                 )
             membership.ruolo = ruolo
             membership.save(update_fields=["ruolo"])
+            if ruolo == PropertyMembership.Ruolo.PROPRIETARIO:
+                from properties.models import get_or_create_owner_profile
+
+                get_or_create_owner_profile(membership.user)
             return Response(PropertyMembershipSerializer(membership).data)
 
         # DELETE

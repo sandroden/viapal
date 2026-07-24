@@ -43,6 +43,21 @@ def quote_attive_at(property, data) -> dict["OwnerProfile", Decimal]:
     return quote
 
 
+def get_or_create_owner_profile(user, nominativo: str = "") -> "OwnerProfile":
+    """Crea (se assente) l'``OwnerProfile`` per un utente che diventa
+    proprietario di un immobile: stesso pattern usato per gli inviti
+    (``accounts/inviti.py``), riusato ovunque un membro passa/entra con
+    ruolo ``proprietario`` (aggiunta diretta, promozione, invito, creazione
+    immobile)."""
+    profilo, _ = OwnerProfile.objects.get_or_create(
+        user=user,
+        defaults={
+            "nominativo": nominativo or user.get_full_name() or user.username,
+        },
+    )
+    return profilo
+
+
 class OwnerProfile(TimestampedModel):
     """Profilo anagrafico di un proprietario (fratello)."""
 
