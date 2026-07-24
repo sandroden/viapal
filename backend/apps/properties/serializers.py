@@ -424,9 +424,12 @@ class CessioneAssignmentSerializer(serializers.Serializer):
     nuovo_tenant = serializers.PrimaryKeyRelatedField(
         queryset=TenantProfile.objects.all()
     )
-    canone_mensile = serializers.DecimalField(max_digits=10, decimal_places=2)
+    canone_mensile = serializers.DecimalField(
+        max_digits=10, decimal_places=2, min_value=Decimal("0"),
+    )
     costo_cessione = serializers.DecimalField(
         max_digits=10, decimal_places=2, required=False, allow_null=True,
+        min_value=Decimal("0"),
     )
     data_atto_cessione = serializers.DateField(required=False, allow_null=True)
 

@@ -974,3 +974,37 @@ class TestGeneraPagamentiMeseScopedProperty:
         )
         assert resp.status_code == 200
         assert resp.context["form"].errors.get("property")
+
+
+class TestCessioneGuardie:
+    """REGRESSIONE (chiusa): CessioneAssignmentSerializer non vincolava
+    canone_mensile/costo_cessione a valori non negativi (a differenza di
+    PrimaAssegnazioneSerializer) e l'action ``cessione`` non verificava che
+    l'assignment corrente fosse ancora aperto."""
+
+    def test_canone_negativo_rifiutato(self, client_owner_a, mondo_a):
+        resp = client_owner_a.post(
+            f"/api/v1/room-assignments/{mondo_a.assignment.id}/cessione/",
+            {
+                "data_fine": "2026-06-30",
+                "nuovo_tenant": mondo_a.tenant.id,
+                "canone_mensile": "-100.00",
+            },
+            format="json",
+        )
+        assert resp.status_code == 400, resp.content
+
+    def test_cessione_assignment_gia_chiuso_rifiutata(self, client_owner_a, mondo_a):
+        mondo_a.assignment.valid_to = datetime.date(2026, 6, 30)
+        mondo_a.assignment.save(update_fields=["valid_to"])
+
+        resp = client_owner_a.post(
+            f"/api/v1/room-assignments/{mondo_a.assignment.id}/cessione/",
+            {
+                "data_fine": "2026-07-31",
+                "nuovo_tenant": mondo_a.tenant.id,
+                "canone_mensile": "400.00",
+            },
+            format="json",
+        )
+        assert resp.status_code == 400, resp.content

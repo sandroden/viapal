@@ -532,6 +532,10 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
         from rest_framework.exceptions import ValidationError
 
         corrente = self.get_object()
+        if corrente.valid_to is not None:
+            raise ValidationError(
+                {"detail": "L'assegnazione è già chiusa: non può essere ceduta."}
+            )
         ser = CessioneAssignmentSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         v = ser.validated_data
