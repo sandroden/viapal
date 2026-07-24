@@ -14,26 +14,25 @@ from django.utils import timezone
 
 from billing.calc.rent import genera_pagamenti_mese
 from billing.models import Receivable
-from properties.models import TenantProfile
+from properties.models import Property, TenantProfile
 
 
-def _tenants_attivi_nel_mese(anno: int, mese: int):
+def _tenants_attivi_nel_mese(anno: int, mese: int, prop=None):
     """Tenant con almeno una ``RoomAssignment`` che interseca il mese
     (anno, mese): stessa condizione di overlap di
-    ``genera_pagamenti_mese``."""
+    ``genera_pagamenti_mese``. Se ``prop`` è dato, limita ai suoi tenant."""
     primo = date(anno, mese, 1)
     ultimo = date(anno, mese, calendar.monthrange(anno, mese)[1])
-    return (
-        TenantProfile.objects.filter(
-            Q(assignments__valid_from__lte=ultimo)
-            & (
-                Q(assignments__valid_to__isnull=True)
-                | Q(assignments__valid_to__gte=primo)
-            )
+    qs = TenantProfile.objects.filter(
+        Q(assignments__valid_from__lte=ultimo)
+        & (
+            Q(assignments__valid_to__isnull=True)
+            | Q(assignments__valid_to__gte=primo)
         )
-        .distinct()
-        .order_by("nominativo")
     )
+    if prop is not None:
+        qs = qs.filter(assignments__room__property=prop)
+    return qs.distinct().order_by("nominativo")
 
 
 class GeneraReceivableAffittoForm(forms.Form):
@@ -52,6 +51,11 @@ class GeneraReceivableAffittoForm(forms.Form):
 
     anno = forms.IntegerField(min_value=2020, max_value=2099, label="Anno")
     mese = forms.TypedChoiceField(choices=MESI_CHOICES, coerce=int, label="Mese")
+    property = forms.ModelChoiceField(
+        queryset=Property.objects.all().order_by("nome"),
+        label="Immobile",
+        help_text="La generazione è vincolata a questo immobile.",
+    )
     tenant = forms.ModelChoiceField(
         queryset=TenantProfile.objects.all(),
         required=False,
@@ -76,8 +80,9 @@ class GeneraReceivableAffittoForm(forms.Form):
         tenant = cleaned.get("tenant")
         anno = cleaned.get("anno")
         mese = cleaned.get("mese")
+        prop = cleaned.get("property")
         if tenant and anno and mese:
-            attivi = _tenants_attivi_nel_mese(anno, mese)
+            attivi = _tenants_attivi_nel_mese(anno, mese, prop=prop)
             if not attivi.filter(pk=tenant.pk).exists():
                 self.add_error(
                     "tenant",
@@ -90,17 +95,23 @@ class GeneraReceivableAffittoForm(forms.Form):
 @staff_member_required
 def genera_affitto_tenants_json(request):
     """Endpoint JSON per la tendina dipendente della pagina
-    "Genera Receivable affitto": dato ``?anno=&mese=`` ritorna i tenant con
-    una stanza assegnata in quel mese."""
+    "Genera Receivable affitto": dato ``?anno=&mese=&property=`` ritorna i
+    tenant con una stanza assegnata in quel mese in quell'immobile."""
     try:
         anno = int(request.GET.get("anno", ""))
         mese = int(request.GET.get("mese", ""))
         date(anno, mese, 1)
     except ValueError:
         return JsonResponse({"error": "Parametri anno/mese non validi."}, status=400)
+    prop = None
+    property_id = request.GET.get("property")
+    if property_id:
+        prop = Property.objects.filter(pk=property_id).first()
+        if prop is None:
+            return JsonResponse({"error": "Immobile non valido."}, status=400)
     tenants = [
         {"id": t.pk, "nominativo": t.nominativo}
-        for t in _tenants_attivi_nel_mese(anno, mese)
+        for t in _tenants_attivi_nel_mese(anno, mese, prop=prop)
     ]
     return JsonResponse({"tenants": tenants})
 
@@ -118,6 +129,7 @@ def genera_receivables_affitto_view(request):
         if form.is_valid():
             anno = form.cleaned_data["anno"]
             mese = form.cleaned_data["mese"]
+            prop = form.cleaned_data["property"]
             tenant = form.cleaned_data.get("tenant")
             force = form.cleaned_data.get("force", False)
             dry_run = form.cleaned_data.get("dry_run", False)
@@ -128,12 +140,13 @@ def genera_receivables_affitto_view(request):
                     force=force,
                     persist=not dry_run,
                     tenant_id=tenant.pk if tenant else None,
+                    property=prop,
                 )
             except Exception as exc:  # noqa: BLE001
                 form.add_error(None, f"Errore nella generazione: {exc}")
             else:
                 tag = "[DRY-RUN] " if dry_run else ""
-                etichetta = f"{anno}/{mese:02d}" + (
+                etichetta = f"{anno}/{mese:02d} [{prop.nome}]" + (
                     f" — solo {tenant.nominativo}" if tenant else ""
                 ) + (" [FORCE]" if force else "")
                 if dry_run:

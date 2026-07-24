@@ -1019,7 +1019,8 @@ def rigenera_receivables_affitto(modeladmin, request, queryset):
             mesi_processati.add(chiave)
             try:
                 ris = genera_pagamenti_mese(
-                    anno, mese, force=force, persist=not dry_run, tenant_id=tenant_id,
+                    anno, mese, force=force, persist=not dry_run,
+                    tenant_id=tenant_id, property=period.property,
                 )
             except Exception as e:
                 errori.append(f"{anno}/{mese:02d}: {e}")

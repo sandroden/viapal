@@ -60,15 +60,19 @@
       // RoomAssignment attiva nel mese scelto (endpoint genera-affitto/tenants/).
       var anno = document.getElementById("id_anno");
       var mese = document.getElementById("id_mese");
+      var property_ = document.getElementById("id_property");
       var tenant = document.getElementById("id_tenant");
       var url = "{% url 'admin:billing_receivable_genera_affitto_tenants' %}";
       if (!anno || !mese || !tenant) return;
 
       function aggiornaTenants() {
         if (!anno.value || !mese.value) return;
-        fetch(url + "?anno=" + encodeURIComponent(anno.value) +
-                    "&mese=" + encodeURIComponent(mese.value),
-              { credentials: "same-origin" })
+        var qs = "?anno=" + encodeURIComponent(anno.value) +
+                 "&mese=" + encodeURIComponent(mese.value);
+        if (property_ && property_.value) {
+          qs += "&property=" + encodeURIComponent(property_.value);
+        }
+        fetch(url + qs, { credentials: "same-origin" })
           .then(function (r) { return r.ok ? r.json() : null; })
           .then(function (data) {
             if (!data) return;
@@ -90,6 +94,7 @@
 
       anno.addEventListener("change", aggiornaTenants);
       mese.addEventListener("change", aggiornaTenants);
+      if (property_) property_.addEventListener("change", aggiornaTenants);
       aggiornaTenants();
     })();
   </script>

@@ -844,3 +844,133 @@ class TestUtilityBillSupplierCross:
             format="json",
         )
         assert resp.status_code == 200, resp.content
+
+
+class TestGeneraPagamentiMeseScopedProperty:
+    """REGRESSIONE (chiusa): i chiamanti di genera_pagamenti_mese
+    (action admin, view standalone, comando genera_storico) non passavano
+    ``property``: la generazione bulk iterava sugli assignment di TUTTE le
+    property, producendo Receivable affitto anche nel mondo B."""
+
+    def test_genera_storico_scoped_a_property(self, mondo_a, mondo_b):
+        from django.core.management import call_command
+
+        call_command(
+            "genera_storico", "--dal", "2026-06", "--al", "2026-06",
+            "--property", str(mondo_a.property.id),
+        )
+        assert Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO,
+            assignment=mondo_a.assignment,
+            competenza_da__year=2026, competenza_da__month=6,
+        ).exists()
+        assert not Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO,
+            assignment=mondo_b.assignment,
+            competenza_da__year=2026, competenza_da__month=6,
+        ).exists()
+
+    def test_genera_storico_senza_property_fallisce(self, db):
+        from django.core.management import call_command
+
+        with pytest.raises(Exception):
+            call_command("genera_storico", "--dal", "2026-06", "--al", "2026-06")
+
+    def test_admin_action_scoped_per_period_property(self, mondo_a, mondo_b):
+        """L'action ``rigenera_receivables_affitto`` su un periodo di B non
+        deve generare anche il Receivable affitto dell'assignment di A
+        (attivo nello stesso mese)."""
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.contrib.sessions.middleware import SessionMiddleware
+        from django.test import RequestFactory
+
+        from billing.admin import rigenera_receivables_affitto
+        from billing.models import UtilityChargePeriod
+
+        periodo_b_giugno = UtilityChargePeriod.objects.create(
+            property=mondo_b.property,
+            periodo_da=datetime.date(2026, 6, 1),
+            periodo_a=datetime.date(2026, 6, 30),
+        )
+
+        factory = RequestFactory()
+        request = factory.post("/admin/billing/utilitychargeperiod/")
+        request.user = mondo_b.user_owner
+        SessionMiddleware(lambda r: None).process_request(request)
+        request.session.save()
+        request._messages = FallbackStorage(request)
+
+        class _StubForm:
+            cleaned_data = {"force": False, "dry_run": False, "tenant": None}
+
+            def is_valid(self):
+                return True
+
+        class _StubModelAdmin:
+            def get_action_form_instance(self, request):
+                return _StubForm()
+
+        queryset = UtilityChargePeriod.objects.filter(pk=periodo_b_giugno.pk)
+        rigenera_receivables_affitto(_StubModelAdmin(), request, queryset)
+
+        assert Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO,
+            assignment=mondo_b.assignment,
+            competenza_da__year=2026, competenza_da__month=6,
+        ).exists()
+        assert not Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO,
+            assignment=mondo_a.assignment,
+            competenza_da__year=2026, competenza_da__month=6,
+        ).exists()
+
+    def test_admin_standalone_view_scoped_per_property_selezionata(
+        self, mondo_a, mondo_b
+    ):
+        from django.contrib.auth.models import User
+        from django.test import Client
+        from django.urls import reverse
+
+        staff = User.objects.create_superuser(
+            "xp_staff_genera", "staff_genera@v.it", "pwd123!"
+        )
+        client = Client()
+        client.force_login(staff)
+
+        resp = client.post(
+            reverse("admin:billing_receivable_genera_affitto"),
+            {
+                "anno": 2026, "mese": 6,
+                "property": mondo_a.property.id,
+                "force": "", "dry_run": "",
+            },
+        )
+        assert resp.status_code in (200, 302), resp.content
+        assert Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO,
+            assignment=mondo_a.assignment,
+            competenza_da__year=2026, competenza_da__month=6,
+        ).exists()
+        assert not Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO,
+            assignment=mondo_b.assignment,
+            competenza_da__year=2026, competenza_da__month=6,
+        ).exists()
+
+    def test_admin_standalone_view_property_obbligatoria(self, mondo_a):
+        from django.contrib.auth.models import User
+        from django.test import Client
+        from django.urls import reverse
+
+        staff = User.objects.create_superuser(
+            "xp_staff_genera2", "staff_genera2@v.it", "pwd123!"
+        )
+        client = Client()
+        client.force_login(staff)
+
+        resp = client.post(
+            reverse("admin:billing_receivable_genera_affitto"),
+            {"anno": 2026, "mese": 6, "force": "", "dry_run": ""},
+        )
+        assert resp.status_code == 200
+        assert resp.context["form"].errors.get("property")

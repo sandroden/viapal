@@ -113,16 +113,26 @@ class TestEndpointTenantsJson:
 
 
 class TestFormValidazioneTenant:
-    def _dati(self, tenant, anno=2026, mese=8):
-        return {"anno": anno, "mese": mese, "tenant": tenant.pk}
+    def _dati(self, tenant, immobile, anno=2026, mese=8):
+        return {
+            "anno": anno, "mese": mese, "tenant": tenant.pk, "property": immobile.pk,
+        }
 
-    def test_rifiuta_tenant_senza_assignment_nel_mese(self, make_tenant):
+    def test_rifiuta_tenant_senza_assignment_nel_mese(self, make_tenant, immobile):
         orfano = make_tenant("Orfano")
-        form = GeneraReceivableAffittoForm(self._dati(orfano))
+        form = GeneraReceivableAffittoForm(self._dati(orfano, immobile))
         assert not form.is_valid()
         assert "tenant" in form.errors
 
-    def test_accetta_tenant_attivo_nel_mese(self, make_assignment):
+    def test_accetta_tenant_attivo_nel_mese(self, make_assignment, immobile):
         attivo = make_assignment("Attivo", datetime.date(2026, 7, 23))
-        form = GeneraReceivableAffittoForm(self._dati(attivo))
+        form = GeneraReceivableAffittoForm(self._dati(attivo, immobile))
         assert form.is_valid(), form.errors
+
+    def test_rifiuta_senza_property(self, make_assignment):
+        attivo = make_assignment("Attivo", datetime.date(2026, 7, 23))
+        form = GeneraReceivableAffittoForm(
+            {"anno": 2026, "mese": 8, "tenant": attivo.pk}
+        )
+        assert not form.is_valid()
+        assert "property" in form.errors

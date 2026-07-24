@@ -1,7 +1,7 @@
 """Genera Receivable storici (causale=affitto) per tutti i mesi dei contratti.
 
 Uso:
-  ENV=dev uv run manage.py genera_storico --dal 2024-01 --al 2026-05
+  ENV=dev uv run manage.py genera_storico --dal 2024-01 --al 2026-05 --property 1
 
 La riconciliazione con i bonifici (BankTransaction → BankTransactionAllocation
 → Receivable) è ora un comando separato e idempotente:
@@ -12,7 +12,7 @@ Lanciato dopo `genera_storico`, processa solo le BT non ancora riconciliate.
 """
 from datetime import date
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from billing.calc.rent import genera_pagamenti_mese
 from billing.models import Receivable, StatoPagamento
@@ -30,8 +30,22 @@ class Command(BaseCommand):
             help="Sovrascrive importo_dovuto/scadenza/competenza_a anche su "
             "Receivable già esistenti (rigenerazione storica).",
         )
+        parser.add_argument(
+            "--property",
+            type=str,
+            required=True,
+            help="Immobile (id o nome). Obbligatorio: il comando è per un solo "
+            "immobile alla volta, evita di rigenerare storico cross-property.",
+        )
 
     def handle(self, *args, **opts):
+        from properties.context import resolve_property_cli
+
+        try:
+            prop = resolve_property_cli(opts["property"])
+        except ValueError as e:
+            raise CommandError(str(e)) from e
+
         dal_y, dal_m = map(int, opts["dal"].split("-"))
         if opts["al"]:
             al_y, al_m = map(int, opts["al"].split("-"))
@@ -43,7 +57,7 @@ class Command(BaseCommand):
         totale_aggiornati = 0
         anno, mese = dal_y, dal_m
         while (anno, mese) <= (al_y, al_m):
-            res = genera_pagamenti_mese(anno, mese, force=opts["force"])
+            res = genera_pagamenti_mese(anno, mese, force=opts["force"], property=prop)
             totale_creati += res["creati"]
             totale_aggiornati += res["aggiornati"]
             if res["creati"] or res["aggiornati"]:
@@ -63,15 +77,14 @@ class Command(BaseCommand):
             )
         )
 
-        tot = Receivable.objects.filter(causale=Receivable.Causale.AFFITTO).count()
-        pagati = Receivable.objects.filter(
-            causale=Receivable.Causale.AFFITTO, stato=StatoPagamento.PAGATO
-        ).count()
-        attesi = Receivable.objects.filter(
-            causale=Receivable.Causale.AFFITTO, stato=StatoPagamento.ATTESO
-        ).count()
+        base = Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO, assignment__room__property=prop,
+        )
+        tot = base.count()
+        pagati = base.filter(stato=StatoPagamento.PAGATO).count()
+        attesi = base.filter(stato=StatoPagamento.ATTESO).count()
         self.stdout.write(
-            f"\nTotale Receivable affitto: {tot} "
+            f"\nTotale Receivable affitto [{prop.nome}]: {tot} "
             f"(pagati: {pagati}, in attesa: {attesi})"
         )
         self.stdout.write(
