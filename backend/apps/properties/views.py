@@ -874,7 +874,8 @@ class PropertyViewSet(ModelViewSet):
     - destroy: solo ruolo 'proprietario' e solo se l'immobile è vuoto.
 
     Azioni annidate: ``membri`` (GET/POST/DELETE), ``quote`` (GET/POST),
-    ``inviti`` (POST).
+    ``inviti`` (POST). Aggiunta e invito membri: proprietari e gestori;
+    modifica/rimozione membri e quote: solo proprietari.
     """
 
     from properties.serializers import PropertySerializer
@@ -1012,7 +1013,7 @@ class PropertyViewSet(ModelViewSet):
             qs = prop.memberships.select_related("user").order_by("user__username")
             return Response(PropertyMembershipSerializer(qs, many=True).data)
 
-        self._richiedi_proprietario(prop)
+        self._richiedi_operativo(prop)
         ser = PropertyMembershipSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         membership = PropertyMembership(
@@ -1194,7 +1195,7 @@ class PropertyViewSet(ModelViewSet):
         from properties.serializers import InvitoMembroSerializer
 
         prop = self.get_object()
-        self._richiedi_proprietario(prop)
+        self._richiedi_operativo(prop)
         ser = InvitoMembroSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         esito = invia_invito_membro(

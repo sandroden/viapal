@@ -281,8 +281,28 @@ class TestMembri:
         assert m.ruolo == PropertyMembership.Ruolo.SOLA_LETTURA
         assert m.invitato_da_id is not None
 
-    def test_post_membro_da_gestore_403(self, client_gestore, immobile, user_altro):
+    def test_post_membro_da_gestore_201(self, client_gestore, immobile, user_altro):
         resp = client_gestore.post(
+            f"/api/v1/properties/{immobile.id}/membri/",
+            {"user": user_altro.id, "ruolo": "gestore"},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        assert PropertyMembership.objects.filter(
+            property=immobile, user=user_altro, ruolo="gestore"
+        ).exists()
+
+    def test_post_membro_da_sola_lettura_403(
+        self, api_client, immobile, user_altro, gruppo_proprietari
+    ):
+        lettore = User.objects.create_user("lettore", password="x")
+        lettore.groups.add(gruppo_proprietari)
+        PropertyMembership.objects.create(
+            property=immobile, user=lettore,
+            ruolo=PropertyMembership.Ruolo.SOLA_LETTURA,
+        )
+        api_client.force_login(lettore)
+        resp = api_client.post(
             f"/api/v1/properties/{immobile.id}/membri/",
             {"user": user_altro.id, "ruolo": "gestore"},
             format="json",
@@ -575,15 +595,15 @@ class TestInviti:
         assert User.objects.filter(email="doppio@v.it").count() == 1
         assert len(mailoutbox) == 1
 
-    def test_invito_da_gestore_403(self, client_gestore, immobile, mailoutbox):
+    def test_invito_da_gestore_201(self, client_gestore, immobile, mailoutbox):
         resp = client_gestore.post(
             f"/api/v1/properties/{immobile.id}/inviti/",
             {"email": "x@v.it", "ruolo": "gestore"},
             format="json",
         )
-        assert resp.status_code == 403
-        assert not User.objects.filter(email="x@v.it").exists()
-        assert len(mailoutbox) == 0
+        assert resp.status_code == 201, resp.content
+        assert User.objects.filter(email="x@v.it").exists()
+        assert len(mailoutbox) == 1
 
 
 # ---------------------------------------------------------------------------
