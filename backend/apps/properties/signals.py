@@ -197,9 +197,9 @@ def genera_room_implicita(sender, instance, **kwargs):
     """
     if instance.tipo_gestione != Property.TipoGestione.UNITA_INTERA:
         return
-    if instance.rooms.exists():
-        return
-    Room.objects.create(property=instance, nome="Appartamento")
+    # get_or_create (lookup sulla sola property, qualunque nome della Room)
+    # invece di exists()+create: due save concorrenti non creano due Room.
+    Room.objects.get_or_create(property=instance, defaults={"nome": "Appartamento"})
 
 
 @receiver(post_save, sender=TenantProfile)

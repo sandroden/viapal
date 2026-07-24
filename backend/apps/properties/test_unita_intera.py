@@ -16,6 +16,7 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth.models import Group, User
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from rest_framework.test import APIClient
 
 from properties.models import Property, PropertyMembership, Room, RoomAssignment, TenantProfile
@@ -129,6 +130,23 @@ class TestRoomImplicita:
         immobile.save()
         assert immobile.rooms.count() == 1
         assert immobile.rooms.first().nome == "Unica"
+
+
+# ---------------------------------------------------------------------------
+# Seed demo: Casa Lago è un'unità intera con la sola stanza del seed
+# ---------------------------------------------------------------------------
+
+
+class TestSeedDemoUnitaIntera:
+    def test_casa_lago_unita_intera_una_sola_stanza(self, db):
+        """seed_demo crea Casa Lago come unità intera senza violare il vincolo
+        max-1 Room: la stanza del seed resta l'unica (l'ordine di creazione
+        evita la 'Appartamento' implicita del signal)."""
+        call_command("seed_demo")
+        prop = Property.objects.get(nome="Casa Lago")
+        assert prop.tipo_gestione == Property.TipoGestione.UNITA_INTERA
+        assert prop.rooms.count() == 1
+        assert prop.rooms.first().nome == "Appartamento intero"
 
 
 # ---------------------------------------------------------------------------

@@ -1483,6 +1483,12 @@ class Command(BaseCommand):
             nome="Appartamento intero",
             defaults={"superficie_mq": Decimal("65.00"), "ordinamento": 1},
         )
+        # Casa Lago è gestita come unità intera. Impostiamo il tipo DOPO aver
+        # creato l'unica stanza: così il signal genera_room_implicita la trova
+        # (get_or_create) e non aggiunge una seconda "Appartamento" (vincolo max-1).
+        if prop.tipo_gestione != Property.TipoGestione.UNITA_INTERA:
+            prop.tipo_gestione = Property.TipoGestione.UNITA_INTERA
+            prop.save(update_fields=["tipo_gestione"])
         Contract.objects.get_or_create(
             property=prop,
             data_decorrenza=date(2025, 2, 1),

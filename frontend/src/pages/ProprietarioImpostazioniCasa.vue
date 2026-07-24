@@ -61,7 +61,7 @@
                     @click="apriDialogStanza(props.row)"
                   />
                   <q-btn
-                    v-if="puoModificare"
+                    v-if="puoModificare && !nascondiEliminaStanza"
                     flat
                     dense
                     round
@@ -334,7 +334,9 @@
       <q-card style="min-width: 380px">
         <q-card-section>
           <div class="vp-section-title">
-            {{ stanzaInModifica ? 'Modifica stanza' : 'Nuova stanza' }}
+            {{ stanzaInModifica
+              ? `Modifica ${labels.singolare.toLowerCase()}`
+              : `Nuova ${labels.singolare.toLowerCase()}` }}
           </div>
         </q-card-section>
         <q-card-section class="q-gutter-md">
@@ -810,11 +812,11 @@ function formattaImporto(v: string | number): string {
 const stanze = ref<Stanza[]>([]);
 const loadingStanze = ref(false);
 
-// Su unità intera l'unica stanza è l'appartamento implicito: una volta creato
-// il backend rifiuterebbe altre stanze, quindi si nasconde il bottone.
-const nascondiNuovaStanza = computed(
-  () => propStore.isUnitaIntera && stanze.value.length >= 1,
-);
+// Su unità intera l'unica stanza è l'appartamento implicito, creato per
+// costruzione dal signal: niente bottone "Nuova" (nasconderlo sempre, anche
+// durante il caricamento iniziale) e niente azione elimina sulla Room.
+const nascondiNuovaStanza = computed(() => propStore.isUnitaIntera);
+const nascondiEliminaStanza = computed(() => propStore.isUnitaIntera);
 
 const colonneStanze: QTableProps['columns'] = [
   { name: 'nome', label: 'Nome', field: 'nome', align: 'left', sortable: true },

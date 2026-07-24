@@ -8,6 +8,16 @@
         </div>
       </q-card-section>
       <q-card-section class="q-gutter-md">
+        <q-banner
+          v-if="isUnitaIntera && unitaOccupata"
+          class="vp-asg__banner-warn"
+          rounded
+          dense
+          data-testid="assegna-unita-occupata"
+        >
+          Appartamento occupato — per sostituire l'inquilino usa il wizard
+          "Cessione" dal dettaglio dell'inquilino attuale.
+        </q-banner>
         <q-select
           v-if="!isUnitaIntera"
           v-model="form.room"
@@ -163,7 +173,7 @@
           color="primary"
           label="Assegna"
           :loading="salvando"
-          :disable="!sommaCoerente"
+          :disable="!sommaCoerente || (isUnitaIntera && (loadingStanze || unitaOccupata))"
           data-testid="assegna-salva"
           @click="salva"
         />
@@ -324,6 +334,17 @@ function formattaDataIt(iso: string): string {
   return `${d}/${m}/${y}`;
 }
 
+// Unità intera: l'unica stanza è l'appartamento implicito. È "occupata" se ha
+// un'assegnazione a tempo indeterminato o che finisce nel futuro. In quel caso
+// non si assegna da qui: il subentro passa dal wizard Cessione.
+const unitaOccupata = computed(() => {
+  if (!isUnitaIntera.value) return false;
+  const room = stanze.value[0];
+  if (!room) return false;
+  const dal = liberaDal(room.id);
+  return dal === undefined || (typeof dal === 'string' && dal > oggiISO());
+});
+
 // Se cambiando la data di inizio la stanza scelta non è più selezionabile,
 // deselezionala per non lasciare un valore invalido nel form.
 watch(opzioniStanze, (opts) => {
@@ -422,15 +443,20 @@ watch(
     errore.value = '';
     form.value = formVuoto();
     rate.value = [];
-    // Su unità intera non c'è scelta stanza: il backend risolve l'unità
-    // implicita, quindi non serve caricare l'elenco stanze.
-    if (!isUnitaIntera.value) void caricaStanze();
+    // Su unità intera non c'è scelta stanza, ma serve comunque l'elenco delle
+    // assegnazioni per capire se l'appartamento è già occupato (banner +
+    // submit disabilitato). A stanze serve per popolare il select.
+    void caricaStanze();
   },
 );
 
 async function salva(): Promise<void> {
   errore.value = '';
   const f = form.value;
+  if (isUnitaIntera.value && unitaOccupata.value) {
+    errore.value = 'Appartamento già occupato: usa il wizard Cessione per il subentro.';
+    return;
+  }
   if (!isUnitaIntera.value && !f.room) {
     errore.value = 'Selezionare la stanza.';
     return;
