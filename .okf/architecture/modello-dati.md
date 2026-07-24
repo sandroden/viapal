@@ -25,6 +25,9 @@ Property ──< Room ──< RoomAssignment >── TenantProfile
 
 - **Anagrafica immobile**: `Property` → `Room` → `RoomAssignment` (stanza assegnata
   a un inquilino in un intervallo `valid_from`/`valid_to`, con `canone_mensile`).
+  `Room` è più in generale l'**unità locata**: se `Property.tipo_gestione ==
+  "unita_intera"` esiste una sola `Room` implicita "Appartamento" e l'immobile è
+  affittato per intero a un unico inquilino (vedi [Unità intera](/domain/unita-intera.md)).
 - **Proprietà**: `OwnerProfile` + `OwnershipShare` (quote temporali) +
   `OwnerBankAccount`.
 - **Addebiti**: `Receivable` (verso inquilino) con causale AFFITTO/UTENZE/EXTRA/…
@@ -45,4 +48,5 @@ Property ──< Room ──< RoomAssignment >── TenantProfile
 # Vedi anche
 
 - [Riconciliazione bonifici](/domain/riconciliazione.md)
+- [Unità intera](/domain/unita-intera.md)
 - [Decisione: unificazione Receivable](/decisions/unificazione-receivable.md)

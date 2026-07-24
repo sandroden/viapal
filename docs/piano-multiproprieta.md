@@ -297,7 +297,7 @@ esistenti (tabelle + dialog modali già usati in Spese/Utenze):
 
 ### 5.3 Flusso concreto "appartamento della moglie" (caso di collaudo end-to-end)
 
-1. Sandro (da `/p/`): "Nuova proprietà" → onboarding → property #2 con 1 contratto e N stanze (anche 1 sola: il modello a stanze copre l'appartamento intero con una stanza unica).
+1. Sandro (da `/p/`): "Nuova proprietà" → onboarding → property #2 con 1 contratto. Per l'appartamento affittato per intero si sceglie il tipo di gestione **"unità intera"** (`Property.tipo_gestione`): il backend crea automaticamente l'unità implicita "Appartamento" e la terminologia del frontend si adatta — soluzione strutturale che sostituisce il vecchio workaround "una stanza unica" (cfr. `.okf/domain/unita-intera.md`).
 2. Da `/p/impostazioni/membri` invita la moglie come **proprietaria** (quota 1.0); lui stesso risulta **gestore** (chi crea una property può scegliere il proprio ruolo: proprietario o gestore).
 3. La moglie riceve l'email, imposta la password, entra su `/p/` e vede **solo** il suo appartamento, senza switcher.
 4. Sandro con lo switcher passa da Via Palestrina all'appartamento; su quest'ultimo non compare nei saldi fra proprietari (nessuna quota).
@@ -397,5 +397,15 @@ Palestrina non deve rompersi mai).
   "La casa" (tab Stanze/Contratti/Spese/TARI), "Nuovo inquilino" con
   invito, wizard "Cessione" nel dettaglio inquilino. Restano in admin
   solo operazioni di manutenzione straordinaria.
+- ✅ **Unità intera** (2026-07-24): `Property.tipo_gestione`
+  (`stanze`/`unita_intera`, migrazione `0019`); `Room` reinterpretata come
+  unità locata, con una sola Room implicita "Appartamento" creata via signal
+  `post_save` (vincolo max-1 in `Room.clean` + API). Prima-assegnazione con
+  `room` opzionale su `unita_intera`. `tipo_gestione` esposto in API/auth/home
+  inquilino/galleria pubblica. Frontend: scelta tipo in "Nuova proprietà",
+  terminologia guidata dal tipo, dialog assegnazione senza select stanza,
+  galleria pubblica adattata. Invariante: un'unità = un solo pagatore; utenze
+  degradano al 100%. Backend + frontend, suite a 669 test verdi. Dettaglio in
+  `.okf/domain/unita-intera.md`.
 - ⏭ **Fase E** — rifiniture (visibilità BankTransaction raffinata,
   export commercialista per-property, notifiche deep-link) a consumo.
