@@ -48,7 +48,7 @@
         <div class="hero-content wrap">
           <div class="hero-eyebrow">
             <EditableText :value="t('hero_eyebrow')" :editable="editMode" @save="(v) => setTesto('hero_eyebrow', v)">
-              {{ t('hero_eyebrow', 'Stanza in condivisione · disponibile') }}
+              {{ t('hero_eyebrow', isUnitaIntera ? 'Appartamento in affitto' : 'Stanza in condivisione · disponibile') }}
             </EditableText>
           </div>
           <h1 class="hero-title">
@@ -182,12 +182,12 @@
               label="prezzo"
               @click="setRoom(r, 'prezzo_mensile', '0')"
             />
-            <span v-if="!r.disponibile" class="room-unavail">
+            <span v-if="!isUnitaIntera && !r.disponibile" class="room-unavail">
               <q-icon name="lock" size="14px" /> Non disponibile
             </span>
             <span v-else-if="liberaDalFutura(r)" class="room-free">Libera dal {{ fmtData(r.libera_dal!) }}</span>
             <q-toggle
-              v-if="editMode"
+              v-if="editMode && !isUnitaIntera"
               :model-value="r.disponibile"
               label="disponibile"
               size="sm"
@@ -202,7 +202,7 @@
             </EditableText>
           </p>
 
-          <div v-if="editMode" class="room-edit-row">
+          <div v-if="editMode && !isUnitaIntera" class="room-edit-row">
             <span class="room-edit-lbl">Libera dal:</span>
             <EditableText :value="r.libera_dal || ''" :editable="true" input-type="date" @save="(v) => setRoom(r, 'libera_dal', v || null)">
               {{ r.libera_dal ? fmtData(r.libera_dal) : 'imposta' }}
@@ -427,6 +427,10 @@ const canEdit = computed(
 const roomsPubbliche = computed(() => g.value?.rooms ?? []);
 const aree = computed(() => g.value?.aree ?? []);
 
+// Unità intera: l'unica "stanza" è l'appartamento stesso, quindi niente
+// terminologia/stato di disponibilità per-stanza. Default "stanze" se assente.
+const isUnitaIntera = computed(() => g.value?.tipo_gestione === 'unita_intera');
+
 const factsDef = [
   { key: 'mq_totali', label: 'mq totali' },
   { key: 'n_camere', label: 'camere' },
@@ -481,9 +485,13 @@ function oggiISO(): string {
   return new Date().toLocaleDateString('sv'); // YYYY-MM-DD locale
 }
 function liberaDalFutura(r: StanzaPubblica): boolean {
+  // Unità intera: nessuno stato di disponibilità per-stanza.
+  if (isUnitaIntera.value) return false;
   return r.disponibile && !!r.libera_dal && r.libera_dal >= oggiISO();
 }
 function mostraFoto(r: StanzaPubblica): boolean {
+  // Unità intera: l'unica "stanza" è l'appartamento, sempre mostrato.
+  if (isUnitaIntera.value) return true;
   return r.disponibile;
 }
 

@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
-import { useAuthStore, type PropertyInfo, type RuoloProperty } from 'stores/auth';
+import {
+  useAuthStore,
+  type PropertyInfo,
+  type RuoloProperty,
+  type TipoGestione,
+} from 'stores/auth';
 
 // Chiave localStorage letta anche dall'interceptor axios (boot/axios.ts):
 // tenerle allineate.
@@ -34,6 +39,23 @@ export interface PropertyDettaglio {
   owner_anticipa_cessioni: number | null;
   mio_ruolo: RuoloProperty | null;
   n_stanze: number;
+  tipo_gestione?: TipoGestione;
+}
+
+// Terminologia che cambia tra property a stanze e ad unità intera. Meccanismo
+// volutamente minimale (niente i18n): solo le poche label che variano, scelte
+// via getter `labels` in base al tipo dell'immobile attivo.
+export interface TerminologiaProperty {
+  /** Titolo sezione/tab dell'elenco unità locate. */
+  unita: string;
+  /** Singolare: "Stanza" | "Appartamento". */
+  singolare: string;
+  /** Azione di prima assegnazione. */
+  assegna: string;
+  /** Empty-state "nessuna unità assegnata". */
+  nessunaAssegnata: string;
+  /** Titolo del box occupazione nel conto economico. */
+  occupazione: string;
 }
 
 export function activePropertyIdFromStorage(): number | null {
@@ -60,6 +82,28 @@ export const usePropertiesStore = defineStore('properties', {
     },
     isProprietarioAttivo(): boolean {
       return this.mioRuolo === 'proprietario';
+    },
+    // Confronto stretto: qualsiasi valore assente/ignoto degrada a "stanze".
+    isUnitaIntera(): boolean {
+      return this.activeProperty?.tipo_gestione === 'unita_intera';
+    },
+    labels(): TerminologiaProperty {
+      if (this.isUnitaIntera) {
+        return {
+          unita: 'Unità',
+          singolare: 'Appartamento',
+          assegna: 'Assegna appartamento',
+          nessunaAssegnata: 'Appartamento non assegnato',
+          occupazione: 'Occupazione',
+        };
+      }
+      return {
+        unita: 'Stanze',
+        singolare: 'Stanza',
+        assegna: 'Assegna stanza',
+        nessunaAssegnata: 'Nessuna stanza assegnata',
+        occupazione: 'Occupazione stanze',
+      };
     },
     hasMultiple(): boolean {
       return this.properties.length > 1;
@@ -95,6 +139,7 @@ export const usePropertiesStore = defineStore('properties', {
       nome: string;
       indirizzo: string;
       ruolo_creatore: 'proprietario' | 'gestore';
+      tipo_gestione: TipoGestione;
     }): Promise<PropertyDettaglio> {
       const { data } = await api.post<PropertyDettaglio>('/api/v1/properties/', payload);
       return data;

@@ -549,7 +549,7 @@
 
             <q-card flat bordered class="vp-i-sit__card-info vp-i-sit__card-info--full">
               <q-card-section>
-                <div class="vp-eyebrow">Stanze</div>
+                <div class="vp-eyebrow">{{ labelUnita }}</div>
                 <q-list separator dense>
                   <q-item v-for="a in situazione.assignments" :key="a.id">
                     <q-item-section>
@@ -565,7 +565,7 @@
                 <EmptyState
                   v-if="!situazione.assignments.length"
                   icon="bedroom_parent"
-                  title="Nessuna stanza assegnata"
+                  :title="labelNessunaAssegnata"
                   message="Per ora non risulta nessun assignment registrato."
                 />
               </q-card-section>
@@ -666,6 +666,16 @@ const opzioniTipo = [
 
 const situazione = computed(() =>
   tenantId.value ? store.get(tenantId.value, annoSelezionato.value) : null,
+);
+
+// La situazione non porta il tipo di gestione: lo prendo dalla home inquilino
+// (dashboard, stessa sessione). Default "stanze" se assente.
+const isUnitaIntera = computed(
+  () => dashboard.inquilinoData?.stanza_corrente?.tipo_gestione === 'unita_intera',
+);
+const labelUnita = computed(() => (isUnitaIntera.value ? 'Appartamento' : 'Stanze'));
+const labelNessunaAssegnata = computed(() =>
+  isUnitaIntera.value ? 'Appartamento non assegnato' : 'Nessuna stanza assegnata',
 );
 
 const rigaRestituzione = computed(() => {

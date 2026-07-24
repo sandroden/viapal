@@ -14,7 +14,7 @@
       indicator-color="primary"
       data-testid="tabs-casa"
     >
-      <q-tab name="stanze" label="Stanze" />
+      <q-tab name="stanze" :label="labels.unita" />
       <q-tab name="contratti" label="Contratti" />
       <q-tab name="spese" label="Spese" />
       <q-tab name="tari" label="TARI" />
@@ -26,10 +26,10 @@
         <q-card flat bordered class="vp-card" style="max-width: 720px">
           <q-card-section>
             <div class="row items-center">
-              <div class="vp-section-title">Stanze</div>
+              <div class="vp-section-title">{{ labels.unita }}</div>
               <q-space />
               <q-btn
-                v-if="puoModificare"
+                v-if="puoModificare && !nascondiNuovaStanza"
                 dense
                 color="primary"
                 icon="add"
@@ -772,6 +772,7 @@ const tabAttivo = ref<'stanze' | 'contratti' | 'spese' | 'tari'>('stanze');
 const puoModificare = computed(
   () => propStore.mioRuolo === 'proprietario' || propStore.mioRuolo === 'gestore',
 );
+const labels = computed(() => propStore.labels);
 
 function asArray<T>(data: T[] | { results: T[] } | undefined | null): T[] {
   if (!data) return [];
@@ -808,6 +809,12 @@ function formattaImporto(v: string | number): string {
 
 const stanze = ref<Stanza[]>([]);
 const loadingStanze = ref(false);
+
+// Su unità intera l'unica stanza è l'appartamento implicito: una volta creato
+// il backend rifiuterebbe altre stanze, quindi si nasconde il bottone.
+const nascondiNuovaStanza = computed(
+  () => propStore.isUnitaIntera && stanze.value.length >= 1,
+);
 
 const colonneStanze: QTableProps['columns'] = [
   { name: 'nome', label: 'Nome', field: 'nome', align: 'left', sortable: true },

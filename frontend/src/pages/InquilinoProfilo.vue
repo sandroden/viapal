@@ -56,7 +56,7 @@
         </q-item>
         <q-item v-if="stanza">
           <q-item-section>
-            <q-item-label caption>Stanza assegnata</q-item-label>
+            <q-item-label caption>{{ labelUnita }}</q-item-label>
             <q-item-label>
               {{ stanza.nome }} — {{ formattaEuro(stanza.canone_mensile) }}/mese
             </q-item-label>
@@ -200,6 +200,11 @@ const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
 
 const stanza = computed(() => store.inquilinoData?.stanza_corrente ?? null);
+const labelUnita = computed(() =>
+  stanza.value?.tipo_gestione === 'unita_intera'
+    ? 'Appartamento'
+    : 'Stanza assegnata',
+);
 
 // --- Dati editabili (fonte autorevole: /tenants/me/) ---
 interface DatiMe {

@@ -5,10 +5,15 @@ export type Role = 'proprietario' | 'inquilino' | null;
 
 export type RuoloProperty = 'proprietario' | 'gestore' | 'sola_lettura';
 
+export type TipoGestione = 'stanze' | 'unita_intera';
+
 export interface PropertyInfo {
   id: number;
   nome: string;
   ruolo: RuoloProperty | null;
+  // Assente sui client vecchi/backend non ancora aggiornato: trattato come
+  // "stanze" grazie al confronto stretto === 'unita_intera' lato consumatori.
+  tipo_gestione?: TipoGestione;
 }
 
 export interface BankAccountInfo {

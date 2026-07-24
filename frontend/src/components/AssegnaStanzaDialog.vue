@@ -2,10 +2,14 @@
   <q-dialog v-model="dialogModel">
     <q-card style="min-width: 480px; max-width: 560px">
       <q-card-section>
-        <div class="vp-asg__titolo">Assegna stanza a {{ tenantNominativo }}</div>
+        <div class="vp-asg__titolo">
+          {{ isUnitaIntera ? 'Assegna appartamento' : 'Assegna stanza' }} a
+          {{ tenantNominativo }}
+        </div>
       </q-card-section>
       <q-card-section class="q-gutter-md">
         <q-select
+          v-if="!isUnitaIntera"
           v-model="form.room"
           :options="opzioniStanze"
           label="Stanza"
@@ -18,7 +22,7 @@
           data-testid="assegna-stanza"
         />
         <q-banner
-          v-if="!loadingStanze && opzioniStanze.length === 0"
+          v-if="!isUnitaIntera && !loadingStanze && opzioniStanze.length === 0"
           class="vp-asg__banner-warn"
           rounded
           dense
@@ -174,6 +178,7 @@ import { useQuasar } from 'quasar';
 import { api } from 'boot/axios';
 import { messaggioErrore } from 'src/utils/apiErrors';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
+import { usePropertiesStore } from 'stores/properties';
 
 interface Stanza {
   id: number;
@@ -209,6 +214,8 @@ const emit = defineEmits<{
 
 const $q = useQuasar();
 const { formattaEuro } = useFormatoEuro();
+const propStore = usePropertiesStore();
+const isUnitaIntera = computed(() => propStore.isUnitaIntera);
 
 const dialogModel = computed({
   get: () => props.modelValue,
@@ -415,14 +422,16 @@ watch(
     errore.value = '';
     form.value = formVuoto();
     rate.value = [];
-    void caricaStanze();
+    // Su unità intera non c'è scelta stanza: il backend risolve l'unità
+    // implicita, quindi non serve caricare l'elenco stanze.
+    if (!isUnitaIntera.value) void caricaStanze();
   },
 );
 
 async function salva(): Promise<void> {
   errore.value = '';
   const f = form.value;
-  if (!f.room) {
+  if (!isUnitaIntera.value && !f.room) {
     errore.value = 'Selezionare la stanza.';
     return;
   }
@@ -441,11 +450,12 @@ async function salva(): Promise<void> {
 
   const payload: Record<string, unknown> = {
     tenant: props.tenantId,
-    room: f.room,
     valid_from: f.validFrom,
     canone_mensile: f.canoneMensile,
     ciclo_fatturazione: f.ciclo,
   };
+  // Su unità intera si omette `room`: il backend risolve l'unità implicita.
+  if (!isUnitaIntera.value) payload.room = f.room;
   if (!props.depositoGiaRegistrato && f.depositoTotale !== '') {
     payload.deposito_totale = f.depositoTotale;
     payload.data_versamento_deposito = f.dataVersamento || f.validFrom;
@@ -465,7 +475,7 @@ async function salva(): Promise<void> {
     await api.post('/api/v1/room-assignments/prima-assegnazione/', payload);
     $q.notify({
       type: 'positive',
-      message: `Stanza assegnata a ${props.tenantNominativo}.`,
+      message: `${isUnitaIntera.value ? 'Appartamento assegnato' : 'Stanza assegnata'} a ${props.tenantNominativo}.`,
     });
     emit('saved');
     dialogModel.value = false;

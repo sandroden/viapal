@@ -63,6 +63,8 @@ export interface GalleriaPubblica {
   nome: string;
   slug: string;
   indirizzo: string;
+  // Assente su galleria non ancora aggiornata: default "stanze".
+  tipo_gestione?: 'stanze' | 'unita_intera';
   testi_pubblici: TestiPubblici;
   foto_hero: string | null;
   foto_planimetria: string | null;

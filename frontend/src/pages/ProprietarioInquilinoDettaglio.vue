@@ -703,7 +703,7 @@
             <q-card flat bordered class="vp-p-id__card-info vp-p-id__card-info--full">
               <q-card-section>
                 <div class="row items-center">
-                  <div class="vp-eyebrow">Stanze</div>
+                  <div class="vp-eyebrow">{{ labels.singolare }}</div>
                   <q-space />
                   <q-btn
                     v-if="puoModificare && !assignmentInCorso"
@@ -713,7 +713,7 @@
                     size="sm"
                     color="primary"
                     icon="add_home"
-                    label="Assegna stanza"
+                    :label="labels.assegna"
                     data-testid="assegna-stanza-apri"
                     @click="dialogAssegnaStanza = true"
                   />
@@ -749,7 +749,7 @@
                 <EmptyState
                   v-if="!situazione.assignments.length"
                   icon="bedroom_parent"
-                  title="Nessuna stanza assegnata"
+                  :title="labels.nessunaAssegnata"
                   message="Per ora non risulta nessun assignment registrato."
                 />
               </q-card-section>
@@ -1405,6 +1405,7 @@ const propStore = usePropertiesStore();
 const puoModificare = computed(
   () => propStore.mioRuolo === 'proprietario' || propStore.mioRuolo === 'gestore',
 );
+const labels = computed(() => propStore.labels);
 
 // --- Assegna stanza (prima assegnazione, nessun assignment attivo) --------
 

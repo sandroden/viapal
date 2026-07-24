@@ -49,6 +49,8 @@ export interface StanzaCorrente {
   nome: string;
   canone_mensile: number;
   valid_from: string;
+  // Assente su payload/backend non ancora aggiornato: default "stanze".
+  tipo_gestione?: 'stanze' | 'unita_intera';
 }
 
 export interface TenantInfo {

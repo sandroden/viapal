@@ -3,7 +3,7 @@
     <div class="vp-page-head">
       <h1 class="vp-h1">Nuova proprietà</h1>
       <p class="vp-sub">
-        Crea un nuovo immobile da gestire con Viapal: stanze, contratti,
+        Crea un nuovo immobile da gestire con Viapal: unità, contratti,
         pagamenti e conguagli restano separati per ogni casa.
       </p>
     </div>
@@ -25,6 +25,21 @@
             outlined
             data-testid="nuova-indirizzo"
           />
+
+          <div>
+            <div class="vp-label q-mb-sm">Come è affittato l'immobile</div>
+            <q-option-group
+              v-model="tipoGestione"
+              :options="opzioniTipoGestione"
+              type="radio"
+              data-testid="nuova-tipo-gestione"
+            />
+            <div class="vp-hint q-mt-xs">
+              «A stanze» se affitti le singole camere a inquilini diversi;
+              «Appartamento intero» se l'intera unità va a un unico
+              contratto/pagatore.
+            </div>
+          </div>
 
           <div>
             <div class="vp-label q-mb-sm">Il tuo ruolo su questo immobile</div>
@@ -66,18 +81,25 @@
 import { ref } from 'vue';
 import { isAxiosError } from 'axios';
 import { usePropertiesStore, STORAGE_KEY } from 'stores/properties';
+import type { TipoGestione } from 'stores/auth';
 
 const propStore = usePropertiesStore();
 
 const nome = ref('');
 const indirizzo = ref('');
 const ruoloCreatore = ref<'proprietario' | 'gestore'>('proprietario');
+const tipoGestione = ref<TipoGestione>('stanze');
 const saving = ref(false);
 const errore = ref('');
 
 const opzioniRuolo = [
   { label: 'Proprietario (l’immobile è mio)', value: 'proprietario' },
   { label: 'Gestore (lo amministro per qualcun altro)', value: 'gestore' },
+];
+
+const opzioniTipoGestione = [
+  { label: 'A stanze (affitto le singole camere)', value: 'stanze' },
+  { label: 'Appartamento intero (un unico contratto)', value: 'unita_intera' },
 ];
 
 async function crea() {
@@ -88,6 +110,7 @@ async function crea() {
       nome: nome.value.trim(),
       indirizzo: indirizzo.value.trim(),
       ruolo_creatore: ruoloCreatore.value,
+      tipo_gestione: tipoGestione.value,
     });
     // Attiva subito il nuovo immobile e riparti puliti (hard reload, come
     // per ogni cambio di immobile).

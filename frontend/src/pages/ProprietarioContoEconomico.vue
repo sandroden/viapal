@@ -160,7 +160,7 @@
               </q-item>
             </q-list>
 
-            <div class="vp-eyebrow q-mt-lg">Occupazione stanze</div>
+            <div class="vp-eyebrow q-mt-lg">{{ labels.occupazione }}</div>
             <div v-if="data.occupazione.tasso_medio !== null" class="vp-ce__occupazione-media">
               media {{ (data.occupazione.tasso_medio * 100).toFixed(0) }}%
             </div>
@@ -252,8 +252,11 @@ import {
   type VoceCategoria,
 } from 'stores/contoEconomico';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
+import { usePropertiesStore } from 'stores/properties';
 
 const store = useContoEconomicoStore();
+const propStore = usePropertiesStore();
+const labels = computed(() => propStore.labels);
 const { formattaEuro } = useFormatoEuro();
 
 const basis = ref<'cassa' | 'competenza'>('cassa');
