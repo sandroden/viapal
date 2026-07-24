@@ -256,14 +256,15 @@ def _applica(template: str, contesto: dict) -> str:
     return out
 
 
-def _render(contesto: dict) -> tuple[str, str, str]:
+def _render(contesto: dict, property=None) -> tuple[str, str, str]:
     """Restituisce ``(oggetto, corpo_testo, corpo_html)``.
 
-    Il testo viene dal ``MessageTemplate`` (se configurato) o dal fallback; la
-    versione HTML usa sempre il layout di default così il link e la tabella
-    del conteggio sono garantiti.
+    Il testo viene dal ``MessageTemplate`` dell'immobile (se configurato) o
+    dal fallback; la versione HTML usa sempre il layout di default così il
+    link e la tabella del conteggio sono garantiti.
     """
     tpl = MessageTemplate.objects.filter(
+        property=property,
         codice=TEMPLATE_CODICE,
         canale=MessageTemplate.CanaleComunicazione.EMAIL,
     ).first()
@@ -316,7 +317,7 @@ def costruisci_avvisi_utenze(period) -> list[dict]:
         if not r.importo_dovuto:
             continue
         oggetto, corpo, corpo_html = _render(
-            _contesto(r, dettagli.get(r.assignment_id))
+            _contesto(r, dettagli.get(r.assignment_id)), property=period.property
         )
         tenant = r.assignment.tenant
         # Inquilino già uscito: l'occupazione è terminata prima di oggi.

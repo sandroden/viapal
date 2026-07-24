@@ -591,9 +591,12 @@ class UtilityBillViewSet(ModelViewSet):
         MESI_IT = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
                    "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
 
+        prop = get_request_property(request)
+
         bills = (
             UtilityBill.objects
             .filter(
+                immobile=prop,
                 consumo__gt=0,
                 prodotto__in=[UtilityBill.Prodotto.LUCE, UtilityBill.Prodotto.GAS],
             )
@@ -616,7 +619,10 @@ class UtilityBillViewSet(ModelViewSet):
         # RoomAssignment: serve solo valid_from e valid_to per calcolare i
         # giorni-persona del singolo mese (intersezione assegnazione ∩ mese).
         today = datetime.date.today()
-        assignments = list(RoomAssignment.objects.values("valid_from", "valid_to"))
+        assignments = list(
+            RoomAssignment.objects.filter(room__property=prop)
+            .values("valid_from", "valid_to")
+        )
 
         def _giorni_persona_mese(first_day, last_day):
             """Somma i giorni di presenza di tutti gli inquilini nel mese."""
@@ -1524,6 +1530,7 @@ class UtenzeInquilinoView(APIView):
         bills = (
             UtilityBill.objects.select_related("supplier")
             .filter(
+                immobile=period.property_id,
                 periodo_da__lte=period.periodo_a,
                 periodo_a__gte=period.periodo_da,
             )

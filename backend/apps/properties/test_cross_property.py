@@ -716,3 +716,131 @@ class TestConguagliaPrevisionaleGetCross:
             "?previsionale_id=1"
         )
         assert resp.status_code == 404, resp.status_code
+
+
+class TestUtenzeInquilinoBolletteCross:
+    """REGRESSIONE (chiusa): UtenzeInquilinoView._bollette interrogava
+    UtilityBill senza filtro immobile: l'inquilino di A vedeva le bollette
+    (fornitore incluso) sovrapposte allo stesso periodo nel mondo B."""
+
+    def test_bollette_non_include_altro_immobile(
+        self, client_tenant_a, mondo_a, mondo_b
+    ):
+        Receivable.objects.create(
+            assignment=mondo_a.assignment,
+            causale=Receivable.Causale.UTENZE,
+            utility_period=mondo_a.periodo,
+            competenza_da=datetime.date(2026, 4, 1),
+            competenza_a=datetime.date(2026, 4, 30),
+            importo_dovuto=Decimal("30"),
+            scadenza=datetime.date(2026, 5, 15),
+            stato=StatoPagamento.ATTESO,
+        )
+        resp = client_tenant_a.get(f"/api/v1/utenze-inquilino/{mondo_a.periodo.id}/")
+        assert resp.status_code == 200, resp.content
+        fornitori = {b["supplier_nome"] for b in resp.json().get("bollette", [])}
+        assert mondo_b.supplier.nome not in fornitori
+        assert mondo_a.supplier.nome in fornitori
+
+
+class TestUtilityBillStatisticheCross:
+    """REGRESSIONE (chiusa): UtilityBillViewSet.statistiche interrogava
+    UtilityBill/RoomAssignment senza filtro property: i consumi di B si
+    sommavano a quelli di A nello stesso mese."""
+
+    def test_statistiche_non_include_altro_immobile(
+        self, client_owner_a, mondo_a, mondo_b
+    ):
+        UtilityBill.objects.filter(pk=mondo_a.bolletta.pk).update(
+            consumo=Decimal("100.000")
+        )
+        UtilityBill.objects.filter(pk=mondo_b.bolletta.pk).update(
+            consumo=Decimal("999.000")
+        )
+        resp = client_owner_a.get("/api/v1/utility-bills/statistiche/")
+        assert resp.status_code == 200, resp.content
+        righe = [r for r in resp.json() if r["anno"] == 2026 and r["mese"] == 4]
+        assert len(righe) == 1, righe
+        assert righe[0]["luce_consumo"] == 100.0, (
+            "il consumo luce di aprile 2026 include la bolletta del mondo B "
+            f"(atteso 100.0, ottenuto {righe[0]['luce_consumo']})"
+        )
+
+
+class TestAvvisiUtenzeTemplateCross:
+    """REGRESSIONE (chiusa): il rendering degli avvisi utenze pescava il
+    MessageTemplate 'avviso_utenze' senza filtro property: con un template
+    configurato solo su B, l'avviso di A lo usava comunque."""
+
+    def test_template_altra_property_non_usato(self, client_owner_a, mondo_a, mondo_b):
+        from notifications.models import MessageTemplate
+
+        MessageTemplate.objects.create(
+            property=mondo_b.property,
+            codice="avviso_utenze",
+            titolo="TEMPLATE SOLO B",
+            corpo="corpo B {{nome}}",
+            canale=MessageTemplate.CanaleComunicazione.EMAIL,
+        )
+        Receivable.objects.create(
+            assignment=mondo_a.assignment,
+            causale=Receivable.Causale.UTENZE,
+            utility_period=mondo_a.periodo,
+            competenza_da=datetime.date(2026, 4, 1),
+            competenza_a=datetime.date(2026, 4, 30),
+            importo_dovuto=Decimal("30"),
+            scadenza=datetime.date(2026, 5, 15),
+            stato=StatoPagamento.ATTESO,
+        )
+        resp = client_owner_a.post(
+            f"/api/v1/utility-periods/{mondo_a.periodo.id}/invia-avvisi/",
+            {"dry_run": True},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        avvisi = resp.json().get("avvisi", [])
+        assert avvisi, "nessun avviso generato: setup del test da rivedere"
+        assert all(a["oggetto"] != "TEMPLATE SOLO B" for a in avvisi)
+
+
+class TestUtilityBillImmobileReadOnlyCross:
+    """REGRESSIONE (chiusa): UtilityBillSerializer.immobile era scrivibile
+    → un PATCH poteva spostare la bolletta su un altro immobile."""
+
+    def test_patch_immobile_ignorato(self, client_owner_a, mondo_a, mondo_b):
+        resp = client_owner_a.patch(
+            f"/api/v1/utility-bills/{mondo_a.bolletta.id}/",
+            {"immobile": mondo_b.property.id},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        mondo_a.bolletta.refresh_from_db()
+        assert mondo_a.bolletta.immobile_id == mondo_a.property.id
+
+
+class TestUtilityBillSupplierCross:
+    """REGRESSIONE (chiusa): UtilityBillSerializer.validate cercava/creava
+    il Supplier da supplier_nome senza scoping per property (lookup
+    cross-property + create senza property → IntegrityError); inoltre
+    esigeva sempre supplier/supplier_nome anche in PATCH parziale."""
+
+    def test_supplier_nome_esistente_su_altra_property_non_riusato(
+        self, client_owner_a, mondo_a, mondo_b
+    ):
+        resp = client_owner_a.patch(
+            f"/api/v1/utility-bills/{mondo_a.bolletta.id}/",
+            {"supplier_nome": mondo_b.supplier.nome},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        mondo_a.bolletta.refresh_from_db()
+        assert mondo_a.bolletta.supplier_id != mondo_b.supplier.id
+        assert mondo_a.bolletta.supplier.property_id == mondo_a.property.id
+
+    def test_patch_parziale_senza_supplier_non_400(self, client_owner_a, mondo_a):
+        resp = client_owner_a.patch(
+            f"/api/v1/utility-bills/{mondo_a.bolletta.id}/",
+            {"numero_fattura": "NUOVO-123"},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content

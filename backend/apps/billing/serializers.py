@@ -222,7 +222,13 @@ class UtilityBillSerializer(serializers.ModelSerializer):
             "pagata_da_nominativo",
             "note",
         ]
-        extra_kwargs = {"supplier": {"required": False}}
+        extra_kwargs = {
+            "supplier": {"required": False},
+            # L'immobile è assegnato dal contesto della request in create();
+            # scrivibile via PATCH permetterebbe di spostare la bolletta su
+            # un'altra property.
+            "immobile": {"read_only": True},
+        }
 
     PRODOTTO_TIPO_FORNITORE = {
         UtilityBill.Prodotto.LUCE: Supplier.TipoFornitore.ENERGIA,
@@ -236,16 +242,44 @@ class UtilityBillSerializer(serializers.ModelSerializer):
         nome = nome.strip()
         if supplier is None:
             if not nome:
+                if self.instance is not None:
+                    # PATCH parziale che non tocca il fornitore: niente da
+                    # esigere, il campo resta quello già salvato.
+                    return attrs
                 raise serializers.ValidationError(
                     {"supplier": "Indicare 'supplier' (id) oppure 'supplier_nome'."}
                 )
-            tipo = self.PRODOTTO_TIPO_FORNITORE.get(
-                attrs.get("prodotto") or UtilityBill.Prodotto.LUCE,
-                Supplier.TipoFornitore.ALTRO,
+            # L'immobile del fornitore: quello della bolletta in update,
+            # quello del contesto della richiesta altrimenti. Mai globale.
+            if self.instance is not None:
+                immobile = self.instance.immobile
+            else:
+                from properties.context import get_request_property
+
+                request = self.context.get("request")
+                immobile = get_request_property(request) if request else None
+            if immobile is None:
+                raise serializers.ValidationError(
+                    {
+                        "supplier_nome": (
+                            "Impossibile determinare l'immobile per creare "
+                            "il fornitore."
+                        )
+                    }
+                )
+            prodotto = (
+                attrs.get("prodotto")
+                or (self.instance.prodotto if self.instance else None)
+                or UtilityBill.Prodotto.LUCE
             )
-            existing = Supplier.objects.filter(nome__iexact=nome).first()
+            tipo = self.PRODOTTO_TIPO_FORNITORE.get(
+                prodotto, Supplier.TipoFornitore.ALTRO,
+            )
+            existing = Supplier.objects.filter(
+                property=immobile, nome__iexact=nome,
+            ).first()
             attrs["supplier"] = existing or Supplier.objects.create(
-                nome=nome, tipo=tipo
+                property=immobile, nome=nome, tipo=tipo,
             )
         return attrs
 
