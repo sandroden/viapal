@@ -573,3 +573,103 @@ class TestImpersonationCross:
         client = _client(mondo_a.user_owner)
         resp = client.post(f"/api/auth/impersonate/{mondo_a.tenant.id}/")
         assert resp.status_code == 200, resp.content
+
+
+# ---------------------------------------------------------------------------
+# 8. FALLE CHIUSE (review 2026-07-24) — regressione sui fix di questa review
+# ---------------------------------------------------------------------------
+# Ogni test riproduce una falla cross-property CONFERMATA prima del fix
+# (sarebbe rosso senza la correzione corrispondente) e resta come test di
+# regressione.
+
+
+class TestReceivableCreateAssignmentCross:
+    """REGRESSIONE (chiusa): _ReceivableMixin.create (rent/utility/extra)
+    accettava un ``assignment`` (e un ``period`` per le utenze) di
+    qualunque property: i campi sono FK a queryset globale, non vincolati
+    dalla permission (property-scoped solo il queryset di lettura)."""
+
+    def test_rent_payment_assignment_altra_property_rifiutato(
+        self, client_owner_a, mondo_a, mondo_b
+    ):
+        resp = client_owner_a.post(
+            "/api/v1/rent-payments/",
+            {
+                "assignment": mondo_b.assignment.id,
+                "competenza_da": "2026-06-01",
+                "competenza_a": "2026-06-30",
+                "importo_dovuto": "400.00",
+                "scadenza": "2026-06-01",
+                "stato": "atteso",
+            },
+            format="json",
+        )
+        assert resp.status_code == 400, resp.content
+        assert not Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO,
+            assignment=mondo_b.assignment,
+            competenza_da=datetime.date(2026, 6, 1),
+        ).exists()
+
+    def test_utility_charge_period_altra_property_rifiutato(
+        self, client_owner_a, mondo_a, mondo_b
+    ):
+        resp = client_owner_a.post(
+            "/api/v1/utility-charges/",
+            {
+                "assignment": mondo_a.assignment.id,
+                "period": mondo_b.periodo.id,
+                "importo_totale": "30.00",
+                "scadenza": "2026-05-15",
+                "stato": "atteso",
+            },
+            format="json",
+        )
+        assert resp.status_code == 400, resp.content
+
+    def test_rent_payment_sulla_propria_property_ok(self, client_owner_a, mondo_a):
+        # Controprova: la stessa create funziona nella property attiva.
+        resp = client_owner_a.post(
+            "/api/v1/rent-payments/",
+            {
+                "assignment": mondo_a.assignment.id,
+                "competenza_da": "2026-06-01",
+                "competenza_a": "2026-06-30",
+                "importo_dovuto": "400.00",
+                "scadenza": "2026-06-01",
+                "stato": "atteso",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+
+
+class TestExpenseCampiCross:
+    """REGRESSIONE (chiusa): ExpenseSerializer/ExpenseViewSet.perform_create
+    non validavano che anticipata_da_owner/riferimento_quota_owner fossero
+    membri dell'immobile attivo, né che category/supplier appartenessero
+    alla stessa property (FK a queryset globale)."""
+
+    def test_anticipata_da_owner_non_membro_rifiutato(
+        self, client_owner_a, mondo_a, mondo_b
+    ):
+        payload = _payload_expense(mondo_a, anticipata_da_owner=mondo_b.owner.id)
+        resp = client_owner_a.post("/api/v1/expenses/", payload, format="json")
+        assert resp.status_code == 400, resp.content
+
+    def test_riferimento_quota_owner_non_membro_rifiutato(
+        self, client_owner_a, mondo_a, mondo_b
+    ):
+        payload = _payload_expense(mondo_a, riferimento_quota_owner=mondo_b.owner.id)
+        resp = client_owner_a.post("/api/v1/expenses/", payload, format="json")
+        assert resp.status_code == 400, resp.content
+
+    def test_category_altra_property_rifiutata(self, client_owner_a, mondo_a, mondo_b):
+        payload = _payload_expense(mondo_a, category=mondo_b.categoria.id)
+        resp = client_owner_a.post("/api/v1/expenses/", payload, format="json")
+        assert resp.status_code == 400, resp.content
+
+    def test_supplier_altra_property_rifiutato(self, client_owner_a, mondo_a, mondo_b):
+        payload = _payload_expense(mondo_a, supplier=mondo_b.supplier.id)
+        resp = client_owner_a.post("/api/v1/expenses/", payload, format="json")
+        assert resp.status_code == 400, resp.content

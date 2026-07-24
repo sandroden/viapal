@@ -12,6 +12,7 @@ from django.db.models import F, Q, Sum
 from rest_framework import status
 from rest_framework.authentication import BasicAuthentication, SessionAuthentication
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -26,7 +27,7 @@ from accounts.permissions import (  # noqa: F401
     IsProprietario,
 )
 from properties.context import get_request_property
-from properties.views import ProtectedDestroyMixin
+from properties.views import ProtectedDestroyMixin, _valida_owner_membro
 from billing.models import (
     AnnualUtilityCost,
     BankTransaction,
@@ -104,6 +105,30 @@ class _ReceivableMixin:
                 assignment__room__property=get_request_property(self.request)
             )
         return qs.filter(assignment__tenant__user=self.request.user)
+
+    def _valida_property_attiva(self, serializer):
+        """L'assignment (e il period, se presente) devono appartenere
+        all'immobile attivo: i campi sono FK a queryset globale, quindi vanno
+        vincolati qui, non a livello di permission."""
+        prop = get_request_property(self.request)
+        assignment = serializer.validated_data.get("assignment")
+        if assignment is not None and assignment.room.property_id != prop.id:
+            raise ValidationError(
+                {"assignment": "Assegnazione non appartenente all'immobile attivo."}
+            )
+        period = serializer.validated_data.get("utility_period")
+        if period is not None and period.property_id != prop.id:
+            raise ValidationError(
+                {"period": "Periodo non appartenente all'immobile attivo."}
+            )
+
+    def perform_create(self, serializer):
+        self._valida_property_attiva(serializer)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._valida_property_attiva(serializer)
+        serializer.save()
 
     @action(detail=True, methods=["post"], url_path="dichiara_pagato")
     def dichiara_pagato(self, request, pk=None):
@@ -739,22 +764,44 @@ class ExpenseViewSet(ModelViewSet):
             property=get_request_property(self.request)
         )
 
+    def _valida_appartenenza_property(self, validated, prop):
+        """``anticipata_da_owner``/``riferimento_quota_owner`` devono essere
+        membri dell'immobile attivo; ``category``/``supplier`` devono
+        appartenere alla stessa property: sono FK a queryset globale."""
+        _valida_owner_membro(
+            validated.get("anticipata_da_owner"), prop, "anticipata_da_owner"
+        )
+        _valida_owner_membro(
+            validated.get("riferimento_quota_owner"), prop, "riferimento_quota_owner"
+        )
+        category = validated.get("category")
+        if category is not None and category.property_id != prop.id:
+            raise ValidationError(
+                {"category": "La categoria non appartiene all'immobile attivo."}
+            )
+        supplier = validated.get("supplier")
+        if supplier is not None and supplier.property_id != prop.id:
+            raise ValidationError(
+                {"supplier": "Il fornitore non appartiene all'immobile attivo."}
+            )
+
     def perform_create(self, serializer):
         from properties.models import OwnerBankAccount
+        prop = get_request_property(self.request)
         validated = serializer.validated_data
         crea_bt = validated.pop("crea_bank_transaction", True)
         bt_owner_account_id = validated.pop("bt_owner_account", None)
         bt_data = validated.pop("bt_data", None)
         bt_descrizione = validated.pop("bt_descrizione", "") or ""
 
+        self._valida_appartenenza_property(validated, prop)
+
         # Se l'anticipante non è esplicito ma c'è un conto BT, derivalo da lì:
         # il conto appartiene a un proprietario e la spesa è "anticipata" da lui.
         account = None
         if crea_bt and bt_owner_account_id:
-            from properties.context import get_request_property
             from rest_framework.exceptions import PermissionDenied
 
-            prop = get_request_property(self.request)
             account = OwnerBankAccount.objects.filter(
                 pk=bt_owner_account_id,
                 owner__user__property_memberships__property=prop,
@@ -765,9 +812,7 @@ class ExpenseViewSet(ModelViewSet):
                 validated["anticipata_da_owner"] = account.owner
 
         with transaction.atomic():
-            from properties.context import get_request_property
-
-            expense = serializer.save(property=get_request_property(self.request))
+            expense = serializer.save(property=prop)
             if crea_bt and account is not None:
                 BankTransaction.objects.create(
                     data=bt_data or expense.data,
@@ -779,6 +824,11 @@ class ExpenseViewSet(ModelViewSet):
                     owner_account=account,
                     note="",
                 )
+
+    def perform_update(self, serializer):
+        prop = get_request_property(self.request)
+        self._valida_appartenenza_property(serializer.validated_data, prop)
+        serializer.save()
 
 
 class BankTransactionViewSet(ReadOnlyModelViewSet):
