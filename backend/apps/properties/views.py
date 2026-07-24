@@ -334,7 +334,9 @@ class RoomViewSet(ProtectedDestroyMixin, ModelViewSet):
     Stanze.
     - Proprietari: tutte, con CRUD completo (scrittura riservata ai membri
       operativi; la property è assegnata dal server sull'immobile attivo),
-      inclusi i campi galleria (upload foto via multipart).
+      inclusi i campi galleria (upload foto via multipart). Create/update
+      passano da ``full_clean``: su un immobile a unità intera non è
+      possibile creare una seconda stanza (vedi ``Room.clean``).
     - Inquilini: solo lettura delle stanze con assignment attivo per sé.
     """
 
@@ -363,8 +365,57 @@ class RoomViewSet(ProtectedDestroyMixin, ModelViewSet):
             Q(assignments__valid_to__isnull=True) | Q(assignments__valid_to__gt=today)
         ).distinct()
 
+    # Campi scrivibili di Room (esclusa 'property', assegnata dal server).
+    _CAMPI_SCRIVIBILI = (
+        "nome", "superficie_mq", "foto", "ordinamento",
+        "colore", "descrizione", "disponibile", "libera_dal",
+        "prezzo_mensile", "pubblica",
+    )
+
+    def _full_clean_o_400(self, obj):
+        from rest_framework.exceptions import ValidationError
+
+        try:
+            obj.full_clean(exclude=["foto"])
+        except DjangoValidationError as e:
+            raise ValidationError(
+                e.message_dict if hasattr(e, "error_dict") else e.messages
+            )
+
+    def _val_room(self, serializer, prop):
+        """Ricostruisce l'istanza Room (creazione o update) per full_clean,
+        senza toccare i file caricati (esclusi dalla validazione).
+
+        Un campo assente sia da ``validated_data`` sia dall'istanza (caso:
+        creazione con payload minimo, campo senza default esplicito nel
+        model) va omesso dal costruttore, non forzato a ``None``: altrimenti
+        ``Room(colore=None, ...)`` fallirebbe ``full_clean`` su un CharField
+        non nullable invece di prendere il default del modello ("").
+        """
+        inst = serializer.instance
+        kwargs = {}
+        for campo in self._CAMPI_SCRIVIBILI:
+            if campo == "foto":
+                continue
+            if campo in serializer.validated_data:
+                kwargs[campo] = serializer.validated_data[campo]
+            elif inst is not None:
+                kwargs[campo] = getattr(inst, campo)
+
+        obj = Room(pk=inst.pk if inst else None, property=prop, **kwargs)
+        if inst is not None:
+            obj._state.adding = False
+        return obj
+
     def perform_create(self, serializer):
-        serializer.save(property=get_request_property(self.request))
+        prop = get_request_property(self.request)
+        self._full_clean_o_400(self._val_room(serializer, prop))
+        serializer.save(property=prop)
+
+    def perform_update(self, serializer):
+        prop = serializer.instance.property
+        self._full_clean_o_400(self._val_room(serializer, prop))
+        serializer.save()
 
 
 class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
@@ -542,8 +593,19 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
         v = ser.validated_data
 
         tenant = v["tenant"]
-        room = v["room"]
+        room = v.get("room")
         valid_from = v["valid_from"]
+
+        if room is None:
+            # Immobile a unità intera: risolve (o crea, se per qualche
+            # motivo manca ancora) l'unica Room implicita della property.
+            # Immobile a stanze: 'room' è obbligatorio.
+            if prop.tipo_gestione == Property.TipoGestione.UNITA_INTERA:
+                room = prop.rooms.first()
+                if room is None:
+                    room = Room.objects.create(property=prop, nome="Appartamento")
+            else:
+                raise ValidationError({"room": "Selezionare la stanza."})
 
         if room.property_id != prop.pk:
             raise ValidationError(

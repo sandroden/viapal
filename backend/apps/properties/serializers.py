@@ -358,6 +358,7 @@ class PublicGallerySerializer(serializers.ModelSerializer):
             "nome",
             "slug",
             "indirizzo",
+            "tipo_gestione",
             "testi_pubblici",
             "foto_hero",
             "foto_planimetria",
@@ -445,7 +446,11 @@ class PrimaAssegnazioneSerializer(serializers.Serializer):
     """
 
     tenant = serializers.PrimaryKeyRelatedField(queryset=TenantProfile.objects.all())
-    room = serializers.PrimaryKeyRelatedField(queryset=Room.objects.all())
+    # Facoltativo per gli immobili a unità intera: la view risolve l'unica
+    # Room della property. Obbligatorio per gli immobili a stanze.
+    room = serializers.PrimaryKeyRelatedField(
+        queryset=Room.objects.all(), required=False, allow_null=True
+    )
     valid_from = serializers.DateField()
     canone_mensile = serializers.DecimalField(
         max_digits=10, decimal_places=2, min_value=Decimal("0")
@@ -560,6 +565,7 @@ class PropertySerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "nome",
+            "tipo_gestione",
             "slug",
             "indirizzo",
             "pubblica",
@@ -584,6 +590,28 @@ class PropertySerializer(serializers.ModelSerializer):
 
     def get_n_stanze(self, obj):
         return obj.rooms.count()
+
+    def validate(self, attrs):
+        tipo_gestione = attrs.get(
+            "tipo_gestione",
+            getattr(self.instance, "tipo_gestione", None),
+        )
+        from .models import Property
+
+        if (
+            self.instance is not None
+            and tipo_gestione == Property.TipoGestione.UNITA_INTERA
+            and self.instance.rooms.count() > 1
+        ):
+            raise serializers.ValidationError(
+                {
+                    "tipo_gestione": (
+                        "Impossibile passare a unità intera: l'immobile ha già più "
+                        "di una stanza. Ridurre a una sola stanza prima del cambio."
+                    )
+                }
+            )
+        return attrs
 
 
 class PropertyMembershipSerializer(serializers.ModelSerializer):

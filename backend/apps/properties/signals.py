@@ -7,6 +7,9 @@ salvando lo stesso TenantProfile più volte non duplica i Receivable.
 La generazione scatta anche al post_save di RoomAssignment per gestire il caso
 "tenant creato con deposito ma senza ancora alcun assignment" (rare ma possibile
 in fase di setup iniziale).
+
+Genera anche la Room implicita delle property a unità intera (vedi
+``genera_room_implicita``).
 """
 from __future__ import annotations
 
@@ -16,7 +19,7 @@ from decimal import Decimal
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from .models import RoomAssignment, TenantProfile
+from .models import Property, Room, RoomAssignment, TenantProfile
 
 log = logging.getLogger(__name__)
 
@@ -183,6 +186,20 @@ def _crea_costo_cessione(assignment: RoomAssignment) -> None:
             ripartibile_su_inquilini=False,
             note=marker,
         )
+
+
+@receiver(post_save, sender=Property)
+def genera_room_implicita(sender, instance, **kwargs):
+    """Property a unità intera senza stanze → crea la Room implicita
+    "Appartamento". Scatta sia alla creazione sia al passaggio da 'stanze' a
+    'unita_intera' (già validato senza stanze in eccesso da ``Property.clean``
+    / dal serializer). Non tocca ``instance`` quindi nessun rischio di loop.
+    """
+    if instance.tipo_gestione != Property.TipoGestione.UNITA_INTERA:
+        return
+    if instance.rooms.exists():
+        return
+    Room.objects.create(property=instance, nome="Appartamento")
 
 
 @receiver(post_save, sender=TenantProfile)

@@ -335,7 +335,7 @@ class PropertyAdmin(ModalEditMixin, JumboModelAdmin):
     inlines = (PropertyMembershipInline, GalleryAreaInlineForProperty)
     fieldsets = (
         ("Immobile", {
-            "fields": ("nome", "indirizzo", "bank_account_utenze", "owner_anticipa_cessioni"),
+            "fields": ("nome", "tipo_gestione", "indirizzo", "bank_account_utenze", "owner_anticipa_cessioni"),
         }),
         ("Galleria pubblica", {
             "fields": (

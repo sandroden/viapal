@@ -31,11 +31,27 @@ class Property(TimestampedModel):
 
     In ottica multi-immobile: ogni stanza appartiene a una Property, che porta
     il conto di domiciliazione su cui confluiscono le utenze dell'abitazione.
+
+    ``tipo_gestione`` distingue l'affitto a stanze (più inquilini, una Room
+    ciascuno) dall'affitto a unità intera (un solo pagatore per l'intero
+    appartamento). In entrambi i casi la catena Room → RoomAssignment →
+    Receivable resta invariata: per le unità intere esiste una sola Room
+    implicita (vedi ``properties/signals.py``).
     """
+
+    class TipoGestione(models.TextChoices):
+        STANZE = "stanze", "A stanze"
+        UNITA_INTERA = "unita_intera", "Unità intera"
 
     nome = models.CharField(
         max_length=120,
         verbose_name="nome",
+    )
+    tipo_gestione = models.CharField(
+        max_length=20,
+        choices=TipoGestione.choices,
+        default=TipoGestione.STANZE,
+        verbose_name="tipo di gestione",
     )
     indirizzo = models.CharField(
         max_length=255,
@@ -115,6 +131,22 @@ class Property(TimestampedModel):
 
     def __str__(self):
         return self.nome
+
+    def clean(self):
+        super().clean()
+        if (
+            self.pk
+            and self.tipo_gestione == self.TipoGestione.UNITA_INTERA
+            and self.rooms.count() > 1
+        ):
+            raise ValidationError(
+                {
+                    "tipo_gestione": (
+                        "Impossibile passare a unità intera: l'immobile ha già più "
+                        "di una stanza. Ridurre a una sola stanza prima del cambio."
+                    )
+                }
+            )
 
     def contratto_attivo(self, alla_data=None):
         """Contratto dell'immobile in vigore a ``alla_data`` (default oggi):
@@ -217,6 +249,17 @@ class Room(TimestampedModel):
 
     def __str__(self):
         return self.nome
+
+    def clean(self):
+        super().clean()
+        if (
+            self.property_id
+            and self.property.tipo_gestione == Property.TipoGestione.UNITA_INTERA
+            and Room.objects.filter(property_id=self.property_id).exclude(pk=self.pk).exists()
+        ):
+            raise ValidationError(
+                "Un immobile a unità intera può avere una sola stanza (l'appartamento)."
+            )
 
 
 class GalleryArea(TimestampedModel):

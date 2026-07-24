@@ -92,7 +92,10 @@ class UserSerializer(serializers.ModelSerializer):
             ruolo = ruoli.get(p.id)
             if ruolo is None and user.is_superuser:
                 ruolo = PropertyMembership.Ruolo.PROPRIETARIO
-            out.append({'id': p.id, 'nome': p.nome, 'ruolo': ruolo})
+            out.append({
+                'id': p.id, 'nome': p.nome, 'ruolo': ruolo,
+                'tipo_gestione': p.tipo_gestione,
+            })
         return out
 
     def get_default_property_id(self, user):

@@ -200,6 +200,7 @@ class DashboardInquilinoView(APIView):
                 "nome": assignment_attivo.room.nome,
                 "canone_mensile": float(assignment_attivo.canone_mensile),
                 "valid_from": assignment_attivo.valid_from.isoformat(),
+                "tipo_gestione": assignment_attivo.room.property.tipo_gestione,
             }
 
         assignments = RoomAssignment.objects.filter(tenant=tenant)
