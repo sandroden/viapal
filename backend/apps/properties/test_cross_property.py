@@ -673,3 +673,46 @@ class TestExpenseCampiCross:
         payload = _payload_expense(mondo_a, supplier=mondo_b.supplier.id)
         resp = client_owner_a.post("/api/v1/expenses/", payload, format="json")
         assert resp.status_code == 400, resp.content
+
+
+class TestRestituzioneDepositoCross:
+    """REGRESSIONE (chiusa): RestituzioneDepositoView caricava il tenant
+    senza scoping sulla property attiva (GET e POST), con permission di
+    gruppo (IsProprietario) invece che di membership."""
+
+    def test_get_cross_404(self, client_owner_a, mondo_b):
+        resp = client_owner_a.get(
+            f"/api/v1/tenants/{mondo_b.tenant.id}/restituzione-deposito/"
+        )
+        assert resp.status_code == 404, resp.status_code
+
+    def test_post_cross_404_e_nessuna_scrittura(self, client_owner_a, mondo_b):
+        resp = client_owner_a.post(
+            f"/api/v1/tenants/{mondo_b.tenant.id}/restituzione-deposito/",
+            {"data_restituzione": "2026-07-01", "importo": "500.00"},
+            format="json",
+        )
+        assert resp.status_code == 404, resp.status_code
+        assert not Receivable.objects.filter(
+            assignment__tenant=mondo_b.tenant,
+            causale=Receivable.Causale.DEPOSITO,
+            importo_dovuto__lt=0,
+        ).exists()
+
+    def test_controprova_sul_proprio_tenant(self, client_owner_a, mondo_a):
+        resp = client_owner_a.get(
+            f"/api/v1/tenants/{mondo_a.tenant.id}/restituzione-deposito/"
+        )
+        assert resp.status_code == 200, resp.content
+
+
+class TestConguagliaPrevisionaleGetCross:
+    """REGRESSIONE (chiusa): il GET di ConguagliaPrevisionaleView caricava
+    il tenant senza scoping (il POST già lo faceva correttamente)."""
+
+    def test_get_cross_404(self, client_owner_a, mondo_b):
+        resp = client_owner_a.get(
+            f"/api/v1/tenants/{mondo_b.tenant.id}/conguaglia-previsionale/"
+            "?previsionale_id=1"
+        )
+        assert resp.status_code == 404, resp.status_code

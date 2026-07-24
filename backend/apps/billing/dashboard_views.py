@@ -2026,7 +2026,7 @@ class RestituzioneDepositoView(APIView):
         → crea o aggiorna il Receivable DEPOSITO negativo.
     """
 
-    permission_classes = [IsProprietario]
+    permission_classes = [IsPropertyMember]
 
     def _riga_restituzione(self, tenant: TenantProfile):
         return (
@@ -2046,8 +2046,12 @@ class RestituzioneDepositoView(APIView):
         return tenant.deposito_versato or Decimal("0")
 
     def get(self, request, tenant_id: int):
+        from properties.context import get_request_property
+
         try:
-            tenant = TenantProfile.objects.get(pk=tenant_id)
+            tenant = TenantProfile.objects.get(
+                pk=tenant_id, property=get_request_property(request),
+            )
         except TenantProfile.DoesNotExist:
             return Response({"detail": "Inquilino non trovato."}, status=404)
 
@@ -2072,8 +2076,12 @@ class RestituzioneDepositoView(APIView):
         })
 
     def post(self, request, tenant_id: int):
+        from properties.context import get_request_property
+
         try:
-            tenant = TenantProfile.objects.get(pk=tenant_id)
+            tenant = TenantProfile.objects.get(
+                pk=tenant_id, property=get_request_property(request),
+            )
         except TenantProfile.DoesNotExist:
             return Response({"detail": "Inquilino non trovato."}, status=404)
 
@@ -2238,8 +2246,12 @@ class ConguagliaPrevisionaleView(APIView):
         return righe, somma
 
     def get(self, request, tenant_id: int):
+        from properties.context import get_request_property
+
         try:
-            tenant = TenantProfile.objects.get(pk=tenant_id)
+            tenant = TenantProfile.objects.get(
+                pk=tenant_id, property=get_request_property(request),
+            )
         except TenantProfile.DoesNotExist:
             return Response({"detail": "Inquilino non trovato."}, status=404)
 
