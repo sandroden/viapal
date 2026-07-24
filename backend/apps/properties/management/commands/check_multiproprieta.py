@@ -12,14 +12,14 @@ import datetime
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
-from django.db.models import F
+from django.db.models import F, Q
 
 from properties.models import (
+    OwnershipShare,
     Property,
     PropertyMembership,
     RoomAssignment,
     TenantProfile,
-    quote_attive_at,
 )
 
 
@@ -46,24 +46,46 @@ class Command(BaseCommand):
             if n_prop == 0:
                 errori.append(f"{prop}: nessun membro con ruolo 'proprietario'.")
 
-        # 2. Quote attive per property: somma = 1.0 e owner con membership.
+        # 2. Quote attive per property: somma = 1.0, owner con membership,
+        #    nessun owner duplicato. NB: usiamo il queryset grezzo, NON
+        #    quote_attive_at() — quest'ultima riproporziona a 1.0 quando la
+        #    somma non torna, quindi il controllo su di essa non fallisce
+        #    mai (ed è keyed per owner: i duplicati collasserebbero).
         for prop in props:
-            quote = quote_attive_at(prop, oggi)
-            if not quote:
+            attive = list(
+                OwnershipShare.objects.select_related("owner").filter(
+                    property=prop, valid_from__lte=oggi,
+                ).filter(
+                    Q(valid_to__isnull=True) | Q(valid_to__gt=oggi)
+                )
+            )
+            if not attive:
                 avvisi.append(f"{prop}: nessuna quota di proprietà attiva oggi.")
                 continue
-            totale = sum(quote.values(), start=Decimal("0"))
+            totale = sum((s.quota for s in attive), start=Decimal("0"))
             if abs(totale - Decimal("1")) > Decimal("0.001"):
                 errori.append(f"{prop}: somma quote attive = {totale} (atteso 1.0).")
-            for owner in quote:
+
+            owner_ids_visti: set[int] = set()
+            owner_ids_duplicati: dict[int, "OwnershipShare"] = {}
+            for s in attive:
+                if s.owner_id in owner_ids_visti:
+                    owner_ids_duplicati[s.owner_id] = s
+                owner_ids_visti.add(s.owner_id)
+            for s in owner_ids_duplicati.values():
+                errori.append(
+                    f"{prop}: {s.owner} ha più quote attive oggi (owner duplicato)."
+                )
+
+            for s in attive:
                 ok = PropertyMembership.objects.filter(
                     property=prop,
-                    user=owner.user_id,
+                    user=s.owner.user_id,
                     ruolo=PropertyMembership.Ruolo.PROPRIETARIO,
                 ).exists()
                 if not ok:
                     errori.append(
-                        f"{prop}: {owner} ha una quota ma non è membro 'proprietario'."
+                        f"{prop}: {s.owner} ha una quota ma non è membro 'proprietario'."
                     )
 
         # 3. Assignment coerenti: stanza e inquilino sullo stesso immobile.
@@ -87,15 +109,29 @@ class Command(BaseCommand):
                     f"{tp.nominativo}: è inquilino E membro di gestione di {tp.property}."
                 )
 
-        # 5. Record senza property (non dovrebbe più essere possibile a livello
-        #    DB, ma verifichiamo i legami derivati).
+        # 5. Coerenza cross-property fra Receivable(causale=utenze) e il suo
+        #    UtilityChargePeriod: entrambi puntano (indirettamente) a un
+        #    immobile ma non c'è alcun vincolo DB che li tenga allineati —
+        #    assignment.room.property e utility_period.property potrebbero
+        #    divergere se un periodo utenze viene agganciato per errore a un
+        #    addebito di un altro immobile. (Il vecchio check qui —
+        #    `Receivable.objects.filter(assignment__room__property__isnull=True)`
+        #    — era vacuo: tutte le FK della catena sono NOT NULL, quindi non
+        #    poteva mai dare risultati; questo lo sostituisce con un
+        #    invariante derivato realmente falsificabile.)
         from billing.models import Receivable
 
-        n_rec_orfani = Receivable.objects.filter(
-            assignment__room__property__isnull=True
-        ).count()
-        if n_rec_orfani:
-            errori.append(f"{n_rec_orfani} Receivable senza immobile (via assignment.room).")
+        incoerenti_utenze = Receivable.objects.filter(
+            causale=Receivable.Causale.UTENZE, utility_period__isnull=False,
+        ).exclude(
+            utility_period__property=F("assignment__room__property")
+        ).select_related("utility_period", "assignment__room")
+        for r in incoerenti_utenze:
+            errori.append(
+                f"Receivable {r.pk} ({r}): periodo utenze su immobile "
+                f"{r.utility_period.property_id}, assegnazione su "
+                f"{r.assignment.room.property_id}."
+            )
 
         # --- Report -------------------------------------------------------
         for a in avvisi:
