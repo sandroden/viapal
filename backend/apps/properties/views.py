@@ -960,12 +960,14 @@ class PropertyViewSet(ModelViewSet):
                         "nominativo": user.get_full_name() or user.username,
                     },
                 )
-                OwnershipShare.objects.create(
+                share = OwnershipShare(
                     property=prop,
                     owner=profilo,
                     quota=Decimal("1.0000"),
                     valid_from=datetime.date.today(),
                 )
+                share.full_clean()
+                share.save()
         out = self.get_serializer(prop)
         return Response(out.data, status=st.HTTP_201_CREATED)
 
@@ -1161,15 +1163,19 @@ class PropertyViewSet(ModelViewSet):
             )
 
         with transaction.atomic():
-            aperte = prop.ownership_shares.filter(
+            # Blocca la property: due POST /quote concorrenti sullo stesso
+            # immobile si serializzano invece di intrecciare le proprie
+            # letture/scritture del set di quote.
+            prop_locked = Property.objects.select_for_update().get(pk=prop.pk)
+            aperte = prop_locked.ownership_shares.filter(
                 Q(valid_to__isnull=True) | Q(valid_to__gt=valid_from),
                 valid_from__lt=valid_from,
             )
             aperte.update(valid_to=valid_from)
-            prop.ownership_shares.filter(valid_from__gte=valid_from).delete()
+            prop_locked.ownership_shares.filter(valid_from__gte=valid_from).delete()
             nuove = [
                 OwnershipShare.objects.create(
-                    property=prop, owner=profilo, quota=quota, valid_from=valid_from,
+                    property=prop_locked, owner=profilo, quota=quota, valid_from=valid_from,
                 )
                 for profilo, quota in normalizzate
             ]

@@ -129,6 +129,12 @@ class OwnershipShare(TimestampedModel):
         verbose_name = "quota di proprietà"
         verbose_name_plural = "quote di proprietà"
         ordering = ["property__nome", "-valid_from", "owner__nominativo"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["property", "owner", "valid_from"],
+                name="uniq_quota_owner_periodo",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.property} / {self.owner} — {self.quota} (dal {self.valid_from})"

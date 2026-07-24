@@ -456,6 +456,47 @@ class TestQuote:
         assert not OwnershipShare.objects.filter(property=immobile).exists()
 
 
+class TestQuoteVincoliDB:
+    def test_quote_duplicata_stesso_owner_stesso_valid_from_integrity_error(
+        self, immobile, owner_profile
+    ):
+        """UniqueConstraint(property, owner, valid_from): un duplicato esatto
+        deve fallire a livello DB anche bypassando full_clean() (objects.create())."""
+        from django.db import IntegrityError
+        from django.db import transaction as db_transaction
+
+        OwnershipShare.objects.create(
+            property=immobile, owner=owner_profile, quota=Decimal("0.5000"),
+            valid_from=datetime.date(2026, 1, 1),
+        )
+        with pytest.raises(IntegrityError):
+            with db_transaction.atomic():
+                OwnershipShare.objects.create(
+                    property=immobile, owner=owner_profile, quota=Decimal("0.5000"),
+                    valid_from=datetime.date(2026, 1, 1),
+                )
+
+    def test_post_quote_flusso_normale_ok_dopo_lock_e_full_clean(
+        self, client_prop, immobile, user_prop, user_prop2,
+        owner_profile, owner_profile2,
+    ):
+        """Il POST /quote normale (select_for_update sulla property) deve
+        continuare a funzionare senza regressioni."""
+        resp = client_prop.post(
+            f"/api/v1/properties/{immobile.id}/quote/",
+            {
+                "valid_from": "2026-01-01",
+                "quote": [
+                    {"user": user_prop.id, "quota": "0.5"},
+                    {"user": user_prop2.id, "quota": "0.5"},
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        assert OwnershipShare.objects.filter(property=immobile).count() == 2
+
+
 # ---------------------------------------------------------------------------
 # Inviti
 # ---------------------------------------------------------------------------
