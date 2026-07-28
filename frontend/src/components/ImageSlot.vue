@@ -20,8 +20,8 @@
       <span v-if="editable" class="imgslot-hint">Clic, trascina o incolla (Ctrl-V)</span>
     </div>
 
-    <!-- Overlay caricamento -->
-    <div v-if="uploading" class="imgslot-loading">
+    <!-- Overlay caricamento (ridimensionamento locale + upload) -->
+    <div v-if="uploading || processing" class="imgslot-loading">
       <q-spinner size="28px" />
     </div>
 
@@ -62,6 +62,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+import { resizeImageFile } from 'src/utils/image';
 
 const props = withDefaults(
   defineProps<{
@@ -95,25 +96,39 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const dragOver = ref(false);
 const hovered = ref(false);
 const focused = ref(false);
+// Ridimensionamento locale in corso: `uploading` è di competenza del parent
+// (store), qui serve un flag proprio per non lasciare lo slot senza feedback
+// mentre canvas macina alcuni MB di foto.
+const processing = ref(false);
 
 const rootStyle = computed(() => ({ borderRadius: `${props.radius}px` }));
 
 // Smista i file selezionati (input/drop/paste) verso l'evento giusto:
 // `upload-many` in modalità multipla, `upload` singolo altrimenti.
-function handleFiles(files: File[]) {
+// Prima di emettere ridimensiona lato client (WebP entro 1920px): le foto da
+// telefono arrivano a diversi MB e in galleria non servono a piena risoluzione.
+async function handleFiles(files: File[]) {
   const imgs = files.filter((f) => f.type.startsWith('image/'));
   if (!imgs.length) return;
-  if (props.multiple) emit('upload-many', imgs);
-  else if (imgs[0]) emit('upload', imgs[0]);
+  processing.value = true;
+  try {
+    const pronti = props.multiple
+      ? await Promise.all(imgs.map((f) => resizeImageFile(f)))
+      : [await resizeImageFile(imgs[0]!)];
+    if (props.multiple) emit('upload-many', pronti);
+    else if (pronti[0]) emit('upload', pronti[0]);
+  } finally {
+    processing.value = false;
+  }
 }
 
 function onClick() {
-  if (props.editable && !props.uploading) fileInput.value?.click();
+  if (props.editable && !props.uploading && !processing.value) fileInput.value?.click();
 }
 
 function onFileChange(e: Event) {
   const target = e.target as HTMLInputElement;
-  handleFiles(Array.from(target.files ?? []));
+  void handleFiles(Array.from(target.files ?? []));
   target.value = '';
 }
 
@@ -127,14 +142,14 @@ function onDrop(e: DragEvent) {
   if (!props.editable) return;
   e.preventDefault();
   dragOver.value = false;
-  handleFiles(Array.from(e.dataTransfer?.files ?? []));
+  void handleFiles(Array.from(e.dataTransfer?.files ?? []));
 }
 
 // Paste a livello di documento: agisce solo se questo slot è sotto il mouse
 // o ha il focus. Più robusto del solo @paste sul div (comportamento
 // browser-dipendente sugli elementi non editabili).
 function onDocPaste(e: ClipboardEvent) {
-  if (!props.editable || props.uploading) return;
+  if (!props.editable || props.uploading || processing.value) return;
   if (!hovered.value && !focused.value) return;
   const items = e.clipboardData?.items;
   if (!items) return;
@@ -147,7 +162,7 @@ function onDocPaste(e: ClipboardEvent) {
   }
   if (files.length) {
     e.preventDefault();
-    handleFiles(files);
+    void handleFiles(files);
   }
 }
 
