@@ -429,6 +429,43 @@ class TestConfermaPayment:
         assert resp.status_code == 403
 
 
+class TestRifiutaPagato:
+    def test_rifiuta_riporta_da_pagare(self, client_prop, rent_payment_1):
+        """Il rifiuto rimbalza la dichiarazione: stato e importi tornano
+        alla verità bancaria (qui nessuna allocazione → tutto scoperto)."""
+        rent_payment_1.stato = StatoPagamento.DICHIARATO
+        rent_payment_1.importo_pagato = Decimal("300")
+        rent_payment_1.data_pagamento = datetime.date(2026, 5, 2)
+        rent_payment_1.save(
+            update_fields=["stato", "importo_pagato", "data_pagamento"]
+        )
+
+        resp = client_prop.post(
+            f"/api/v1/rent-payments/{rent_payment_1.id}/rifiuta_pagato/"
+        )
+        assert resp.status_code == 200
+
+        rent_payment_1.refresh_from_db()
+        assert rent_payment_1.stato == StatoPagamento.ATTESO
+        assert rent_payment_1.importo_pagato is None
+        assert rent_payment_1.data_pagamento is None
+        assert "rifiutata" in rent_payment_1.note
+
+    def test_rifiuta_solo_da_dichiarato(self, client_prop, rent_payment_1):
+        resp = client_prop.post(
+            f"/api/v1/rent-payments/{rent_payment_1.id}/rifiuta_pagato/"
+        )
+        assert resp.status_code == 400
+
+    def test_inquilino_non_rifiuta(self, client_inq_1, rent_payment_1):
+        rent_payment_1.stato = StatoPagamento.DICHIARATO
+        rent_payment_1.save(update_fields=["stato"])
+        resp = client_inq_1.post(
+            f"/api/v1/rent-payments/{rent_payment_1.id}/rifiuta_pagato/"
+        )
+        assert resp.status_code == 403
+
+
 # ---------------------------------------------------------------------------
 # Test UtilityChargeViewSet
 # ---------------------------------------------------------------------------

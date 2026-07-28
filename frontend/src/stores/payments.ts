@@ -61,6 +61,10 @@ export const usePaymentsStore = defineStore('payments', {
       const base = endpointPerTipo(tipo);
       await api.post(`${base}/${id}/conferma_pagato/`, payload);
     },
+    async rifiutaPagato(tipo: TipoPagamentoApi, id: number): Promise<void> {
+      const base = endpointPerTipo(tipo);
+      await api.post(`${base}/${id}/rifiuta_pagato/`);
+    },
     async getDettaglio<T = unknown>(tipo: TipoPagamentoApi, id: number): Promise<T> {
       const base = endpointPerTipo(tipo);
       const { data } = await api.get<T>(`${base}/${id}/`);

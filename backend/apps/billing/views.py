@@ -234,6 +234,43 @@ class _ReceivableMixin:
             status=status.HTTP_200_OK,
         )
 
+    @action(detail=True, methods=["post"], url_path="rifiuta_pagato")
+    def rifiuta_pagato(self, request, pk=None):
+        """Proprietario rimbalza una dichiarazione: l'addebito torna da pagare.
+
+        Stato/importo_pagato/data_pagamento vengono ricalcolati dalle
+        allocazioni bancarie (la stessa verità del signal di riallineamento),
+        così l'inquilino rivede la voce con il residuo reale.
+        """
+        if not _is_proprietario(request.user):
+            return Response(
+                {"detail": "Solo i proprietari possono rifiutare una dichiarazione."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        receivable = self.get_object()
+
+        if receivable.stato != StatoPagamento.DICHIARATO:
+            return Response(
+                {
+                    "detail": "Si può rifiutare solo un addebito dichiarato "
+                    f"(stato attuale '{receivable.stato}')."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        nota = f"[Dichiarazione rifiutata il {datetime.date.today().isoformat()}]"
+        receivable.note = f"{receivable.note}\n{nota}" if receivable.note else nota
+        receivable.save(update_fields=["note"])
+
+        _riallinea_receivable(receivable.id)
+        receivable.refresh_from_db()
+
+        return Response(
+            self.get_serializer(receivable).data,
+            status=status.HTTP_200_OK,
+        )
+
 
 class RentPaymentViewSet(_ReceivableMixin, ModelViewSet):
     """Pagamenti affitto (Receivable causale=affitto)."""

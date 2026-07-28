@@ -104,6 +104,21 @@
             :loading="processing[props.row.rowKey]"
             @click="conferma(props.row)"
           />
+          <q-btn
+            v-if="props.row.stato === 'dichiarato'"
+            flat
+            dense
+            color="blue-grey-8"
+            icon="undo"
+            no-caps
+            label="Rifiuta"
+            :loading="processing[props.row.rowKey]"
+            @click="rifiuta(props.row)"
+          >
+            <q-tooltip>
+              Rimbalza la dichiarazione: l'addebito torna da pagare con il residuo reale
+            </q-tooltip>
+          </q-btn>
         </q-td>
       </template>
     </q-table>
@@ -276,6 +291,26 @@ async function conferma(row: RigaTabella) {
     const msg =
       (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
       'Conferma non riuscita';
+    Notify.create({ type: 'negative', message: msg });
+  } finally {
+    processing[row.rowKey] = false;
+  }
+}
+
+async function rifiuta(row: RigaTabella) {
+  processing[row.rowKey] = true;
+  try {
+    await payments.rifiutaPagato(row.tipo, row.id);
+    Notify.create({
+      type: 'info',
+      message: 'Dichiarazione rifiutata: l\'addebito torna da pagare',
+      icon: 'undo',
+    });
+    await store.loadProprietario(annoCorrente, meseCorrente, true);
+  } catch (e: unknown) {
+    const msg =
+      (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+      'Rifiuto non riuscito';
     Notify.create({ type: 'negative', message: msg });
   } finally {
     processing[row.rowKey] = false;
