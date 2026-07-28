@@ -72,6 +72,9 @@ const percInt = computed(() =>
 );
 
 const livello = computed<SemaforoLivello>(() => {
+  // Dichiarato dall'inquilino: non è urgenza ma attesa di conferma,
+  // colore dedicato (cielo) qualunque sia il ritardo.
+  if (props.stato === 'dichiarato') return 'cielo';
   const g = props.giorniRitardo;
   if (g > 7) return 'argilla_scuro';
   if (g > 0) return 'argilla_chiaro';
@@ -90,6 +93,7 @@ const restoTrascurabile = computed(
 const icona = computed(() => {
   if (categoria.value === 'pagato') return 'check_circle';
   if (categoria.value === 'parziale') return 'incomplete_circle';
+  if (props.stato === 'dichiarato') return 'hourglass_top';
   return livello.value === 'argilla_scuro' || livello.value === 'argilla_chiaro'
     ? 'error'
     : 'schedule';
@@ -117,6 +121,9 @@ const descrizione = computed(() => {
   const base = restituzione.value
     ? `Da restituire ${formattaEuro(dovuto.value)}`
     : `Da incassare ${formattaEuro(dovuto.value)}`;
+  if (props.stato === 'dichiarato') {
+    return `${base} · dichiarato dall'inquilino, da confermare`;
+  }
   const g = props.giorniRitardo;
   if (g > 0) return `${base} · ${g} g di ritardo`;
   if (g < 0) return `${base} · ${Math.abs(g)} g alla scadenza`;
@@ -192,8 +199,15 @@ const descrizione = computed(() => {
 .vp-stp--parziale.vp-stp--liv-salvia {
   background: var(--vp-status-wait-bg);
 }
+.vp-stp--parziale.vp-stp--liv-cielo {
+  background: var(--vp-status-declared-bg);
+}
 
 /* ── Mancante: tinta piena secondo l'urgenza (semaforo) ─────────── */
+.vp-stp--mancante.vp-stp--liv-cielo {
+  background: var(--vp-status-declared-bg);
+  color: var(--vp-status-declared-fg);
+}
 .vp-stp--mancante.vp-stp--liv-miele,
 .vp-stp--mancante.vp-stp--liv-salvia {
   background: var(--vp-status-wait-bg);

@@ -2,6 +2,7 @@
   <div class="th-card" :class="[`th-card--${stacco}`, { 'th-card--sel': selected }]">
     <div class="th-card__row" @click="emit('dettaglio')">
       <button
+        v-if="!dichiarato"
         type="button"
         class="th-card__check"
         :aria-label="selected ? 'Deseleziona' : 'Seleziona'"
@@ -30,7 +31,12 @@
       <q-icon name="chevron_right" size="20px" class="th-card__chevron" />
     </div>
 
-    <div class="th-card__azioni">
+    <!-- Pagamento dichiarato dall'inquilino: niente azioni, si aspetta
+         la conferma del proprietario. -->
+    <div v-if="dichiarato" class="th-card__azioni th-card__azioni--attesa">
+      <SemaforoBadge livello="cielo" label="In attesa di conferma" />
+    </div>
+    <div v-else class="th-card__azioni">
       <button class="th-card__btn th-card__btn--primary" @click="emit('paga')">
         {{ item.parziale ? 'Salda il resto' : 'Paga' }}
       </button>
@@ -46,6 +52,7 @@
 import { computed } from 'vue';
 import ThCheck from './ThCheck.vue';
 import ThDonut from './ThDonut.vue';
+import SemaforoBadge from './SemaforoBadge.vue';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 import type { DaPagareItem } from 'src/stores/dashboard';
@@ -65,6 +72,7 @@ const emit = defineEmits<{ toggle: []; paga: []; hoPagato: []; dettaglio: [] }>(
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
 
+const dichiarato = computed(() => props.item.stato === 'dichiarato');
 const pct = computed(() =>
   props.item.importo_dovuto
     ? Math.round((props.item.importo_pagato / props.item.importo_dovuto) * 100)
@@ -169,6 +177,11 @@ const iconaTipo = computed(() => {
 .th-card__azioni {
   display: flex;
   border-top: 1px solid var(--vp-paper-3);
+}
+.th-card__azioni--attesa {
+  justify-content: center;
+  align-items: center;
+  height: 40px;
 }
 .th-card__btn {
   height: 40px;

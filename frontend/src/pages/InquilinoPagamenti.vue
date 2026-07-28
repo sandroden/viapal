@@ -68,7 +68,7 @@ function iconaPer(tipo: string): string {
 
 function livelloPer(stato: string): SemaforoLivello {
   if (stato === 'pagato') return 'salvia';
-  if (stato === 'dichiarato') return 'miele';
+  if (stato === 'dichiarato') return 'cielo';
   return 'argilla_chiaro';
 }
 

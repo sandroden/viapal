@@ -32,6 +32,9 @@
   --vp-clay:         oklch(0.55  0.110 25);   /* argilla, errore/morosità */
   --vp-clay-soft:    oklch(0.90  0.035 28);
 
+  --vp-sky:          oklch(0.55  0.070 240);  /* cielo, dichiarato/da confermare */
+  --vp-sky-soft:     oklch(0.92  0.028 240);
+
   --vp-wood:         oklch(0.50  0.045 55);   /* legno, accenti decorativi */
   --vp-leaf:         oklch(0.48  0.075 150);
 
@@ -79,6 +82,8 @@
   --vp-status-wait-fg:  oklch(0.42 0.080 70);
   --vp-status-late-bg:  var(--vp-clay-soft);
   --vp-status-late-fg:  oklch(0.40 0.110 28);
+  --vp-status-declared-bg: var(--vp-sky-soft);
+  --vp-status-declared-fg: oklch(0.40 0.075 240);
 }
 
 /* ── Dark mode (legno scuro + paglia) ───────────────────── */
@@ -100,6 +105,8 @@
   --vp-sage-soft:    oklch(0.32 0.045 145);
   --vp-honey-soft:   oklch(0.34 0.060 75);
   --vp-clay-soft:    oklch(0.34 0.080 28);
+  --vp-sky-soft:     oklch(0.33 0.050 240);
+  --vp-status-declared-fg: oklch(0.80 0.045 240);
 
   --vp-shadow-1: 0 1px 2px rgba(0,0,0,0.4);
   --vp-shadow-2: 0 4px 12px rgba(0,0,0,0.4);

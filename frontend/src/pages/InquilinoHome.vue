@@ -189,7 +189,7 @@ function iconaPer(tipo: string): string {
 }
 function livelloPer(stato: string): SemaforoLivello {
   if (stato === 'pagato') return 'salvia';
-  if (stato === 'dichiarato') return 'miele';
+  if (stato === 'dichiarato') return 'cielo';
   return 'argilla_chiaro';
 }
 function labelPer(stato: string): string {
@@ -207,9 +207,12 @@ const dialogQr = ref(false);
 const dialogDettaglio = ref(false);
 const itemDettaglio = ref<DaPagareItem | null>(null);
 
+// Gli addebiti già dichiarati pagati aspettano solo la conferma del
+// proprietario: restano visibili ma fuori dalla selezione del bonifico.
+const selezionabili = computed(() => daPagare.value.filter((x) => x.stato !== 'dichiarato'));
 const count = computed(() => sel.value.size);
 const allOn = computed(
-  () => daPagare.value.length > 0 && sel.value.size === daPagare.value.length,
+  () => selezionabili.value.length > 0 && sel.value.size === selezionabili.value.length,
 );
 const itemsSel = computed(() => daPagare.value.filter((x) => sel.value.has(chiave(x))));
 const totaleSel = computed(() => itemsSel.value.reduce((s, x) => s + x.residuo, 0));
@@ -281,9 +284,10 @@ const pagamentoBonifico = computed<DatiPagamento | null>(() => {
 });
 
 function selezionaTutti() {
-  sel.value = new Set(daPagare.value.map(chiave));
+  sel.value = new Set(selezionabili.value.map(chiave));
 }
 function toggle(item: DaPagareItem) {
+  if (item.stato === 'dichiarato') return;
   const k = chiave(item);
   const n = new Set(sel.value);
   if (n.has(k)) n.delete(k);

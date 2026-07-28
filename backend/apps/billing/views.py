@@ -130,6 +130,34 @@ class _ReceivableMixin:
         self._valida_property_attiva(serializer)
         serializer.save()
 
+    @staticmethod
+    def _parse_data(valore) -> datetime.date | None:
+        """Data ISO dal payload, None se assente o malformata."""
+        if not valore:
+            return None
+        try:
+            return datetime.date.fromisoformat(str(valore))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _nota_dichiarazione(data) -> str:
+        """Riga di nota con gli estremi del pagamento dichiarato dall'inquilino."""
+        parti = []
+        try:
+            importo = Decimal(str(data.get("importo_pagato")))
+            parti.append(f"{importo:.2f} €".replace(".", ","))
+        except Exception:
+            pass
+        for campo in ("metodo_pagamento", "riferimento", "note"):
+            valore = str(data.get(campo) or "").strip()
+            if valore:
+                parti.append(valore[:200])
+        if not parti:
+            return ""
+        oggi = datetime.date.today().isoformat()
+        return f"[Dichiarato il {oggi}] " + " — ".join(parti)
+
     @action(detail=True, methods=["post"], url_path="dichiara_pagato")
     def dichiara_pagato(self, request, pk=None):
         """Inquilino marca come dichiarato. Solo l'inquilino del receivable."""
@@ -148,10 +176,22 @@ class _ReceivableMixin:
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # La dichiarazione NON tocca ``importo_pagato``: quel campo riflette
+        # la copertura reale (allocazioni bonifico) e sovrascriverlo qui
+        # azzererebbe il residuo di un addebito pagato solo in parte.
+        # Gli estremi dichiarati finiscono nelle note, a beneficio del
+        # proprietario che deve confermare.
         receivable.stato = StatoPagamento.DICHIARATO
-        receivable.data_pagamento = datetime.date.today()
-        receivable.importo_pagato = receivable.importo_dovuto
-        receivable.save(update_fields=["stato", "data_pagamento", "importo_pagato"])
+        receivable.data_pagamento = (
+            self._parse_data(request.data.get("data_pagamento"))
+            or datetime.date.today()
+        )
+        riga_nota = self._nota_dichiarazione(request.data)
+        if riga_nota:
+            receivable.note = (
+                f"{receivable.note}\n{riga_nota}" if receivable.note else riga_nota
+            )
+        receivable.save(update_fields=["stato", "data_pagamento", "note"])
 
         return Response(
             self.get_serializer(receivable).data,
@@ -179,9 +219,12 @@ class _ReceivableMixin:
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Confermare significa dare per saldato l'intero dovuto: anche se la
+        # copertura da bonifici è parziale, il proprietario sta attestando che
+        # il resto è arrivato. Se poi arriva l'allocazione bancaria, il signal
+        # di riallineamento ricalcola comunque dal dato reale.
         receivable.stato = StatoPagamento.PAGATO
-        if not receivable.importo_pagato:
-            receivable.importo_pagato = receivable.importo_dovuto
+        receivable.importo_pagato = receivable.importo_dovuto
         if not receivable.data_pagamento:
             receivable.data_pagamento = datetime.date.today()
         receivable.save(update_fields=["stato", "importo_pagato", "data_pagamento"])

@@ -18,6 +18,7 @@ const props = defineProps<{
 const defaultLabel: Record<SemaforoLivello, string> = {
   salvia: 'In regola',
   miele: 'In scadenza',
+  cielo: 'Da confermare',
   argilla_chiaro: 'In ritardo',
   argilla_scuro: 'Scaduto',
 };
@@ -62,6 +63,10 @@ const testo = computed<string>(() => {
 .vp-semaforo--miele {
   background: var(--vp-status-wait-bg);
   color: var(--vp-status-wait-fg);
+}
+.vp-semaforo--cielo {
+  background: var(--vp-status-declared-bg);
+  color: var(--vp-status-declared-fg);
 }
 .vp-semaforo--argilla_chiaro {
   background: oklch(0.92 0.045 35);

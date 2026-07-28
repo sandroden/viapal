@@ -245,13 +245,13 @@ function labelStato(stato: string): string {
 }
 
 function coloreStato(stato: string): string {
-  if (stato === 'dichiarato') return 'amber-2';
+  if (stato === 'dichiarato') return 'blue-grey-1';
   if (stato === 'in_ritardo') return 'red-1';
   return 'grey-3';
 }
 
 function textColorStato(stato: string): string {
-  if (stato === 'dichiarato') return 'amber-9';
+  if (stato === 'dichiarato') return 'blue-grey-9';
   if (stato === 'in_ritardo') return 'red-9';
   return 'grey-9';
 }

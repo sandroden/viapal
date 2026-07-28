@@ -337,7 +337,39 @@ class TestDicharaPagato:
 
         rent_payment_1.refresh_from_db()
         assert rent_payment_1.stato == StatoPagamento.DICHIARATO
-        assert rent_payment_1.importo_pagato == rent_payment_1.importo_dovuto
+        # La dichiarazione non altera la copertura reale: importo_pagato
+        # resta quello derivato dalle allocazioni (qui nessuna).
+        assert rent_payment_1.importo_pagato is None
+
+    def test_dichiara_non_azzera_residuo_parziale(self, client_inq_1, rent_payment_1):
+        """Un addebito coperto in parte dai bonifici mantiene il residuo
+        anche dopo 'ho già pagato' / 'salda il resto' (bug 0,00 € in home)."""
+        rent_payment_1.importo_pagato = Decimal("300")
+        rent_payment_1.save(update_fields=["importo_pagato"])
+
+        resp = client_inq_1.post(
+            f"/api/v1/rent-payments/{rent_payment_1.id}/dichiara_pagato/",
+            {"importo_pagato": 100, "metodo_pagamento": "bonifico"},
+            format="json",
+        )
+        assert resp.status_code == 200
+
+        rent_payment_1.refresh_from_db()
+        assert rent_payment_1.stato == StatoPagamento.DICHIARATO
+        assert rent_payment_1.importo_pagato == Decimal("300")
+        # Gli estremi dichiarati finiscono nelle note per il proprietario.
+        assert "100,00" in rent_payment_1.note
+        assert "bonifico" in rent_payment_1.note
+
+    def test_dichiara_usa_data_pagamento_dichiarata(self, client_inq_1, rent_payment_1):
+        resp = client_inq_1.post(
+            f"/api/v1/rent-payments/{rent_payment_1.id}/dichiara_pagato/",
+            {"data_pagamento": "2026-05-03"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        rent_payment_1.refresh_from_db()
+        assert rent_payment_1.data_pagamento == datetime.date(2026, 5, 3)
 
     def test_inquilino_non_dichiara_altrui(self, client_inq_1, rent_payment_2):
         resp = client_inq_1.post(
@@ -374,6 +406,21 @@ class TestConfermaPayment:
         )
         assert resp.status_code == 200
         assert resp.json()["stato"] == StatoPagamento.PAGATO
+
+    def test_conferma_salda_intero_dovuto(self, client_prop, rent_payment_1):
+        """La conferma del proprietario dà per saldato tutto il dovuto,
+        anche se la copertura da bonifici era parziale."""
+        rent_payment_1.importo_pagato = Decimal("300")
+        rent_payment_1.stato = StatoPagamento.DICHIARATO
+        rent_payment_1.save(update_fields=["importo_pagato", "stato"])
+
+        resp = client_prop.post(
+            f"/api/v1/rent-payments/{rent_payment_1.id}/conferma_pagato/"
+        )
+        assert resp.status_code == 200
+        rent_payment_1.refresh_from_db()
+        assert rent_payment_1.stato == StatoPagamento.PAGATO
+        assert rent_payment_1.importo_pagato == rent_payment_1.importo_dovuto
 
     def test_inquilino_non_conferma(self, client_inq_1, rent_payment_1):
         resp = client_inq_1.post(
