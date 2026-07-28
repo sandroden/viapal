@@ -421,9 +421,11 @@
       </section>
 
       <!-- La chiusura del deposito è mostrata all'inquilino solo quando il
-           rapporto ha una data di fine (assegnazione chiusa): prima è
-           prematura e fuorviante. Il proprietario la vede sempre. -->
-      <section v-if="rendiconto.periodo.a" class="vp-rd__dep">
+           rapporto è davvero terminato (data di fine già passata) o il
+           deposito è già stato restituito: una data di fine futura non
+           basta, il "netto da restituire" indurrebbe a pensare di poter
+           saltare gli ultimi affitti. -->
+      <section v-if="rapportoChiuso" class="vp-rd__dep">
         <h2 class="vp-rd__sez-tit">Chiusura deposito</h2>
         <div class="vp-rd__tot-row">
           <span>
@@ -512,6 +514,16 @@ const tenantId = computed<number | null>(
 const rendiconto = computed(() =>
   tenantId.value ? store.get(tenantId.value) : null,
 );
+
+// Rapporto davvero terminato: data di fine passata rispetto alla data di
+// emissione (confronto ISO lessicografico) oppure deposito già restituito.
+// Una data di fine solo fissata nel futuro NON chiude il rapporto.
+const rapportoChiuso = computed<boolean>(() => {
+  const r = rendiconto.value;
+  if (!r) return false;
+  if (r.deposito.restituito_effettivo) return true;
+  return !!r.periodo.a && r.periodo.a <= r.emesso_il;
+});
 
 type RigaCron = RendicontoRiga & {
   causale: string;

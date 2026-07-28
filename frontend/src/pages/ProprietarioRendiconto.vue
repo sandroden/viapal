@@ -437,8 +437,31 @@
         </div>
       </section>
 
-      <section class="vp-rd__dep">
-        <h2 class="vp-rd__sez-tit">Chiusura deposito</h2>
+      <!-- Chiusura deposito: visibile subito solo a rapporto terminato
+           (data di fine passata o deposito già restituito); prima è una
+           simulazione e va richiesta esplicitamente col bottone. -->
+      <div v-if="!rapportoChiuso" class="vp-rd__sim-toggle no-print">
+        <q-btn
+          :outline="!simulaUscita"
+          :unelevated="simulaUscita"
+          :color="simulaUscita ? 'primary' : 'grey-7'"
+          no-caps
+          dense
+          icon="logout"
+          :label="simulaUscita
+            ? 'Nascondi simulazione uscita'
+            : 'Simulazione uscita'"
+          @click="simulaUscita = !simulaUscita"
+        />
+      </div>
+      <section v-if="rapportoChiuso || simulaUscita" class="vp-rd__dep">
+        <h2 class="vp-rd__sez-tit">
+          {{ rapportoChiuso ? 'Chiusura deposito' : 'Simulazione uscita' }}
+        </h2>
+        <p v-if="!rapportoChiuso" class="vp-rd__nota-dep">
+          Simulazione calcolata ad oggi: la restituzione del deposito è
+          dovuta solo alla chiusura del rapporto.
+        </p>
         <div class="vp-rd__tot-row">
           <span>
             Deposito versato
@@ -523,6 +546,19 @@ const { formattaData } = useFormatoData();
 
 const tenantId = computed(() => Number(route.params.id));
 const rendiconto = computed(() => store.get(tenantId.value));
+
+// Rapporto davvero terminato: data di fine passata rispetto alla data di
+// emissione (confronto ISO lessicografico) oppure deposito già restituito.
+// Una data di fine solo fissata nel futuro NON chiude il rapporto.
+const rapportoChiuso = computed<boolean>(() => {
+  const r = rendiconto.value;
+  if (!r) return false;
+  if (r.deposito.restituito_effettivo) return true;
+  return !!r.periodo.a && r.periodo.a <= r.emesso_il;
+});
+// Prima della chiusura la sezione deposito è una simulazione: visibile
+// solo se il proprietario la richiede esplicitamente.
+const simulaUscita = ref(false);
 
 type RigaCron = RendicontoRiga & {
   causale: string;
@@ -824,6 +860,11 @@ onBeforeUnmount(() => {
 .vp-rd__dep {
   border-top: 2px solid var(--vp-ink);
   padding-top: var(--vp-gap-3);
+  margin-top: var(--vp-gap-5);
+}
+.vp-rd__sim-toggle {
+  display: flex;
+  justify-content: flex-end;
   margin-top: var(--vp-gap-5);
 }
 .vp-rd__tot-row {
