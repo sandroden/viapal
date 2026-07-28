@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-07-29
+* **Maintain**: `domain/galleria-pubblica.md` — ridimensionamento client-side in `ImageSlot` (`utils/image.ts`, WebP ≤1920px, fallback su file non decodificabili) e dialog "Scarica foto" (selezione miniature, download per file, nessuno zip).
+
 ## 2026-07-24
 * **Creation**: `domain/unita-intera.md` — proprietà a unità intera (`Property.tipo_gestione` `stanze`/`unita_intera`, Room implicita "Appartamento", vincolo max-1, invariante un-solo-pagatore, degradazione utenze al 100%).
 * **Maintain**: `models/properties.md` (campo `tipo_gestione` su Property, Room = unità locata, vincolo Room implicita), `architecture/modello-dati.md` (Room come unità locata), indici `domain/` e root aggiornati.

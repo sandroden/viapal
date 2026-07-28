@@ -64,6 +64,24 @@ Route `/g/:slug` `meta.public`, `GalleriaPubblica.vue` (sola lettura per anonimi
 per proprietario: `ImageSlot.vue` (upload file/drag/**paste Ctrl-V** via listener `document`
 + hover; prop `multiple` opt-in → evento `upload-many` per l'**upload multiplo simultaneo**,
 i singleton restano a file singolo), `EditableText.vue` (`q-popup-edit`, **no contenteditable**).
+
+**Ridimensionamento lato client**: `handleFiles` di `ImageSlot` è l'unico imbuto per
+picker/drag/paste e vi passa ogni file per `resizeImageFile` (`utils/image.ts`, portata dal
+progetto "nicolas"): canvas → max 1920px di lato → **WebP** q 0.85 (fallback JPEG se il
+browser non supporta WebP da canvas). Copre quindi sia i singleton sia le foto di sezione.
+Un file non decodificabile (HEIC di iPhone: passa `image/*`, nessun decoder) viene caricato
+**tale e quale**, così l'errore lo dà il validatore backend invece di sparire. Poiché l'emit
+diventa async, `ImageSlot` ha un flag `processing` proprio (`uploading` è dello store e
+resterebbe spento durante l'elaborazione). Backend invariato: `webp` è già in
+`FileExtensionValidator`. Conseguenza: le foto nuove non sono più gli originali di camera.
+
+**Scarica foto** (`ScaricaFotoDialog.vue`, bottone in navbar `v-if="canEdit"`): miniature di
+tutte le foto raggruppate per sezione, selezione singola/sezione/totale, download **un file
+alla volta** via `fetch`→blob→`<a download>` con nomi `<slug>-<sezione>-NN.<ext>` (l'attributo
+`download` è ignorato cross-origin e non rinomina i file opachi di `/media`). Nessun endpoint
+nuovo (gli URL sono nel payload pubblico) e **nessuno zip** — scelta deliberata per non
+aggiungere dipendenze; incrementabile in seguito. Limite noto: le foto delle stanze
+`disponibile=False` non sono nel payload pubblico, quindi non compaiono nell'elenco.
 Store `galleria.ts` (`uploadImages` batch = N POST + 1 refresh; `patchImage`; `reorderImages`).
 Per ogni foto in edit: controlli **formato** (3 pulsanti crop), **didascalia** (overlay in basso,
 editabile), **riordino** con frecce laterali `‹ ›` (scelta deliberata vs drag: robusta con le
