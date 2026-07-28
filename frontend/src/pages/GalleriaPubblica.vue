@@ -7,6 +7,16 @@
         <div class="gnav-actions">
           <q-btn
             v-if="canEdit"
+            flat
+            outline
+            dense
+            no-caps
+            icon="download"
+            label="Scarica foto"
+            @click="scaricaOpen = true"
+          />
+          <q-btn
+            v-if="canEdit"
             :color="editMode ? 'primary' : undefined"
             :flat="!editMode"
             :outline="!editMode"
@@ -384,6 +394,9 @@
         <div v-if="lbList.length > 1" class="lightbox-count">{{ lbIndex + 1 }} / {{ lbList.length }}</div>
       </div>
 
+      <!-- Scarica foto: selezione miniature → download (per i post d'affitto) -->
+      <ScaricaFotoDialog v-if="canEdit" v-model="scaricaOpen" :galleria="g" />
+
       <!-- Errore inline -->
       <q-banner v-if="errore && editMode" class="gal-err">{{ errore }}</q-banner>
     </template>
@@ -406,6 +419,7 @@ import {
 import { useAuthStore } from 'stores/auth';
 import ImageSlot from 'components/ImageSlot.vue';
 import EditableText from 'components/EditableText.vue';
+import ScaricaFotoDialog from 'components/ScaricaFotoDialog.vue';
 
 const route = useRoute();
 const store = useGalleriaStore();
@@ -413,6 +427,7 @@ const auth = useAuthStore();
 const { galleria: g, loading, uploading, errore } = storeToRefs(store);
 
 const editMode = ref(false);
+const scaricaOpen = ref(false);
 
 // Lightbox: mostra una collezione di foto navigabile (frecce, tasti, contatore).
 const lbList = ref<FotoGalleria[]>([]);
