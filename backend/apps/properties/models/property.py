@@ -1,6 +1,7 @@
 """
 Modelli relativi all'immobile: stanze, contratto, assegnazioni.
 """
+import builtins
 import datetime
 import os
 
@@ -617,3 +618,83 @@ class RoomAssignment(TimestampedModel):
                     f"Sovrapposizione con l'assegnazione esistente: {assignment} "
                     f"(dal {a_from} al {a_to or 'in corso'})."
                 )
+
+
+def property_document_upload_to(instance, filename):
+    """Percorso di upload: ``documenti-proprieta/<slug immobile>/<filename>``."""
+    prop = instance.property
+    slug = (prop.slug if prop and prop.slug else slugify(getattr(prop, "nome", ""))) or "immobile"
+    return os.path.join("documenti-proprieta", slug, filename)
+
+
+class PropertyDocument(TimestampedModel):
+    """Documento dell'immobile (contratto, side letter, regolamento, ecc.).
+
+    Come per i documenti inquilino, un record corrisponde a un singolo file:
+    più allegati dello stesso ``tipo`` si distinguono con ``descrizione``.
+    """
+
+    class Tipo(models.TextChoices):
+        CONTRATTO = "contratto", "Contratto di locazione"
+        SIDE_LETTER = "side_letter", "Side letter"
+        REGISTRAZIONE_CONTRATTO = "registrazione_contratto", "Registrazione contratto"
+        REGOLAMENTO_CONDOMINIALE = "regolamento_condominiale", "Regolamento condominiale"
+        ALTRO = "altro", "Altro"
+
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.CASCADE,
+        related_name="documenti",
+        verbose_name="immobile",
+    )
+    tipo = models.CharField(
+        max_length=30,
+        choices=Tipo.choices,
+        default=Tipo.ALTRO,
+        verbose_name="tipo documento",
+    )
+    file = models.FileField(
+        upload_to=property_document_upload_to,
+        validators=[
+            FileExtensionValidator(["pdf", "jpg", "jpeg", "png"]),
+            valida_dimensione_documento,
+        ],
+        verbose_name="file",
+        help_text="PDF o immagine (JPG/PNG), massimo 10 MB.",
+    )
+    descrizione = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="descrizione",
+        help_text="Facoltativa: dettaglio del documento (es. anno, versione).",
+    )
+    data_scadenza = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="data di scadenza",
+        help_text="Facoltativa: es. scadenza registrazione da rinnovare.",
+    )
+    caricato_da = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="documenti_proprieta_caricati",
+        verbose_name="caricato da",
+    )
+
+    class Meta:
+        verbose_name = "documento immobile"
+        verbose_name_plural = "documenti immobile"
+        ordering = ["property__nome", "tipo", "-created_at"]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} — {self.property.nome}"
+
+    # builtins.property: il campo `property` oscura il builtin nel corpo classe
+    @builtins.property
+    def scaduto(self):
+        """True se il documento ha una scadenza già passata."""
+        if not self.data_scadenza:
+            return False
+        return self.data_scadenza < datetime.date.today()

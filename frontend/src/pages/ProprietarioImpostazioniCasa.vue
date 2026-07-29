@@ -18,6 +18,7 @@
       <q-tab name="contratti" label="Contratti" />
       <q-tab name="spese" label="Spese" />
       <q-tab name="tari" label="TARI" />
+      <q-tab name="documenti" label="Documenti" />
     </q-tabs>
 
     <q-tab-panels v-model="tabAttivo" animated class="vp-casa__panels">
@@ -326,6 +327,17 @@
             </q-list>
           </q-card-section>
         </q-card>
+      </q-tab-panel>
+
+      <!-- DOCUMENTI -->
+      <q-tab-panel name="documenti" class="vp-casa__panel">
+        <div style="max-width: 640px">
+          <div class="vp-hint q-mb-sm">
+            Documenti dell'immobile: contratto di locazione, side letter,
+            registrazione del contratto, regolamento condominiale.
+          </div>
+          <DocumentiPannello :store="documentiStore" :tipi="TIPI_DOCUMENTO_PROPRIETA" />
+        </div>
       </q-tab-panel>
     </q-tab-panels>
 
@@ -702,6 +714,8 @@ import { isAxiosError } from 'axios';
 import { useQuasar, type QTableProps } from 'quasar';
 import { api } from 'boot/axios';
 import { usePropertiesStore } from 'stores/properties';
+import DocumentiPannello from 'components/DocumentiPannello.vue';
+import { useDocumentiProprietaStore, TIPI_DOCUMENTO_PROPRIETA } from 'stores/documenti';
 
 // ---------------------------------------------------------------------------
 // Tipi (allineati ai serializer backend: properties/billing)
@@ -769,7 +783,9 @@ interface CostoAnnuale {
 const $q = useQuasar();
 const propStore = usePropertiesStore();
 
-const tabAttivo = ref<'stanze' | 'contratti' | 'spese' | 'tari'>('stanze');
+const tabAttivo = ref<'stanze' | 'contratti' | 'spese' | 'tari' | 'documenti'>('stanze');
+
+const documentiStore = useDocumentiProprietaStore();
 
 const puoModificare = computed(
   () => propStore.mioRuolo === 'proprietario' || propStore.mioRuolo === 'gestore',

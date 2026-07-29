@@ -25,7 +25,8 @@ Tutti i modelli ereditano da `TimestampedModel` (`created_at`/`updated_at`).
 | `OwnershipShare` | `owner`, `valid_from`/`valid_to`, `quota` | quota di proprietà temporale |
 | `OwnerBankAccount` | `owner`, `banca`, `iban`, `intestatario`, `attivo` | conto proprietario |
 | `TenantProfile` | `user` (1:1), `giorno_pagamento_affitto`, `frequenza_conguagli`, `ciclo_fatturazione`, `deposito_versato`, `deposito_da_restituire`, `data_restituzione_prevista` | inquilino |
-| `TenantDocument` | `tenant`, `tipo`, `file`, `data_scadenza` | CI/CF/passaporto/permesso/contratto |
+| `TenantDocument` | `tenant`, `tipo`, `file`, `data_scadenza` | CI/CF/passaporto/permesso/contratto/subentro |
+| `PropertyDocument` | `property`, `tipo`, `file`, `data_scadenza` | contratto/side letter/registrazione/regolamento; API riservata al lato gestione |
 
 # Vedi anche
 

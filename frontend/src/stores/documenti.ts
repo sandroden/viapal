@@ -155,10 +155,26 @@ function creaDocumentiStore(
   });
 }
 
+export const TIPI_DOCUMENTO_PROPRIETA: TipoDocumentoOption[] = [
+  { label: 'Contratto di locazione', value: 'contratto' },
+  { label: 'Side letter', value: 'side_letter' },
+  { label: 'Registrazione contratto', value: 'registrazione_contratto' },
+  { label: 'Regolamento condominiale', value: 'regolamento_condominiale' },
+  { label: 'Altro', value: 'altro' },
+];
+
 export const useDocumentiStore = creaDocumentiStore(
   'documenti',
   '/api/v1/tenant-documents/',
   'tenant',
+);
+
+/** Documenti dell'immobile: il backend opera sempre sull'immobile attivo
+ *  (header X-Property-Id), quindi fetch/upload non passano targetId. */
+export const useDocumentiProprietaStore = creaDocumentiStore(
+  'documentiProprieta',
+  '/api/v1/property-documents/',
+  'property',
 );
 
 /** Store istanziato: entrambe le varianti (inquilino/proprietà) condividono

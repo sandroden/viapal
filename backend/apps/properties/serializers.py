@@ -13,6 +13,7 @@ from properties.models import (
     OwnerBankAccount,
     OwnerProfile,
     Property,
+    PropertyDocument,
     Room,
     RoomAssignment,
     TenantDocument,
@@ -210,6 +211,27 @@ class TenantDocumentSerializer(serializers.ModelSerializer):
         # proprietario quello indicato): mai derivabile dal client per gli
         # inquilini.
         extra_kwargs = {"tenant": {"required": False}}
+
+
+class PropertyDocumentSerializer(serializers.ModelSerializer):
+    tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
+    scaduto = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = PropertyDocument
+        fields = [
+            "id",
+            "property",
+            "tipo",
+            "tipo_display",
+            "file",
+            "descrizione",
+            "data_scadenza",
+            "scaduto",
+            "created_at",
+        ]
+        # La property è imposta dalla view (l'immobile attivo della richiesta).
+        extra_kwargs = {"property": {"required": False, "read_only": True}}
 
 
 class RoomSerializer(serializers.ModelSerializer):
