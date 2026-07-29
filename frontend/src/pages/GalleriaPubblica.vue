@@ -3,7 +3,16 @@
     <!-- Header pubblico -->
     <nav class="gnav">
       <div class="wrap gnav-in">
-        <div class="wordmark"><b>Viapal</b> · annuncio</div>
+        <!-- Per chi è loggato il wordmark è la via di ritorno alla gestione;
+             per i visitatori anonimi resta un semplice titolo. -->
+        <a
+          v-if="destinazioneGestione"
+          :href="destinazioneGestione"
+          class="wordmark wordmark--link"
+          title="Torna alla gestione"
+          @click.prevent="vaiAllaGestione"
+        ><b>Viapal</b> · annuncio</a>
+        <div v-else class="wordmark"><b>Viapal</b> · annuncio</div>
         <div class="gnav-actions">
           <q-btn
             v-if="canEdit"
@@ -405,7 +414,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import {
   useGalleriaStore,
@@ -417,13 +426,16 @@ import {
   type FormatoFoto,
 } from 'stores/galleria';
 import { useAuthStore } from 'stores/auth';
+import { usePropertiesStore } from 'stores/properties';
 import ImageSlot from 'components/ImageSlot.vue';
 import EditableText from 'components/EditableText.vue';
 import ScaricaFotoDialog from 'components/ScaricaFotoDialog.vue';
 
 const route = useRoute();
+const router = useRouter();
 const store = useGalleriaStore();
 const auth = useAuthStore();
+const properties = usePropertiesStore();
 const { galleria: g, loading, uploading, errore } = storeToRefs(store);
 
 const editMode = ref(false);
@@ -438,6 +450,35 @@ const lbCurrent = computed<FotoGalleria | null>(() => lbList.value[lbIndex.value
 const canEdit = computed(
   () => auth.role === 'proprietario' && !auth.isImpersonating,
 );
+
+// L'immobile della galleria è fra quelli di cui l'utente è membro? Conta
+// l'appartenenza, non il ruolo: anche il gestore lavora dall'area /p/.
+const membroDiQuestoImmobile = computed(
+  () => !!g.value && properties.properties.some((p) => p.id === g.value!.id),
+);
+
+// Dove porta il wordmark. `null` = nessuna destinazione sensata (anonimo, o
+// utente autenticato senza un ruolo che abbia una home): il titolo resta
+// inerte invece di rimandare al login.
+const destinazioneGestione = computed<string | null>(() => {
+  if (!auth.isAuthenticated) return null;
+  if (membroDiQuestoImmobile.value) return '/p/';
+  const home = auth.homePath;
+  return home === '/login' ? null : home;
+});
+
+// Se l'immobile della galleria non è quello attivo, `cambia` lo imposta e
+// ricarica l'app (hard reload voluto: azzera gli store dell'immobile
+// precedente). Altrimenti basta una navigazione SPA.
+function vaiAllaGestione() {
+  const dest = destinazioneGestione.value;
+  if (!dest) return;
+  if (membroDiQuestoImmobile.value && properties.activePropertyId !== g.value!.id) {
+    properties.cambia(g.value!.id);
+    return;
+  }
+  void router.push(dest);
+}
 
 const roomsPubbliche = computed(() => g.value?.rooms ?? []);
 const aree = computed(() => g.value?.aree ?? []);
@@ -645,6 +686,9 @@ watch(() => route.params.slug, load);
 .gnav-cta { height: 36px; font-size: 13px; text-decoration: none; }
 .wordmark { font-family: var(--vp-font-display); font-size: 20px; color: var(--vp-ink); }
 .wordmark b { font-weight: 600; }
+.wordmark--link { text-decoration: none; cursor: pointer; transition: color .15s; }
+.wordmark--link:hover { color: var(--vp-terra-deep); }
+.wordmark--link:focus-visible { outline: 2px solid var(--vp-terra); outline-offset: 3px; border-radius: 6px; }
 
 .hero { position: relative; height: 78vh; min-height: 460px; max-height: 720px; }
 .hero-slot { position: absolute; inset: 0; width: 100%; height: 100%; }

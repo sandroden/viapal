@@ -21,6 +21,7 @@ from .models import (
     OwnerProfile,
     OwnershipShare,
     Property,
+    PropertyDocument,
     PropertyMembership,
     Room,
     RoomAssignment,
@@ -70,6 +71,15 @@ class TenantDocumentInline(admin.TabularInline):
     """Documenti dell'inquilino in linea nel profilo."""
 
     model = TenantDocument
+    extra = 0
+    fields = ("tipo", "file", "descrizione", "data_scadenza")
+    ordering = ("tipo", "-created_at")
+
+
+class PropertyDocumentInline(admin.TabularInline):
+    """Documenti dell'immobile in linea nell'immobile."""
+
+    model = PropertyDocument
     extra = 0
     fields = ("tipo", "file", "descrizione", "data_scadenza")
     ordering = ("tipo", "-created_at")
@@ -332,7 +342,11 @@ class PropertyAdmin(ModalEditMixin, JumboModelAdmin):
     search_fields = ("nome", "indirizzo", "slug")
     prepopulated_fields = {"slug": ("nome",)}
     autocomplete_fields = ("bank_account_utenze", "owner_anticipa_cessioni")
-    inlines = (PropertyMembershipInline, GalleryAreaInlineForProperty)
+    inlines = (
+        PropertyMembershipInline,
+        GalleryAreaInlineForProperty,
+        PropertyDocumentInline,
+    )
     fieldsets = (
         ("Immobile", {
             "fields": ("nome", "tipo_gestione", "indirizzo", "bank_account_utenze", "owner_anticipa_cessioni"),

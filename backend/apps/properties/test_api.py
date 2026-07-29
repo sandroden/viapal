@@ -18,6 +18,7 @@ from properties.models import (
     Contract,
     OwnerBankAccount,
     OwnerProfile,
+    PropertyDocument,
     PropertyMembership,
     Room,
     RoomAssignment,
@@ -489,6 +490,78 @@ class TestTenantDocumentViewSet:
     def test_anonimo_non_autorizzato(self, tenant_1):
         client = APIClient()
         resp = client.get("/api/v1/tenant-documents/")
+        assert resp.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
+# Test PropertyDocumentViewSet
+# ---------------------------------------------------------------------------
+
+
+class TestPropertyDocumentViewSet:
+    @pytest.fixture(autouse=True)
+    def _media_tmp(self, settings, tmp_path):
+        # I file caricati nei test finiscono in una dir temporanea, non in media/.
+        settings.MEDIA_ROOT = str(tmp_path)
+
+    def test_proprietario_carica_documento(self, client_prop, user_prop, immobile):
+        resp = client_prop.post(
+            "/api/v1/property-documents/",
+            {"tipo": "contratto", "file": _pdf_finto(), "descrizione": "2024"},
+            format="multipart",
+        )
+        assert resp.status_code == 201, resp.content
+        doc = PropertyDocument.objects.get(id=resp.json()["id"])
+        # property forzata all'immobile attivo, caricato_da tracciato
+        assert doc.property_id == immobile.id
+        assert doc.caricato_da_id == user_prop.id
+
+    def test_lista_filtrata_su_immobile_attivo(
+        self, client_prop, immobile, immobile2
+    ):
+        PropertyDocument.objects.create(
+            property=immobile, tipo="contratto", file=_pdf_finto()
+        )
+        PropertyDocument.objects.create(
+            property=immobile2, tipo="contratto", file=_pdf_finto()
+        )
+        resp = client_prop.get("/api/v1/property-documents/")
+        assert resp.status_code == 200
+        assert {d["property"] for d in resp.json()} == {immobile.id}
+
+    def test_proprietario_elimina(self, client_prop, immobile):
+        doc = PropertyDocument.objects.create(
+            property=immobile, tipo="regolamento_condominiale", file=_pdf_finto()
+        )
+        resp = client_prop.delete(f"/api/v1/property-documents/{doc.id}/")
+        assert resp.status_code == 204
+        assert not PropertyDocument.objects.filter(id=doc.id).exists()
+
+    def test_inquilino_non_accede(self, client_inq_1, tenant_1, immobile):
+        PropertyDocument.objects.create(
+            property=immobile, tipo="contratto", file=_pdf_finto()
+        )
+        resp = client_inq_1.get("/api/v1/property-documents/")
+        assert resp.status_code in (403, 404)
+
+    def test_sola_lettura_legge_ma_non_scrive(self, api_client, immobile, gruppo_proprietari):
+        u = User.objects.create_user("solalettura", password="pwd123!")
+        u.groups.add(gruppo_proprietari)
+        PropertyMembership.objects.create(
+            property=immobile, user=u, ruolo=PropertyMembership.Ruolo.SOLA_LETTURA,
+        )
+        api_client.force_login(u)
+        assert api_client.get("/api/v1/property-documents/").status_code == 200
+        resp = api_client.post(
+            "/api/v1/property-documents/",
+            {"tipo": "contratto", "file": _pdf_finto()},
+            format="multipart",
+        )
+        assert resp.status_code == 403
+
+    def test_anonimo_non_autorizzato(self, immobile):
+        client = APIClient()
+        resp = client.get("/api/v1/property-documents/")
         assert resp.status_code in (401, 403)
 
 

@@ -7,7 +7,15 @@ from .owner import (
     get_or_create_owner_profile,
     quote_attive_at,
 )
-from .property import Contract, GalleryArea, GalleryImage, Property, Room, RoomAssignment
+from .property import (
+    Contract,
+    GalleryArea,
+    GalleryImage,
+    Property,
+    PropertyDocument,
+    Room,
+    RoomAssignment,
+)
 from .tenant import TenantDocument, TenantProfile
 
 __all__ = [
@@ -18,6 +26,7 @@ __all__ = [
     "TenantProfile",
     "TenantDocument",
     "Property",
+    "PropertyDocument",
     "PropertyMembership",
     "Room",
     "GalleryArea",

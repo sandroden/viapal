@@ -25,6 +25,7 @@ from properties.models import (
     OwnerBankAccount,
     OwnerProfile,
     Property,
+    PropertyDocument,
     Room,
     RoomAssignment,
     TenantDocument,
@@ -38,6 +39,7 @@ from properties.serializers import (
     OwnerBankAccountSerializer,
     OwnerProfileSerializer,
     PrimaAssegnazioneSerializer,
+    PropertyDocumentSerializer,
     PropertySerializer,
     PublicGallerySerializer,
     RoomAssignmentSerializer,
@@ -327,6 +329,30 @@ class TenantDocumentViewSet(ModelViewSet):
 
                 raise PermissionDenied("Nessun profilo inquilino associato all'utente.")
         serializer.save(tenant=tenant, caricato_da=user)
+
+
+class PropertyDocumentViewSet(ModelViewSet):
+    """
+    Documenti dell'immobile (contratto, side letter, registrazione,
+    regolamento condominiale). Riservati al lato gestione: membri
+    dell'immobile attivo, con scrittura preclusa al ruolo sola_lettura.
+    La ``property`` è sempre quella attiva della richiesta.
+    """
+
+    serializer_class = PropertyDocumentSerializer
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsPropertyMember]
+
+    def get_queryset(self):
+        return PropertyDocument.objects.select_related("property").filter(
+            property=get_request_property(self.request)
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(
+            property=get_request_property(self.request),
+            caricato_da=self.request.user,
+        )
 
 
 class RoomViewSet(ProtectedDestroyMixin, ModelViewSet):
