@@ -466,6 +466,78 @@ class TestRifiutaPagato:
         assert resp.status_code == 403
 
 
+class TestCommentiAddebito:
+    def test_inquilino_commenta_e_parte_email(
+        self, client_inq_1, rent_payment_1, user_prop, mailoutbox
+    ):
+        resp = client_inq_1.post(
+            f"/api/v1/receivables/{rent_payment_1.id}/commenti/",
+            {"testo": "Mancano 3€ per le spese del bonifico estero."},
+            format="json",
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["testo"].startswith("Mancano 3€")
+        assert data["email"]["inviate"] == 1
+
+        assert len(mailoutbox) == 1
+        assert mailoutbox[0].to == ["prop@v.it"]
+        assert "Mancano 3€" in mailoutbox[0].body
+
+    def test_commenti_visibili_a_inquilino_e_proprietario(
+        self, client_inq_1, client_prop, rent_payment_1, user_inq_1
+    ):
+        from billing.models import ReceivableComment
+
+        ReceivableComment.objects.create(
+            receivable=rent_payment_1, autore=user_inq_1, testo="ciao"
+        )
+        for client in (client_inq_1, client_prop):
+            resp = client.get(f"/api/v1/receivables/{rent_payment_1.id}/commenti/")
+            assert resp.status_code == 200
+            assert len(resp.json()) == 1
+
+    def test_commento_proprietario_senza_email(
+        self, client_prop, rent_payment_1, mailoutbox
+    ):
+        resp = client_prop.post(
+            f"/api/v1/receivables/{rent_payment_1.id}/commenti/",
+            {"testo": "Risolto, non preoccuparti."},
+            format="json",
+        )
+        assert resp.status_code == 201
+        assert len(mailoutbox) == 0
+
+    def test_altro_inquilino_non_vede(self, client_inq_2, rent_payment_1):
+        resp = client_inq_2.get(
+            f"/api/v1/receivables/{rent_payment_1.id}/commenti/"
+        )
+        assert resp.status_code == 404
+
+    def test_testo_obbligatorio(self, client_inq_1, rent_payment_1):
+        resp = client_inq_1.post(
+            f"/api/v1/receivables/{rent_payment_1.id}/commenti/",
+            {"testo": "  "},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_commenti_nel_payload_dashboard(
+        self, client_inq_1, rent_payment_1, user_inq_1
+    ):
+        from billing.models import ReceivableComment
+
+        ReceivableComment.objects.create(
+            receivable=rent_payment_1, autore=user_inq_1, testo="nota mia"
+        )
+        resp = client_inq_1.get("/api/v1/dashboard/inquilino/")
+        assert resp.status_code == 200
+        items = [
+            i for i in resp.json()["da_pagare"] if i["id"] == rent_payment_1.id
+        ]
+        assert items and items[0]["commenti"][0]["testo"] == "nota mia"
+
+
 # ---------------------------------------------------------------------------
 # Test UtilityChargeViewSet
 # ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
+import type { CommentoAddebito } from 'stores/dashboard';
 
 export type TipoPagamentoApi = 'rent' | 'utility_charge' | 'extra' | 'deposit';
 
@@ -64,6 +65,15 @@ export const usePaymentsStore = defineStore('payments', {
     async rifiutaPagato(tipo: TipoPagamentoApi, id: number): Promise<void> {
       const base = endpointPerTipo(tipo);
       await api.post(`${base}/${id}/rifiuta_pagato/`);
+    },
+    // I commenti vivono sull'endpoint flat del Receivable (l'id è lo stesso
+    // per tutte le causali), niente mappa per tipo.
+    async commentaAddebito(receivableId: number, testo: string): Promise<CommentoAddebito> {
+      const { data } = await api.post<CommentoAddebito>(
+        `/api/v1/receivables/${receivableId}/commenti/`,
+        { testo },
+      );
+      return data;
     },
     async getDettaglio<T = unknown>(tipo: TipoPagamentoApi, id: number): Promise<T> {
       const base = endpointPerTipo(tipo);

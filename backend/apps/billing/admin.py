@@ -24,6 +24,7 @@ from .models import (
     Expense,
     ExpenseCategory,
     Receivable,
+    ReceivableComment,
     Supplier,
     TenantCondominioRate,
     UtilityBill,
@@ -115,6 +116,28 @@ class ReceivableAllocationsInline(admin.TabularInline):
         bt = obj.bank_transaction
         descr = (bt.descrizione or "")[:120]
         return f"{descr} — {bt.importo}€ ({bt.owner_account.banca})"
+
+
+class ReceivableCommentInline(admin.TabularInline):
+    """Commenti sull'addebito: quelli dell'inquilino arrivano anche via
+    email; da qui il proprietario può rispondere (visibile nel popup FE)."""
+
+    model = ReceivableComment
+    fk_name = "receivable"
+    extra = 0
+    fields = ("autore_nome", "testo", "created_at")
+    readonly_fields = ("autore_nome", "created_at")
+    verbose_name = "commento"
+    verbose_name_plural = "commenti"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("autore")
+
+    @admin.display(description="autore")
+    def autore_nome(self, obj):
+        from billing.commenti import _nome_autore
+
+        return _nome_autore(obj.autore) if obj.pk else "—"
 
 
 class BankTransactionAllocationInline(admin.TabularInline):
@@ -256,7 +279,21 @@ class ReceivableAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboMode
     )
     date_hierarchy = "scadenza"
     ordering = ("-scadenza", "assignment__tenant__nominativo")
-    inlines = (ReceivableAllocationsInline,)
+    inlines = (ReceivableAllocationsInline, ReceivableCommentInline)
+
+    def save_formset(self, request, form, formset, change):
+        """I commenti creati da admin prendono come autore l'utente loggato."""
+        if formset.model is ReceivableComment:
+            istanze = formset.save(commit=False)
+            for obj in istanze:
+                if obj.autore_id is None:
+                    obj.autore = request.user
+                obj.save()
+            for obj in formset.deleted_objects:
+                obj.delete()
+            formset.save_m2m()
+            return
+        super().save_formset(request, form, formset, change)
     advanced_search_fields = (
         ("assignment__tenant__nominativo__icontains:inquilino",
          "assignment__room__nome__icontains:stanza",

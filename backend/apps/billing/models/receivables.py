@@ -5,6 +5,7 @@ con BankTransaction.
 Sostituisce RentPayment, UtilityCharge ed ExtraCharge — accorpando lo stesso
 "piano del dovuto" sotto un unico modello con campo `causale`.
 """
+from django.conf import settings
 from django.db import models
 
 from properties.models import OwnerBankAccount, OwnerProfile, RoomAssignment, TimestampedModel
@@ -208,3 +209,36 @@ class BankTransactionAllocation(TimestampedModel):
 
     def __str__(self):
         return f"{self.bank_transaction} → {self.receivable} ({self.importo}€)"
+
+
+class ReceivableComment(TimestampedModel):
+    """Commento libero su un addebito, scritto da inquilino o proprietario.
+
+    Distinto da ``Receivable.note`` (log append-only della macchina a stati
+    dichiara/rifiuta): questi sono messaggi visibili nel dettaglio
+    dell'addebito, con autore e data, e inoltrati via email.
+    """
+
+    receivable = models.ForeignKey(
+        Receivable,
+        on_delete=models.CASCADE,
+        related_name="commenti",
+        verbose_name="addebito",
+    )
+    autore = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="commenti_addebiti",
+        verbose_name="autore",
+    )
+    testo = models.TextField(verbose_name="testo")
+
+    class Meta:
+        verbose_name = "commento addebito"
+        verbose_name_plural = "commenti addebiti"
+        ordering = ["created_at"]
+
+    def __str__(self):
+        autore = self.autore.username if self.autore else "?"
+        return f"{autore} su {self.receivable_id}: {self.testo[:40]}"

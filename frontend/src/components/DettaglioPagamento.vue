@@ -50,6 +50,39 @@
       </ul>
     </div>
 
+    <!-- Note sull'addebito -->
+    <div class="vp-dett__sezione">
+      <div class="vp-eyebrow vp-dett__sez-titolo">Note</div>
+      <ul v-if="commenti.length > 0" class="vp-dett__note">
+        <li v-for="c in commenti" :key="c.id" class="vp-dett__nota">
+          <div class="vp-dett__nota-meta">{{ c.autore }} · {{ formattaData(c.data) }}</div>
+          <div class="vp-dett__nota-testo">{{ c.testo }}</div>
+        </li>
+      </ul>
+      <div class="vp-dett__nota-form">
+        <q-input
+          v-model="nuovaNota"
+          dense
+          outlined
+          autogrow
+          placeholder="Se qualcosa non torna, scrivilo qui: lo leggiamo subito."
+          :disable="inviandoNota"
+          class="vp-dett__nota-input"
+          @keyup.enter.exact.prevent="inviaNota"
+        />
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="primary"
+          icon="send"
+          :loading="inviandoNota"
+          :disable="!nuovaNota.trim()"
+          @click="inviaNota"
+        />
+      </div>
+    </div>
+
     <!-- Azione -->
     <q-btn
       v-if="item.residuo > 0"
@@ -66,17 +99,46 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { Notify } from 'quasar';
 import ThDonut from './ThDonut.vue';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
-import type { DaPagareItem, TipoPagamento } from 'src/stores/dashboard';
+import { usePaymentsStore } from 'src/stores/payments';
+import type { CommentoAddebito, DaPagareItem, TipoPagamento } from 'src/stores/dashboard';
 
 const props = defineProps<{ item: DaPagareItem }>();
 const emit = defineEmits<{ paga: [] }>();
 
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
+const payments = usePaymentsStore();
+
+// Copia locale: i commenti appena inviati compaiono subito, senza aspettare
+// il refresh della dashboard.
+const commenti = ref<CommentoAddebito[]>([...(props.item.commenti ?? [])]);
+const nuovaNota = ref('');
+const inviandoNota = ref(false);
+
+async function inviaNota() {
+  const testo = nuovaNota.value.trim();
+  if (!testo || inviandoNota.value) return;
+  inviandoNota.value = true;
+  try {
+    const commento = await payments.commentaAddebito(props.item.id, testo);
+    commenti.value.push(commento);
+    nuovaNota.value = '';
+    Notify.create({
+      type: 'positive',
+      message: 'Nota inviata: i proprietari la ricevono via email.',
+      icon: 'mark_email_read',
+    });
+  } catch {
+    Notify.create({ type: 'negative', message: 'Invio della nota non riuscito' });
+  } finally {
+    inviandoNota.value = false;
+  }
+}
 
 const pct = computed(() =>
   props.item.importo_dovuto
@@ -230,6 +292,39 @@ const iconaTipo = computed(() => {
   font-size: 14px;
   color: var(--vp-sage-deep);
   font-weight: 500;
+}
+.vp-dett__note {
+  list-style: none;
+  margin: 0 0 var(--vp-gap-2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vp-dett__nota {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--vp-paper-3);
+}
+.vp-dett__nota:last-child {
+  border-bottom: none;
+}
+.vp-dett__nota-meta {
+  font-size: 11.5px;
+  color: var(--vp-ink-3);
+  margin-bottom: 1px;
+}
+.vp-dett__nota-testo {
+  font-size: 13.5px;
+  color: var(--vp-ink);
+  white-space: pre-line;
+}
+.vp-dett__nota-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.vp-dett__nota-input {
+  flex: 1;
 }
 .vp-dett__paga {
   width: 100%;

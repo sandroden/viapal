@@ -35,6 +35,7 @@ from billing.models import (
     Expense,
     ExpenseCategory,
     Receivable,
+    ReceivableComment,
     StatoPagamento,
     Supplier,
     UtilityBill,
@@ -1407,6 +1408,85 @@ class RegistraPagamentoReceivableView(APIView):
 
         return Response(
             {"bank_transaction": bt_data, "receivable": rec_data},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ReceivableCommentiView(APIView):
+    """GET/POST /api/v1/receivables/<pk>/commenti/
+
+    Commenti liberi sull'addebito, visibili sia all'inquilino sia ai
+    proprietari. Un commento dell'inquilino viene inoltrato via email ai
+    membri proprietari/gestori dell'immobile (best-effort).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def _get_receivable(self, request, pk):
+        """Il receivable se l'utente ha titolo a vederlo, altrimenti None."""
+        try:
+            receivable = Receivable.objects.select_related(
+                "assignment__tenant__user", "assignment__room__property"
+            ).get(pk=pk)
+        except Receivable.DoesNotExist:
+            return None
+        user = request.user
+        if receivable.assignment.tenant.user_id == user.id:
+            return receivable
+        if user.is_superuser:
+            return receivable
+        prop = receivable.assignment.room.property
+        if user.property_memberships.filter(property=prop).exists():
+            return receivable
+        return None
+
+    @staticmethod
+    def _serializza(commento) -> dict:
+        from billing.commenti import _nome_autore
+
+        return {
+            "id": commento.id,
+            "autore": _nome_autore(commento.autore),
+            "testo": commento.testo,
+            "data": commento.created_at.date().isoformat(),
+        }
+
+    def get(self, request, pk):
+        receivable = self._get_receivable(request, pk)
+        if receivable is None:
+            return Response(
+                {"detail": "Addebito non trovato."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        commenti = receivable.commenti.select_related("autore").order_by("created_at")
+        return Response([self._serializza(c) for c in commenti])
+
+    def post(self, request, pk):
+        from billing.commenti import invia_email_commento
+
+        receivable = self._get_receivable(request, pk)
+        if receivable is None:
+            return Response(
+                {"detail": "Addebito non trovato."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        testo = str(request.data.get("testo") or "").strip()
+        if not testo:
+            return Response(
+                {"detail": "Il testo del commento è obbligatorio."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        commento = ReceivableComment.objects.create(
+            receivable=receivable,
+            autore=request.user,
+            testo=testo[:2000],
+        )
+        # Inoltro email ai proprietari solo se a scrivere è l'inquilino.
+        esito_email = None
+        if receivable.assignment.tenant.user_id == request.user.id:
+            esito_email = invia_email_commento(commento)
+        return Response(
+            {**self._serializza(commento), "email": esito_email},
             status=status.HTTP_201_CREATED,
         )
 

@@ -1,6 +1,6 @@
 from .expenses import Expense, ExpenseCategory, Supplier, TenantCondominioRate
 from .payments import BankTransaction, StatoPagamento
-from .receivables import BankTransactionAllocation, Receivable
+from .receivables import BankTransactionAllocation, Receivable, ReceivableComment
 from .utilities import (
     AnnualUtilityCost,
     UtilityBill,
@@ -11,6 +11,7 @@ __all__ = [
     "StatoPagamento",
     "BankTransaction",
     "Receivable",
+    "ReceivableComment",
     "BankTransactionAllocation",
     "Supplier",
     "ExpenseCategory",

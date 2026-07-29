@@ -14,6 +14,7 @@ from billing.views import (
     ExtraChargeViewSet,
     ReceivableViewSet,
     ReconciliationBulkView,
+    ReceivableCommentiView,
     RegistraPagamentoReceivableView,
     RentPaymentViewSet,
     SupplierViewSet,
@@ -57,6 +58,11 @@ urlpatterns = [
         "receivables/<int:pk>/registra-pagamento/",
         RegistraPagamentoReceivableView.as_view(),
         name="receivable-registra-pagamento",
+    ),
+    path(
+        "receivables/<int:pk>/commenti/",
+        ReceivableCommentiView.as_view(),
+        name="receivable-commenti",
     ),
     path(
         "utenze-inquilino/",

@@ -4,7 +4,7 @@ title: Receivable — l'addebito unificato
 description: Il modello unico che rappresenta ogni importo dovuto dall'inquilino.
 resource: backend/apps/billing/models/receivables.py
 tags: [domain, receivable, billing]
-timestamp: 2026-07-08T00:00:00Z
+timestamp: 2026-07-29T00:00:00Z
 ---
 
 # Overview
@@ -39,6 +39,25 @@ Il legame con gli incassi è **M:N** via `BankTransactionAllocation`: un bonific
 può coprire più addebiti e un addebito può essere coperto da più bonifici.
 `importo_pagato`/`stato` riflettono le allocazioni vive. Vedi
 [riconciliazione](/domain/riconciliazione.md).
+
+# Dichiarazione, conferma, rifiuto
+
+L'inquilino può **dichiarare** di aver pagato (`dichiara_pagato`): lo stato passa
+a DICHIARATO ma `importo_pagato` **non viene toccato** — resta la copertura
+reale da allocazioni; gli estremi dichiarati finiscono in `note` (log
+append-only della macchina a stati). Il proprietario poi **conferma**
+(`conferma_pagato` → PAGATO a dovuto pieno) oppure **rifiuta**
+(`rifiuta_pagato` → riallineamento dalla verità bancaria, l'addebito torna
+da pagare). Una riconciliazione bancaria vince sempre sul dichiarato: il
+signal su `BankTransactionAllocation` ricalcola stato/importi a ogni tocco.
+
+# Commenti
+
+`ReceivableComment` (FK `commenti`) sono messaggi liberi con autore e data,
+distinti da `note`: visibili nel popup di dettaglio della home inquilino e
+nell'admin; un commento dell'inquilino viene inoltrato via email ai membri
+proprietari/gestori (`billing/commenti.py`, endpoint
+`receivables/<pk>/commenti/`).
 
 # Invarianti
 

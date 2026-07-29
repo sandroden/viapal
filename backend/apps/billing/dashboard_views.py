@@ -117,7 +117,10 @@ def _dati_pagamento(r: Receivable, descrizione: str) -> dict | None:
 
 
 def _build_item_da_pagare(
-    r: Receivable, oggi: datetime.date, allocazioni: list | None = None
+    r: Receivable,
+    oggi: datetime.date,
+    allocazioni: list | None = None,
+    commenti: list | None = None,
 ) -> dict:
     giorni = _giorni_ritardo(r.scadenza, oggi)
     dovuto = r.importo_dovuto
@@ -143,7 +146,30 @@ def _build_item_da_pagare(
         # quota imputata e importo lordo del bonifico. Alimenta il popup di
         # dettaglio della home inquilino (utile sui pagamenti parziali).
         "allocazioni": allocazioni or [],
+        # Commenti inquilino/proprietari sull'addebito (popup di dettaglio).
+        "commenti": commenti or [],
     }
+
+
+def _commenti_per_receivable(receivables: list[Receivable]) -> dict[int, list]:
+    """Mappa receivable_id -> lista commenti (ordinati per data)."""
+    from billing.commenti import _nome_autore
+    from billing.models import ReceivableComment
+
+    commenti_map: dict[int, list] = {}
+    qs = (
+        ReceivableComment.objects.filter(receivable__in=receivables)
+        .select_related("autore")
+        .order_by("created_at")
+    )
+    for c in qs:
+        commenti_map.setdefault(c.receivable_id, []).append({
+            "id": c.id,
+            "autore": _nome_autore(c.autore),
+            "testo": c.testo,
+            "data": c.created_at.date().isoformat(),
+        })
+    return commenti_map
 
 
 def _alloc_per_receivable(receivables: list[Receivable]) -> dict[int, list]:
@@ -231,8 +257,11 @@ class DashboardInquilinoView(APIView):
 
         da_pagare_list = list(da_pagare_qs)
         alloc_map = _alloc_per_receivable(da_pagare_list)
+        commenti_map = _commenti_per_receivable(da_pagare_list)
         da_pagare = [
-            _build_item_da_pagare(r, oggi, alloc_map.get(r.id, []))
+            _build_item_da_pagare(
+                r, oggi, alloc_map.get(r.id, []), commenti_map.get(r.id, [])
+            )
             for r in da_pagare_list
         ]
 

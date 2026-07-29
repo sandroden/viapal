@@ -17,6 +17,13 @@ export interface AllocazioneBonifico {
   bonifico_totale: number;
 }
 
+export interface CommentoAddebito {
+  id: number;
+  autore: string;
+  testo: string;
+  data: string;
+}
+
 export interface DaPagareItem {
   tipo: TipoPagamento;
   id: number;
@@ -33,6 +40,7 @@ export interface DaPagareItem {
   semaforo: SemaforoLivello;
   pagamento: DatiPagamento | null;
   allocazioni: AllocazioneBonifico[];
+  commenti: CommentoAddebito[];
 }
 
 export interface UltimoPagamento {
