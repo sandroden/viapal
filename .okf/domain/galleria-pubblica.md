@@ -76,12 +76,15 @@ resterebbe spento durante l'elaborazione). Backend invariato: `webp` è già in
 `FileExtensionValidator`. Conseguenza: le foto nuove non sono più gli originali di camera.
 
 **Scarica foto** (`ScaricaFotoDialog.vue`, bottone in navbar `v-if="canEdit"`): miniature di
-tutte le foto raggruppate per sezione, selezione singola/sezione/totale, download **un file
-alla volta** via `fetch`→blob→`<a download>` con nomi `<slug>-<sezione>-NN.<ext>` (l'attributo
-`download` è ignorato cross-origin e non rinomina i file opachi di `/media`). Nessun endpoint
-nuovo (gli URL sono nel payload pubblico) e **nessuno zip** — scelta deliberata per non
-aggiungere dipendenze; incrementabile in seguito. Limite noto: le foto delle stanze
-`disponibile=False` non sono nel payload pubblico, quindi non compaiono nell'elenco.
+tutte le foto raggruppate per sezione, selezione singola/sezione/totale, nomi
+`<slug>-<sezione>-NN.<ext>` (l'attributo `download` di `<a>` è ignorato cross-origin e non
+rinomina i file opachi di `/media`, da cui `fetch`→blob). **Una foto** → file singolo;
+**più foto** → un unico **ZIP** costruito lato client da `utils/zip.ts` — implementazione
+propria, metodo *store* senza compressione (le foto sono già JPEG/WebP: deflate non
+guadagnerebbe nulla e servirebbe una libreria nel bundle). Lo ZIP evita anche il prompt
+"consenti download multipli" di Chrome. Nessun endpoint nuovo: gli URL sono nel payload
+pubblico. Limite noto: le foto delle stanze `disponibile=False` non sono nel payload
+pubblico, quindi non compaiono nell'elenco.
 Store `galleria.ts` (`uploadImages` batch = N POST + 1 refresh; `patchImage`; `reorderImages`).
 Per ogni foto in edit: controlli **formato** (3 pulsanti crop), **didascalia** (overlay in basso,
 editabile), **riordino** con frecce laterali `‹ ›` (scelta deliberata vs drag: robusta con le

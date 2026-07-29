@@ -75,7 +75,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { GalleriaPubblica } from 'stores/galleria';
-import { scaricaUrl } from 'src/utils/image';
+import { scaricaBlob, scaricaUrl } from 'src/utils/image';
+import { creaZip, type FileZip } from 'src/utils/zip';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -171,9 +172,11 @@ const sezioni = computed<Sezione[]>(() => {
 
 const tutte = computed<FotoScaricabile[]>(() => sezioni.value.flatMap((s) => s.foto));
 
-const etichettaScarica = computed(() =>
-  selezione.value.size ? `Scarica ${selezione.value.size}` : 'Scarica',
-);
+const etichettaScarica = computed(() => {
+  const n = selezione.value.size;
+  if (!n) return 'Scarica';
+  return n === 1 ? 'Scarica 1' : `Scarica ${n} (zip)`;
+});
 
 function toggle(url: string) {
   if (selezione.value.has(url)) selezione.value.delete(url);
@@ -200,24 +203,54 @@ function reset() {
   errore.value = null;
 }
 
-/** Download uno alla volta: niente zip (nessuna dipendenza aggiunta), con
- *  una pausa breve fra i file perché i browser limitano i download a raffica. */
+/** Nomi univoci dentro l'archivio: due sezioni possono produrre lo stesso
+ *  slug (es. una camera e un ambiente omonimi) e lo ZIP non lo tollera. */
+function nomiUnivoci(files: FotoScaricabile[]): string[] {
+  const visti = new Map<string, number>();
+  return files.map((f) => {
+    const n = visti.get(f.nomeFile) ?? 0;
+    visti.set(f.nomeFile, n + 1);
+    if (!n) return f.nomeFile;
+    return f.nomeFile.replace(/(\.[^.]+)$/, `-${n + 1}$1`);
+  });
+}
+
+/** Una sola foto → file singolo; più foto → un unico ZIP, così il browser
+ *  non chiede il consenso ai download multipli e resta un file solo da
+ *  allegare al post. */
 async function scarica() {
   const daScaricare = tutte.value.filter((f) => selezione.value.has(f.url));
   if (!daScaricare.length) return;
   scaricando.value = true;
   errore.value = null;
-  let falliti = 0;
-  for (const f of daScaricare) {
-    try {
+  try {
+    if (daScaricare.length === 1) {
+      const f = daScaricare[0]!;
       await scaricaUrl(f.url, f.nomeFile);
-    } catch {
-      falliti += 1;
+      return;
     }
-    await new Promise((r) => setTimeout(r, 150));
+    const nomi = nomiUnivoci(daScaricare);
+    const contenuti: FileZip[] = [];
+    let falliti = 0;
+    for (const [i, f] of daScaricare.entries()) {
+      try {
+        const res = await fetch(f.url);
+        if (!res.ok) throw new Error(String(res.status));
+        contenuti.push({ nome: nomi[i]!, dati: new Uint8Array(await res.arrayBuffer()) });
+      } catch {
+        falliti += 1;
+      }
+    }
+    if (!contenuti.length) {
+      errore.value = 'Nessuna foto scaricabile.';
+      return;
+    }
+    const slug = props.galleria?.slug ?? 'galleria';
+    scaricaBlob(creaZip(contenuti), `${slug}-foto.zip`);
+    if (falliti) errore.value = `${falliti} foto non incluse (errore di rete).`;
+  } finally {
+    scaricando.value = false;
   }
-  scaricando.value = false;
-  if (falliti) errore.value = `${falliti} foto non scaricate.`;
 }
 </script>
 

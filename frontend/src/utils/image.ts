@@ -79,15 +79,8 @@ export async function resizeImageFile(
   }
 }
 
-/**
- * Scarica un file dal suo URL forzando il nome. Passa da `fetch` + blob
- * perché l'attributo `download` di `<a>` viene ignorato per URL cross-origin
- * e comunque non permette di rinominare il file servito da `/media`.
- */
-export async function scaricaUrl(url: string, filename: string): Promise<void> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`download fallito (${res.status})`);
-  const blob = await res.blob();
+/** Salva un Blob già in memoria con il nome indicato. */
+export function scaricaBlob(blob: Blob, filename: string): void {
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = objectUrl;
@@ -96,4 +89,15 @@ export async function scaricaUrl(url: string, filename: string): Promise<void> {
   a.click();
   a.remove();
   URL.revokeObjectURL(objectUrl);
+}
+
+/**
+ * Scarica un file dal suo URL forzando il nome. Passa da `fetch` + blob
+ * perché l'attributo `download` di `<a>` viene ignorato per URL cross-origin
+ * e comunque non permette di rinominare il file servito da `/media`.
+ */
+export async function scaricaUrl(url: string, filename: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`download fallito (${res.status})`);
+  scaricaBlob(await res.blob(), filename);
 }
