@@ -210,6 +210,7 @@
       >
         <q-tab name="pagamenti" label="Pagamenti" />
         <q-tab name="profilo" label="Profilo & contratto" />
+        <q-tab name="documenti" label="Documenti" />
         <q-route-tab
           name="rendiconto"
           label="Rendiconto"
@@ -756,6 +757,17 @@
             </q-card>
           </div>
         </q-tab-panel>
+
+        <!-- TAB DOCUMENTI -->
+        <q-tab-panel name="documenti" class="vp-p-id__panel">
+          <div class="vp-p-id__docs">
+            <DocumentiPannello
+              :store="documentiStore"
+              :tipi="TIPI_DOCUMENTO_INQUILINO"
+              :target-id="tenantId"
+            />
+          </div>
+        </q-tab-panel>
       </q-tab-panels>
     </template>
 
@@ -904,6 +916,8 @@ import PrevisionaleUtenzeDialog from 'src/components/PrevisionaleUtenzeDialog.vu
 import ConguagliaPrevisionaleDialog from 'src/components/ConguagliaPrevisionaleDialog.vue';
 import AssegnaStanzaDialog from 'src/components/AssegnaStanzaDialog.vue';
 import RestituzioneDepositoDialog from 'src/components/RestituzioneDepositoDialog.vue';
+import DocumentiPannello from 'src/components/DocumentiPannello.vue';
+import { useDocumentiStore, TIPI_DOCUMENTO_INQUILINO } from 'stores/documenti';
 
 type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'deposito';
 
@@ -962,9 +976,10 @@ function parseAnno(v: unknown): number {
   if (Number.isFinite(n) && n >= annoMin && n <= annoCorrente) return n;
   return annoCorrente;
 }
-function parseTab(v: unknown): 'pagamenti' | 'profilo' {
+function parseTab(v: unknown): 'pagamenti' | 'profilo' | 'documenti' {
   const s = Array.isArray(v) ? v[0] : v;
-  return s === 'profilo' ? 'profilo' : 'pagamenti';
+  if (s === 'profilo' || s === 'documenti') return s;
+  return 'pagamenti';
 }
 function parseTipo(v: unknown): FiltroTipo {
   const s = Array.isArray(v) ? v[0] : v;
@@ -981,7 +996,9 @@ const anniDisponibili = computed<number[]>(() => {
 const puoIndietro = computed(() => annoSelezionato.value > annoMin);
 const puoAvanti = computed(() => annoSelezionato.value < annoCorrente);
 
-const tabAttivo = ref<'pagamenti' | 'profilo'>(parseTab(route.query.tab));
+const tabAttivo = ref<'pagamenti' | 'profilo' | 'documenti'>(parseTab(route.query.tab));
+
+const documentiStore = useDocumentiStore();
 
 const filtroTipo = ref<FiltroTipo>(parseTipo(route.query.tipo));
 const opzioniTipo = [
@@ -1731,6 +1748,9 @@ const contoDiDefaultUtente = computed(
 .vp-p-id__card-info {
   background: var(--vp-cream);
   border-color: var(--vp-paper-3) !important;
+}
+.vp-p-id__docs {
+  max-width: 640px;
 }
 .vp-p-id__card-info--full {
   grid-column: 1 / -1;
