@@ -175,3 +175,17 @@ def test_stop_senza_impersonation_400(client, proprietario):
 def test_impersonate_richiede_auth(client, tenant_profile):
     resp = client.post(f'/api/auth/impersonate/{tenant_profile.pk}/')
     assert resp.status_code == 403
+
+
+def test_pagina_html_durante_impersonation_non_esplode(
+        client, proprietario, tenant_profile, membership_proprietario):
+    # Regressione: HijackUserMiddleware inietta hijack/notification.html in
+    # ogni risposta HTML della sessione hijacked, e il template fa
+    # reverse('hijack:release') → NoReverseMatch (hijack.urls non e' incluso).
+    # Con HIJACK_INSERT_BEFORE=None l'iniezione e' disattivata.
+    client.post('/api/auth/login/',
+                {'username': 'test_prop', 'password': 'pwd123!'}, format='json')
+    client.post(f'/api/auth/impersonate/{tenant_profile.pk}/')
+
+    resp = client.get('/admin/', follow=True)
+    assert resp.status_code == 200

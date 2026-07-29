@@ -225,6 +225,11 @@ ROLE_INQUILINI = 'inquilini'
 # django-hijack: impersonation "vedi come inquilino". Il gate di autorizzazione
 # (chi puo' impersonare chi) e' centralizzato in accounts.impersonation.
 HIJACK_PERMISSION_CHECK = 'accounts.impersonation.check_hijack_authorization'
+# Il banner e' gestito dal frontend: la notification nativa iniettata dal
+# middleware fa reverse('hijack:release'), ma hijack.urls non e' incluso
+# (usiamo endpoint DRF custom) → NoReverseMatch su qualsiasi pagina HTML
+# (es. /admin) visitata durante l'impersonation.
+HIJACK_INSERT_BEFORE = None
 
 
 # django-admin-tools: classi dashboard dichiarate esplicitamente per evitare
