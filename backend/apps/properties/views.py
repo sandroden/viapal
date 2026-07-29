@@ -334,19 +334,32 @@ class TenantDocumentViewSet(ModelViewSet):
 class PropertyDocumentViewSet(ModelViewSet):
     """
     Documenti dell'immobile (contratto, side letter, registrazione,
-    regolamento condominiale). Riservati al lato gestione: membri
-    dell'immobile attivo, con scrittura preclusa al ruolo sola_lettura.
-    La ``property`` è sempre quella attiva della richiesta.
+    regolamento condominiale).
+    - Lato gestione: CRUD completo sull'immobile attivo (scrittura preclusa
+      al ruolo sola_lettura); la ``property`` è sempre quella della richiesta.
+    - Inquilini: sola lettura dei documenti del proprio immobile marcati
+      ``visibile_inquilini`` (sezione "Documenti della casa").
     """
 
     serializer_class = PropertyDocumentSerializer
     parser_classes = [MultiPartParser, FormParser]
-    permission_classes = [IsPropertyMember]
+
+    def get_permissions(self):
+        if self.request.method not in SAFE_METHODS:
+            return [IsPropertyMember()]
+        return [IsInquilinoSelf()]
 
     def get_queryset(self):
-        return PropertyDocument.objects.select_related("property").filter(
-            property=get_request_property(self.request)
-        )
+        user = self.request.user
+        qs = PropertyDocument.objects.select_related("property")
+        if not _is_gestione(user):
+            tenant = getattr(user, "tenant_profile", None)
+            if tenant is None:
+                return qs.none()
+            return qs.filter(
+                property_id=tenant.property_id, visibile_inquilini=True
+            )
+        return qs.filter(property=get_request_property(self.request))
 
     def perform_create(self, serializer):
         serializer.save(

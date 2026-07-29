@@ -81,7 +81,7 @@ class PropertyDocumentInline(admin.TabularInline):
 
     model = PropertyDocument
     extra = 0
-    fields = ("tipo", "file", "descrizione", "data_scadenza")
+    fields = ("tipo", "file", "descrizione", "data_scadenza", "visibile_inquilini")
     ordering = ("tipo", "-created_at")
 
 

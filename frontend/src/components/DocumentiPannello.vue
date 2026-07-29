@@ -1,7 +1,7 @@
 <template>
   <div class="vp-docs">
     <!-- Form di caricamento -->
-    <q-card class="vp-docs__card">
+    <q-card v-if="!soloLettura" class="vp-docs__card">
       <q-card-section>
         <div class="vp-docs__card-titolo">Carica un documento</div>
         <q-form ref="uploadForm" @submit.prevent="invia" class="q-gutter-md q-mt-sm">
@@ -52,6 +52,12 @@
             dense
             stack-label
           />
+          <q-toggle
+            v-if="conVisibilita"
+            v-model="visibileInquilini"
+            label="Visibile agli inquilini"
+            dense
+          />
           <q-banner v-if="store.errore" class="text-white bg-red-7" rounded dense>
             {{ store.errore }}
           </q-banner>
@@ -69,13 +75,13 @@
     </q-card>
 
     <!-- Elenco -->
-    <div class="vp-docs__sezione">Documenti caricati</div>
+    <div v-if="!soloLettura" class="vp-docs__sezione">Documenti caricati</div>
 
     <q-inner-loading :showing="store.loading" />
 
     <q-card v-if="!store.loading && !store.documenti.length" class="vp-docs__vuoto">
       <q-card-section class="text-center text-grey-7">
-        Nessun documento caricato.
+        {{ testoVuoto ?? 'Nessun documento caricato.' }}
       </q-card-section>
     </q-card>
 
@@ -103,17 +109,32 @@
           </q-item-section>
           <q-item-section side>
             <div class="row items-center no-wrap">
+              <q-toggle
+                v-if="conVisibilita"
+                :model-value="!!doc.visibile_inquilini"
+                dense
+                size="sm"
+                checked-icon="visibility"
+                unchecked-icon="visibility_off"
+                aria-label="Visibile agli inquilini"
+                @update:model-value="(v: boolean) => cambiaVisibilita(doc, v)"
+              >
+                <q-tooltip>
+                  {{ doc.visibile_inquilini ? 'Visibile agli inquilini' : 'Non visibile agli inquilini' }}
+                </q-tooltip>
+              </q-toggle>
               <q-btn
                 flat
                 round
                 dense
-                icon="visibility"
+                icon="open_in_new"
                 color="primary"
                 :href="doc.file"
                 target="_blank"
                 aria-label="Apri documento"
               />
               <q-btn
+                v-if="!soloLettura"
                 flat
                 round
                 dense
@@ -144,6 +165,14 @@ const props = defineProps<{
   /** Target esplicito (id inquilino/immobile) — uso lato proprietario;
    *  l'inquilino non lo passa e opera sui propri. */
   targetId?: number;
+  /** Solo consultazione: niente upload né eliminazione (es. documenti
+   *  della casa visti dall'inquilino). */
+  soloLettura?: boolean;
+  /** Mostra il controllo "visibile agli inquilini" (documenti proprietà,
+   *  lato gestione). */
+  conVisibilita?: boolean;
+  /** Messaggio quando l'elenco è vuoto. */
+  testoVuoto?: string;
 }>();
 
 const $q = useQuasar();
@@ -154,6 +183,7 @@ const tipo = ref<string | null>(null);
 const file = ref<File[]>([]);
 const descrizione = ref('');
 const dataScadenza = ref('');
+const visibileInquilini = ref(false);
 
 function iconaTipo(t: string): string {
   switch (t) {
@@ -201,6 +231,7 @@ async function invia() {
     tipo: tipo.value,
     descrizione: descrizione.value,
     dataScadenza: dataScadenza.value || null,
+    ...(props.conVisibilita ? { visibileInquilini: visibileInquilini.value } : {}),
     ...(props.targetId ? { targetId: props.targetId } : {}),
   });
   if (ok > 0) {
@@ -208,6 +239,7 @@ async function invia() {
     file.value = [];
     descrizione.value = '';
     dataScadenza.value = '';
+    visibileInquilini.value = false;
     // Svuotare i campi rifà scattare le regole "obbligatorio": azzeriamo la
     // validazione così non restano errori dopo un caricamento riuscito.
     void nextTick(() => uploadForm.value?.resetValidation());
@@ -235,6 +267,23 @@ function conferma(doc: DocumentoFE) {
     ok: { label: 'Elimina', color: 'negative', unelevated: true, noCaps: true },
   }).onOk(() => {
     void elimina(doc.id);
+  });
+}
+
+async function cambiaVisibilita(doc: DocumentoFE, visibile: boolean) {
+  const ok = await props.store.impostaVisibilita(doc.id, visibile);
+  if (!ok) {
+    $q.notify({
+      type: 'negative',
+      message: props.store.errore ?? 'Errore aggiornamento visibilità.',
+    });
+    return;
+  }
+  $q.notify({
+    type: 'positive',
+    message: visibile
+      ? 'Documento ora visibile agli inquilini.'
+      : 'Documento non più visibile agli inquilini.',
   });
 }
 

@@ -26,7 +26,7 @@ Tutti i modelli ereditano da `TimestampedModel` (`created_at`/`updated_at`).
 | `OwnerBankAccount` | `owner`, `banca`, `iban`, `intestatario`, `attivo` | conto proprietario |
 | `TenantProfile` | `user` (1:1), `giorno_pagamento_affitto`, `frequenza_conguagli`, `ciclo_fatturazione`, `deposito_versato`, `deposito_da_restituire`, `data_restituzione_prevista` | inquilino |
 | `TenantDocument` | `tenant`, `tipo`, `file`, `data_scadenza` | CI/CF/passaporto/permesso/contratto/subentro |
-| `PropertyDocument` | `property`, `tipo`, `file`, `data_scadenza` | contratto/side letter/registrazione/regolamento; API riservata al lato gestione |
+| `PropertyDocument` | `property`, `tipo`, `file`, `data_scadenza`, `visibile_inquilini` | contratto/side letter/registrazione/regolamento; CRUD lato gestione, lettura inquilini dei soli documenti con `visibile_inquilini=True` ("Documenti della casa" in /i/documenti) |
 
 # Vedi anche
 

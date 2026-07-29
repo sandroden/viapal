@@ -334,9 +334,15 @@
         <div style="max-width: 640px">
           <div class="vp-hint q-mb-sm">
             Documenti dell'immobile: contratto di locazione, side letter,
-            registrazione del contratto, regolamento condominiale.
+            registrazione del contratto, regolamento condominiale. Con
+            "visibile agli inquilini" il documento compare anche nella loro
+            pagina "I miei documenti".
           </div>
-          <DocumentiPannello :store="documentiStore" :tipi="TIPI_DOCUMENTO_PROPRIETA" />
+          <DocumentiPannello
+            :store="documentiStore"
+            :tipi="TIPI_DOCUMENTO_PROPRIETA"
+            con-visibilita
+          />
         </div>
       </q-tab-panel>
     </q-tab-panels>

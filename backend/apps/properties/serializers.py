@@ -228,6 +228,7 @@ class PropertyDocumentSerializer(serializers.ModelSerializer):
             "descrizione",
             "data_scadenza",
             "scaduto",
+            "visibile_inquilini",
             "created_at",
         ]
         # La property è imposta dalla view (l'immobile attivo della richiesta).

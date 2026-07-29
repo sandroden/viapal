@@ -674,6 +674,14 @@ class PropertyDocument(TimestampedModel):
         verbose_name="data di scadenza",
         help_text="Facoltativa: es. scadenza registrazione da rinnovare.",
     )
+    visibile_inquilini = models.BooleanField(
+        default=False,
+        verbose_name="visibile agli inquilini",
+        help_text=(
+            "Se attivo, gli inquilini dell'immobile vedono e scaricano il "
+            "documento nella loro area (es. contratto, regolamento condominiale)."
+        ),
+    )
     caricato_da = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

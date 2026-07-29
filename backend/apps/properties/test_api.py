@@ -537,12 +537,46 @@ class TestPropertyDocumentViewSet:
         assert resp.status_code == 204
         assert not PropertyDocument.objects.filter(id=doc.id).exists()
 
-    def test_inquilino_non_accede(self, client_inq_1, tenant_1, immobile):
+    def test_inquilino_vede_solo_documenti_condivisi(
+        self, client_inq_1, tenant_1, immobile, immobile2
+    ):
+        condiviso = PropertyDocument.objects.create(
+            property=immobile,
+            tipo="regolamento_condominiale",
+            file=_pdf_finto(),
+            visibile_inquilini=True,
+        )
+        # Non condiviso: resta riservato al lato gestione.
         PropertyDocument.objects.create(
-            property=immobile, tipo="contratto", file=_pdf_finto()
+            property=immobile, tipo="side_letter", file=_pdf_finto()
+        )
+        # Condiviso ma di un altro immobile: invisibile.
+        PropertyDocument.objects.create(
+            property=immobile2,
+            tipo="contratto",
+            file=_pdf_finto(),
+            visibile_inquilini=True,
         )
         resp = client_inq_1.get("/api/v1/property-documents/")
+        assert resp.status_code == 200
+        assert [d["id"] for d in resp.json()] == [condiviso.id]
+
+    def test_inquilino_non_scrive(self, client_inq_1, tenant_1, immobile):
+        doc = PropertyDocument.objects.create(
+            property=immobile,
+            tipo="contratto",
+            file=_pdf_finto(),
+            visibile_inquilini=True,
+        )
+        resp = client_inq_1.post(
+            "/api/v1/property-documents/",
+            {"tipo": "contratto", "file": _pdf_finto()},
+            format="multipart",
+        )
         assert resp.status_code in (403, 404)
+        resp = client_inq_1.delete(f"/api/v1/property-documents/{doc.id}/")
+        assert resp.status_code in (403, 404)
+        assert PropertyDocument.objects.filter(id=doc.id).exists()
 
     def test_sola_lettura_legge_ma_non_scrive(self, api_client, immobile, gruppo_proprietari):
         u = User.objects.create_user("solalettura", password="pwd123!")

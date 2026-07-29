@@ -17,6 +17,7 @@ export interface DocumentoFE {
   tenant?: number;
   tenant_nominativo?: string;
   property?: number;
+  visibile_inquilini?: boolean;
 }
 
 export interface TipoDocumentoOption {
@@ -98,6 +99,7 @@ function creaDocumentiStore(
         tipo: string;
         descrizione?: string;
         dataScadenza?: string | null;
+        visibileInquilini?: boolean;
         targetId?: number;
       }): Promise<{ ok: number; falliti: number }> {
         this.uploading = true;
@@ -122,6 +124,7 @@ function creaDocumentiStore(
         tipo: string;
         descrizione?: string;
         dataScadenza?: string | null;
+        visibileInquilini?: boolean;
         targetId?: number;
       }): Promise<DocumentoFE | null> {
         try {
@@ -130,6 +133,8 @@ function creaDocumentiStore(
           form.append('tipo', payload.tipo);
           if (payload.descrizione) form.append('descrizione', payload.descrizione);
           if (payload.dataScadenza) form.append('data_scadenza', payload.dataScadenza);
+          if (payload.visibileInquilini !== undefined)
+            form.append('visibile_inquilini', payload.visibileInquilini ? 'true' : 'false');
           if (payload.targetId) form.append(targetField, String(payload.targetId));
           const { data } = await api.post<DocumentoFE>(endpoint, form);
           this.documenti.unshift(data);
@@ -137,6 +142,23 @@ function creaDocumentiStore(
         } catch (e: unknown) {
           this.errore = messaggioErrore(e, 'Errore caricamento documento');
           return null;
+        }
+      },
+
+      /** Cambia la visibilità agli inquilini (solo documenti proprietà).
+       *  L'endpoint accetta solo form-data, quindi PATCH via FormData. */
+      async impostaVisibilita(id: number, visibile: boolean): Promise<boolean> {
+        this.errore = null;
+        try {
+          const form = new FormData();
+          form.append('visibile_inquilini', visibile ? 'true' : 'false');
+          const { data } = await api.patch<DocumentoFE>(`${endpoint}${id}/`, form);
+          const idx = this.documenti.findIndex((d) => d.id === id);
+          if (idx >= 0) this.documenti[idx] = data;
+          return true;
+        } catch (e: unknown) {
+          this.errore = messaggioErrore(e, 'Errore aggiornamento visibilità');
+          return false;
         }
       },
 
