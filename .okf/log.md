@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-07-29
+* **Maintain**: `domain/galleria-pubblica.md` — wordmark cliccabile per l'utente loggato: ritorno a `/p/` sull'immobile della galleria (o `/i/` per l'inquilino).
 * **Maintain**: `domain/galleria-pubblica.md` — ridimensionamento client-side in `ImageSlot` (`utils/image.ts`, WebP ≤1920px, fallback su file non decodificabili) e dialog "Scarica foto" (selezione miniature; una foto = file singolo, più foto = ZIP store-only generato da `utils/zip.ts`).
 
 ## 2026-07-24

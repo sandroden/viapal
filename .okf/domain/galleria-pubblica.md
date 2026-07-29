@@ -65,6 +65,14 @@ per proprietario: `ImageSlot.vue` (upload file/drag/**paste Ctrl-V** via listene
 + hover; prop `multiple` opt-in → evento `upload-many` per l'**upload multiplo simultaneo**,
 i singleton restano a file singolo), `EditableText.vue` (`q-popup-edit`, **no contenteditable**).
 
+**Ritorno alla gestione**: per l'utente autenticato il wordmark "Viapal · annuncio" è un
+link (per l'anonimo resta un `<div>` inerte). Destinazione calcolata sull'**appartenenza**,
+non sul ruolo — anche il gestore lavora da `/p/`: se l'immobile della galleria è fra le
+membership si va a `/p/` **su quell'immobile**, via `propertiesStore.cambia(id)` quando non
+è già l'attivo (hard reload voluto, azzera gli store dell'immobile precedente); altrimenti
+`auth.homePath` (inquilino → `/i/`). Se la home risolve a `/login` il link non compare:
+meglio nessun link che rimandare al login uno che è già dentro.
+
 **Ridimensionamento lato client**: `handleFiles` di `ImageSlot` è l'unico imbuto per
 picker/drag/paste e vi passa ogni file per `resizeImageFile` (`utils/image.ts`, portata dal
 progetto "nicolas"): canvas → max 1920px di lato → **WebP** q 0.85 (fallback JPEG se il
