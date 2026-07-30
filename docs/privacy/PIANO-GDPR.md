@@ -128,11 +128,14 @@ anche `/media-private` come statico, bypassando la vista).
 - [x] Fase 0.1–0.5 media protetti (vista `core/media_private.py`, test
       `test_media_private.py`, validato in dev con agent-browser 2026-07-30)
 - [x] Fase 0.6 log accessi documenti (logger `viapal.media_private`)
-- [ ] Fase 0 deploy in produzione (procedura sopra)
+- [x] Fase 0 deploy in produzione (2026-07-30: immagini via CI, compose
+      aggiornato su mio3, `migra_media_private` → 66 file, verifiche
+      esterne: doc 403 da anonimo, vecchi URL 404, galleria 200)
 - [x] Fase 1.1 informativa in app (`/i/privacy` + endpoint
       `/api/v1/privacy/informativa/`; placeholder gestore nei settings)
 - [x] Fase 1.2 command retention (`documenti_scaduti`, solo report)
 - [ ] Fase 1.3 registro compilato
-- [ ] Fase 1.5 DPA Contabo concluso
+- [x] Fase 1.5 DPA Contabo concluso (2026-07-30, dal Customer Control
+      Panel; annotare gli estremi nel registro)
 - [ ] Fase 1.7 verifica backup
 - [ ] Fase 2 firma documenti moglie + riga registro
