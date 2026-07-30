@@ -305,7 +305,16 @@ class DashboardInquilinoView(APIView):
             Receivable.objects.filter(
                 assignment__in=assignments,
                 stato=StatoPagamento.PAGATO,
-                causale__in=[Receivable.Causale.AFFITTO, Receivable.Causale.UTENZE],
+            )
+            .filter(
+                # Stesse causali della lista "da pagare" qui sopra: operative
+                # più le rate di versamento del deposito. Una rata di deposito
+                # pagata è un movimento dell'inquilino a tutti gli effetti.
+                Q(causale__in=CAUSALI_OPERATIVE)
+                | Q(
+                    causale=Receivable.Causale.DEPOSITO,
+                    importo_dovuto__gt=0,
+                )
             )
             .select_related("assignment__room", "utility_period")
             .order_by("-data_pagamento")[:10]
@@ -1556,12 +1565,13 @@ class RendicontoView(APIView):
 
         # Tutte le allocazioni bonifico→addebito dell'inquilino, in un'unica
         # query. Servono sia per le note di copertura sulle righe sia per il
-        # ledger "Versamenti e imputazioni".
-        allocs = list(
+        # ledger "Versamenti e imputazioni". Il ledger include anche le quote
+        # sul DEPOSITO (il bonifico c'è stato davvero); righe, saldi e resti
+        # restano invece sul solo perimetro non-DEPOSITO.
+        allocs_tutte = list(
             BankTransactionAllocation.objects.filter(
                 receivable__assignment__tenant=tenant
             )
-            .exclude(receivable__causale=Receivable.Causale.DEPOSITO)
             .select_related(
                 "bank_transaction",
                 "receivable",
@@ -1569,6 +1579,10 @@ class RendicontoView(APIView):
             )
             .order_by("bank_transaction__data", "bank_transaction_id", "id")
         )
+        allocs = [
+            a for a in allocs_tutte
+            if a.receivable.causale != Receivable.Causale.DEPOSITO
+        ]
         alloc_per_receivable: dict[int, list] = {}
         for a in allocs:
             alloc_per_receivable.setdefault(a.receivable_id, []).append(a)
@@ -1748,7 +1762,7 @@ class RendicontoView(APIView):
 
         # --- Ledger: versamenti (bonifici) e loro imputazioni ---
         versamenti_map: dict[int, dict] = {}
-        for a in allocs:
+        for a in allocs_tutte:
             bt = a.bank_transaction
             v = versamenti_map.get(bt.id)
             if v is None:
@@ -1780,11 +1794,21 @@ class RendicontoView(APIView):
         override = tenant.deposito_da_restituire or Decimal("0")
         da_restituire = override if override > 0 else versato
 
-        dep_qs = Receivable.objects.filter(
-            assignment__tenant=tenant, causale=Receivable.Causale.DEPOSITO
-        ).order_by("competenza_da", "id")
+        dep_qs = list(
+            Receivable.objects.filter(
+                assignment__tenant=tenant, causale=Receivable.Causale.DEPOSITO
+            ).order_by("competenza_da", "id")
+        )
         riga_restituzione = next(
             (r for r in dep_qs if r.importo_dovuto < 0), None
+        )
+        # Quanto del deposito è stato DAVVERO versato finora (rate pagate):
+        # con il deposito a rate `deposito_versato` in anagrafica è il totale
+        # pattuito, non quello incassato.
+        versato_effettivo = sum(
+            (r.importo_pagato or Decimal("0"))
+            for r in dep_qs
+            if r.importo_dovuto > 0
         )
         restituito_effettivo = bool(
             riga_restituzione
@@ -1804,6 +1828,8 @@ class RendicontoView(APIView):
                 "importo": float(r.importo_dovuto),
                 "pagato": float(r.importo_pagato or 0),
                 "stato": r.stato,
+                "data_pagamento": r.data_pagamento.isoformat()
+                if r.data_pagamento else None,
             }
             for r in dep_qs
         ]
@@ -1830,6 +1856,7 @@ class RendicontoView(APIView):
             "totale_versato": float(tot_versato),
             "deposito": {
                 "versato": float(versato),
+                "versato_effettivo": float(versato_effettivo),
                 "data_versamento": tenant.data_versamento_deposito.isoformat()
                 if tenant.data_versamento_deposito else None,
                 "da_restituire": float(da_restituire),

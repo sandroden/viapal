@@ -72,6 +72,7 @@ export interface RendicontoMovimentoDeposito {
   importo: number;
   pagato: number;
   stato: string;
+  data_pagamento: string | null;
 }
 
 export interface Rendiconto {
@@ -96,6 +97,9 @@ export interface Rendiconto {
   totale_versato: number;
   deposito: {
     versato: number;
+    // somma delle rate di versamento effettivamente pagate: con il
+    // deposito a rate `versato` è il totale pattuito, non l'incassato
+    versato_effettivo: number;
     data_versamento: string | null;
     da_restituire: number;
     override: boolean;

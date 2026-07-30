@@ -17,8 +17,8 @@ dall'inquilino a garanzia e restituito all'uscita. I campi vivono su
 
 | Campo | Ruolo |
 |-------|-------|
-| `deposito_versato` | importo versato all'ingresso |
-| `data_versamento_deposito` | data del versamento |
+| `deposito_versato` | importo del deposito; con le rate è il **totale pattuito**, valorizzato subito dall'action anche se non ancora incassato |
+| `data_versamento_deposito` | data del versamento (o della pattuizione, con le rate) |
 | `data_restituzione_prevista` | **trigger**: alla sua valorizzazione si genera il Receivable di restituzione |
 | `deposito_da_restituire` | override opzionale (se si restituisce importo diverso dal versato) |
 
@@ -45,7 +45,22 @@ aggiunge esplicitamente i DEPOSITO con `importo_dovuto > 0` al blocco
 addebito, QR bonifico incluso (conto utenze della proprietà). Il flusso
 "Ho pagato" passa da `/api/v1/deposit-charges/` (read-only +
 dichiara/conferma pagato, sole rate positive). Le restituzioni
-(negative) non compaiono mai fra i "da pagare".
+(negative) non compaiono mai fra i "da pagare". Le rate **pagate**
+compaiono in `ultimi_pagamenti` (home inquilino) insieme alle causali
+operative.
+
+# Deposito nel rendiconto
+
+Poiché `deposito_versato` è il pattuito, il rendiconto NON lo usa come
+"versato": espone `deposito.versato_effettivo` (somma di
+`importo_pagato` delle rate positive) e `deposito.movimenti` con
+`data_pagamento`. Il FE (ProprietarioRendiconto / InquilinoRendiconto)
+mostra in cronologia una riga informativa per **rata pagata** (fallback
+alla riga anagrafica unica solo per i rapporti storici senza rate
+riconciliate) e in simulazione uscita "Deposito pattuito / di cui
+incassato finora". Il ledger "Versamenti e imputazioni" include anche le
+allocazioni su DEPOSITO (il bonifico c'è stato davvero); righe, saldi e
+resti restano sul solo perimetro non-DEPOSITO.
 
 # Restituzione
 

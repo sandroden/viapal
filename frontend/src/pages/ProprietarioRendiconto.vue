@@ -464,12 +464,23 @@
         </p>
         <div class="vp-rd__tot-row">
           <span>
-            Deposito versato
+            {{ rendiconto.deposito.versato_effettivo < rendiconto.deposito.versato
+              ? 'Deposito pattuito'
+              : 'Deposito versato' }}
             <small v-if="rendiconto.deposito.data_versamento">
               (il {{ formattaData(rendiconto.deposito.data_versamento) }})
             </small>
           </span>
           <span class="vp-mono">{{ formattaEuro(rendiconto.deposito.versato) }}</span>
+        </div>
+        <div
+          v-if="rendiconto.deposito.versato_effettivo < rendiconto.deposito.versato"
+          class="vp-rd__tot-row"
+        >
+          <span>di cui incassato finora <small>(rate pagate)</small></span>
+          <span class="vp-mono">
+            {{ formattaEuro(rendiconto.deposito.versato_effettivo) }}
+          </span>
         </div>
         <div
           v-if="rendiconto.deposito.override"
@@ -618,10 +629,9 @@ const cronologico = computed<GruppoAnno[]>(() => {
   for (const s of r.sezioni) {
     for (const x of s.righe) rows.push({ ...x, causale: s.causale });
   }
-  // Deposito versato: mostrato in cronologia come voce a sé (denaro che
+  // Deposito versato: mostrato in cronologia come voci a sé (denaro che
   // l'inquilino ha versato), ma NON conteggiato nelle somme né nel saldo.
-  const dr = rigaDeposito(r);
-  if (dr) rows.push(dr);
+  rows.push(...righeDeposito(r));
   rows.sort((a, b) => (a.data ?? '').localeCompare(b.data ?? ''));
   const gruppi: GruppoAnno[] = [];
   let cur: GruppoAnno | null = null;
@@ -641,28 +651,56 @@ const cronologico = computed<GruppoAnno[]>(() => {
   return gruppi;
 });
 
-// Riga sintetica "Deposito versato" per la vista cronologica, costruita dai
-// campi deposito del rendiconto. Esclusa da somme/sbilancio (dovuto/pagato 0).
-function rigaDeposito(r: Rendiconto): RigaCron | null {
+// Righe "Deposito versato" per la vista cronologica: una per rata di
+// versamento effettivamente pagata (dai movimenti del deposito), così il
+// rendiconto mostra solo l'incassato e non il totale pattuito. Escluse da
+// somme/sbilancio (dovuto/pagato 0).
+function righeDeposito(r: Rendiconto): RigaCron[] {
   const d = r.deposito;
-  if (!d.versato || !d.data_versamento) return null;
-  return {
-    data: d.data_versamento,
-    mese: null,
-    scadenza: null,
-    descrizione: 'Deposito versato (garanzia)',
-    dovuto: 0,
-    pagato: 0,
-    diff: 0,
-    diff_mese: null,
-    nota: 'ok',
-    stato: 'pagato',
-    data_pagamento: d.data_versamento,
-    allocazioni: [],
-    causale: 'DEPOSITO',
-    deposito: true,
-    depImporto: d.versato,
-  };
+  const positivi = (d.movimenti ?? []).filter((m) => m.importo > 0);
+  const versate = positivi.filter((m) => m.pagato > 0);
+  if (versate.length) {
+    return versate.map((m) => ({
+      data: m.data_pagamento ?? m.data,
+      mese: null,
+      scadenza: null,
+      descrizione: m.descrizione || 'Deposito versato (garanzia)',
+      dovuto: 0,
+      pagato: 0,
+      diff: 0,
+      diff_mese: null,
+      nota: 'ok' as const,
+      stato: 'pagato',
+      data_pagamento: m.data_pagamento,
+      allocazioni: [],
+      causale: 'DEPOSITO',
+      deposito: true,
+      depImporto: m.pagato,
+    }));
+  }
+  // Rapporti storici: nessuna rata riconciliata nel sistema ma deposito
+  // registrato in anagrafica (versamento unico fuori piattaforma). Con più
+  // rate pattuite e nessuna pagata invece niente riga: non è stato versato.
+  if (positivi.length <= 1 && d.versato && d.data_versamento) {
+    return [{
+      data: d.data_versamento,
+      mese: null,
+      scadenza: null,
+      descrizione: 'Deposito versato (garanzia)',
+      dovuto: 0,
+      pagato: 0,
+      diff: 0,
+      diff_mese: null,
+      nota: 'ok' as const,
+      stato: 'pagato',
+      data_pagamento: d.data_versamento,
+      allocazioni: [],
+      causale: 'DEPOSITO',
+      deposito: true,
+      depImporto: d.versato,
+    }];
+  }
+  return [];
 }
 
 // Mappa anno → parziale, per agganciare saldo/resto/progressivo ai
