@@ -81,6 +81,8 @@ export default defineConfig((/* ctx */) => {
     devServer: {
       port: 9020,
       strictPort: false,
+      // host alternativi accettati da Vite (oltre a localhost/127.0.0.1)
+      allowedHosts: ['viapal.local'],
       // https: true,
       open: false, // niente apertura browser automatica
       proxy: {

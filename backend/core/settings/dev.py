@@ -25,6 +25,7 @@ X_FRAME_OPTIONS = 'SAMEORIGIN'
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:9020',
     'http://127.0.0.1:9020',
+    'http://viapal.local:9020',
     'http://localhost:9200',
     'http://127.0.0.1:9200',
 ]
@@ -33,6 +34,7 @@ CSRF_TRUSTED_ORIGINS = [
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:9020',
     'http://127.0.0.1:9020',
+    'http://viapal.local:9020',
     'http://localhost:9200',
     'http://127.0.0.1:9200',
 ]
