@@ -26,8 +26,8 @@ ENV ENV=production
 
 RUN python /code/manage.py check \
   && python /code/manage.py collectstatic --noinput --link \
-  && mkdir -p /code/media \
-  && chown -R ${APP_USER} /code/core/settings /code/media /code/static \
+  && mkdir -p /code/media /code/media-private \
+  && chown -R ${APP_USER} /code/core/settings /code/media /code/media-private /code/static \
   && mv uwsgi.ini /etc
 
 USER ${APP_USER}:${APP_USER}

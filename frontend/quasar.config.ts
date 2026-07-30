@@ -98,6 +98,10 @@ export default defineConfig((/* ctx */) => {
           target: 'http://localhost:8020',
           changeOrigin: true
         },
+        '/media-private': {
+          target: 'http://localhost:8020',
+          changeOrigin: true
+        },
         '/media': {
           target: 'http://localhost:8020',
           changeOrigin: true

@@ -11,6 +11,8 @@ from django.core.validators import FileExtensionValidator
 from django.db import models
 from django.utils.text import slugify
 
+from core.storages import media_private_storage
+
 from ._base import TimestampedModel
 from .owner import OwnerBankAccount, OwnerProfile
 from .tenant import TenantProfile, valida_dimensione_documento
@@ -655,6 +657,7 @@ class PropertyDocument(TimestampedModel):
     )
     file = models.FileField(
         upload_to=property_document_upload_to,
+        storage=media_private_storage,
         validators=[
             FileExtensionValidator(["pdf", "jpg", "jpeg", "png"]),
             valida_dimensione_documento,

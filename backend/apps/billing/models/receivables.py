@@ -8,6 +8,7 @@ Sostituisce RentPayment, UtilityCharge ed ExtraCharge — accorpando lo stesso
 from django.conf import settings
 from django.db import models
 
+from core.storages import media_private_storage
 from properties.models import OwnerBankAccount, OwnerProfile, RoomAssignment, TimestampedModel
 
 from .payments import StatoPagamento
@@ -97,6 +98,7 @@ class Receivable(TimestampedModel):
     )
     ricevuta = models.FileField(
         upload_to="ricevute/",
+        storage=media_private_storage,
         null=True,
         blank=True,
         verbose_name="ricevuta",

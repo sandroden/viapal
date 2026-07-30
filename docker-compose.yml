@@ -34,6 +34,7 @@ services:
     volumes:
       - ./local.py:/code/core/settings/local.py
       - ./data/media:/code/media
+      - ./data/media-private:/code/media-private
       - ./logs/uwsgi:/var/log/uwsgi
     networks:
       - db
@@ -41,7 +42,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=web"
-      - "traefik.http.routers.viapal-django.rule=Host(`${HOST:-viapal.e-den.it}`) && PathPrefix(`/admin`, `/static`, `/media`, `/api`, `/accounts`)"
+      - "traefik.http.routers.viapal-django.rule=Host(`${HOST:-viapal.e-den.it}`) && PathPrefix(`/admin`, `/static`, `/media`, `/media-private`, `/api`, `/accounts`)"
       - "traefik.http.routers.viapal-django.entrypoints=web-secured"
       - "traefik.http.routers.viapal-django.tls=true"
       - "traefik.http.routers.viapal-django.tls.certresolver=leresolver"

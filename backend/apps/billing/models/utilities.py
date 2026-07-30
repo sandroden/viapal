@@ -6,6 +6,7 @@ import builtins
 from django.db import models
 from django.utils.text import slugify
 
+from core.storages import media_private_storage
 from properties.models import OwnerProfile, Property, TimestampedModel
 
 from .expenses import Expense, Supplier
@@ -88,6 +89,7 @@ class UtilityBill(TimestampedModel):
     )
     file_pdf = models.FileField(
         upload_to=utility_bill_upload_to,
+        storage=media_private_storage,
         null=True,
         blank=True,
         verbose_name="file PDF",

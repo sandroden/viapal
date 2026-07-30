@@ -144,6 +144,12 @@ STATICFILES_DIRS = [
 MEDIA_URL = 'media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
+# Media privati (documenti identità, bollette, ricevute, spese): serviti
+# solo dalla vista autenticata core.media_private, mai come statici.
+# URL assoluto: l'auto-prefix di SCRIPT_NAME vale solo per MEDIA_URL.
+MEDIA_PRIVATE_URL = '/media-private/'
+MEDIA_PRIVATE_ROOT = os.path.join(BASE_DIR, "media-private")
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 

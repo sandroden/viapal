@@ -3,6 +3,7 @@ Modelli per fornitori, categorie di spesa e spese dell'immobile.
 """
 from django.db import models
 
+from core.storages import media_private_storage
 from properties.models import Contract, OwnerProfile, Property, TimestampedModel
 
 
@@ -149,6 +150,7 @@ class Expense(TimestampedModel):
     )
     allegato = models.FileField(
         upload_to="spese/",
+        storage=media_private_storage,
         null=True,
         blank=True,
         verbose_name="allegato",

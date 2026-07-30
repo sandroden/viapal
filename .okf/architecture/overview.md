@@ -38,6 +38,21 @@ inquilini. Serve due tipi di utente: **proprietari** (`/p/`) e **inquilini** (`/
 - Stack di produzione via `docker-compose.yml` (backend + frontend + postgres + redis).
 - In dev locale **non si usa Docker**: backend e frontend partono nativi (`just up`).
 
+# Media pubblici vs privati
+
+- `/media/` — SOLO contenuti pubblici (galleria annuncio, foto stanze):
+  statici (uwsgi `static-map = /media/=/code/media/`, trailing slash
+  obbligatorio; dev: `static()` in `core/urls.py`).
+- `/media-private/` — file riservati (documenti identità `documenti/`,
+  `documenti-proprieta/`, `bollette/`, `ricevute/`, `spese/`): storage
+  dedicato `MEDIA_PRIVATE_ROOT` (`core/storages.py`) servito SEMPRE dalla
+  vista autenticata `core/media_private.py`, che autorizza cercando il
+  record proprietario del file (inquilino interessato / membri della
+  property; log su logger `viapal.media_private`). Test:
+  `apps/properties/test_media_private.py`. Migrazione file:
+  `manage.py migra_media_private`.
+- Adempimenti GDPR e documenti da far firmare: `docs/privacy/PIANO-GDPR.md`.
+
 # Convenzioni
 
 - Lingua: tutto l'UI/copy/log/commit in **italiano**.

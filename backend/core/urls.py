@@ -5,6 +5,8 @@ from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import RedirectView
 
+from core.media_private import media_private_view
+
 # Header admin con l'ambiente: in produzione resta pulito, altrove segnala
 # a chiare lettere dove si sta operando.
 if settings.ENVIRONMENT == 'production':
@@ -29,6 +31,8 @@ urlpatterns = [
     path('api/auth/', include('accounts.urls')),
     path('api/v1/', include(api_v1_patterns)),
     path('accounts/', include('allauth.urls')),
+    # Media riservati: sempre via Django con controllo permessi (dev e prod).
+    path('media-private/<path:path>', media_private_view, name='media-private'),
     path('', RedirectView.as_view(url='/admin/', permanent=False)),
 ]
 
