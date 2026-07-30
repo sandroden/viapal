@@ -7,6 +7,7 @@ from rest_framework.routers import DefaultRouter
 from properties.views import (
     ContractViewSet,
     GalleryAreaViewSet,
+    InformativaPrivacyView,
     GalleryImageViewSet,
     OwnerBankAccountViewSet,
     OwnerProfileViewSet,
@@ -39,6 +40,11 @@ urlpatterns = [
         "public/galleria/<slug:slug>/",
         PublicGalleryView.as_view(),
         name="public-gallery",
+    ),
+    path(
+        "privacy/informativa/",
+        InformativaPrivacyView.as_view(),
+        name="privacy-informativa",
     ),
     *router.urls,
 ]

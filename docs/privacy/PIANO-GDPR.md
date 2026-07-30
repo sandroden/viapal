@@ -107,12 +107,31 @@ Per ogni proprietario esterno, PRIMA di dare accesso:
   (consenso solo per le notifiche push, già opt-in).
 - Contratti con Agenzia Entrate/autorità PS: sono titolari autonomi.
 
+## Deploy in produzione (Fase 0)
+
+La feature richiede, al primo deploy, uno spostamento dei file sul server:
+
+1. pull/build della nuova immagine e `docker compose up -d` (il compose ora
+   monta anche `./data/media-private:/code/media-private`);
+2. nel container: `python manage.py migra_media_private --dry-run` e poi
+   senza `--dry-run` (sposta documenti/bollette/ricevute/spese da
+   `data/media` a `data/media-private`);
+3. verifica: URL `/media-private/...` da anonimo → 403; vecchio URL
+   `/media/documenti/...` → 404; foto galleria pubblica → 200.
+
+Nota tecnica: in `uwsgi.ini` lo static-map è `/media/=/code/media/` con
+trailing slash obbligatorio (altrimenti il match per prefisso servirebbe
+anche `/media-private` come statico, bypassando la vista).
+
 ## Stato
 
-- [ ] Fase 0.1–0.5 media protetti
-- [ ] Fase 0.6 log accessi documenti
-- [ ] Fase 1.1 informativa in app
-- [ ] Fase 1.2 command retention
+- [x] Fase 0.1–0.5 media protetti (vista `core/media_private.py`, test
+      `test_media_private.py`, validato in dev con agent-browser 2026-07-30)
+- [x] Fase 0.6 log accessi documenti (logger `viapal.media_private`)
+- [ ] Fase 0 deploy in produzione (procedura sopra)
+- [x] Fase 1.1 informativa in app (`/i/privacy` + endpoint
+      `/api/v1/privacy/informativa/`; placeholder gestore nei settings)
+- [x] Fase 1.2 command retention (`documenti_scaduti`, solo report)
 - [ ] Fase 1.3 registro compilato
 - [ ] Fase 1.5 DPA Contabo concluso
 - [ ] Fase 1.7 verifica backup

@@ -190,6 +190,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/InquilinoDocumenti.vue'),
       },
       {
+        path: 'privacy',
+        name: 'i-privacy',
+        component: () => import('pages/InquilinoPrivacy.vue'),
+      },
+      {
         path: ':catchAll(.*)*',
         component: () => import('pages/ErrorNotFound.vue'),
       },

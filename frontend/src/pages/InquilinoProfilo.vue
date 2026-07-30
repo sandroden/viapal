@@ -84,6 +84,24 @@
       </q-item>
     </q-card>
 
+    <!-- Informativa privacy -->
+    <q-card class="vp-i-prof__card q-mt-md vp-i-prof__link">
+      <q-item clickable to="/i/privacy">
+        <q-item-section avatar>
+          <q-icon name="privacy_tip" color="primary" size="28px" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Informativa privacy</q-item-label>
+          <q-item-label caption>
+            Come vengono trattati i tuoi dati e i tuoi documenti
+          </q-item-label>
+        </q-item-section>
+        <q-item-section side>
+          <q-icon name="chevron_right" color="grey-6" />
+        </q-item-section>
+      </q-item>
+    </q-card>
+
     <!-- Notifiche push: visibile solo se browser e server le supportano -->
     <q-card v-if="push.disponibile.value" class="vp-i-prof__card q-mt-md">
       <q-item>

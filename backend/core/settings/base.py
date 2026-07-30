@@ -150,6 +150,14 @@ MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 MEDIA_PRIVATE_URL = '/media-private/'
 MEDIA_PRIVATE_ROOT = os.path.join(BASE_DIR, "media-private")
 
+# Riferimenti del gestore della piattaforma (responsabile ex art. 28)
+# mostrati nell'informativa privacy degli inquilini; sovrascrivibili in
+# local.py. La data va aggiornata a ogni revisione del testo (frontend
+# InquilinoPrivacy.vue + docs/privacy/informativa-inquilini.md).
+PRIVACY_GESTORE_NOME = 'Sandro Dentella'
+PRIVACY_GESTORE_EMAIL = 'sandro.dentella@gmail.com'
+PRIVACY_INFORMATIVA_AGGIORNATA = '2026-07-30'
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 

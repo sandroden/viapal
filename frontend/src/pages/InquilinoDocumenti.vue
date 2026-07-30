@@ -6,6 +6,8 @@
       Carica qui i tuoi documenti (carta d'identità, codice fiscale, passaporto,
       permesso di soggiorno, contratto di lavoro). Per i documenti fronte/retro
       carica due file indicando "fronte" e "retro" nella descrizione.
+      I documenti sono visibili solo a te e ai proprietari:
+      <router-link to="/i/privacy">informativa privacy</router-link>.
     </p>
 
     <DocumentiPannello :store="store" :tipi="TIPI_DOCUMENTO_INQUILINO" />

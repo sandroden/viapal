@@ -4,9 +4,11 @@ ViewSet per l'app properties.
 import datetime
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Max, Q, Sum
 from django.db.models.functions import Coalesce
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status
 from rest_framework.decorators import action
@@ -14,6 +16,7 @@ from rest_framework.generics import RetrieveAPIView
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import SAFE_METHODS, AllowAny
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from accounts.permissions import IsInquilinoSelf, IsPropertyMember
@@ -24,6 +27,7 @@ from properties.models import (
     GalleryImage,
     OwnerBankAccount,
     OwnerProfile,
+    OwnershipShare,
     Property,
     PropertyDocument,
     Room,
@@ -1358,4 +1362,48 @@ class PublicGalleryView(RetrieveAPIView):
     def get_queryset(self):
         return Property.objects.filter(pubblica=True).prefetch_related(
             "rooms", "rooms__gallery_images", "gallery_areas", "gallery_areas__gallery_images"
+        )
+
+
+class InformativaPrivacyView(APIView):
+    """Dati dinamici per l'informativa privacy dell'inquilino (art. 13 GDPR).
+
+    I titolari del trattamento sono i proprietari con quota attiva oggi
+    sull'immobile dell'inquilino; il gestore della piattaforma (responsabile
+    ex art. 28) viene dai settings, sovrascrivibili in local.py.
+    """
+
+    def get(self, request):
+        profilo = getattr(request.user, "tenant_profile", None)
+        if profilo is None:
+            raise Http404("Informativa disponibile solo per account inquilino.")
+        oggi = datetime.date.today()
+        shares = (
+            OwnershipShare.objects.filter(
+                property=profilo.property, valid_from__lte=oggi
+            )
+            .filter(Q(valid_to__isnull=True) | Q(valid_to__gt=oggi))
+            .select_related("owner__user")
+            .order_by("owner__nominativo")
+        )
+        titolari = [
+            {
+                "nominativo": share.owner.nominativo,
+                "email": share.owner.user.email or None,
+            }
+            for share in shares
+        ]
+        return Response(
+            {
+                "immobile": {
+                    "nome": profilo.property.nome,
+                    "indirizzo": profilo.property.indirizzo,
+                },
+                "titolari": titolari,
+                "gestore": {
+                    "nome": settings.PRIVACY_GESTORE_NOME,
+                    "email": settings.PRIVACY_GESTORE_EMAIL,
+                },
+                "aggiornata_il": settings.PRIVACY_INFORMATIVA_AGGIORNATA,
+            }
         )
