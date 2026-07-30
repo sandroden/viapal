@@ -18,15 +18,21 @@ Questo progetto usa **bun** come package manager.
 - **Vite** come build tool
 - **SCSS** come preprocessore CSS
 
+## Porte dev
+
+Porte dedicate a questo progetto per evitare conflitti con altri progetti attivi:
+- Dev server Quasar: **9020** (`devServer.port` in `quasar.config.ts`)
+- Backend Django: **8020**
+
 ## Proxy verso Django
 
-Il dev server (`quasar.config.ts`) ha un proxy configurato verso `http://localhost:8000` per:
+Il dev server (`quasar.config.ts`) ha un proxy configurato verso `http://localhost:8020` per:
 - `/api` — API backend
 - `/admin` — Django admin
 - `/static` — File statici Django
 - `/media` — File media Django
 
-Assicurarsi che il backend Django sia in esecuzione sulla porta 8000.
+Assicurarsi che il backend Django sia in esecuzione sulla porta 8020.
 
 ## Struttura
 

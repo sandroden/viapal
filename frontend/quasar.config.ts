@@ -79,25 +79,25 @@ export default defineConfig((/* ctx */) => {
 
     // Full list of options: https://v2.quasar.dev/quasar-cli-vite/quasar-config-file#devserver
     devServer: {
-      port: 9000,
+      port: 9020,
       strictPort: false,
       // https: true,
       open: false, // niente apertura browser automatica
       proxy: {
         '/api': {
-          target: 'http://localhost:8000',
+          target: 'http://localhost:8020',
           changeOrigin: true
         },
         '/admin': {
-          target: 'http://localhost:8000',
+          target: 'http://localhost:8020',
           changeOrigin: true
         },
         '/static': {
-          target: 'http://localhost:8000',
+          target: 'http://localhost:8020',
           changeOrigin: true
         },
         '/media': {
-          target: 'http://localhost:8000',
+          target: 'http://localhost:8020',
           changeOrigin: true
         }
       }

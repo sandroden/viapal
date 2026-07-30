@@ -175,7 +175,7 @@ DEFAULT_FROM_EMAIL = os.environ.get(
 )
 
 # URL base della PWA, usato per i link cliccabili nelle email agli inquilini.
-# In dev viene sovrascritto in local.py/dev.py con http://localhost:9000.
+# In dev viene sovrascritto in local.py/dev.py con http://localhost:9020.
 APP_BASE_URL = os.environ.get('APP_BASE_URL', 'https://viapal.e-den.it')
 
 # Web Push (VAPID). Chiavi generabili con `manage.py genera_chiavi_vapid`:

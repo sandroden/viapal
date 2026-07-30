@@ -183,8 +183,8 @@ export function fmtConsumo(consumo: string | number | null | undefined): string 
 }
 
 // Riporta un URL media a path relativo (stessa origin del frontend). Senza
-// questo, un'URL assoluta verso Django (:8000) nell'iframe del PDF viene
-// bloccata da X-Frame-Options SAMEORIGIN (app servita su :9000). Il path
+// questo, un'URL assoluta verso Django (:8020) nell'iframe del PDF viene
+// bloccata da X-Frame-Options SAMEORIGIN (app servita su :9020). Il path
 // relativo passa invece dal proxy /media → stessa origin.
 export function mediaPath(url: string | null | undefined): string | null {
   if (!url) return null;

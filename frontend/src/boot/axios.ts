@@ -9,7 +9,7 @@ declare module 'vue' {
 }
 
 // Stessa-origine in produzione (nginx fa proxy verso il backend).
-// In dev il proxy di Quasar inoltra /api -> http://localhost:8000.
+// In dev il proxy di Quasar inoltra /api -> http://localhost:8020.
 const api = axios.create({
   baseURL: '/',
   withCredentials: true,

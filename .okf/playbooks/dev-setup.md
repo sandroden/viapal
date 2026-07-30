@@ -25,8 +25,8 @@ cd ../frontend && bun install
 cd .. && just up
 ```
 
-- Backend admin: <http://localhost:8000/admin/> (`admin` / `admin`)
-- Frontend: <http://localhost:9000/login>
+- Backend admin: <http://localhost:8020/admin/> (`admin` / `admin`)
+- Frontend: <http://localhost:9020/login>
 
 # Utenti dev (creati al migrate)
 

@@ -48,8 +48,8 @@ cd ..
 just up
 ```
 
-- Backend Django:   <http://localhost:8000/admin/>  (admin: `admin` / `admin`)
-- Frontend Quasar:  <http://localhost:9000/login>
+- Backend Django:   <http://localhost:8020/admin/>  (admin: `admin` / `admin`)
+- Frontend Quasar:  <http://localhost:9020/login>
 
 ### Utenti dev
 
@@ -70,8 +70,8 @@ proprietari → `/p/`, inquilini → `/i/`.
 
 ```bash
 just                      # mostra l'elenco
-just backend              # solo Django dev (porta 8000)
-just frontend             # solo Quasar dev (porta 9000)
+just backend              # solo Django dev (porta 8020)
+just frontend             # solo Quasar dev (porta 9020)
 just up                   # entrambi in parallelo
 just migrate              # uv run manage.py migrate
 just test                 # pytest backend

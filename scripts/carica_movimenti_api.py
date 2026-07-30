@@ -25,13 +25,13 @@ raffinare `--escludi`; `--no-filtro` carica tutto.
 Uso (locale, anteprima filtro senza scrivere):
   uv run scripts/carica_movimenti_api.py \\
       --csv dati/movimenti-sandro-storico-2022-2023.csv \\
-      --owner-account 14 --base-url http://localhost:8000 \\
+      --owner-account 14 --base-url http://localhost:8020 \\
       --dry-run --dump-esclusi /tmp/scarti.csv
 
 Uso (locale):
   uv run scripts/carica_movimenti_api.py \\
       --csv dati/movimenti-sandro-storico-2022-2023.csv \\
-      --owner-account 14 --base-url http://localhost:8000 --dry-run
+      --owner-account 14 --base-url http://localhost:8020 --dry-run
 
 Online (quando pronto, conto Sandro/Alessandro = 14):
   uv run scripts/carica_movimenti_api.py \\
@@ -119,7 +119,7 @@ def main() -> int:
         required=True,
         help="id OwnerBankAccount (es. 14 = Webank Sandro/Alessandro).",
     )
-    ap.add_argument("--base-url", default="http://localhost:8000")
+    ap.add_argument("--base-url", default="http://localhost:8020")
     ap.add_argument("--user", default="admin")
     ap.add_argument("--password", default="vicie")
     ap.add_argument(

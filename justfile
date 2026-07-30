@@ -11,7 +11,7 @@ default:
 
 # Avvia il backend Django in dev (Postgres dev :5434, db viapal)
 backend:
-    cd backend && ENV=dev uv run python manage.py runserver 0.0.0.0:8000
+    cd backend && ENV=dev uv run python manage.py runserver 0.0.0.0:8020
 
 # Esegui le migrazioni
 migrate:
@@ -37,7 +37,7 @@ lint-backend:
 # NB: Quasar @quasar/app-vite richiede Node >= 22.22; lo selezioniamo via nvm
 # (lo script .nvmrc in frontend/ fissa la versione)
 
-# Avvia Quasar dev server (proxy verso backend :8000)
+# Avvia Quasar dev server su :9020 (proxy verso backend :8020)
 frontend:
     #!/usr/bin/env bash
     set -euo pipefail

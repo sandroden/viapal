@@ -21,18 +21,18 @@ ALLOWED_HOSTS = ['*']
 # Iframe stessa-origine permessi (per l'anteprima PDF nel frontend via proxy)
 X_FRAME_OPTIONS = 'SAMEORIGIN'
 
-# Frontend Quasar dev su :9000
+# Frontend Quasar dev su :9020
 CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:9000',
-    'http://127.0.0.1:9000',
+    'http://localhost:9020',
+    'http://127.0.0.1:9020',
     'http://localhost:9200',
     'http://127.0.0.1:9200',
 ]
 
-# CORS per dev cross-origin (Quasar :9000 -> Django :8000)
+# CORS per dev cross-origin (Quasar :9020 -> Django :8020)
 CORS_ALLOWED_ORIGINS = [
-    'http://localhost:9000',
-    'http://127.0.0.1:9000',
+    'http://localhost:9020',
+    'http://127.0.0.1:9020',
     'http://localhost:9200',
     'http://127.0.0.1:9200',
 ]

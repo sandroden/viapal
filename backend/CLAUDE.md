@@ -19,7 +19,7 @@ Questo progetto usa **uv** come package manager.
 ## Comandi utili
 
 ```bash
-uv run manage.py runserver       # Avvia il server di sviluppo
+uv run manage.py runserver 8020  # Avvia il server di sviluppo (porta dedicata 8020)
 uv run manage.py makemigrations  # Crea le migrazioni
 uv run manage.py migrate         # Applica le migrazioni
 uv run manage.py createsuperuser # Crea un superuser
