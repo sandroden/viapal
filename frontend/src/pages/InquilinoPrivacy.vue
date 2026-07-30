@@ -97,7 +97,21 @@
       </section>
 
       <section>
-        <h2>7. I tuoi diritti</h2>
+        <h2>7. Cookie e archiviazione locale</h2>
+        <p>
+          L'app usa esclusivamente cookie tecnici, necessari al
+          funzionamento: <code>sessionid</code> (sessione di accesso) e
+          <code>csrftoken</code> (protezione dei moduli). Usa inoltre la
+          memoria locale del browser (localStorage) per il token di accesso
+          e alcune preferenze, e — se installi l'app — la cache
+          dell'applicazione. Non sono usati cookie di profilazione, di
+          statistica o di terze parti, né strumenti di tracciamento: per
+          questo non è richiesto alcun banner di consenso.
+        </p>
+      </section>
+
+      <section>
+        <h2>8. I tuoi diritti</h2>
         <p>
           Puoi esercitare in ogni momento i diritti previsti dagli artt.
           15–22 GDPR (accesso, rettifica, cancellazione, limitazione,

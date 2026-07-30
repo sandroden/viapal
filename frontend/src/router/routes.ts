@@ -50,6 +50,21 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // Privacy/cookie per i visitatori anonimi (link dal footer della
+    // galleria pubblica). L'informativa completa per gli inquilini resta
+    // in /i/privacy.
+    path: '/privacy',
+    component: () => import('layouts/PublicLayout.vue'),
+    meta: { public: true },
+    children: [
+      {
+        path: '',
+        name: 'privacy-pubblica',
+        component: () => import('pages/PrivacyPubblica.vue'),
+      },
+    ],
+  },
+  {
     path: '/p',
     component: () => import('layouts/ProprietarioLayout.vue'),
     meta: { role: 'proprietario' },

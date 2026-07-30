@@ -379,6 +379,7 @@
 
       <footer class="gal-footer">
         Pagina pubblica · nessun accesso richiesto — per candidarti scrivi tramite il modulo di contatto.
+        <router-link to="/privacy" class="gal-footer-link">Privacy e cookie</router-link>
       </footer>
 
       <!-- Lightbox: galleria ingrandita navigabile -->
@@ -791,6 +792,8 @@ watch(() => route.params.slug, load);
 .chip { font-size: 12px; padding: 5px 10px; border-radius: 999px; background: var(--vp-paper-2); color: var(--vp-ink-2); }
 
 .gal-footer { padding: 40px 28px 60px; text-align: center; color: var(--vp-ink-3); font-size: 12.5px; }
+.gal-footer-link { display: inline-block; margin-left: 10px; color: var(--vp-ink-3); text-decoration: underline; }
+.gal-footer-link:hover { color: var(--vp-terra-deep); }
 
 .lightbox { position: fixed; inset: 0; background: rgba(15,12,9,.92); z-index: 100; display: none; align-items: center; justify-content: center; padding: 40px; }
 .lightbox.open { display: flex; }

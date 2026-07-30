@@ -88,7 +88,21 @@ autenticazione, accesso ai documenti limitato all'interessato e al
 titolare). I documenti caricati nell'app sono accessibili solo previa
 autenticazione.
 
-## 7. Diritti dell'interessato
+## 7. Cookie e archiviazione locale
+
+L'app utilizza esclusivamente **cookie tecnici**, strettamente necessari al
+funzionamento: `sessionid` (mantiene la sessione di accesso) e `csrftoken`
+(protezione dei moduli contro richieste contraffatte). Utilizza inoltre la
+memoria locale del browser (*localStorage*) per il token di accesso e alcune
+preferenze d'uso (es. immobile selezionato) e, se l'app è installata come
+PWA, la cache dell'applicazione (*service worker*).
+
+Non sono utilizzati cookie di profilazione, di statistica o di terze parti,
+né strumenti di tracciamento; per questo, ai sensi dell'art. 122 del Codice
+Privacy e delle Linee guida cookie del Garante (10 giugno 2021), non è
+richiesto alcun banner di consenso.
+
+## 8. Diritti dell'interessato
 
 L'interessato può esercitare in ogni momento i diritti di cui agli artt.
 15–22 GDPR: accesso, rettifica, cancellazione, limitazione, portabilità,
