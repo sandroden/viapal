@@ -56,7 +56,8 @@ export const TIPI_FRONTE_RETRO = ['carta_identita', 'permesso_soggiorno'];
 /** Adatta un documento "piatto" (documenti della casa) alla forma delle voci
  *  del fascicolo, così il visore è lo stesso ovunque. */
 export function voceDaDocumento(doc: DocumentoFE): VoceFascicolo {
-  const estensione = (doc.file.split('?')[0] ?? '').split('.').pop()?.toLowerCase() ?? '';
+  const percorso = doc.file.split('?')[0] ?? '';
+  const estensione = percorso.split('.').pop()?.toLowerCase() ?? '';
   const stato: StatoDocumento = doc.scaduto ? 'scaduto' : 'ok';
   return {
     tipo: doc.tipo,
@@ -74,7 +75,7 @@ export function voceDaDocumento(doc: DocumentoFE): VoceFascicolo {
       {
         id: doc.id,
         file: doc.file,
-        nome_file: decodeURIComponent(doc.file.split('/').pop() ?? ''),
+        nome_file: decodeURIComponent(percorso.split('/').pop() ?? ''),
         estensione,
         is_pdf: estensione === 'pdf',
         descrizione: doc.descrizione,
