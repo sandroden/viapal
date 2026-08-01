@@ -1,5 +1,9 @@
 # Update Log
 
+## 2026-08-01
+* **Creation**: `domain/fascicolo-documenti.md` — fascicolo documenti inquilino: stati derivati nel backend (soglia 60 giorni), facoltativi non mostrati come mancanti, atto di subentro a carico proprietà, pagine fronte/retro senza modifiche di schema, visore interno (inline + SAMEORIGIN + denylist SW). Sollecito e quadro della casa non implementati.
+* **Maintain**: `models/properties.md` — rimando al fascicolo da `TenantDocument`.
+
 ## 2026-07-30
 * **Maintain**: `architecture/overview.md` — media pubblici vs privati: nuovo storage `MEDIA_PRIVATE_ROOT` + vista autenticata `/media-private/` (documenti, bollette, ricevute, spese); `/media/` resta statico solo per i contenuti pubblici. Riferimento al piano GDPR in `docs/privacy/`.
 

@@ -29,6 +29,7 @@ Partire da qui, poi seguire solo i link rilevanti (progressive disclosure).
 * [Saldi fratelli](domain/saldi-fratelli.md) - contabilità inter-proprietario e settlement.
 * [Conto economico](domain/conto-economico.md) - cassa vs competenza e il ponte tra i due.
 * [Galleria pubblica](domain/galleria-pubblica.md) - annuncio affitto /g/slug, editing in-place, endpoint AllowAny.
+* [Fascicolo documenti](domain/fascicolo-documenti.md) - checklist documenti inquilino, stati derivati (scadenza/mancante/a carico proprietà), visore interno.
 * [Unità intera](domain/unita-intera.md) - Property.tipo_gestione, Room come unità locata, un solo pagatore.
 
 # Decisioni e invarianti

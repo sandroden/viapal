@@ -10,4 +10,5 @@ Conoscenza non ricostruibile dai soli `models.py`: algoritmi, regole, flussi.
 * [Deposito](deposito.md) - versamento e restituzione cauzionale.
 * [Saldi fratelli](saldi-fratelli.md) - contabilità inter-proprietario e settlement.
 * [Conto economico](conto-economico.md) - cassa vs competenza e il ponte tra i due.
+* [Fascicolo documenti](fascicolo-documenti.md) - checklist documenti inquilino, stati derivati, visore interno.
 * [Unità intera](unita-intera.md) - Property.tipo_gestione, Room come unità locata, un solo pagatore.

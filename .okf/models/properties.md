@@ -33,6 +33,7 @@ Tutti i modelli ereditano da `TimestampedModel` (`created_at`/`updated_at`).
 - [Unità intera](/domain/unita-intera.md) — `tipo_gestione`: su `unita_intera`
   il backend crea **una sola** Room implicita "Appartamento" (signal `post_save`,
   vincolo max-1 in `Room.clean` + API).
+- [Fascicolo documenti](/domain/fascicolo-documenti.md) — `TenantDocument` raggruppato per tipo con stati derivati (mancante/in scadenza/scaduto/a carico proprietà) e visore interno.
 - [Deposito](/domain/deposito.md) — `deposito_*` / `data_restituzione_prevista`.
 - [Generazione affitti](/domain/generazione-affitti.md) — `canone_mensile`, `RoomAssignment`.
 - `costo_cessione`: totale cessione stanza, split 50/50 (Receivable REGISTRAZIONE + Expense proprietari).
