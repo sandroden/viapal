@@ -12,7 +12,7 @@
       </header>
 
       <!-- La pagina -->
-      <div class="vp-dvis__foglio">
+      <div class="vp-dvis__foglio" :class="{ 'vp-dvis__foglio--pdf': pagina?.is_pdf }">
         <DocPagina v-if="pagina" :key="pagina.id" :pagina="pagina" />
       </div>
 
@@ -164,6 +164,10 @@ function confermaElimina() {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+/* Il PDF ha già i suoi margini interni: gli si dà tutta la finestra. */
+.vp-dvis__foglio--pdf {
+  padding: 0;
 }
 .vp-dvis__pagine {
   display: flex;

@@ -22,9 +22,15 @@ defineProps<{ pagina: PaginaDocumento }>();
   border: none;
   border-radius: var(--vp-r-md);
 }
+/* Il PDF ha il suo visore interno (zoom, pagine): gli si dà tutto lo spazio
+   del riquadro. `align-self: stretch` serve perché i contenitori centrano le
+   immagini, e un iframe centrato non risolverebbe `height: 100%`. */
 .vp-dpag--pdf {
+  flex: 1;
+  align-self: stretch;
   width: 100%;
   height: 100%;
+  min-height: 0;
   background: var(--vp-cream);
 }
 /* L'immagine si adatta alla propria forma: niente bande di sfondo attorno. */

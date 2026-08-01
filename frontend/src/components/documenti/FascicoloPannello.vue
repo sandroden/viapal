@@ -417,8 +417,10 @@ watch(
   top: var(--vp-gap-4);
   display: flex;
   flex-direction: column;
+  /* Altezza piena della finestra: i PDF hanno bisogno di spazio vero. */
+  height: calc(100vh - 140px);
   min-height: 520px;
-  max-height: calc(100vh - 120px);
+  max-height: 900px;
   background: var(--vp-paper-2);
   border: 1px solid var(--vp-paper-3);
   border-radius: var(--vp-r-lg);
@@ -447,7 +449,7 @@ watch(
 .vp-fasc__vcorpo {
   flex: 1;
   min-height: 0;
-  padding: var(--vp-gap-4);
+  padding: var(--vp-gap-3);
   display: flex;
   align-items: center;
   justify-content: center;
