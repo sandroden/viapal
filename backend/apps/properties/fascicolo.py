@@ -26,8 +26,9 @@ dedurre chi ha bisogno di un permesso di soggiorno, e mostrarle come
 "mancanti" sarebbe un allarme falso. Restano comunque caricabili scegliendo
 il tipo dal modulo di caricamento.
 """
-import datetime
 from dataclasses import dataclass
+
+from django.utils import timezone
 
 from properties.models import TenantDocument
 
@@ -134,7 +135,11 @@ def _voce(definizione, documenti, oggi):
         "stato_display": STATI_DISPLAY[stato],
         "data_scadenza": data_scadenza,
         "giorni_alla_scadenza": (data_scadenza - oggi).days if data_scadenza else None,
-        "caricato_il": min(d.created_at for d in documenti).date() if documenti else None,
+        "caricato_il": (
+            timezone.localtime(min(d.created_at for d in documenti)).date()
+            if documenti
+            else None
+        ),
         "pagine": pagine,
     }
 
@@ -154,7 +159,7 @@ def _altro(doc, oggi):
         "giorni_alla_scadenza": (
             (doc.data_scadenza - oggi).days if doc.data_scadenza else None
         ),
-        "caricato_il": doc.created_at.date(),
+        "caricato_il": timezone.localtime(doc.created_at).date(),
         "titolo": doc.descrizione or doc.get_tipo_display(),
         "pagine": [pagina],
     }
@@ -166,7 +171,9 @@ def costruisci_fascicolo(tenant, documenti=None, oggi=None):
     ``documenti`` permette di passare un queryset già filtrato/prefetchato
     (evita una query per inquilino quando si costruiscono più fascicoli).
     """
-    oggi = oggi or datetime.date.today()
+    # Ora locale, non del server: un documento caricato alle 00:30 a Roma è
+    # delle 22:30 del giorno prima in UTC, e mostrerebbe la data sbagliata.
+    oggi = oggi or timezone.localdate()
     if documenti is None:
         documenti = tenant.documenti.all()
     per_tipo = {}
