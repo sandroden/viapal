@@ -35,12 +35,15 @@ def invia_push(
     url: str = "/",
     oggetto_riferimento=None,
     salva_notification: bool = True,
+    codice: str = "",
 ) -> dict:
     """Invia una notifica push a tutti i device registrati dell'utente.
 
     ``url`` è il path della PWA aperto al click sulla notifica (gestito dal
-    service worker). Restituisce ``{"inviate", "rimosse", "errori"}``; non
-    solleva mai: il push è un canale best-effort, gli errori vengono loggati.
+    service worker). ``codice`` identifica il tipo di comunicazione nel
+    registro (es. ``avviso_utenze``). Restituisce
+    ``{"inviate", "rimosse", "errori"}``; non solleva mai: il push è un canale
+    best-effort, gli errori vengono loggati.
     """
     esito = {"inviate": 0, "rimosse": 0, "errori": 0}
     if user is None or not push_configurato():
@@ -50,6 +53,10 @@ def invia_push(
     )
     if not subscriptions:
         return esito
+    # Etichetta del primo device raggiunto: nel registro sta al posto
+    # dell'indirizzo email (un push non ha destinatario leggibile).
+    primo = subscriptions[0]
+    destinatario = (primo.device_label or primo.endpoint)[:254]
 
     from pywebpush import WebPushException, webpush
 
@@ -91,6 +98,8 @@ def invia_push(
         Notification.objects.create(
             user=user,
             canale=Notification.CanaleComunicazione.PUSH,
+            codice=codice,
+            destinatario=destinatario,
             oggetto=titolo,
             corpo=corpo,
             inviata_at=timezone.now(),

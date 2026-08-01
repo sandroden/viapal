@@ -399,8 +399,13 @@ def invia_avvisi_utenze(period, dry_run: bool = False, escludi_ids=None) -> dict
             ),
             url=f"/i/utenze/{a['receivable_id']}",
             oggetto_riferimento=receivable,
+            codice=TEMPLATE_CODICE,
         )
         push_inviate += a["push"]["inviate"]
+        # Il `try` copre la costruzione del messaggio (QR compreso) e l'invio:
+        # tutto ciò che può impedire il recapito. Le scritture successive
+        # stanno fuori — un errore lì non deve far risultare "fallita" una
+        # mail effettivamente consegnata.
         try:
             msg = EmailMultiAlternatives(
                 a["oggetto"], a["corpo"], from_email, [a["email"]]
@@ -420,24 +425,43 @@ def invia_avvisi_utenze(period, dry_run: bool = False, escludi_ids=None) -> dict
                 )
                 msg.attach(qr)
             msg.send(fail_silently=False)
-            a["esito"] = "inviato"
-            inviati += 1
-            if receivable is not None and receivable.scadenza != nuova_scadenza:
-                receivable.scadenza = nuova_scadenza
-                receivable.save(update_fields=["scadenza"])
-            if user is not None:
-                Notification.objects.create(
-                    user=user,
-                    canale=Notification.CanaleComunicazione.EMAIL,
-                    oggetto=a["oggetto"],
-                    corpo=a["corpo"],
-                    inviata_at=_now(),
-                    oggetto_riferimento=receivable,
-                )
         except Exception as e:  # noqa: BLE001 — riportiamo l'errore all'utente
             a["esito"] = "errore"
             a["errore"] = str(e)
             errori += 1
+            if user is not None:
+                # Il fallimento resta nel registro: "cosa è stato inviato"
+                # senza "cosa non è partito" è la metà meno utile.
+                Notification.objects.create(
+                    user=user,
+                    canale=Notification.CanaleComunicazione.EMAIL,
+                    codice=TEMPLATE_CODICE,
+                    destinatario=a["email"],
+                    oggetto=a["oggetto"],
+                    corpo=a["corpo"],
+                    corpo_html=a["corpo_html"],
+                    errore=str(e),
+                    oggetto_riferimento=receivable,
+                )
+            continue
+
+        a["esito"] = "inviato"
+        inviati += 1
+        if receivable is not None and receivable.scadenza != nuova_scadenza:
+            receivable.scadenza = nuova_scadenza
+            receivable.save(update_fields=["scadenza"])
+        if user is not None:
+            Notification.objects.create(
+                user=user,
+                canale=Notification.CanaleComunicazione.EMAIL,
+                codice=TEMPLATE_CODICE,
+                destinatario=a["email"],
+                oggetto=a["oggetto"],
+                corpo=a["corpo"],
+                corpo_html=a["corpo_html"],
+                inviata_at=_now(),
+                oggetto_riferimento=receivable,
+            )
 
     if not dry_run and inviati:
         period.avvisi_inviati_at = _now()

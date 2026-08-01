@@ -167,7 +167,14 @@ class PushSubscription(TimestampedModel):
 
 
 class Notification(TimestampedModel):
-    """Log di una notifica inviata o da inviare a un utente."""
+    """Log di una comunicazione inviata (o tentata) verso un utente.
+
+    È il **registro delle comunicazioni**: risponde a "cosa è stato mandato,
+    a chi, quando e con che testo", quindi archivia anche i tentativi falliti.
+
+    Convenzione: ``inviata_at`` valorizzato = partita; ``errore`` valorizzato
+    = fallita (con ``inviata_at`` nullo). Le due condizioni si escludono.
+    """
 
     class CanaleComunicazione(models.TextChoices):
         EMAIL = "email", "Email"
@@ -194,6 +201,34 @@ class Notification(TimestampedModel):
     )
     corpo = models.TextField(
         verbose_name="corpo",
+    )
+    corpo_html = models.TextField(
+        blank=True,
+        verbose_name="corpo HTML",
+        help_text="Versione HTML realmente recapitata (vuota per push/SMS).",
+    )
+    destinatario = models.CharField(
+        max_length=254,
+        blank=True,
+        verbose_name="destinatario",
+        help_text=(
+            "Indirizzo o device a cui è stata spedita: può differire da "
+            "user.email (email alternativa) e non è ricostruibile a posteriori "
+            "se l'utente cambia recapito."
+        ),
+    )
+    codice = models.SlugField(
+        blank=True,
+        verbose_name="tipo comunicazione",
+        help_text=(
+            "Codice del messaggio (es. 'avviso_utenze', 'riepilogo_addebiti'): "
+            "distingue comunicazioni diverse sullo stesso oggetto collegato."
+        ),
+    )
+    errore = models.TextField(
+        blank=True,
+        verbose_name="errore",
+        help_text="Valorizzato se l'invio è fallito; in tal caso 'inviata il' resta vuoto.",
     )
     inviata_at = models.DateTimeField(
         null=True,
@@ -234,5 +269,8 @@ class Notification(TimestampedModel):
         ordering = ["-created_at"]
 
     def __str__(self):
-        stato = "inviata" if self.inviata_at else "in attesa"
+        if self.errore:
+            stato = "fallita"
+        else:
+            stato = "inviata" if self.inviata_at else "in attesa"
         return f"{self.user} — {self.oggetto} [{stato}]"

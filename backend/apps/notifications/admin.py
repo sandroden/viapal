@@ -99,26 +99,44 @@ class PushSubscriptionAdmin(ModalEditMixin, JumboModelAdmin):
 # ---------------------------------------------------------------------------
 
 
+class FallitaFilter(admin.SimpleListFilter):
+    """Filtro sull'esito: una colonna booleana non basta a *isolare* i
+    fallimenti, che sono il motivo principale per aprire questa lista."""
+
+    title = "esito"
+    parameter_name = "fallita"
+
+    def lookups(self, request, model_admin):
+        return (("si", "Fallite"), ("no", "Inviate"))
+
+    def queryset(self, request, queryset):
+        if self.value() == "si":
+            return queryset.exclude(errore="")
+        if self.value() == "no":
+            return queryset.filter(errore="", inviata_at__isnull=False)
+        return queryset
+
+
 @admin.register(Notification)
 class NotificationAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 800
     list_display = (
-        "user", "oggetto", "canale",
+        "user", "destinatario", "codice", "oggetto", "canale",
         "inviata_at", "letta_at",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
-    list_filter = ("canale", "inviata_at")
-    search_fields = ("user__username", "oggetto")
+    list_filter = ("canale", "codice", FallitaFilter, "inviata_at")
+    search_fields = ("user__username", "oggetto", "destinatario")
     list_select_related = ("user", "regola")
     autocomplete_fields = ("regola",)
     date_hierarchy = "inviata_at"
     ordering = ("-created_at",)
     fieldsets = (
         ("Notifica", {
-            "fields": ("user", "canale", "oggetto", "corpo"),
+            "fields": ("user", "canale", "codice", "destinatario", "oggetto", "corpo"),
         }),
         ("Stato invio", {
-            "fields": ("inviata_at", "letta_at", "regola"),
+            "fields": ("inviata_at", "errore", "letta_at", "regola"),
         }),
         ("Oggetto collegato", {
             "fields": ("oggetto_riferimento_type", "oggetto_riferimento_id"),
@@ -127,6 +145,6 @@ class NotificationAdmin(ModalEditMixin, JumboModelAdmin):
     )
     readonly_fields = (
         "created_at", "updated_at",
-        "inviata_at", "letta_at",
+        "inviata_at", "letta_at", "errore",
         "oggetto_riferimento_type", "oggetto_riferimento_id",
     )

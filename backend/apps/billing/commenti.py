@@ -15,6 +15,8 @@ from django.utils import timezone
 from notifications.models import Notification
 from properties.models.membership import PropertyMembership
 
+TEMPLATE_CODICE = "commento"
+
 
 def _nome_autore(user) -> str:
     """Nome leggibile dell'autore: nominativo del profilo se c'è."""
@@ -75,6 +77,8 @@ def invia_email_commento(comment) -> dict:
             Notification.objects.create(
                 user=user,
                 canale=Notification.CanaleComunicazione.EMAIL,
+                codice=TEMPLATE_CODICE,
+                destinatario=user.email,
                 oggetto=oggetto,
                 corpo=corpo,
                 inviata_at=timezone.now(),

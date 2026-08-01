@@ -168,6 +168,8 @@ def invia_invito_inquilino(tenant, request=None) -> dict:
     Notification.objects.create(
         user=user,
         canale=Notification.CanaleComunicazione.EMAIL,
+        codice=TEMPLATE_CODICE,
+        destinatario=email,
         oggetto=oggetto,
         corpo=corpo,
         inviata_at=timezone.now(),
@@ -179,6 +181,8 @@ def invia_invito_inquilino(tenant, request=None) -> dict:
 # ---------------------------------------------------------------------------
 # Invito membro (co-proprietario / gestore) — multiproprietà
 # ---------------------------------------------------------------------------
+
+MEMBRO_TEMPLATE_CODICE = "invito_membership"
 
 MEMBRO_OGGETTO = "Viapal — sei stato invitato a gestire {{immobile}}"
 
@@ -350,6 +354,8 @@ def _crea_e_invia_membro(property, email, ruolo, *, nominativo, invitato_da):
     Notification.objects.create(
         user=user,
         canale=Notification.CanaleComunicazione.EMAIL,
+        codice=MEMBRO_TEMPLATE_CODICE,
+        destinatario=email,
         oggetto=oggetto,
         corpo=corpo,
         inviata_at=timezone.now(),
