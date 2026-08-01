@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-08-01
+* **Maintain**: `domain/fascicolo-documenti.md` — nessun documento è obbligatorio: eliminato lo stato "mancante" (e con esso card di completezza lato inquilino e "mancanti" nel banner del proprietario); nuovo tipo `ricevuta_registrazione` ("Ricevuta di registrazione (agenzia)").
 * **Creation**: `domain/fascicolo-documenti.md` — fascicolo documenti inquilino: stati derivati nel backend (soglia 60 giorni), facoltativi non mostrati come mancanti, atto di subentro a carico proprietà, pagine fronte/retro senza modifiche di schema, visore interno (inline + SAMEORIGIN + denylist SW). Sollecito e quadro della casa non implementati.
 * **Maintain**: `models/properties.md` — rimando al fascicolo da `TenantDocument`.
 

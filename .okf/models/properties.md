@@ -25,7 +25,7 @@ Tutti i modelli ereditano da `TimestampedModel` (`created_at`/`updated_at`).
 | `OwnershipShare` | `owner`, `valid_from`/`valid_to`, `quota` | quota di proprietà temporale |
 | `OwnerBankAccount` | `owner`, `banca`, `iban`, `intestatario`, `attivo` | conto proprietario |
 | `TenantProfile` | `user` (1:1), `giorno_pagamento_affitto`, `frequenza_conguagli`, `ciclo_fatturazione`, `deposito_versato`, `deposito_da_restituire`, `data_restituzione_prevista` | inquilino |
-| `TenantDocument` | `tenant`, `tipo`, `file`, `data_scadenza` | CI/CF/passaporto/permesso/contratto/subentro |
+| `TenantDocument` | `tenant`, `tipo`, `file`, `data_scadenza` | CI/CF/passaporto/permesso/contratto lavoro/ricevuta registrazione (agenzia)/ricevuta e atto di subentro; nessuno è obbligatorio |
 | `PropertyDocument` | `property`, `tipo`, `file`, `data_scadenza`, `visibile_inquilini` | contratto/side letter/registrazione/regolamento; CRUD lato gestione, lettura inquilini dei soli documenti con `visibile_inquilini=True` ("Documenti della casa" in /i/documenti) |
 
 # Vedi anche
@@ -33,7 +33,7 @@ Tutti i modelli ereditano da `TimestampedModel` (`created_at`/`updated_at`).
 - [Unità intera](/domain/unita-intera.md) — `tipo_gestione`: su `unita_intera`
   il backend crea **una sola** Room implicita "Appartamento" (signal `post_save`,
   vincolo max-1 in `Room.clean` + API).
-- [Fascicolo documenti](/domain/fascicolo-documenti.md) — `TenantDocument` raggruppato per tipo con stati derivati (mancante/in scadenza/scaduto/a carico proprietà) e visore interno.
+- [Fascicolo documenti](/domain/fascicolo-documenti.md) — `TenantDocument` raggruppato per tipo con stati derivati (in scadenza/scaduto/a carico proprietà) e visore interno.
 - [Deposito](/domain/deposito.md) — `deposito_*` / `data_restituzione_prevista`.
 - [Generazione affitti](/domain/generazione-affitti.md) — `canone_mensile`, `RoomAssignment`.
 - `costo_cessione`: totale cessione stanza, split 50/50 (Receivable REGISTRAZIONE + Expense proprietari).

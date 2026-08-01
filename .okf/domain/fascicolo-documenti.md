@@ -1,7 +1,7 @@
 ---
 type: Domain Logic
 title: Fascicolo documenti
-description: Checklist dei documenti dell'inquilino con stati derivati (valido/in scadenza/scaduto/mancante/a carico proprietà), servita a inquilino e proprietario dallo stesso servizio.
+description: Checklist dei documenti dell'inquilino con stati derivati (valido/in scadenza/scaduto/a carico proprietà), servita a inquilino e proprietario dallo stesso servizio. Nessun documento è obbligatorio.
 resource: backend/apps/properties/fascicolo.py
 tags: [domain, documenti, inquilini, frontend]
 timestamp: 2026-08-01T00:00:00Z
@@ -26,11 +26,16 @@ scadenza".
 | `ok` | caricato, senza scadenza o con scadenza lontana |
 | `scadenza` | scade entro `GIORNI_PREAVVISO_SCADENZA` (**60 giorni**) |
 | `scaduto` | `data_scadenza` passata |
-| `mancante` | tipo **richiesto** e mai caricato |
 | `attesa` | tipo **a carico della proprietà** e non ancora caricato |
 
 Lo stato di una voce con più file è il **peggiore** delle sue pagine
 (`scaduto` > `scadenza` > `ok`).
+
+**Nessun documento è obbligatorio** (decisione del 2026-08-01): non esiste uno
+stato "mancante" e il fascicolo non misura la completezza. Le copie servono per
+il contratto e le utenze, e dopo la verifica possono essere cancellate — meno
+dati conservati, meno rischio. Di conseguenza una voce senza file compare solo
+quando è a carico della proprietà.
 
 # Voci della checklist
 
@@ -38,15 +43,12 @@ Lo stato di una voce con più file è il **peggiore** delle sue pagine
 
 | Tipo | Ruolo |
 |------|-------|
-| `carta_identita`, `codice_fiscale`, `contratto_lavoro` | **richiesti**: se assenti compaiono come `mancante` |
-| `passaporto`, `permesso_soggiorno`, `ricevuta_subentro` | facoltativi: **compaiono solo se caricati** |
+| `carta_identita`, `codice_fiscale`, `passaporto`, `permesso_soggiorno`, `contratto_lavoro`, `ricevuta_registrazione`, `ricevuta_subentro` | compaiono **solo se caricati** |
 | `atto_subentro` | a carico della proprietà: sempre presente, `attesa` finché manca |
 | `altro` | fuori checklist: ogni file è una voce a sé, in `altri` |
 
-**Perché i facoltativi assenti non compaiono**: non si può dedurre chi ha
-bisogno di un permesso di soggiorno o di un passaporto; mostrarli come
-"mancanti" sarebbe un allarme falso. Restano caricabili scegliendo il tipo
-nel modulo di caricamento.
+`ricevuta_registrazione` = "Ricevuta di registrazione (agenzia)", la ricevuta
+che l'agenzia rilascia per la registrazione del contratto (2026-08-01).
 
 **Perché l'atto di subentro è diverso**: lo produce il fornitore di utenze e
 lo carica il proprietario. All'inquilino appare come «non devi fare nulla:
@@ -68,8 +70,8 @@ non correlati non devono fondersi in una voce sola.
 - gestione: `?tenant=<id>` obbligatorio, limitato all'immobile attivo
   (`X-Property-Id`); 400 senza parametro, 404 su inquilino di altro immobile.
 
-Payload: `voci[]` (checklist), `altri[]`, `riepilogo` (conteggi per stato,
-`da_sistemare`, `completezza` %). Ogni voce porta `pagine[]` con `file`
+Payload: `voci[]` (checklist), `altri[]`, `riepilogo` (conteggi per stato +
+`da_sistemare` = scaduti + in scadenza). Ogni voce porta `pagine[]` con `file`
 (URL `/media-private/…`), `etichetta`, `is_pdf`.
 
 # Visualizzazione
@@ -86,8 +88,9 @@ Immagini in `<img>`, PDF in `<iframe>`; le miniature dei PDF restano una
 
 # Non implementato
 
-- **Sollecito** all'inquilino (email/push) per i documenti mancanti: previsto
-  dal design, rinviato — richiede template, destinatari e throttling.
+- **Sollecito** all'inquilino (email/push): previsto dal design, rinviato —
+  richiede template, destinatari e throttling. Con i documenti non obbligatori
+  ha senso solo per i rinnovi.
 - **Quadro della casa** (matrice inquilini × documenti, con sollecito
   massivo): rinviato.
 - **Notifica di scadenza**: non c'è alcun job che avvisa prima della
