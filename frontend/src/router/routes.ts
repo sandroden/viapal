@@ -136,6 +136,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/ProprietarioUtenze.vue'),
       },
       {
+        path: 'riepilogo',
+        name: 'p-riepilogo',
+        component: () => import('pages/ProprietarioRiepilogo.vue'),
+      },
+      {
         path: 'proprieta/nuova',
         name: 'p-property-nuova',
         component: () => import('pages/ProprietarioPropertyNuova.vue'),
