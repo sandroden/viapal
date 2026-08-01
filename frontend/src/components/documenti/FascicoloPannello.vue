@@ -2,9 +2,10 @@
   <div class="vp-fasc">
     <!-- Colonna elenco -->
     <div class="vp-fasc__elenco">
-      <!-- Il banner dice cosa fare, non solo cosa c'è -->
-      <div class="vp-banner" :class="classeBanner">
-        <q-icon :name="iconaBanner" size="19px" class="vp-fasc__banner-ic" />
+      <!-- Banner solo quando c'è qualcosa da segnalare: nessun documento è
+           dovuto, quindi "tutto a posto" non è una notizia. -->
+      <div v-if="daSegnalare.length" class="vp-banner vp-banner--late">
+        <q-icon name="error_outline" size="19px" class="vp-fasc__banner-ic" />
         <div class="vp-fasc__banner-txt">
           <div v-html="riepilogoHtml" />
           <div v-if="daNoi.length" class="vp-fasc__banner-nota">
@@ -35,7 +36,6 @@
           :larghezza="38"
           :altezza="48"
           @apri="seleziona"
-          @aggiungi="aggiungi"
         >
           <template #azioni>
             <a
@@ -90,24 +90,13 @@
         <div class="vp-fasc__vcorpo">
           <!-- Non ancora caricato: il pannello dice di chi è il turno -->
           <div v-if="!paginaCorrente" class="vp-fasc__vvuoto">
-            <div
-              class="vp-fasc__vplaceholder"
-              :class="{ 'vp-fasc__vplaceholder--nostra': selezionata.a_carico_proprieta }"
-            >
-              <q-icon
-                :name="selezionata.a_carico_proprieta ? 'bolt' : 'upload'"
-                size="28px"
-              />
+            <div class="vp-fasc__vplaceholder">
+              <q-icon name="bolt" size="28px" />
             </div>
-            <div class="vp-fasc__vvuoto-titolo">
-              {{ selezionata.a_carico_proprieta ? "Lo carichi tu, non l'inquilino" : 'Non ancora caricato' }}
-            </div>
+            <div class="vp-fasc__vvuoto-titolo">Lo carichi tu, non l'inquilino</div>
             <p class="vp-fasc__vvuoto-testo">
-              {{
-                selezionata.a_carico_proprieta
-                  ? "L'atto di subentro delle utenze arriva dal fornitore. Caricalo qui: l'inquilino lo trova nel suo fascicolo."
-                  : "Lo carica l'inquilino dalla sua area; puoi caricarlo tu al posto suo."
-              }}
+              L'atto di subentro delle utenze arriva dal fornitore. Caricalo qui:
+              l'inquilino lo trova nel suo fascicolo.
             </p>
             <button
               v-if="!soloLettura"
@@ -115,7 +104,7 @@
               @click="aggiungi(selezionata)"
             >
               <q-icon name="upload" size="15px" />
-              {{ selezionata.a_carico_proprieta ? "Carica l'atto" : 'Carica il documento' }}
+              Carica l'atto
             </button>
           </div>
 
@@ -238,7 +227,6 @@ const metaSelezionata = computed(() => {
   if (!voce) return '';
   const parti: string[] = [];
   if (voce.stato === 'attesa') parti.push('a carico della proprietà · non ancora caricato');
-  else if (!voce.pagine.length) parti.push('non ancora caricato');
   else if (voce.caricato_il) parti.push(`caricato il ${formattaData(voce.caricato_il)}`);
   if (voce.data_scadenza) parti.push(`scadenza ${formattaData(voce.data_scadenza)}`);
   return parti.join(' · ');
@@ -247,7 +235,7 @@ const metaSelezionata = computed(() => {
 // ── Riepilogo in testa: nomi dei documenti, non solo conteggi ──
 const scaduti = computed(() => voci.value.filter((v) => v.stato === 'scaduto'));
 const inScadenza = computed(() => voci.value.filter((v) => v.stato === 'scadenza'));
-const mancanti = computed(() => voci.value.filter((v) => v.stato === 'mancante'));
+const daSegnalare = computed(() => [...scaduti.value, ...inScadenza.value]);
 const daNoi = computed(() => voci.value.filter((v) => v.stato === 'attesa'));
 
 function frase(voci: VoceFascicolo[], singolare: string, plurale: string): string {
@@ -257,26 +245,18 @@ function frase(voci: VoceFascicolo[], singolare: string, plurale: string): strin
   return `${testa} (${nomi})`;
 }
 
-const riepilogoHtml = computed(() => {
-  const parti = [
+const riepilogoHtml = computed(() =>
+  [
     frase(scaduti.value, 'documento scaduto', 'documenti scaduti'),
     frase(inScadenza.value, 'documento in scadenza', 'documenti in scadenza'),
-    frase(mancanti.value, 'documento mancante', 'documenti mancanti'),
-  ].filter(Boolean);
-  if (!parti.length) return 'Fascicolo in ordine: tutti i documenti richiesti sono validi.';
-  return parti.join(' · ');
-});
+  ]
+    .filter(Boolean)
+    .join(' · '),
+);
 
-const tuttoBene = computed(
-  () => !scaduti.value.length && !inScadenza.value.length && !mancanti.value.length,
-);
-const classeBanner = computed(() =>
-  tuttoBene.value ? 'vp-banner--ok' : scaduti.value.length || mancanti.value.length ? 'vp-banner--late' : '',
-);
-const iconaBanner = computed(() => (tuttoBene.value ? 'check_circle' : 'error_outline'));
 const notaAttesa = computed(() =>
   daNoi.value.length === 1
-    ? `${daNoi.value[0]?.tipo_display} lo carichi tu: l'inquilino non lo vede come mancante.`
+    ? `${daNoi.value[0]?.tipo_display} lo carichi tu, quando arriva dal fornitore.`
     : 'Alcuni documenti sono a carico della proprietà.',
 );
 
@@ -486,17 +466,13 @@ watch(
   width: 108px;
   height: 132px;
   margin: 0 auto var(--vp-gap-4);
-  border: 1.5px dashed var(--vp-ink-4);
+  border: 1.5px dashed var(--vp-terra);
   border-radius: var(--vp-r-md);
-  color: var(--vp-ink-4);
+  background: var(--vp-terra-soft);
+  color: var(--vp-terra-deep);
   display: flex;
   align-items: center;
   justify-content: center;
-}
-.vp-fasc__vplaceholder--nostra {
-  border-color: var(--vp-terra);
-  background: var(--vp-terra-soft);
-  color: var(--vp-terra-deep);
 }
 .vp-fasc__vvuoto-titolo {
   font-size: 14.5px;

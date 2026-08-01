@@ -34,13 +34,6 @@ export const STILI_STATO: Record<StatoDocumento, StileStato> = {
     label: 'scaduto',
     icona: 'error_outline',
   },
-  mancante: {
-    dot: 'var(--vp-ink-4)',
-    bg: 'var(--vp-paper-3)',
-    fg: 'var(--vp-ink-2)',
-    label: 'da caricare',
-    icona: 'add',
-  },
   attesa: {
     dot: 'var(--vp-terra)',
     bg: 'var(--vp-terra-soft)',
@@ -62,7 +55,6 @@ export function voceDaDocumento(doc: DocumentoFE): VoceFascicolo {
   return {
     tipo: doc.tipo,
     tipo_display: doc.tipo_display,
-    richiesto: false,
     a_carico_proprieta: false,
     suggerimento: '',
     stato,
@@ -101,11 +93,6 @@ export function dettaglioVoce(
     return opzioni.latoProprieta
       ? 'a carico nostro: lo carichi tu, non l’inquilino'
       : 'non devi fare nulla: lo carica la proprietà';
-  }
-  if (voce.stato === 'mancante') {
-    return opzioni.latoProprieta
-      ? `${voce.suggerimento} · lo carica l’inquilino`
-      : voce.suggerimento;
   }
   if (voce.data_scadenza && !opzioni.scadenzaNelBadge) {
     const data = formattaData(voce.data_scadenza);

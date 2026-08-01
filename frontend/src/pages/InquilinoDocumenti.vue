@@ -3,44 +3,23 @@
     <header class="vp-idoc__header">
       <div class="vp-eyebrow">Profilo</div>
       <h1 class="vp-display vp-idoc__titolo">I miei documenti</h1>
-    </header>
-
-    <!-- Stato del fascicolo: cosa manca e cosa scade, in una riga -->
-    <section class="vp-card vp-idoc__stato">
-      <q-inner-loading :showing="fascicoloStore.loading" />
-      <FascicoloBarra v-if="voci.length" :voci="voci" />
-      <p class="vp-idoc__riassunto">
-        <span v-if="mancanti" class="vp-idoc__forte">
-          {{ mancanti === 1 ? 'Manca 1 documento' : `Mancano ${mancanti} documenti` }}
-        </span>
-        <span v-if="mancanti && daRinnovare"> · </span>
-        <span v-if="daRinnovare">{{ daRinnovare }} da rinnovare</span>
-        <span v-if="!mancanti && !daRinnovare" class="vp-idoc__forte">
-          Fascicolo in ordine
-        </span>
-        <br v-if="nostri" />
-        <span v-if="nostri" class="vp-idoc__nota">
-          {{ nostri === 1 ? '1 documento lo carichiamo noi' : `${nostri} documenti li carichiamo noi` }}
-        </span>
+      <p class="vp-idoc__intro">
+        Nessun documento è obbligatorio: qui tieni le copie che ci servono per il
+        contratto e per le utenze, e quando non servono più si cancellano.
       </p>
       <button class="vp-btn vp-btn--primary vp-idoc__aggiungi" @click="apriAggiungi()">
         <q-icon name="photo_camera" size="16px" />
         Aggiungi documento
       </button>
-    </section>
+    </header>
 
-    <!-- Il fascicolo: checklist, non elenco di file -->
+    <!-- Il fascicolo: i documenti raccolti, con scadenze in evidenza -->
     <div class="vp-eyebrow vp-idoc__sezione">Il tuo fascicolo</div>
     <div class="vp-card vp-idoc__lista">
-      <FascicoloVoce
-        v-for="voce in voci"
-        :key="voce.tipo"
-        :voce="voce"
-        @apri="apriVisore"
-        @aggiungi="apriAggiungi"
-      />
+      <q-inner-loading :showing="fascicoloStore.loading" />
+      <FascicoloVoce v-for="voce in voci" :key="voce.tipo" :voce="voce" @apri="apriVisore" />
       <div v-if="!voci.length && !fascicoloStore.loading" class="vp-idoc__vuoto">
-        Nessun documento richiesto al momento.
+        Non hai ancora caricato documenti.
       </div>
     </div>
 
@@ -112,7 +91,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
-import FascicoloBarra from 'components/documenti/FascicoloBarra.vue';
 import FascicoloVoce from 'components/documenti/FascicoloVoce.vue';
 import DocVisoreDialog from 'components/documenti/DocVisoreDialog.vue';
 import DocAggiungiSheet from 'components/documenti/DocAggiungiSheet.vue';
@@ -143,10 +121,6 @@ const voci = computed(() => fascicoloStore.voci);
 const altri = computed(() => fascicoloStore.altri);
 const documentiCasa = computed(() => storeCasa.documenti);
 const preavviso = computed(() => fascicoloStore.fascicolo?.giorni_preavviso_scadenza ?? 60);
-
-const mancanti = computed(() => fascicoloStore.fascicolo?.riepilogo.mancante ?? 0);
-const daRinnovare = computed(() => fascicoloStore.fascicolo?.riepilogo.da_sistemare ?? 0);
-const nostri = computed(() => fascicoloStore.fascicolo?.riepilogo.attesa ?? 0);
 
 /** L'atto di subentro lo carica la proprietà: non è tra le scelte dell'inquilino. */
 const tipiCaricabili = TIPI_DOCUMENTO_INQUILINO.filter((t) => t.value !== 'atto_subentro');
@@ -223,20 +197,11 @@ onMounted(async () => {
   font-size: var(--vp-text-2xl);
   margin: var(--vp-gap-1) 0 0;
 }
-.vp-idoc__stato {
-  position: relative;
-  padding: var(--vp-gap-4);
-  margin-bottom: var(--vp-gap-5);
-}
-.vp-idoc__riassunto {
-  margin: var(--vp-gap-3) 0 var(--vp-gap-3);
-  font-size: 14px;
-  line-height: 1.45;
-  color: var(--vp-ink-2);
-}
-.vp-idoc__forte {
-  color: var(--vp-ink);
-  font-weight: 500;
+.vp-idoc__intro {
+  font-size: var(--vp-text-sm);
+  color: var(--vp-ink-3);
+  line-height: 1.5;
+  margin: var(--vp-gap-2) 0 var(--vp-gap-4);
 }
 .vp-idoc__nota {
   font-size: var(--vp-text-sm);
@@ -254,7 +219,9 @@ onMounted(async () => {
   gap: var(--vp-gap-2);
 }
 .vp-idoc__lista {
+  position: relative;
   overflow: hidden;
+  min-height: 56px;
   margin-bottom: var(--vp-gap-5);
 }
 .vp-idoc__lista--casa {

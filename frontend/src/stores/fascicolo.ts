@@ -3,7 +3,7 @@ import { api } from 'boot/axios';
 
 /** Stato di una voce del fascicolo, calcolato dal backend
  *  (``properties/fascicolo.py``): un'unica definizione per tutte le UI. */
-export type StatoDocumento = 'ok' | 'scadenza' | 'scaduto' | 'mancante' | 'attesa';
+export type StatoDocumento = 'ok' | 'scadenza' | 'scaduto' | 'attesa';
 
 /** Un file: le voci fronte/retro sono due pagine dello stesso documento. */
 export interface PaginaDocumento {
@@ -22,7 +22,6 @@ export interface PaginaDocumento {
 export interface VoceFascicolo {
   tipo: string;
   tipo_display: string;
-  richiesto: boolean;
   a_carico_proprieta: boolean;
   suggerimento: string;
   stato: StatoDocumento;
@@ -46,11 +45,9 @@ export interface Fascicolo {
     ok: number;
     scadenza: number;
     scaduto: number;
-    mancante: number;
     attesa: number;
     voci: number;
     da_sistemare: number;
-    completezza: number;
   };
 }
 
@@ -69,10 +66,10 @@ export const useFascicoloStore = defineStore('fascicolo', {
     /** Voci della checklist + documenti liberi, nell'ordine di visualizzazione. */
     voci: (s): VoceFascicolo[] => s.fascicolo?.voci ?? [],
     altri: (s): VoceFascicolo[] => s.fascicolo?.altri ?? [],
-    /** Voci che l'inquilino deve caricare (mancanti o da rinnovare). */
+    /** Voci da rinnovare: scadute o in scadenza. */
     daSistemare: (s): VoceFascicolo[] =>
       (s.fascicolo?.voci ?? []).filter(
-        (v) => v.stato === 'mancante' || v.stato === 'scaduto' || v.stato === 'scadenza',
+        (v) => v.stato === 'scaduto' || v.stato === 'scadenza',
       ),
   },
 

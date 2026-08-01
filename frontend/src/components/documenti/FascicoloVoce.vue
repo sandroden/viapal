@@ -28,15 +28,8 @@
     </div>
 
     <slot name="azioni">
-      <button
-        v-if="voce.stato === 'mancante' && !soloLettura"
-        class="vp-btn vp-btn--soft vp-dvoce__aggiungi"
-        @click.stop="emit('aggiungi', voce)"
-      >
-        Aggiungi
-      </button>
       <q-icon
-        v-else-if="voce.pagine.length"
+        v-if="voce.pagine.length"
         name="chevron_right"
         size="18px"
         class="vp-dvoce__chevron"
@@ -81,10 +74,7 @@ const props = withDefaults(
   },
 );
 
-const emit = defineEmits<{
-  apri: [voce: VoceFascicolo];
-  aggiungi: [voce: VoceFascicolo];
-}>();
+const emit = defineEmits<{ apri: [voce: VoceFascicolo] }>();
 
 const { formattaData } = useFormatoData();
 
@@ -93,12 +83,9 @@ const vuota = computed(() => props.voce.pagine.length === 0);
 // nessuna ansia. Per il proprietario è invece la riga da cui caricarla.
 const cliccabile = computed(() => {
   if (props.voce.pagine.length) return true;
-  if (props.soloLettura) return false;
-  return props.voce.stato === 'mancante' || (props.voce.stato === 'attesa' && props.latoProprieta);
+  return !props.soloLettura && props.latoProprieta;
 });
-const mostraBadge = computed(
-  () => props.badgeSempre || (props.voce.stato !== 'ok' && props.voce.stato !== 'mancante'),
-);
+const mostraBadge = computed(() => props.badgeSempre || props.voce.stato !== 'ok');
 const testoBadge = computed(() => {
   const { stato, data_scadenza } = props.voce;
   if (!props.badgeConData || !data_scadenza) return undefined;
@@ -116,11 +103,9 @@ const dettaglio = computed(() =>
 );
 
 function attiva() {
-  if (!cliccabile.value) return;
   // Lato proprietario anche le voci vuote si "aprono": il pannello mostra di
   // chi è il turno e il bottone per caricare.
-  if (props.voce.pagine.length || props.latoProprieta) emit('apri', props.voce);
-  else emit('aggiungi', props.voce);
+  if (cliccabile.value) emit('apri', props.voce);
 }
 </script>
 
@@ -173,12 +158,6 @@ function attiva() {
 .vp-dvoce__meta {
   font-size: 12.5px;
   color: var(--vp-ink-3);
-}
-.vp-dvoce__aggiungi {
-  height: 32px;
-  padding: 0 12px;
-  font-size: var(--vp-text-sm);
-  white-space: nowrap;
 }
 .vp-dvoce__chevron {
   color: var(--vp-ink-4);

@@ -15,16 +15,14 @@ Stati di una voce:
     scade entro :data:`GIORNI_PREAVVISO_SCADENZA` giorni.
 ``scaduto``
     la data di scadenza è passata.
-``mancante``
-    documento richiesto e mai caricato.
 ``attesa``
     documento a carico della proprietà (l'atto di subentro lo carica il
     proprietario, l'inquilino non deve fare nulla).
 
-Le voci facoltative non caricate non compaiono nel fascicolo: non si può
-dedurre chi ha bisogno di un permesso di soggiorno, e mostrarle come
-"mancanti" sarebbe un allarme falso. Restano comunque caricabili scegliendo
-il tipo dal modulo di caricamento.
+**Nessun documento è obbligatorio**: non esiste uno stato "mancante" e il
+fascicolo non conta quanto manca. I documenti sono copie di cortesia, e dopo
+la verifica possono anche essere cancellati (meno dati conservati, meno
+rischio). Una voce senza file compare solo quando è a carico della proprietà.
 """
 from dataclasses import dataclass
 
@@ -39,11 +37,10 @@ Tipo = TenantDocument.Tipo
 
 
 @dataclass(frozen=True)
-class VoceAttesa:
+class VoceFascicolo:
     """Definizione di una voce della checklist (indipendente dai file)."""
 
     tipo: str
-    richiesto: bool = False
     a_carico_proprieta: bool = False
     suggerimento: str = ""
 
@@ -54,13 +51,13 @@ class VoceAttesa:
 
 #: Voci della checklist, nell'ordine in cui compaiono nel fascicolo.
 VOCI = (
-    VoceAttesa(Tipo.CARTA_IDENTITA, richiesto=True, suggerimento="fronte e retro"),
-    VoceAttesa(Tipo.CODICE_FISCALE, richiesto=True, suggerimento="tessera sanitaria"),
-    VoceAttesa(Tipo.PASSAPORTO, suggerimento="pagina con la foto"),
-    VoceAttesa(Tipo.PERMESSO_SOGGIORNO, suggerimento="o ricevuta di rinnovo"),
-    VoceAttesa(Tipo.CONTRATTO_LAVORO, richiesto=True, suggerimento="o busta paga"),
-    VoceAttesa(Tipo.RICEVUTA_SUBENTRO, suggerimento="ricevuta del subentro utenze"),
-    VoceAttesa(
+    VoceFascicolo(Tipo.CARTA_IDENTITA, suggerimento="fronte e retro"),
+    VoceFascicolo(Tipo.CODICE_FISCALE, suggerimento="tessera sanitaria"),
+    VoceFascicolo(Tipo.PASSAPORTO, suggerimento="pagina con la foto"),
+    VoceFascicolo(Tipo.PERMESSO_SOGGIORNO, suggerimento="o ricevuta di rinnovo"),
+    VoceFascicolo(Tipo.CONTRATTO_LAVORO, suggerimento="o busta paga"),
+    VoceFascicolo(Tipo.RICEVUTA_SUBENTRO, suggerimento="ricevuta del subentro utenze"),
+    VoceFascicolo(
         Tipo.ATTO_SUBENTRO,
         a_carico_proprieta=True,
         suggerimento="utenze intestate all'inquilino",
@@ -74,7 +71,6 @@ STATI_DISPLAY = {
     "ok": "valido",
     "scadenza": "in scadenza",
     "scaduto": "scaduto",
-    "mancante": "da caricare",
     "attesa": "lo carica la proprietà",
 }
 
@@ -120,7 +116,7 @@ def _voce(definizione, documenti, oggi):
     """Voce della checklist per un tipo, con le sue pagine."""
     pagine = [_pagina(d, i + 1, oggi) for i, d in enumerate(documenti)]
     if not pagine:
-        stato = "attesa" if definizione.a_carico_proprieta else "mancante"
+        stato = "attesa"  # senza file esistono solo le voci a carico nostro
     else:
         stato = max((p["stato"] for p in pagine), key=lambda s: _GRAVITA[s])
     scadenze = [d.data_scadenza for d in documenti if d.data_scadenza]
@@ -128,7 +124,6 @@ def _voce(definizione, documenti, oggi):
     return {
         "tipo": str(definizione.tipo),
         "tipo_display": definizione.tipo_display,
-        "richiesto": definizione.richiesto,
         "a_carico_proprieta": definizione.a_carico_proprieta,
         "suggerimento": definizione.suggerimento,
         "stato": stato,
@@ -150,7 +145,6 @@ def _altro(doc, oggi):
     return {
         "tipo": doc.tipo,
         "tipo_display": doc.get_tipo_display(),
-        "richiesto": False,
         "a_carico_proprieta": False,
         "suggerimento": "",
         "stato": pagina["stato"],
@@ -187,8 +181,9 @@ def costruisci_fascicolo(tenant, documenti=None, oggi=None):
     voci = []
     for definizione in VOCI:
         docs = per_tipo.get(definizione.tipo, [])
-        # Facoltativo e mai caricato: non è una mancanza, non lo mostriamo.
-        if not docs and not definizione.richiesto and not definizione.a_carico_proprieta:
+        # Nessun documento è dovuto: una voce senza file compare solo se la
+        # deve caricare la proprietà.
+        if not docs and not definizione.a_carico_proprieta:
             continue
         voci.append(_voce(definizione, docs, oggi))
 
@@ -197,8 +192,6 @@ def costruisci_fascicolo(tenant, documenti=None, oggi=None):
     conteggi = {stato: 0 for stato in STATI_DISPLAY}
     for voce in voci:
         conteggi[voce["stato"]] += 1
-    completabili = [v for v in voci if not v["a_carico_proprieta"]]
-    a_posto = sum(1 for v in completabili if v["stato"] in ("ok", "scadenza"))
 
     return {
         "tenant": tenant.pk,
@@ -211,8 +204,5 @@ def costruisci_fascicolo(tenant, documenti=None, oggi=None):
             **conteggi,
             "voci": len(voci),
             "da_sistemare": conteggi["scaduto"] + conteggi["scadenza"],
-            "completezza": (
-                round(100 * a_posto / len(completabili)) if completabili else 100
-            ),
         },
     }
