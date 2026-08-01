@@ -528,3 +528,121 @@ class TestComando:
             stdout=StringIO(),
         )
         assert [m.to for m in mailoutbox] == [["cmd8@example.com"]]
+
+
+def _membro(immobile, ruolo, username):
+    from properties.models import PropertyMembership
+
+    user = User.objects.create_user(username=username, password="x")
+    grp, _ = Group.objects.get_or_create(name="proprietari")
+    user.groups.add(grp)
+    PropertyMembership.objects.create(property=immobile, user=user, ruolo=ruolo)
+    return user
+
+
+class TestEndpointInvia:
+    URL = "/api/v1/riepilogo-addebiti/invia/"
+
+    def _client(self, user, property_id=None):
+        from rest_framework.test import APIClient
+
+        c = APIClient()
+        c.force_authenticate(user=user)
+        if property_id:
+            c.credentials(HTTP_X_PROPERTY_ID=str(property_id))
+        return c
+
+    def test_dry_run_non_scrive(self, mailoutbox, immobile):
+        from notifications.models import Notification
+        from properties.models import PropertyMembership
+
+        _, assignment = _inquilino(immobile, "ep1", email="ep1@example.com")
+        _canone_del_mese(assignment)
+        c = self._client(
+            _membro(immobile, PropertyMembership.Ruolo.PROPRIETARIO, "propr_ep1")
+        )
+        resp = c.post(self.URL, {"dry_run": True}, format="json")
+
+        assert resp.status_code == 200, resp.content
+        body = resp.json()
+        assert body["dry_run"] is True
+        assert body["totale"] == 1
+        assert body["riepiloghi"][0]["esito"] == "anteprima"
+        assert body["riepiloghi"][0]["canone"]["residuo"] == 400.0
+        assert len(mailoutbox) == 0
+        assert Notification.objects.count() == 0
+
+    def test_invio_reale_ed_esclusioni(self, mailoutbox, immobile):
+        from properties.models import PropertyMembership
+
+        tenant1, a1 = _inquilino(immobile, "ep2", email="ep2@example.com")
+        _canone_del_mese(a1)
+        _, a2 = _inquilino(immobile, "ep3", email="ep3@example.com")
+        _canone_del_mese(a2)
+
+        c = self._client(
+            _membro(immobile, PropertyMembership.Ruolo.GESTORE, "gest_ep2")
+        )
+        resp = c.post(
+            self.URL,
+            {"dry_run": False, "escludi": [tenant1.id]},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        body = resp.json()
+        assert body["inviati"] == 1
+        assert body["esclusi"] == [tenant1.nominativo]
+        assert [m.to for m in mailoutbox] == [["ep3@example.com"]]
+
+    def test_sola_lettura_403(self, immobile):
+        from properties.models import PropertyMembership
+
+        _, a1 = _inquilino(immobile, "ep4", email="ep4@example.com")
+        _canone_del_mese(a1)
+        c = self._client(
+            _membro(immobile, PropertyMembership.Ruolo.SOLA_LETTURA, "ro_ep4")
+        )
+        resp = c.post(self.URL, {"dry_run": False}, format="json")
+        assert resp.status_code == 403, resp.content
+
+    def test_non_membro_403(self, immobile, immobile2):
+        from properties.models import PropertyMembership
+
+        _, a1 = _inquilino(immobile, "ep5", email="ep5@example.com")
+        _canone_del_mese(a1)
+        # membro solo di immobile2, chiede immobile
+        user = _membro(immobile2, PropertyMembership.Ruolo.PROPRIETARIO, "altro_ep5")
+        c = self._client(user, property_id=immobile.id)
+        resp = c.post(self.URL, {"dry_run": True}, format="json")
+        assert resp.status_code == 403, resp.content
+
+    def test_isolamento_con_header_property(self, mailoutbox, immobile, immobile2):
+        from properties.models import PropertyMembership
+
+        _, a1 = _inquilino(immobile, "ep6", email="ep6@example.com")
+        _canone_del_mese(a1)
+        _, a2 = _inquilino(immobile2, "ep7", email="ep7@example.com")
+        _canone_del_mese(a2)
+
+        user = _membro(immobile, PropertyMembership.Ruolo.PROPRIETARIO, "multi_ep6")
+        PropertyMembership.objects.create(
+            property=immobile2, user=user, ruolo=PropertyMembership.Ruolo.PROPRIETARIO
+        )
+        c = self._client(user, property_id=immobile2.id)
+        body = c.post(self.URL, {"dry_run": True}, format="json").json()
+        assert [r["tenant_nominativo"] for r in body["riepiloghi"]] == [
+            "Inquilino ep7"
+        ]
+
+    def test_input_invalido(self, immobile):
+        from properties.models import PropertyMembership
+
+        c = self._client(
+            _membro(immobile, PropertyMembership.Ruolo.PROPRIETARIO, "propr_ep8")
+        )
+        assert c.post(
+            self.URL, {"escludi": "tutti"}, format="json"
+        ).status_code == 400
+        assert c.post(
+            self.URL, {"giorni": -3}, format="json"
+        ).status_code == 400
