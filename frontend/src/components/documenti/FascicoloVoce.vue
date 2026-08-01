@@ -67,6 +67,8 @@ const props = withDefaults(
     /** Badge con la data ("scade 14/10/2026"): la riga di dettaglio mostra
      *  allora il caricamento invece della scadenza (uso desktop). */
     badgeConData?: boolean;
+    /** Vista del proprietario: "lo carichi tu" invece di "non devi fare nulla". */
+    latoProprieta?: boolean;
   }>(),
   {
     soloLettura: false,
@@ -75,6 +77,7 @@ const props = withDefaults(
     altezza: 50,
     badgeSempre: false,
     badgeConData: false,
+    latoProprieta: false,
   },
 );
 
@@ -86,9 +89,13 @@ const emit = defineEmits<{
 const { formattaData } = useFormatoData();
 
 const vuota = computed(() => props.voce.pagine.length === 0);
-const cliccabile = computed(
-  () => props.voce.pagine.length > 0 || (props.voce.stato === 'mancante' && !props.soloLettura),
-);
+// Per l'inquilino la voce "a carico della proprietà" è inerte: nessun bottone,
+// nessuna ansia. Per il proprietario è invece la riga da cui caricarla.
+const cliccabile = computed(() => {
+  if (props.voce.pagine.length) return true;
+  if (props.soloLettura) return false;
+  return props.voce.stato === 'mancante' || (props.voce.stato === 'attesa' && props.latoProprieta);
+});
 const mostraBadge = computed(
   () => props.badgeSempre || (props.voce.stato !== 'ok' && props.voce.stato !== 'mancante'),
 );
@@ -102,12 +109,17 @@ const testoBadge = computed(() => {
 // Con la data nel badge la riga sotto racconta il caricamento, non la scadenza:
 // ripetere due volte la stessa data è rumore.
 const dettaglio = computed(() =>
-  dettaglioVoce(props.voce, formattaData, { scadenzaNelBadge: props.badgeConData }),
+  dettaglioVoce(props.voce, formattaData, {
+    scadenzaNelBadge: props.badgeConData,
+    latoProprieta: props.latoProprieta,
+  }),
 );
 
 function attiva() {
   if (!cliccabile.value) return;
-  if (props.voce.pagine.length) emit('apri', props.voce);
+  // Lato proprietario anche le voci vuote si "aprono": il pannello mostra di
+  // chi è il turno e il bottone per caricare.
+  if (props.voce.pagine.length || props.latoProprieta) emit('apri', props.voce);
   else emit('aggiungi', props.voce);
 }
 </script>

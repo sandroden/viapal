@@ -761,11 +761,7 @@
         <!-- TAB DOCUMENTI -->
         <q-tab-panel name="documenti" class="vp-p-id__panel">
           <div class="vp-p-id__docs">
-            <DocumentiPannello
-              :store="documentiStore"
-              :tipi="TIPI_DOCUMENTO_INQUILINO"
-              :target-id="tenantId"
-            />
+            <FascicoloPannello :tenant-id="tenantId" :solo-lettura="!puoModificare" />
           </div>
         </q-tab-panel>
       </q-tab-panels>
@@ -916,8 +912,7 @@ import PrevisionaleUtenzeDialog from 'src/components/PrevisionaleUtenzeDialog.vu
 import ConguagliaPrevisionaleDialog from 'src/components/ConguagliaPrevisionaleDialog.vue';
 import AssegnaStanzaDialog from 'src/components/AssegnaStanzaDialog.vue';
 import RestituzioneDepositoDialog from 'src/components/RestituzioneDepositoDialog.vue';
-import DocumentiPannello from 'src/components/DocumentiPannello.vue';
-import { useDocumentiStore, TIPI_DOCUMENTO_INQUILINO } from 'stores/documenti';
+import FascicoloPannello from 'src/components/documenti/FascicoloPannello.vue';
 
 type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'deposito';
 
@@ -997,8 +992,6 @@ const puoIndietro = computed(() => annoSelezionato.value > annoMin);
 const puoAvanti = computed(() => annoSelezionato.value < annoCorrente);
 
 const tabAttivo = ref<'pagamenti' | 'profilo' | 'documenti'>(parseTab(route.query.tab));
-
-const documentiStore = useDocumentiStore();
 
 const filtroTipo = ref<FiltroTipo>(parseTipo(route.query.tipo));
 const opzioniTipo = [
@@ -1749,8 +1742,9 @@ const contoDiDefaultUtente = computed(
   background: var(--vp-cream);
   border-color: var(--vp-paper-3) !important;
 }
+/* Il fascicolo affianca elenco e visore: serve tutta la larghezza utile. */
 .vp-p-id__docs {
-  max-width: 640px;
+  max-width: 1200px;
 }
 .vp-p-id__card-info--full {
   grid-column: 1 / -1;

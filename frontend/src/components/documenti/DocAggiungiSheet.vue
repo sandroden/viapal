@@ -9,7 +9,7 @@
       <div class="vp-dadd__maniglia" />
       <h2 class="vp-display vp-dadd__titolo">{{ titolo }}</h2>
       <p class="vp-dadd__intro">
-        Scatta una foto o scegli un file dal telefono: PDF o immagine, fino a 10 MB.
+        Scatta una foto o scegli un file: PDF o immagine, fino a 10 MB.
       </p>
 
       <div class="vp-eyebrow vp-dadd__label">Che documento è</div>
@@ -294,6 +294,12 @@ async function salva() {
   grid-template-columns: 1fr;
   gap: var(--vp-gap-3);
   margin-bottom: var(--vp-gap-4);
+  /* Un riquadro solo non si allarga a tutta la finestra: resta una "carta". */
+  justify-items: center;
+}
+.vp-dadd__slot-riga > * {
+  width: 100%;
+  max-width: 300px;
 }
 .vp-dadd__slot-riga--due {
   grid-template-columns: 1fr 1fr;
@@ -326,7 +332,8 @@ async function salva() {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: var(--vp-paper-2);
 }
 .vp-dadd__slot-nome {
   font-size: var(--vp-text-sm);

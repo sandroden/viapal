@@ -94,10 +94,18 @@ export function voceDaDocumento(doc: DocumentoFE): VoceFascicolo {
 export function dettaglioVoce(
   voce: VoceFascicolo,
   formattaData: (d: string) => string,
-  opzioni: { scadenzaNelBadge?: boolean } = {},
+  opzioni: { scadenzaNelBadge?: boolean; latoProprieta?: boolean } = {},
 ): string {
-  if (voce.stato === 'attesa') return 'non devi fare nulla: lo carica la proprietà';
-  if (voce.stato === 'mancante') return voce.suggerimento;
+  if (voce.stato === 'attesa') {
+    return opzioni.latoProprieta
+      ? 'a carico nostro: lo carichi tu, non l’inquilino'
+      : 'non devi fare nulla: lo carica la proprietà';
+  }
+  if (voce.stato === 'mancante') {
+    return opzioni.latoProprieta
+      ? `${voce.suggerimento} · lo carica l’inquilino`
+      : voce.suggerimento;
+  }
   if (voce.data_scadenza && !opzioni.scadenzaNelBadge) {
     const data = formattaData(voce.data_scadenza);
     return voce.stato === 'scaduto' ? `scaduto il ${data}` : `scade il ${data}`;
