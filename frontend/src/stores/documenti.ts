@@ -118,6 +118,37 @@ function creaDocumentiStore(
         return { ok, falliti };
       },
 
+      /** Come ``caricaMulti``, ma ogni file porta la propria descrizione:
+       *  serve al fascicolo, dove fronte e retro sono due file dello stesso
+       *  tipo distinti dall'etichetta. */
+      async caricaPagine(payload: {
+        pagine: { file: File; descrizione?: string }[];
+        tipo: string;
+        dataScadenza?: string | null;
+        visibileInquilini?: boolean;
+        targetId?: number;
+      }): Promise<{ ok: number; falliti: number }> {
+        this.uploading = true;
+        this.errore = null;
+        let ok = 0;
+        let falliti = 0;
+        const { pagine, ...comuni } = payload;
+        try {
+          for (const pagina of pagine) {
+            const creato = await this._postUno({
+              ...comuni,
+              file: pagina.file,
+              ...(pagina.descrizione ? { descrizione: pagina.descrizione } : {}),
+            });
+            if (creato) ok += 1;
+            else falliti += 1;
+          }
+        } finally {
+          this.uploading = false;
+        }
+        return { ok, falliti };
+      },
+
       /** POST di un singolo file (uso interno, non tocca lo stato uploading). */
       async _postUno(payload: {
         file: File;
