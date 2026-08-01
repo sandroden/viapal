@@ -494,6 +494,151 @@ class TestTenantDocumentViewSet:
 
 
 # ---------------------------------------------------------------------------
+# Test fascicolo documenti (checklist con stati)
+# ---------------------------------------------------------------------------
+
+
+class TestFascicolo:
+    URL = "/api/v1/tenant-documents/fascicolo/"
+
+    @pytest.fixture(autouse=True)
+    def _media_tmp(self, settings, tmp_path):
+        settings.MEDIA_ROOT = str(tmp_path)
+        settings.MEDIA_PRIVATE_ROOT = str(tmp_path / "media-private")
+
+    def _voci(self, resp):
+        return {v["tipo"]: v for v in resp.json()["voci"]}
+
+    def test_fascicolo_vuoto_elenca_richiesti_e_attesa(self, client_inq_1, tenant_1):
+        voci = self._voci(client_inq_1.get(self.URL))
+        # I richiesti compaiono come "mancante"...
+        assert voci["carta_identita"]["stato"] == "mancante"
+        assert voci["codice_fiscale"]["stato"] == "mancante"
+        assert voci["contratto_lavoro"]["stato"] == "mancante"
+        # ...l'atto di subentro no: lo carica la proprietà.
+        assert voci["atto_subentro"]["stato"] == "attesa"
+        assert voci["atto_subentro"]["a_carico_proprieta"] is True
+        # I facoltativi mai caricati non sono mancanze.
+        assert "passaporto" not in voci
+        assert "permesso_soggiorno" not in voci
+
+    def test_facoltativo_compare_solo_se_caricato(self, client_inq_1, tenant_1):
+        TenantDocument.objects.create(
+            tenant=tenant_1, tipo="passaporto", file=_pdf_finto()
+        )
+        voci = self._voci(client_inq_1.get(self.URL))
+        assert voci["passaporto"]["stato"] == "ok"
+
+    def test_fronte_retro_una_voce_due_pagine(self, client_inq_1, tenant_1):
+        for descrizione in ("fronte", "retro"):
+            TenantDocument.objects.create(
+                tenant=tenant_1,
+                tipo="carta_identita",
+                descrizione=descrizione,
+                file=_pdf_finto(),
+            )
+        voce = self._voci(client_inq_1.get(self.URL))["carta_identita"]
+        assert voce["stato"] == "ok"
+        assert [p["etichetta"] for p in voce["pagine"]] == ["fronte", "retro"]
+        assert all(p["file"].startswith("/media-private/") for p in voce["pagine"])
+
+    def test_stati_di_scadenza(self, client_inq_1, tenant_1):
+        oggi = datetime.date.today()
+        TenantDocument.objects.create(
+            tenant=tenant_1,
+            tipo="carta_identita",
+            file=_pdf_finto(),
+            data_scadenza=oggi + datetime.timedelta(days=30),
+        )
+        TenantDocument.objects.create(
+            tenant=tenant_1,
+            tipo="permesso_soggiorno",
+            file=_pdf_finto(),
+            data_scadenza=oggi - datetime.timedelta(days=1),
+        )
+        TenantDocument.objects.create(
+            tenant=tenant_1,
+            tipo="codice_fiscale",
+            file=_pdf_finto(),
+            data_scadenza=oggi + datetime.timedelta(days=365),
+        )
+        voci = self._voci(client_inq_1.get(self.URL))
+        assert voci["carta_identita"]["stato"] == "scadenza"
+        assert voci["carta_identita"]["giorni_alla_scadenza"] == 30
+        assert voci["permesso_soggiorno"]["stato"] == "scaduto"
+        assert voci["codice_fiscale"]["stato"] == "ok"
+
+    def test_voce_prende_lo_stato_peggiore_delle_pagine(self, client_inq_1, tenant_1):
+        oggi = datetime.date.today()
+        TenantDocument.objects.create(
+            tenant=tenant_1, tipo="carta_identita", descrizione="fronte", file=_pdf_finto()
+        )
+        TenantDocument.objects.create(
+            tenant=tenant_1,
+            tipo="carta_identita",
+            descrizione="retro",
+            file=_pdf_finto(),
+            data_scadenza=oggi - datetime.timedelta(days=2),
+        )
+        assert self._voci(client_inq_1.get(self.URL))["carta_identita"]["stato"] == "scaduto"
+
+    def test_altro_resta_fuori_dalla_checklist(self, client_inq_1, tenant_1):
+        for descrizione in ("bolletta vecchia", "lettera"):
+            TenantDocument.objects.create(
+                tenant=tenant_1, tipo="altro", descrizione=descrizione, file=_pdf_finto()
+            )
+        payload = client_inq_1.get(self.URL).json()
+        assert "altro" not in {v["tipo"] for v in payload["voci"]}
+        # Due file "altro" restano due voci distinte, non una con due pagine.
+        assert [a["titolo"] for a in payload["altri"]] == ["bolletta vecchia", "lettera"]
+
+    def test_riepilogo(self, client_inq_1, tenant_1):
+        TenantDocument.objects.create(
+            tenant=tenant_1, tipo="carta_identita", file=_pdf_finto()
+        )
+        riepilogo = client_inq_1.get(self.URL).json()["riepilogo"]
+        # carta d'identità ok, CF e contratto di lavoro mancanti, atto in attesa.
+        assert riepilogo["ok"] == 1
+        assert riepilogo["mancante"] == 2
+        assert riepilogo["attesa"] == 1
+        assert riepilogo["completezza"] == 33  # 1 su 3 (l'atto non conta)
+
+    def test_inquilino_non_vede_documenti_altrui(self, client_inq_1, tenant_1, tenant_2):
+        TenantDocument.objects.create(
+            tenant=tenant_2, tipo="passaporto", file=_pdf_finto()
+        )
+        payload = client_inq_1.get(self.URL).json()
+        assert payload["tenant"] == tenant_1.id
+        assert "passaporto" not in {v["tipo"] for v in payload["voci"]}
+
+    def test_proprietario_deve_indicare_inquilino(self, client_prop, tenant_1):
+        assert client_prop.get(self.URL).status_code == 400
+
+    def test_proprietario_vede_il_fascicolo_indicato(self, client_prop, tenant_1):
+        TenantDocument.objects.create(
+            tenant=tenant_1, tipo="carta_identita", file=_pdf_finto()
+        )
+        resp = client_prop.get(f"{self.URL}?tenant={tenant_1.id}")
+        assert resp.status_code == 200
+        assert resp.json()["tenant_nominativo"] == tenant_1.nominativo
+        assert self._voci(resp)["carta_identita"]["stato"] == "ok"
+
+    def test_proprietario_non_accede_ad_altro_immobile(
+        self, client_prop, immobile2, user_inq_2
+    ):
+        estraneo = TenantProfile.objects.create(
+            user=user_inq_2,
+            property=immobile2,
+            nominativo="Estraneo",
+            giorno_pagamento_affitto=1,
+        )
+        assert client_prop.get(f"{self.URL}?tenant={estraneo.id}").status_code == 404
+
+    def test_anonimo_non_autorizzato(self, tenant_1):
+        assert APIClient().get(self.URL).status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
 # Test PropertyDocumentViewSet
 # ---------------------------------------------------------------------------
 

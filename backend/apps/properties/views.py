@@ -21,6 +21,7 @@ from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from accounts.permissions import IsInquilinoSelf, IsPropertyMember
 from properties.context import get_request_property
+from properties.fascicolo import costruisci_fascicolo
 from properties.models import (
     Contract,
     GalleryArea,
@@ -313,6 +314,31 @@ class TenantDocumentViewSet(ModelViewSet):
         if tenant_id:
             qs = qs.filter(tenant_id=tenant_id)
         return qs
+
+    @action(detail=False, methods=["get"], url_path="fascicolo")
+    def fascicolo(self, request):
+        """Checklist dei documenti con gli stati (valido/scadenza/scaduto/…).
+
+        L'inquilino ottiene il proprio fascicolo; il proprietario quello
+        dell'inquilino indicato in ``?tenant=<id>`` (dell'immobile attivo).
+        """
+        from rest_framework.exceptions import PermissionDenied, ValidationError
+
+        documenti = list(self.get_queryset())
+        if _is_gestione(request.user):
+            tenant_id = request.query_params.get("tenant")
+            if not tenant_id:
+                raise ValidationError({"tenant": "Indicare l'inquilino."})
+            tenant = get_object_or_404(
+                TenantProfile,
+                pk=tenant_id,
+                property=get_request_property(request),
+            )
+        else:
+            tenant = getattr(request.user, "tenant_profile", None)
+            if tenant is None:
+                raise PermissionDenied("Nessun profilo inquilino associato all'utente.")
+        return Response(costruisci_fascicolo(tenant, documenti))
 
     def perform_create(self, serializer):
         user = self.request.user
