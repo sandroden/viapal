@@ -10,10 +10,15 @@
         <q-icon name="mark_email_read" size="16px" />
         Da inviare
       </button>
+      <button :class="['vp-screen-tab', { active: tab === 'inviati' }]" @click="tab = 'inviati'">
+        <q-icon name="history" size="16px" />
+        Inviati
+      </button>
     </div>
 
     <div class="vp-riepilogo__body">
       <RiepilogoInvioStep
+        v-if="tab === 'da-inviare'"
         :riepiloghi="riepiloghi"
         :escludi="escludi"
         :giorni="giorni"
@@ -21,6 +26,7 @@
         @invia="confermaInvio"
         @toggle="onToggle"
       />
+      <ComunicazioniPannello v-else />
     </div>
   </q-page>
 </template>
@@ -30,11 +36,12 @@ import { computed, onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { useRiepilogoAddebitiStore } from 'stores/riepilogoAddebiti';
 import RiepilogoInvioStep from 'src/components/riepilogo/RiepilogoInvioStep.vue';
+import ComunicazioniPannello from 'src/components/comunicazioni/ComunicazioniPannello.vue';
 
 const $q = useQuasar();
 const store = useRiepilogoAddebitiStore();
 
-const tab = ref<'da-inviare'>('da-inviare');
+const tab = ref<'da-inviare' | 'inviati'>('da-inviare');
 /** tenant_id deselezionati a mano dal proprietario. */
 const escludi = ref<number[]>([]);
 
