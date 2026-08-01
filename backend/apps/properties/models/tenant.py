@@ -179,6 +179,10 @@ class TenantDocument(TimestampedModel):
         PASSAPORTO = "passaporto", "Passaporto"
         PERMESSO_SOGGIORNO = "permesso_soggiorno", "Permesso di soggiorno"
         CONTRATTO_LAVORO = "contratto_lavoro", "Contratto di lavoro"
+        RICEVUTA_REGISTRAZIONE = (
+            "ricevuta_registrazione",
+            "Ricevuta di registrazione (agenzia)",
+        )
         RICEVUTA_SUBENTRO = "ricevuta_subentro", "Ricevuta del subentro"
         ATTO_SUBENTRO = "atto_subentro", "Atto di subentro"
         ALTRO = "altro", "Altro"

@@ -31,6 +31,7 @@ export const TIPI_DOCUMENTO_INQUILINO: TipoDocumentoOption[] = [
   { label: 'Passaporto', value: 'passaporto' },
   { label: 'Permesso di soggiorno', value: 'permesso_soggiorno' },
   { label: 'Contratto di lavoro', value: 'contratto_lavoro' },
+  { label: 'Ricevuta di registrazione (agenzia)', value: 'ricevuta_registrazione' },
   { label: 'Ricevuta del subentro', value: 'ricevuta_subentro' },
   { label: 'Atto di subentro', value: 'atto_subentro' },
   { label: 'Altro', value: 'altro' },

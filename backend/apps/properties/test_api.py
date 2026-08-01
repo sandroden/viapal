@@ -527,6 +527,14 @@ class TestFascicolo:
         assert voci["passaporto"]["stato"] == "ok"
         assert "carta_identita" not in voci
 
+    def test_ricevuta_registrazione_agenzia(self, client_inq_1, tenant_1):
+        TenantDocument.objects.create(
+            tenant=tenant_1, tipo="ricevuta_registrazione", file=_pdf_finto()
+        )
+        voce = self._voci(client_inq_1.get(self.URL))["ricevuta_registrazione"]
+        assert voce["tipo_display"] == "Ricevuta di registrazione (agenzia)"
+        assert voce["stato"] == "ok"
+
     def test_fronte_retro_una_voce_due_pagine(self, client_inq_1, tenant_1):
         for descrizione in ("fronte", "retro"):
             TenantDocument.objects.create(
