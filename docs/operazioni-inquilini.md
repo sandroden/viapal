@@ -108,6 +108,10 @@ Receivable affitto. Senza questo, gli inquilini non hanno addebiti.
 0 6 1 * *   cd /path/viapal/backend && ENV=production uv run manage.py genera_conguagli_storici --dal $(date +\%Y-\%m) --al $(date +\%Y-\%m)
 # Ogni 1° del mese alle 06:05 — addebiti affitto del mese corrente
 5 6 1 * *   cd /path/viapal/backend && ENV=production uv run manage.py genera_rent_payments
+
+# Post-rodaggio: riepilogo addebiti agli inquilini il 1° del mese alle 07:00.
+# Per ora l'invio si fa a mano da /p/riepilogo, con anteprima e deselezione.
+# 0 7 1 * *   cd /path/viapal/backend && ENV=production uv run manage.py invia_riepilogo_addebiti --invia
 ```
 
 `genera_conguagli_storici` è idempotente (`update_or_create`), quindi rilanciarlo non duplica nulla.
