@@ -2,29 +2,36 @@
 Management command per generare i Receivable affitto mensili.
 
 Uso:
+    uv run manage.py genera_rent_payments                      # mese corrente
     uv run manage.py genera_rent_payments --anno 2026 --mese 6
     uv run manage.py genera_rent_payments --anno 2026 --mese 6 --force
+
+Senza ``--anno``/``--mese`` lavora sul **mese corrente**: è la forma pensata
+per il cron del 1° del mese, che così non deve calcolare la data in shell.
 """
 from django.core.management.base import BaseCommand, CommandError
 
 
 class Command(BaseCommand):
-    help = "Genera i pagamenti affitto per un mese specifico."
+    help = (
+        "Genera i pagamenti affitto per un mese specifico "
+        "(senza --anno/--mese: il mese corrente)."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--anno",
             type=int,
-            required=True,
+            default=None,
             metavar="YYYY",
-            help="Anno di competenza (es. 2026).",
+            help="Anno di competenza (es. 2026). Default: anno corrente.",
         )
         parser.add_argument(
             "--mese",
             type=int,
-            required=True,
+            default=None,
             metavar="MM",
-            help="Mese di competenza 1-12 (es. 6 per giugno).",
+            help="Mese di competenza 1-12 (es. 6 per giugno). Default: mese corrente.",
         )
         parser.add_argument(
             "--force",
@@ -40,8 +47,16 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        anno = options["anno"]
-        mese = options["mese"]
+        from django.utils import timezone
+
+        if (options["anno"] is None) != (options["mese"] is None):
+            raise CommandError(
+                "Specificare sia --anno sia --mese, oppure nessuno dei due "
+                "(mese corrente)."
+            )
+        oggi = timezone.localdate()
+        anno = options["anno"] or oggi.year
+        mese = options["mese"] or oggi.month
         force = options["force"]
 
         prop = None

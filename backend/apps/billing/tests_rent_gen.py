@@ -940,3 +940,34 @@ class TestOrderingAssignmentsPerNominativo:
         ris = genera_pagamenti_mese(2026, 5, persist=False)
         nominativi = [s["tenant_nominativo"] for s in ris["simulazione"]]
         assert nominativi == ["Alpha", "Mike", "Zorro"]
+
+
+class TestComandoMeseCorrente:
+    """``genera_rent_payments`` senza argomenti lavora sul mese corrente
+    (forma usata dal cron del 1° del mese)."""
+
+    def test_senza_argomenti_usa_mese_corrente(self, db, make_assignment):
+        from django.core.management import call_command
+        from django.utils import timezone
+
+        oggi = timezone.localdate()
+        make_assignment(
+            canone=Decimal("500.00"),
+            valid_from=datetime.date(oggi.year - 1, 1, 1),
+            nominativo="Corrente",
+        )
+        call_command("genera_rent_payments")
+        assert Receivable.objects.filter(
+            causale=Receivable.Causale.AFFITTO,
+            competenza_da__year=oggi.year,
+            competenza_da__month=oggi.month,
+        ).exists()
+
+    def test_un_solo_argomento_e_errore(self, db):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        with pytest.raises(CommandError, match="sia --anno sia --mese"):
+            call_command("genera_rent_payments", "--anno", "2026")
+        with pytest.raises(CommandError, match="sia --anno sia --mese"):
+            call_command("genera_rent_payments", "--mese", "6")

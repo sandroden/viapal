@@ -39,7 +39,7 @@ La funzione di calcolo è `billing.calc.rent.genera_pagamenti_mese(anno, mese, f
 |---|---|
 | Admin · *Strumenti rapidi* → **Genera Receivable affitto (mese)** | pagina standalone con form (anno, mese, tenant, force, dry_run). URL: `/admin/billing/receivable/genera-affitto/`. |
 | Admin · changelist `UtilityChargePeriod` → action **Rigenera Receivable affitto** | richiede la selezione di uno o più period (usati come "ancora": il period definisce il range di mesi su cui iterare). Stessa option `force/dry_run/tenant`. |
-| CLI · `manage.py genera_rent_payments --anno YYYY --mese MM [--force]` | per generazioni puntuali da terminale / cron / CI. |
+| CLI · `manage.py genera_rent_payments [--anno YYYY --mese MM] [--force]` | per generazioni puntuali da terminale / cron / CI. **Senza `--anno`/`--mese` usa il mese corrente** (forma pensata per il cron); i due argomenti vanno insieme, uno solo dei due è un errore. |
 | CLI · `manage.py genera_storico [--dal YYYY-MM] [--al YYYY-MM] [--force]` | bulk per range di mesi. |
 
 ### 2.2 Utenze
@@ -106,7 +106,8 @@ Receivable affitto. Senza questo, gli inquilini non hanno addebiti.
 ```cron
 # Ogni 1° del mese alle 06:00: crea period del mese corrente + genera affitti
 0 6 1 * *   cd /path/viapal/backend && ENV=production uv run manage.py genera_conguagli_storici --dal $(date +\%Y-\%m) --al $(date +\%Y-\%m)
-5 6 1 * *   cd /path/viapal/backend && ENV=production uv run manage.py genera_rent_payments --anno $(date +\%Y) --mese $(date +\%-m)
+# Ogni 1° del mese alle 06:05 — addebiti affitto del mese corrente
+5 6 1 * *   cd /path/viapal/backend && ENV=production uv run manage.py genera_rent_payments
 ```
 
 `genera_conguagli_storici` è idempotente (`update_or_create`), quindi rilanciarlo non duplica nulla.
