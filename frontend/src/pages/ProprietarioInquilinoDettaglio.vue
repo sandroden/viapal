@@ -211,6 +211,7 @@
         <q-tab name="pagamenti" label="Pagamenti" />
         <q-tab name="profilo" label="Profilo & contratto" />
         <q-tab name="documenti" label="Documenti" />
+        <q-tab name="inviati" label="Inviati" />
         <q-route-tab
           name="rendiconto"
           label="Rendiconto"
@@ -764,6 +765,11 @@
             <FascicoloPannello :tenant-id="tenantId" :solo-lettura="!puoModificare" />
           </div>
         </q-tab-panel>
+
+        <!-- TAB INVIATI: comunicazioni ricevute da questo inquilino -->
+        <q-tab-panel name="inviati" class="vp-p-id__panel">
+          <ComunicazioniPannello :tenant-id="tenantId" />
+        </q-tab-panel>
       </q-tab-panels>
     </template>
 
@@ -913,6 +919,7 @@ import ConguagliaPrevisionaleDialog from 'src/components/ConguagliaPrevisionaleD
 import AssegnaStanzaDialog from 'src/components/AssegnaStanzaDialog.vue';
 import RestituzioneDepositoDialog from 'src/components/RestituzioneDepositoDialog.vue';
 import FascicoloPannello from 'src/components/documenti/FascicoloPannello.vue';
+import ComunicazioniPannello from 'src/components/comunicazioni/ComunicazioniPannello.vue';
 
 type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'deposito';
 
@@ -971,9 +978,9 @@ function parseAnno(v: unknown): number {
   if (Number.isFinite(n) && n >= annoMin && n <= annoCorrente) return n;
   return annoCorrente;
 }
-function parseTab(v: unknown): 'pagamenti' | 'profilo' | 'documenti' {
+function parseTab(v: unknown): 'pagamenti' | 'profilo' | 'documenti' | 'inviati' {
   const s = Array.isArray(v) ? v[0] : v;
-  if (s === 'profilo' || s === 'documenti') return s;
+  if (s === 'profilo' || s === 'documenti' || s === 'inviati') return s;
   return 'pagamenti';
 }
 function parseTipo(v: unknown): FiltroTipo {
@@ -991,7 +998,9 @@ const anniDisponibili = computed<number[]>(() => {
 const puoIndietro = computed(() => annoSelezionato.value > annoMin);
 const puoAvanti = computed(() => annoSelezionato.value < annoCorrente);
 
-const tabAttivo = ref<'pagamenti' | 'profilo' | 'documenti'>(parseTab(route.query.tab));
+const tabAttivo = ref<'pagamenti' | 'profilo' | 'documenti' | 'inviati'>(
+  parseTab(route.query.tab),
+);
 
 const filtroTipo = ref<FiltroTipo>(parseTipo(route.query.tipo));
 const opzioniTipo = [
