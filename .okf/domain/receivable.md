@@ -59,6 +59,13 @@ nell'admin; un commento dell'inquilino viene inoltrato via email ai membri
 proprietari/gestori (`billing/commenti.py`, endpoint
 `receivables/<pk>/commenti/`).
 
+# Solleciti
+
+Gli addebiti aperti vengono comunicati all'inquilino da due email diverse:
+l'avviso utenze (una voce, con QR, sposta la scadenza a +14gg) e il
+[riepilogo addebiti](solleciti.md) (N voci, nessun QR, **non** tocca le
+scadenze).
+
 # Invarianti
 
 - Un Receivable con allocazioni vive **non viene sovrascritto** dai ricalcoli

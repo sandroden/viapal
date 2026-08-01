@@ -19,7 +19,9 @@ management command) e sulle **operazioni di manutenzione ordinaria**.
 | `Receivable` | billing | **addebito unificato** verso l'inquilino: `causale ∈ {affitto, utenze, extra}` |
 | `BankTransaction` | billing | bonifico/movimento bancario |
 | `BankTransactionAllocation` | billing | allocazione M:N tra `BankTransaction` e `Receivable` (riconciliazione) |
-| `Notification`, `Template`, `RegolaSollecito` | notifications | solleciti automatici |
+| `Notification` | notifications | **registro comunicazioni**: cosa è stato inviato, a chi, con che esito (i fallimenti compresi) |
+| `MessageTemplate` | notifications | testo personalizzabile di una comunicazione, per immobile |
+| `ReminderRule` | notifications | regola di sollecito — **modello presente, nessun engine la consuma**: gli invii sono manuali |
 
 ## 2. Generazione Receivable
 
@@ -92,6 +94,9 @@ via `BankTransactionAllocation` (M:N con importo).
 | Carica bolletta luce/gas | Aggiungi `Bolletta utenza` (può uploadare PDF) | "Imposta pagata da owner" / "Sincronizza Expense" | `carica_bollette_scanner`, `importa_utenze_da_xlsx` |
 | Riconciliare un bonifico | Edit `BankTransaction` → inline allocazioni | — | — |
 | Settlement annuale (fratelli) | *Strumenti rapidi* → Genera settlement annuale | — | `genera_settlement` |
+| Avvisare delle utenze emesse | — | flusso `/p/utenze` → *Invia avvisi* | — |
+| Riepilogo addebiti all'inquilino | — | pagina `/p/riepilogo` (anteprima + invio) | `invia_riepilogo_addebiti [--invia]` (senza `--invia` è una prova a vuoto) |
+| Rileggere cosa è stato inviato | changelist `Notifiche` (filtri tipo/canale/esito) | tab *Inviati* in `/p/riepilogo` e nella scheda inquilino | — |
 
 ## 5. Manutenzione ordinaria
 
@@ -99,13 +104,11 @@ Frequenza consigliata e modalità preferita.
 
 ### 5.1 Mensile · **inizio mese** (1° o 2° giorno)
 
-**Obbligatorio**: creare il `UtilityChargePeriod` del mese e generare i
-Receivable affitto. Senza questo, gli inquilini non hanno addebiti.
+**Obbligatorio**: generare i Receivable affitto del mese. Senza questo, gli
+inquilini non hanno l'addebito del canone.
 
 **Cron (consigliato)**:
 ```cron
-# Ogni 1° del mese alle 06:00: crea period del mese corrente + genera affitti
-0 6 1 * *   cd /path/viapal/backend && ENV=production uv run manage.py genera_conguagli_storici --dal $(date +\%Y-\%m) --al $(date +\%Y-\%m)
 # Ogni 1° del mese alle 06:05 — addebiti affitto del mese corrente
 5 6 1 * *   cd /path/viapal/backend && ENV=production uv run manage.py genera_rent_payments
 
@@ -114,11 +117,37 @@ Receivable affitto. Senza questo, gli inquilini non hanno addebiti.
 # 0 7 1 * *   cd /path/viapal/backend && ENV=production uv run manage.py invia_riepilogo_addebiti --invia
 ```
 
-`genera_conguagli_storici` è idempotente (`update_or_create`), quindi rilanciarlo non duplica nulla.
+`genera_rent_payments` è idempotente: rilanciarlo non duplica nulla (senza
+`--force` salta i Receivable già esistenti).
+
+> **Il periodo utenze non va messo in cron.** `genera_conguagli_storici` fa
+> `update_or_create(defaults={"stato": "inviato", "data_invio": <ultimo del mese>})`:
+> lanciato il giorno 1 chiuderebbe il periodo come già emesso, con una data di
+> invio futura e senza nessuna bolletta dentro, scavalcando il guard di
+> completezza di `emetti`. È un comando per il **recupero storico**, non per
+> l'esercizio: il periodo del mese si crea dal flusso `/p/utenze`, che lo trova
+> o lo crea quando arrivano le bollette (vedi §5.2).
 
 **Manuale, in alternativa, dall'admin**:
-1. *Pagamenti e bollette → Periodi utenze → + Aggiungi* (campi: `periodo_da = primo del mese`, `periodo_a = ultimo del mese`, lascia i default).
-2. *Strumenti rapidi → Genera Receivable affitto (mese)* → scegli anno/mese, **dry-run** la prima volta per controllare, poi rilancia senza dry-run.
+1. *Strumenti rapidi → Genera Receivable affitto (mese)* → scegli anno/mese, **dry-run** la prima volta per controllare, poi rilancia senza dry-run.
+
+### 5.1.1 · **riepilogo addebiti agli inquilini** (quando si vuole)
+
+Dopo la generazione degli affitti, `/p/riepilogo` mostra per ogni inquilino il
+canone appena addebitato, le voci scadute o in scadenza entro 15 giorni e
+quelle *dichiarate* in attesa di riscontro. Si controlla l'anteprima (è il
+testo esatto dell'email), si deseleziona chi non deve riceverla e si invia.
+
+- La mail **non** contiene totali, QR o IBAN: il conto completo e i pagamenti
+  stanno in app. Non tocca le scadenze degli addebiti.
+- Gli **ex inquilini con arretrati ricevono** (badge "ex inquilino"): sono la
+  popolazione da sollecitare. Si deselezionano a mano se non serve.
+- Il tab *Inviati* (stessa pagina, e nella scheda del singolo inquilino)
+  elenca cosa è partito, a quale indirizzo, quando, e i tentativi falliti con
+  il messaggio d'errore.
+- Da terminale: `manage.py invia_riepilogo_addebiti` è una prova a vuoto,
+  `--invia` spedisce davvero. Opzioni: `--property`, `--tenant`, `--escludi`,
+  `--giorni`.
 
 ### 5.2 Su evento · **arrivo bolletta**
 

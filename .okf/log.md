@@ -1,5 +1,10 @@
 # Update Log
 
+## 2026-08-02
+* **Creation**: `domain/solleciti.md` — email di riepilogo addebiti (canone del mese in apertura, pendenti a 15 giorni, dichiarati a parte), niente totali/QR/IBAN, scadenze non riscritte, ex inquilini inclusi; registro comunicazioni su `Notification` (`corpo_html`, `destinatario`, `codice`, `errore`) con invariante `inviata_at` vs `errore`.
+* **Maintain**: `models/notifications.md` — nuovi campi di `Notification` e nota che `ReminderRule` resta senza engine.
+* **Maintain**: `domain/receivable.md` — rimando ai due flussi di sollecito.
+
 ## 2026-08-01
 * **Maintain**: `domain/fascicolo-documenti.md` — nessun documento è obbligatorio: eliminato lo stato "mancante" (e con esso card di completezza lato inquilino e "mancanti" nel banner del proprietario); nuovo tipo `ricevuta_registrazione` ("Ricevuta di registrazione (agenzia)").
 * **Creation**: `domain/fascicolo-documenti.md` — fascicolo documenti inquilino: stati derivati nel backend (soglia 60 giorni), facoltativi non mostrati come mancanti, atto di subentro a carico proprietà, pagine fronte/retro senza modifiche di schema, visore interno (inline + SAMEORIGIN + denylist SW). Sollecito e quadro della casa non implementati.
