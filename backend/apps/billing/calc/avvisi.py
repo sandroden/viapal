@@ -25,8 +25,17 @@ from django.core.mail import EmailMultiAlternatives
 
 from billing._dates import format_mese_anno
 from billing._payments import conto_per_receivable, iban_valido
+from billing.calc._email import (  # noqa: F401 — riesportati per i chiamanti storici
+    _applica,
+    _email_inquilino,
+    _eur,
+    _now,
+    _oggi,
+    link_app,
+    render_messaggio,
+)
 from billing.models import Receivable
-from notifications.models import MessageTemplate, Notification
+from notifications.models import Notification
 from notifications.push import invia_push
 
 TEMPLATE_CODICE = "avviso_utenze"
@@ -70,24 +79,9 @@ VOCI_LABEL = {"luce": "Luce", "gas": "Gas", "tari": "TARI", "altro": "Altro"}
 VOCI_ORDINE = ["luce", "gas", "tari", "altro"]
 
 
-def _eur(valore) -> str:
-    """Formatta un importo come stringa italiana (es. ``12,34``)."""
-    return f"{Decimal(valore):.2f}".replace(".", ",")
-
-
-def _email_inquilino(tenant) -> str:
-    """Email dell'inquilino: prima ``user.email``, poi ``email_alt``."""
-    user = getattr(tenant, "user", None)
-    email = (getattr(user, "email", "") or "").strip()
-    if not email:
-        email = (getattr(tenant, "email_alt", "") or "").strip()
-    return email
-
-
 def _link_inquilino(receivable) -> str:
     """URL della pagina di dettaglio conguaglio nell'app dell'inquilino."""
-    base = (getattr(settings, "APP_BASE_URL", "") or "").rstrip("/")
-    return f"{base}/i/utenze/{receivable.id}"
+    return link_app(f"/i/utenze/{receivable.id}")
 
 
 def _voci_conteggio(receivable, dettaglio: dict | None) -> list[tuple[str, str]]:
@@ -249,13 +243,6 @@ def _contesto(receivable, dettaglio: dict | None) -> dict:
     }
 
 
-def _applica(template: str, contesto: dict) -> str:
-    out = template
-    for chiave, valore in contesto.items():
-        out = out.replace("{{" + chiave + "}}", str(valore))
-    return out
-
-
 def _render(contesto: dict, property=None) -> tuple[str, str, str]:
     """Restituisce ``(oggetto, corpo_testo, corpo_html)``.
 
@@ -263,17 +250,14 @@ def _render(contesto: dict, property=None) -> tuple[str, str, str]:
     dal fallback; la versione HTML usa sempre il layout di default così il
     link e la tabella del conteggio sono garantiti.
     """
-    tpl = MessageTemplate.objects.filter(
+    return render_messaggio(
+        TEMPLATE_CODICE,
+        DEFAULT_OGGETTO,
+        DEFAULT_CORPO,
+        DEFAULT_CORPO_HTML,
+        contesto,
         property=property,
-        codice=TEMPLATE_CODICE,
-        canale=MessageTemplate.CanaleComunicazione.EMAIL,
-    ).first()
-    oggetto_raw = tpl.titolo if tpl else DEFAULT_OGGETTO
-    corpo_raw = tpl.corpo if tpl else DEFAULT_CORPO
-    oggetto = _applica(oggetto_raw, contesto)
-    corpo_txt = _applica(corpo_raw, contesto)
-    corpo_html = _applica(DEFAULT_CORPO_HTML, contesto)
-    return oggetto, corpo_txt, corpo_html
+    )
 
 
 def _receivables_periodo(period):
@@ -473,18 +457,3 @@ def invia_avvisi_utenze(period, dry_run: bool = False, escludi_ids=None) -> dict
         "avvisi_inviati_at": period.avvisi_inviati_at,
         "avvisi": avvisi,
     }
-
-
-def _now():
-    from django.utils import timezone
-
-    return timezone.now()
-
-
-def _oggi():
-    """Data odierna nel fuso locale (non UTC): coerente con scadenze e
-    confronto 'inquilino uscito'. ``timezone.now().date()`` darebbe la data
-    UTC, sfasata di un giorno nelle ore notturne."""
-    from django.utils import timezone
-
-    return timezone.localdate()
