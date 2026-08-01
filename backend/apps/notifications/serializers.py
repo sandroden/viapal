@@ -78,6 +78,63 @@ class NotificationSerializer(serializers.ModelSerializer):
         read_only_fields = ["user", "inviata_at"]
 
 
+# Etichette leggibili dei tipi di comunicazione. Mappa esplicita, non una
+# deduzione dal ContentType: invito inquilino e riepilogo addebiti puntano
+# entrambi a un TenantProfile e il ContentType non li distinguerebbe.
+TIPO_LABEL = {
+    "avviso_utenze": "Avviso utenze",
+    "riepilogo_addebiti": "Riepilogo addebiti",
+    "invito_inquilino": "Invito inquilino",
+    "invito_membership": "Invito membro",
+    "commento": "Nota su addebito",
+}
+
+
+class ComunicazioneSerializer(serializers.ModelSerializer):
+    """Riga del registro comunicazioni (lista per immobile).
+
+    Il corpo **non** c'è: è il payload pesante di questa tabella e serve solo
+    nel dettaglio (``GET /api/v1/comunicazioni/<id>/``).
+    """
+
+    canale_display = serializers.CharField(source="get_canale_display", read_only=True)
+    tenant_id = serializers.IntegerField(
+        source="user.tenant_profile.id", read_only=True
+    )
+    tenant_nominativo = serializers.CharField(
+        source="user.tenant_profile.nominativo", read_only=True
+    )
+    tipo_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Notification
+        fields = [
+            "id",
+            "tenant_id",
+            "tenant_nominativo",
+            "destinatario",
+            "canale",
+            "canale_display",
+            "codice",
+            "tipo_display",
+            "oggetto",
+            "inviata_at",
+            "letta_at",
+            "errore",
+            "created_at",
+        ]
+
+    def get_tipo_display(self, obj) -> str:
+        return TIPO_LABEL.get(obj.codice, obj.codice or "—")
+
+
+class ComunicazioneDettaglioSerializer(ComunicazioneSerializer):
+    """Come sopra, più il testo realmente recapitato."""
+
+    class Meta(ComunicazioneSerializer.Meta):
+        fields = ComunicazioneSerializer.Meta.fields + ["corpo", "corpo_html"]
+
+
 class PushSubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = PushSubscription

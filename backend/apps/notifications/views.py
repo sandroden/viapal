@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from accounts.permissions import IsPropertyMember
+from billing.views import BillingPagination
 from properties.context import get_request_property
 from properties.views import ProtectedDestroyMixin
 from notifications.models import (
@@ -20,6 +21,8 @@ from notifications.models import (
 )
 from notifications.push import invia_push, push_configurato
 from notifications.serializers import (
+    ComunicazioneDettaglioSerializer,
+    ComunicazioneSerializer,
     MessageTemplateSerializer,
     NotificationSerializer,
     PushSubscriptionSerializer,
@@ -37,6 +40,76 @@ class NotificationViewSet(ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return Notification.objects.filter(user=self.request.user).order_by("-created_at")
+
+
+class ComunicazioniViewSet(ReadOnlyModelViewSet):
+    """GET /api/v1/comunicazioni/ — registro delle comunicazioni agli inquilini.
+
+    Vista **di gestione**, distinta da ``NotificationViewSet`` che resta la
+    vista personale (``user=request.user``): qui un membro dell'immobile legge
+    cosa è stato mandato ai *suoi* inquilini.
+
+    Il filtro passa dal join ``user__tenant_profile__property``, che esclude
+    automaticamente le comunicazioni verso proprietari e gestori (note sugli
+    addebiti, inviti membro): non c'entrano con "cosa ho inviato agli
+    inquilini".
+
+    Filtri (query string): ``tenant``, ``da``/``a`` (YYYY-MM-DD su
+    ``created_at``), ``canale``, ``tipo`` (= ``codice``), ``esito``
+    (``inviato``/``errore``).
+
+    Nota: gli avvisi utenze scrivono due righe per lo stesso evento (una push
+    e una email). Non si deduplica lato server: la colonna canale le
+    distingue e il filtro le separa.
+    """
+
+    permission_classes = [IsPropertyMember]
+    # Stessa paginazione delle liste billing: a regime questa tabella cresce
+    # di N righe al mese e una lista non paginata prima o poi tronca in
+    # silenzio (già successo in riconciliazione).
+    pagination_class = BillingPagination
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return ComunicazioneDettaglioSerializer
+        return ComunicazioneSerializer
+
+    def get_queryset(self):
+        prop = get_request_property(self.request)
+        qs = (
+            Notification.objects.filter(user__tenant_profile__property=prop)
+            .select_related("user__tenant_profile")
+            .order_by("-created_at")
+        )
+
+        params = self.request.query_params
+
+        tenant = params.get("tenant")
+        if tenant:
+            qs = qs.filter(user__tenant_profile__id=tenant)
+
+        da = params.get("da")
+        if da:
+            qs = qs.filter(created_at__date__gte=da)
+        a = params.get("a")
+        if a:
+            qs = qs.filter(created_at__date__lte=a)
+
+        canale = params.get("canale")
+        if canale:
+            qs = qs.filter(canale=canale)
+
+        tipo = params.get("tipo")
+        if tipo:
+            qs = qs.filter(codice=tipo)
+
+        esito = params.get("esito")
+        if esito == "errore":
+            qs = qs.exclude(errore="")
+        elif esito == "inviato":
+            qs = qs.filter(errore="", inviata_at__isnull=False)
+
+        return qs
 
 
 class MessageTemplateViewSet(ProtectedDestroyMixin, ModelViewSet):
