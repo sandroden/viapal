@@ -247,6 +247,16 @@ watch([filtroTipo, filtroCanale, filtroEsito, filtroDa, filtroA], () => {
   void carica(1);
 });
 
+// Le frecce prev/next della scheda inquilino cambiano solo il param di rotta:
+// Vue riusa il componente e senza questo watch la tabella resterebbe sulle
+// comunicazioni dell'inquilino precedente, attribuite al nuovo.
+watch(
+  () => props.tenantId,
+  () => {
+    void carica(1);
+  },
+);
+
 onMounted(() => {
   void carica(1);
 });
