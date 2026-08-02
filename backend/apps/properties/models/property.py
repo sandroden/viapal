@@ -651,6 +651,20 @@ class RoomAssignment(TimestampedModel):
         verbose_name="data atto cessione",
         help_text="Valorizzato se l'occupazione è iniziata con una cessione registrata.",
     )
+    subentra_a = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        related_name="subentri",
+        null=True,
+        blank=True,
+        verbose_name="subentra a",
+        help_text=(
+            "Assegnazione dell'inquilino uscente a cui questa subentra. "
+            "Non si deduce dalle date: fra l'uscita di uno e l'ingresso "
+            "dell'altro può passare del tempo, e un atto legale non si "
+            "fonda su un'euristica."
+        ),
+    )
     note = models.TextField(
         blank=True,
         verbose_name="note",
@@ -681,6 +695,30 @@ class RoomAssignment(TimestampedModel):
             )
         self._valida_stessa_property()
         self._valida_no_overlap()
+        self._valida_subentro()
+
+    def _valida_subentro(self):
+        """L'assegnazione a cui si subentra deve essere un'altra, dello
+        stesso immobile, e precedente."""
+        if not self.subentra_a_id:
+            return
+        if self.subentra_a_id == self.pk:
+            raise ValidationError(
+                {"subentra_a": "Un'assegnazione non può subentrare a se stessa."}
+            )
+        precedente = self.subentra_a
+        if (
+            self.room_id
+            and precedente.room_id
+            and self.room.property_id != precedente.room.property_id
+        ):
+            raise ValidationError(
+                {"subentra_a": "L'assegnazione precedente è di un altro immobile."}
+            )
+        if self.valid_from and precedente.valid_from >= self.valid_from:
+            raise ValidationError(
+                {"subentra_a": "L'assegnazione precedente deve iniziare prima di questa."}
+            )
 
     def _valida_stessa_property(self):
         """La stanza e l'inquilino devono appartenere allo stesso immobile."""

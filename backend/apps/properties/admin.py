@@ -582,7 +582,7 @@ class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
     )
     advanced_search_autocomplete_fields = ("tenant", "room")
     list_select_related = ("tenant", "room")
-    autocomplete_fields = ("tenant", "room", "bank_account_affitto")
+    autocomplete_fields = ("tenant", "room", "bank_account_affitto", "subentra_a")
     ordering = ("-valid_from", "room__nome")
     fieldsets = (
         ("Periodo", {
@@ -592,7 +592,7 @@ class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
             "fields": ("canone_mensile", "bank_account_affitto"),
         }),
         ("Cessione", {
-            "fields": ("costo_cessione", "data_atto_cessione"),
+            "fields": ("costo_cessione", "data_atto_cessione", "subentra_a"),
             "classes": ("collapse",),
         }),
         ("Note", {

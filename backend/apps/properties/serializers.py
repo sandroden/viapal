@@ -478,6 +478,7 @@ class RoomAssignmentSerializer(serializers.ModelSerializer):
             "bank_account_affitto",
             "costo_cessione",
             "data_atto_cessione",
+            "subentra_a",
             "note",
         ]
 

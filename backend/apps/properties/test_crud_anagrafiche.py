@@ -473,6 +473,69 @@ class TestRoomAssignmentCrud:
         assert resp.status_code == 404
 
 
+class TestSubentroEsplicito:
+    """``subentra_a`` è un dato di intenzione, non una deduzione dalle date."""
+
+    def test_cessione_registra_il_subentro(self, client_operativo, assignment, tenant2):
+        resp = client_operativo.post(
+            f"/api/v1/room-assignments/{assignment.id}/cessione/",
+            {"data_fine": "2026-06-30", "nuovo_tenant": tenant2.id,
+             "canone_mensile": "450.00"},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        nuovo = RoomAssignment.objects.get(pk=resp.json()["nuovo"]["id"])
+        assert nuovo.subentra_a_id == assignment.id
+
+    def test_assegnazione_con_buco_temporale(self, client_operativo, assignment, tenant2):
+        """Il caso reale: l'uscente chiude il 30/06, l'entrante parte il
+        22/07. Nessuna adiacenza di date, il legame va scritto."""
+        assignment.valid_to = datetime.date(2026, 6, 30)
+        assignment.save()
+        resp = client_operativo.post(
+            "/api/v1/room-assignments/",
+            {"room": assignment.room_id, "tenant": tenant2.id,
+             "valid_from": "2026-07-22", "canone_mensile": "400.00",
+             "subentra_a": assignment.id},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        assert RoomAssignment.objects.get(pk=resp.json()["id"]).subentra_a_id == assignment.id
+
+    def test_non_subentra_a_se_stessa(self, client_operativo, assignment):
+        resp = client_operativo.patch(
+            f"/api/v1/room-assignments/{assignment.id}/",
+            {"subentra_a": assignment.id},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_precedente_deve_iniziare_prima(self, client_operativo, assignment, tenant2):
+        assignment.valid_to = datetime.date(2026, 6, 30)
+        assignment.save()
+        resp = client_operativo.post(
+            "/api/v1/room-assignments/",
+            {"room": assignment.room_id, "tenant": tenant2.id,
+             # valid_from anteriore a quello dell'assegnazione "precedente"
+             "valid_from": "2024-01-01", "canone_mensile": "400.00",
+             "subentra_a": assignment.id},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_subentro_verso_altro_immobile_400(
+        self, client_operativo, room, tenant2, mondo_b
+    ):
+        resp = client_operativo.post(
+            "/api/v1/room-assignments/",
+            {"room": room.id, "tenant": tenant2.id,
+             "valid_from": "2027-01-01", "canone_mensile": "400.00",
+             "subentra_a": mondo_b.assignment.id},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+
 class TestCessione:
     def _cessione(self, client, assignment, **extra):
         payload = {

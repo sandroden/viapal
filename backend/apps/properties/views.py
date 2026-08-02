@@ -570,6 +570,7 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
             bank_account_affitto=conto,
             costo_cessione=_val("costo_cessione"),
             data_atto_cessione=_val("data_atto_cessione"),
+            subentra_a=_val("subentra_a"),
             note=_val("note", "") or "",
         )
         if inst is not None:
@@ -629,6 +630,9 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
                 canone_mensile=v["canone_mensile"],
                 costo_cessione=v.get("costo_cessione"),
                 data_atto_cessione=v.get("data_atto_cessione"),
+                # Qui il subentro è certo, non dedotto: lo registriamo così
+                # l'atto di subentro sa chi è l'uscente.
+                subentra_a=corrente,
             )
             # Un errore qui (es. overlap col successivo) annulla anche la
             # chiusura del corrente: tutto-o-niente.
