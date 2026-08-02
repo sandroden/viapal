@@ -608,6 +608,26 @@ class ContractSerializer(serializers.ModelSerializer):
         ]
 
 
+class DocumentTemplateSerializer(serializers.ModelSerializer):
+    codice_display = serializers.CharField(source="get_codice_display", read_only=True)
+    property = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        from .models import DocumentTemplate
+
+        model = DocumentTemplate
+        fields = [
+            "id",
+            "property",
+            "codice",
+            "codice_display",
+            "nome",
+            "corpo_html",
+            "note",
+            "updated_at",
+        ]
+
+
 class OwnerBankAccountSerializer(serializers.ModelSerializer):
     # L'owner è sempre il profilo del richiedente (assegnato dal server):
     # nessuno può creare/modificare conti a nome altrui.

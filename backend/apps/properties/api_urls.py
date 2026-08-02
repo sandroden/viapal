@@ -6,6 +6,7 @@ from rest_framework.routers import DefaultRouter
 
 from properties.views import (
     ContractViewSet,
+    DocumentTemplateViewSet,
     GalleryAreaViewSet,
     InformativaPrivacyView,
     GalleryImageViewSet,
@@ -33,6 +34,9 @@ router.register(r"room-assignments", RoomAssignmentViewSet, basename="room-assig
 router.register(r"gallery-areas", GalleryAreaViewSet, basename="gallery-area")
 router.register(r"gallery-images", GalleryImageViewSet, basename="gallery-image")
 router.register(r"contracts", ContractViewSet, basename="contract")
+router.register(
+    r"document-templates", DocumentTemplateViewSet, basename="document-template"
+)
 router.register(r"bank-accounts", OwnerBankAccountViewSet, basename="owner-bank-account")
 
 urlpatterns = [

@@ -24,6 +24,7 @@ from properties.context import get_request_property
 from properties.fascicolo import costruisci_fascicolo
 from properties.models import (
     Contract,
+    DocumentTemplate,
     GalleryArea,
     GalleryImage,
     OwnerBankAccount,
@@ -39,6 +40,7 @@ from properties.models import (
 from properties.serializers import (
     CessioneAssignmentSerializer,
     ContractSerializer,
+    DocumentTemplateSerializer,
     GalleryAreaSerializer,
     GalleryImageSerializer,
     OwnerBankAccountSerializer,
@@ -987,6 +989,73 @@ class ContractViewSet(ProtectedDestroyMixin, ModelViewSet):
     def perform_update(self, serializer):
         self._valida_pagatore(serializer)
         serializer.save()
+
+
+class DocumentTemplateViewSet(ModelViewSet):
+    """Modelli dei documenti generati, uno per immobile.
+
+    Il testo dei documenti è un dato dell'immobile, non codice: si carica
+    da qui. Le due action di supporto servono a chi scrive un modello —
+    l'esempio da cui partire e l'elenco dei segnaposto disponibili — e
+    sono entrambe derivate dal generatore, quindi non possono divergere da
+    quello che la generazione sostituirà davvero.
+    """
+
+    serializer_class = DocumentTemplateSerializer
+    permission_classes = [IsPropertyMember]
+    queryset = DocumentTemplate.objects.all()
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            property=get_request_property(self.request)
+        )
+
+    def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+
+        prop = get_request_property(self.request)
+        codice = serializer.validated_data.get("codice")
+        # ``property`` è assegnata dal server, quindi DRF non può dedurre il
+        # vincolo di unicità: senza questo controllo si arriverebbe a un
+        # IntegrityError invece che a un 400 leggibile.
+        if DocumentTemplate.objects.filter(property=prop, codice=codice).exists():
+            raise ValidationError(
+                {"codice": "Esiste già un modello per questo documento: modificalo."}
+            )
+        serializer.save(property=prop)
+
+    @staticmethod
+    def _codice(request):
+        from rest_framework.exceptions import ValidationError
+
+        from properties.documenti import GENERATORI
+
+        codice = request.query_params.get("codice")
+        if codice not in GENERATORI:
+            raise ValidationError({"codice": "Documento non riconosciuto."})
+        return codice
+
+    @action(detail=False, methods=["get"], url_path="esempio")
+    def esempio(self, request):
+        """HTML di esempio versionato nel repository, da adattare."""
+        from properties.documenti import esempio
+
+        codice = self._codice(request)
+        return Response({"codice": codice, "corpo_html": esempio(codice)})
+
+    @action(detail=False, methods=["get"], url_path="segnaposto")
+    def segnaposto(self, request):
+        """Segnaposto disponibili nel modello di quel documento."""
+        from properties.documenti import GENERATORI, segnaposto
+
+        codice = self._codice(request)
+        return Response(
+            {
+                "codice": codice,
+                "titolo": GENERATORI[codice].titolo,
+                "segnaposto": segnaposto(codice),
+            }
+        )
 
 
 class OwnerBankAccountViewSet(ProtectedDestroyMixin, ModelViewSet):
