@@ -23,7 +23,15 @@ Stati di una voce:
 fascicolo non conta quanto manca. I documenti sono copie di cortesia, e dopo
 la verifica possono anche essere cancellati (meno dati conservati, meno
 rischio). Una voce senza file compare solo quando è a carico della proprietà.
+
+Corollario: una voce a carico della proprietà che *non si applica* a quel
+rapporto non deve comparire affatto. L'atto di subentro nel contratto ha
+senso solo per chi è subentrato a qualcuno; per il primo occupante di una
+stanza resterebbe in ``attesa`` per sempre, aspettando un documento che non
+esisterà mai. Per questo :func:`costruisci_fascicolo` conosce anche
+l'assegnazione dell'inquilino.
 """
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from django.utils import timezone
@@ -43,10 +51,18 @@ class VoceFascicolo:
     tipo: str
     a_carico_proprieta: bool = False
     suggerimento: str = ""
+    #: Codice del generatore, se il documento lo produce l'applicazione.
+    generabile: str = ""
+    #: Se presente e falso per quell'assegnazione, la voce non compare.
+    applicabile: Callable | None = None
 
     @property
     def tipo_display(self):
         return TenantDocument.Tipo(self.tipo).label
+
+
+def _e_un_subentro(assignment) -> bool:
+    return assignment is not None and assignment.subentra_a_id is not None
 
 
 #: Voci della checklist, nell'ordine in cui compaiono nel fascicolo.
@@ -62,6 +78,23 @@ VOCI = (
         Tipo.ATTO_SUBENTRO,
         a_carico_proprieta=True,
         suggerimento="utenze intestate all'inquilino",
+    ),
+    VoceFascicolo(
+        Tipo.ATTO_SUBENTRO_LOCAZIONE,
+        a_carico_proprieta=True,
+        suggerimento="lo generi tu dai dati del contratto",
+        generabile="atto_subentro_locazione",
+        # Solo per chi è subentrato a qualcuno: al primo occupante di una
+        # stanza questo atto non serve, e la voce non deve comparire.
+        applicabile=_e_un_subentro,
+    ),
+    VoceFascicolo(
+        Tipo.CESSIONE_FABBRICATO,
+        a_carico_proprieta=True,
+        suggerimento="da consegnare all'autorità entro 48 ore",
+        generabile="cessione_fabbricato",
+        # Incondizionata: l'art. 12 obbliga il cedente per ogni nuovo
+        # occupante, non solo per i subentri.
     ),
 )
 
@@ -126,6 +159,7 @@ def _voce(definizione, documenti, oggi):
         "tipo": str(definizione.tipo),
         "tipo_display": definizione.tipo_display,
         "a_carico_proprieta": definizione.a_carico_proprieta,
+        "generabile": definizione.generabile or None,
         "suggerimento": definizione.suggerimento,
         "stato": stato,
         "stato_display": STATI_DISPLAY[stato],
@@ -147,6 +181,7 @@ def _altro(doc, oggi):
         "tipo": doc.tipo,
         "tipo_display": doc.get_tipo_display(),
         "a_carico_proprieta": False,
+        "generabile": None,
         "suggerimento": "",
         "stato": pagina["stato"],
         "stato_display": STATI_DISPLAY[pagina["stato"]],
@@ -160,17 +195,23 @@ def _altro(doc, oggi):
     }
 
 
-def costruisci_fascicolo(tenant, documenti=None, oggi=None):
+def costruisci_fascicolo(tenant, documenti=None, oggi=None, assignment=None):
     """Fascicolo di un inquilino: checklist per tipo + riepilogo.
 
     ``documenti`` permette di passare un queryset già filtrato/prefetchato
     (evita una query per inquilino quando si costruiscono più fascicoli).
+
+    ``assignment`` (default: l'ultima assegnazione dell'inquilino) serve
+    alle voci condizionate: senza sapere se c'è stato un subentro non si
+    può dire se l'atto di subentro nel contratto vada preteso o ignorato.
     """
     # Ora locale, non del server: un documento caricato alle 00:30 a Roma è
     # delle 22:30 del giorno prima in UTC, e mostrerebbe la data sbagliata.
     oggi = oggi or timezone.localdate()
     if documenti is None:
         documenti = tenant.documenti.all()
+    if assignment is None:
+        assignment = tenant.assignments.order_by("-valid_from").first()
     per_tipo = {}
     liberi = []
     for doc in sorted(documenti, key=lambda d: (d.created_at, d.pk)):
@@ -183,8 +224,16 @@ def costruisci_fascicolo(tenant, documenti=None, oggi=None):
     for definizione in VOCI:
         docs = per_tipo.get(definizione.tipo, [])
         # Nessun documento è dovuto: una voce senza file compare solo se la
-        # deve caricare la proprietà.
+        # deve caricare la proprietà...
         if not docs and not definizione.a_carico_proprieta:
+            continue
+        # ...e solo se quel documento ha senso per questo rapporto. Un file
+        # già caricato invece si mostra sempre: esiste, va visto.
+        if (
+            not docs
+            and definizione.applicabile is not None
+            and not definizione.applicabile(assignment)
+        ):
             continue
         voci.append(_voce(definizione, docs, oggi))
 

@@ -299,9 +299,15 @@ class TenantDocumentViewSet(ModelViewSet):
     """
 
     serializer_class = TenantDocumentSerializer
-    parser_classes = [MultiPartParser, FormParser]
+    # JSONParser serve alla sola action ``genera``: gli upload continuano a
+    # viaggiare in multipart, DRF sceglie in base al Content-Type.
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_permissions(self):
+        if self.action == "genera":
+            # Generare un documento è un atto della proprietà, non
+            # dell'inquilino.
+            return [IsPropertyMember()]
         return [IsInquilinoSelf()]
 
     def get_queryset(self):
@@ -339,6 +345,111 @@ class TenantDocumentViewSet(ModelViewSet):
             if tenant is None:
                 raise PermissionDenied("Nessun profilo inquilino associato all'utente.")
         return Response(costruisci_fascicolo(tenant, documenti))
+
+    @action(detail=False, methods=["post"], url_path="genera")
+    def genera(self, request):
+        """Anteprima o generazione di un documento PDF per un inquilino.
+
+        Body: ``{tenant, documento, dry_run=True, assignment?}``.
+
+        Con ``dry_run`` (default) non scrive nulla e restituisce l'elenco
+        dei dati mancanti, ciascuno col posto in cui compilarlo; con
+        ``dry_run=false`` genera il PDF e lo salva come ``TenantDocument``.
+        Convenzione condivisa con l'invio dei riepiloghi addebiti.
+
+        Essendo una POST, il ruolo ``sola_lettura`` non vede nemmeno
+        l'anteprima: stesso compromesso già accettato altrove.
+        """
+        from rest_framework.exceptions import ValidationError
+
+        from properties.documenti import DatiInsufficienti, anteprima
+
+        tenant = self._tenant_per_generazione(request)
+        codice = request.data.get("documento")
+        assignment = self._assignment_per_generazione(request, tenant)
+        try:
+            esito = anteprima(tenant, codice, assignment=assignment)
+        except KeyError:
+            raise ValidationError({"documento": "Documento non riconosciuto."})
+        except DatiInsufficienti as e:
+            raise ValidationError({"detail": str(e)})
+
+        esistente = self._documento_generato(tenant, esito["documento"])
+        esito["esistente"] = (
+            {
+                "id": esistente.pk,
+                "descrizione": esistente.descrizione,
+                "created_at": esistente.created_at,
+            }
+            if esistente
+            else None
+        )
+        if request.data.get("dry_run", True):
+            return Response(esito)
+
+        if not esito["completo"]:
+            raise ValidationError(
+                {"detail": "Dati incompleti.", "mancanti": esito["mancanti"]}
+            )
+        documento = self._salva_generato(request, tenant, codice, assignment)
+        return Response(
+            {
+                **self.get_serializer(documento).data,
+                "sostituito": esistente.pk if esistente else None,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    def _tenant_per_generazione(self, request):
+        from rest_framework.exceptions import ValidationError
+
+        tenant_id = request.data.get("tenant")
+        if not tenant_id:
+            raise ValidationError({"tenant": "Indicare l'inquilino."})
+        return get_object_or_404(
+            TenantProfile, pk=tenant_id, property=get_request_property(request)
+        )
+
+    def _assignment_per_generazione(self, request, tenant):
+        assignment_id = request.data.get("assignment")
+        if not assignment_id:
+            return None
+        return get_object_or_404(
+            RoomAssignment, pk=assignment_id, tenant=tenant
+        )
+
+    @staticmethod
+    def _documento_generato(tenant, tipo):
+        """Il PDF prodotto dal sistema per quel tipo, se già esiste."""
+        return tenant.documenti.filter(tipo=tipo, generato=True).first()
+
+    def _salva_generato(self, request, tenant, codice, assignment):
+        """Genera il PDF e sostituisce il precedente, se il sistema ne
+        aveva già prodotto uno.
+
+        Sostituisce **solo** i documenti con ``generato=True``: il flusso
+        reale è genera → stampa → firma → scansiona → ricarica sotto lo
+        stesso tipo, e una rigenerazione non deve distruggere l'unico
+        originale firmato.
+        """
+        from django.core.files.base import ContentFile
+        from django.db import transaction
+
+        from properties.documenti import genera_pdf
+
+        pdf, nome_file, tipo = genera_pdf(tenant, codice, assignment=assignment)
+        with transaction.atomic():
+            for vecchio in tenant.documenti.filter(tipo=tipo, generato=True):
+                vecchio.file.delete(save=False)
+                vecchio.delete()
+            return TenantDocument.objects.create(
+                tenant=tenant,
+                tipo=tipo,
+                file=ContentFile(pdf, name=nome_file),
+                descrizione=f"generato il {datetime.date.today():%d/%m/%Y}",
+                generato=True,
+                caricato_da=request.user,
+            )
 
     def perform_create(self, serializer):
         user = self.request.user
