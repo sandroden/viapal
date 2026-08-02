@@ -289,6 +289,30 @@ class TestContractCrud:
         assert contract.asseverato is True
         assert contract.termine == datetime.date(2027, 6, 30)
 
+    def test_update_estremi_registrazione(self, client_operativo, contract):
+        """Gli estremi citati nelle premesse dell'atto di subentro sono
+        campi, non più solo il contenuto di un PDF caricato."""
+        resp = client_operativo.patch(
+            f"/api/v1/contracts/{contract.id}/",
+            {
+                "ufficio_registrazione": "Desio",
+                "data_registrazione": "2025-03-20",
+                "numero_registrazione": "002272",
+                "serie_registrazione": "3T",
+                "codice_identificativo": "TM325T002272000SJ",
+                "durata_rinnovo_anni": 2,
+            },
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        contract.refresh_from_db()
+        assert contract.numero_registrazione == "002272"
+        assert contract.data_registrazione == datetime.date(2025, 3, 20)
+        assert contract.durata_rinnovo_anni == 2
+
+    def test_durata_rinnovo_default_due_anni(self, contract):
+        assert contract.durata_rinnovo_anni == 2
+
     def test_delete(self, client_operativo, contract):
         resp = client_operativo.delete(f"/api/v1/contracts/{contract.id}/")
         assert resp.status_code == 204

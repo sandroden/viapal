@@ -593,11 +593,17 @@ class ContractSerializer(serializers.ModelSerializer):
             "data_decorrenza",
             "termine",
             "durata_anni",
+            "durata_rinnovo_anni",
             "asseverato",
             "regime_fiscale",
             "regime_fiscale_display",
             "default_pagatore_bollette",
             "note",
+            "ufficio_registrazione",
+            "data_registrazione",
+            "numero_registrazione",
+            "serie_registrazione",
+            "codice_identificativo",
         ]
 
 

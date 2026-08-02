@@ -507,7 +507,21 @@ class ContractAdmin(ModalEditMixin, JumboModelAdmin):
     ordering = ("-data_decorrenza",)
     fieldsets = (
         ("Anagrafica", {
-            "fields": ("nome", "data_stipula", "data_decorrenza", "durata_anni", "termine"),
+            "fields": (
+                "nome", "data_stipula", "data_decorrenza",
+                ("durata_anni", "durata_rinnovo_anni"), "termine",
+            ),
+        }),
+        ("Registrazione", {
+            "fields": (
+                ("ufficio_registrazione", "data_registrazione"),
+                ("numero_registrazione", "serie_registrazione"),
+                "codice_identificativo",
+            ),
+            "description": (
+                "Estremi citati nelle premesse dell'atto di subentro. Finora "
+                "esistevano solo dentro la ricevuta di registrazione caricata."
+            ),
         }),
         ("Fiscale", {
             "fields": ("regime_fiscale", "asseverato"),
@@ -521,7 +535,15 @@ class ContractAdmin(ModalEditMixin, JumboModelAdmin):
     )
     readonly_fields = ("created_at", "updated_at")
     tabs = (
-        (_("Anagrafica"), {"items": [_("Anagrafica"), _("Fiscale"), _("Convenzioni di pagamento")]}),
+        # "Registrazione" resta non traducibile: con la locale italiana
+        # gettext può restituire una stringa diversa dal titolo del fieldset
+        # e jmb.jadmin solleva MissingFieldsetException.
+        (_("Anagrafica"), {
+            "items": [
+                _("Anagrafica"), "Registrazione", _("Fiscale"),
+                _("Convenzioni di pagamento"),
+            ],
+        }),
         (_("Quote condominio inquilini"), {
             "items": [TenantCondominioRateAjaxInline],
         }),

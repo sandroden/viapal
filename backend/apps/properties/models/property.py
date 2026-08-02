@@ -517,6 +517,42 @@ class Contract(TimestampedModel):
     durata_anni = models.PositiveSmallIntegerField(
         verbose_name="durata (anni)",
     )
+    durata_rinnovo_anni = models.PositiveSmallIntegerField(
+        default=2,
+        verbose_name="rinnovo (anni)",
+        help_text="Il '+2' della formula 4+2: 0 se il contratto non si rinnova.",
+    )
+    # ── Registrazione presso l'Agenzia delle Entrate ──────────────────────
+    # Estremi citati nelle premesse dell'atto di subentro. Finora esistevano
+    # solo dentro il PDF della ricevuta caricata (PropertyDocument tipo
+    # 'registrazione_contratto'), quindi non erano riutilizzabili.
+    ufficio_registrazione = models.CharField(
+        max_length=120,
+        blank=True,
+        verbose_name="ufficio territoriale di registrazione",
+        help_text="Ufficio dell'Agenzia delle Entrate (es. Desio).",
+    )
+    data_registrazione = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="data di registrazione",
+    )
+    numero_registrazione = models.CharField(
+        max_length=30,
+        blank=True,
+        verbose_name="numero di registrazione",
+    )
+    serie_registrazione = models.CharField(
+        max_length=20,
+        blank=True,
+        verbose_name="serie",
+        help_text="Es. 3T.",
+    )
+    codice_identificativo = models.CharField(
+        max_length=40,
+        blank=True,
+        verbose_name="codice identificativo del contratto",
+    )
     asseverato = models.BooleanField(
         default=False,
         verbose_name="asseverato",
