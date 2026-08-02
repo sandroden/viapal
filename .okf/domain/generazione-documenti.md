@@ -77,6 +77,11 @@ univoco), sul modello di `MessageTemplate`. Cambia da proprietà a proprietà
 e a cambiarlo è il proprietario, non chi sviluppa. Nel repository restano
 solo gli **esempi** (`documenti/esempi/*.html`), scaricabili e da adattare.
 
+Per la prima configurazione di un immobile c'è
+`manage.py carica_modelli_documenti --property <id>`: carica gli esempi in un
+passo solo e **non tocca** i modelli già presenti (`--force` per sovrascriverli),
+perché la copia in tabella è quella che il proprietario ha adattato.
+
 Se il modello non è caricato il documento non si genera, e la cosa compare
 fra i dati mancanti come tutto il resto.
 
