@@ -147,7 +147,8 @@ testo esatto dell'email), si deseleziona chi non deve riceverla e si invia.
   il messaggio d'errore.
 - Da terminale: `manage.py invia_riepilogo_addebiti` è una prova a vuoto,
   `--invia` spedisce davvero. Opzioni: `--property`, `--tenant`, `--escludi`,
-  `--giorni`.
+  `--giorni`. `--property` accetta id, nome o slug dell'immobile
+  (`--property viapal`), come in tutti gli altri comandi.
 
 ### 5.2 Su evento · **arrivo bolletta**
 

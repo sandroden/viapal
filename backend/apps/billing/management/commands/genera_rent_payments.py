@@ -43,7 +43,7 @@ class Command(BaseCommand):
             "--property",
             type=str,
             default=None,
-            help="Immobile (id o nome). Facoltativo: senza, genera per tutti gli immobili.",
+            help="Immobile (id, nome o slug). Facoltativo: senza, genera per tutti gli immobili.",
         )
 
     def handle(self, *args, **options):

@@ -11,6 +11,7 @@ dell'header non è mai fidato.
 """
 from __future__ import annotations
 
+from django.db.models import Q
 from rest_framework.exceptions import NotFound, PermissionDenied
 
 from .models import Property
@@ -21,15 +22,20 @@ HEADER_PROPERTY = "X-Property-Id"
 def resolve_property_cli(value: str | int | None) -> Property:
     """Risolve la property per i management command.
 
-    ``value`` è l'opzione ``--property`` (id o nome, opzionale). Senza
+    ``value`` è l'opzione ``--property`` (id, nome o slug, opzionale). Senza
     valore: se nel sistema c'è una sola property la usa, altrimenti
     esige l'opzione (niente più fallback silenziosi su ``first()``).
+
+    Lo slug serve quando il nome è lungo (``"Via Palermo 45"``): sulla riga
+    di comando si scrive la maniglia corta dell'annuncio pubblico.
     """
     if value:
         qs = Property.objects.all()
         prop = qs.filter(pk=value).first() if str(value).isdigit() else None
         if prop is None:
-            prop = qs.filter(nome__iexact=str(value)).first()
+            prop = qs.filter(
+                Q(nome__iexact=str(value)) | Q(slug__iexact=str(value))
+            ).first()
         if prop is None:
             raise ValueError(f"Immobile {value!r} non trovato.")
         return prop
@@ -39,7 +45,7 @@ def resolve_property_cli(value: str | int | None) -> Property:
     if not props:
         raise ValueError("Nessun immobile nel sistema.")
     raise ValueError(
-        "Più immobili nel sistema: specificare --property <id o nome>."
+        "Più immobili nel sistema: specificare --property <id, nome o slug>."
     )
 
 

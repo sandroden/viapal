@@ -1,7 +1,7 @@
 """Genera Receivable storici (causale=affitto) per tutti i mesi dei contratti.
 
 Uso:
-  ENV=dev uv run manage.py genera_storico --dal 2024-01 --al 2026-05 --property 1
+  ENV=dev uv run manage.py genera_storico --dal 2024-01 --al 2026-05 --property viapal
 
 La riconciliazione con i bonifici (BankTransaction → BankTransactionAllocation
 → Receivable) è ora un comando separato e idempotente:
@@ -34,7 +34,7 @@ class Command(BaseCommand):
             "--property",
             type=str,
             required=True,
-            help="Immobile (id o nome). Obbligatorio: il comando è per un solo "
+            help="Immobile (id, nome o slug). Obbligatorio: il comando è per un solo "
             "immobile alla volta, evita di rigenerare storico cross-property.",
         )
 

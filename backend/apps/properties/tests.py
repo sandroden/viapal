@@ -782,3 +782,55 @@ class TestCostoCessioneSignal:
         assert self._receivables(a2).count() == 1
         assert self._expenses(a1).count() == 1
         assert self._expenses(a2).count() == 1
+
+
+# ---------------------------------------------------------------------------
+# Test resolve_property_cli (opzione --property dei management command)
+# ---------------------------------------------------------------------------
+
+
+class TestResolvePropertyCli:
+    """`--property` accetta id, nome o slug: sulla riga di comando si scrive
+    la maniglia corta (`viapal`) anche quando il nome è lungo."""
+
+    @pytest.fixture
+    def immobile_slug(self, db):
+        from properties.models import Property
+
+        return Property.objects.create(
+            nome="Via Palermo 45", indirizzo="Via Palermo 45", slug="viapal"
+        )
+
+    def test_per_id(self, db, immobile_slug):
+        from properties.context import resolve_property_cli
+
+        assert resolve_property_cli(immobile_slug.pk) == immobile_slug
+        assert resolve_property_cli(str(immobile_slug.pk)) == immobile_slug
+
+    def test_per_nome_case_insensitive(self, db, immobile_slug):
+        from properties.context import resolve_property_cli
+
+        assert resolve_property_cli("via palermo 45") == immobile_slug
+
+    def test_per_slug(self, db, immobile_slug):
+        from properties.context import resolve_property_cli
+
+        assert resolve_property_cli("viapal") == immobile_slug
+        assert resolve_property_cli("VIAPAL") == immobile_slug
+
+    def test_sconosciuto_solleva(self, db, immobile_slug):
+        from properties.context import resolve_property_cli
+
+        with pytest.raises(ValueError, match="non trovato"):
+            resolve_property_cli("pippo")
+
+    def test_unico_immobile_senza_valore(self, db, immobile_slug):
+        from properties.context import resolve_property_cli
+
+        assert resolve_property_cli(None) == immobile_slug
+
+    def test_piu_immobili_senza_valore_solleva(self, db, immobile, immobile_slug):
+        from properties.context import resolve_property_cli
+
+        with pytest.raises(ValueError, match="id, nome o slug"):
+            resolve_property_cli(None)

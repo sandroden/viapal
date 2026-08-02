@@ -56,7 +56,7 @@ class Command(BaseCommand):
             "--property",
             type=str,
             default=None,
-            help="Immobile (id o nome). Obbligatorio se ci sono più immobili.",
+            help="Immobile (id, nome o slug). Obbligatorio se ci sono più immobili.",
         )
 
     @transaction.atomic

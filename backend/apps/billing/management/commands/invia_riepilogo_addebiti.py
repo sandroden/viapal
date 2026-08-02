@@ -2,9 +2,11 @@
 Management command per l'email di **riepilogo addebiti** agli inquilini.
 
 Uso:
-    uv run manage.py invia_riepilogo_addebiti                       # DRY-RUN, tutti gli immobili
-    uv run manage.py invia_riepilogo_addebiti --property 2          # DRY-RUN su un immobile
-    uv run manage.py invia_riepilogo_addebiti --property 2 --invia  # invio REALE
+    uv run manage.py invia_riepilogo_addebiti                            # DRY-RUN, tutti gli immobili
+    uv run manage.py invia_riepilogo_addebiti --property viapal          # DRY-RUN su un immobile
+    uv run manage.py invia_riepilogo_addebiti --property viapal --invia  # invio REALE
+
+``--property`` accetta indifferentemente id, nome o slug dell'immobile.
 
 La forma di default è la **prova a vuoto**: stampa chi riceverebbe cosa senza
 spedire niente. Solo ``--invia`` manda le email davvero.
@@ -31,7 +33,7 @@ class Command(BaseCommand):
             "--property",
             type=str,
             default=None,
-            help="Immobile (id o nome). Senza, elabora tutti gli immobili.",
+            help="Immobile (id, nome o slug). Senza, elabora tutti gli immobili.",
         )
         parser.add_argument(
             "--invia",
