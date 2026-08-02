@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from ._base import TimestampedModel
+from .anagrafica import AnagraficaPersonaMixin
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ def get_or_create_owner_profile(user, nominativo: str = "") -> "OwnerProfile":
     return profilo
 
 
-class OwnerProfile(TimestampedModel):
+class OwnerProfile(AnagraficaPersonaMixin, TimestampedModel):
     """Profilo anagrafico di un proprietario (fratello)."""
 
     user = models.OneToOneField(

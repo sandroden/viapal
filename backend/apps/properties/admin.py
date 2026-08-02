@@ -145,6 +145,19 @@ class OwnerProfileAdmin(ModalEditMixin, JumboModelAdmin):
         ("Anagrafica", {
             "fields": ("user", "nominativo", "codice_fiscale", "telefono"),
         }),
+        ("Nascita e residenza", {
+            "fields": (
+                ("cognome", "nome"),
+                ("data_nascita", "comune_nascita", "provincia_nascita"),
+                "cittadinanza",
+                "residenza_via",
+                ("residenza_comune", "residenza_provincia", "residenza_cap"),
+            ),
+            "description": (
+                "Compaiono nell'atto di subentro (tutti i comproprietari) e, "
+                "per il firmatario, nella comunicazione di cessione di fabbricato."
+            ),
+        }),
         ("Note", {
             "fields": ("note",),
             "classes": ("collapse",),
@@ -214,6 +227,30 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
         ("Anagrafica", {
             "fields": ("user", "nominativo", "codice_fiscale", "telefono", "email_alt"),
         }),
+        ("Nascita e residenza", {
+            "fields": (
+                ("cognome", "nome"),
+                ("data_nascita", "comune_nascita", "provincia_nascita"),
+                "cittadinanza",
+                "residenza_via",
+                ("residenza_comune", "residenza_provincia", "residenza_cap"),
+            ),
+            "description": (
+                "Servono ai documenti generati (atto di subentro, cessione di "
+                "fabbricato). 'Cognome' e 'nome' stanno accanto a 'nominativo', "
+                "che resta il campo usato ovunque nell'applicazione."
+            ),
+        }),
+        ("Documento identita", {
+            "fields": (
+                ("documento_tipo", "documento_numero"),
+                ("documento_autorita", "documento_data_rilascio"),
+            ),
+            "description": (
+                "Estremi richiesti dalla comunicazione di cessione di "
+                "fabbricato (art. 12 D.L. 59/1978) per il cessionario."
+            ),
+        }),
         ("Pagamenti", {
             "fields": (
                 ("giorno_pagamento_affitto", "frequenza_conguagli"),
@@ -238,7 +275,12 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
     )
     readonly_fields = ("created_at", "updated_at")
     tabs = (
-        ("Anagrafica", {"items": ["Anagrafica"]}),
+        # Attenzione: le chiavi qui devono coincidere alla lettera con i titoli
+        # dei fieldset e non essere traducibili, altrimenti jmb.jadmin solleva
+        # MissingFieldsetException.
+        ("Anagrafica", {
+            "items": ["Anagrafica", "Nascita e residenza", "Documento identita"],
+        }),
         ("Pagamenti e deposito", {
             "items": ["Pagamenti", "Deposito"],
             "active": True,

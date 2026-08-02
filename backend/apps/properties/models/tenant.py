@@ -13,9 +13,10 @@ from django.utils.text import slugify
 from core.storages import media_private_storage
 
 from ._base import TimestampedModel
+from .anagrafica import AnagraficaPersonaMixin
 
 
-class TenantProfile(TimestampedModel):
+class TenantProfile(AnagraficaPersonaMixin, TimestampedModel):
     """Profilo anagrafico di un inquilino."""
 
     class FrequenzaConguagli(models.TextChoices):
@@ -25,6 +26,11 @@ class TenantProfile(TimestampedModel):
     class CicloFatturazione(models.TextChoices):
         SOLARE = "solare", "Mese solare (1-31)"
         INGRESSO = "ingresso", "Dal giorno di ingresso"
+
+    class TipoDocumento(models.TextChoices):
+        CARTA_IDENTITA = "carta_identita", "Carta d'identità"
+        PASSAPORTO = "passaporto", "Passaporto"
+        PERMESSO_SOGGIORNO = "permesso_soggiorno", "Permesso di soggiorno"
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -59,6 +65,31 @@ class TenantProfile(TimestampedModel):
     email_alt = models.EmailField(
         blank=True,
         verbose_name="email alternativa",
+    )
+    # Estremi del documento d'identità: li chiede la comunicazione di cessione
+    # di fabbricato. Stanno sulla persona e non su TenantDocument perché il
+    # fascicolo tratta più file dello stesso tipo come pagine di un unico
+    # documento (fronte/retro), e gli stessi estremi finirebbero duplicati.
+    documento_tipo = models.CharField(
+        max_length=20,
+        choices=TipoDocumento.choices,
+        blank=True,
+        verbose_name="tipo di documento",
+    )
+    documento_numero = models.CharField(
+        max_length=40,
+        blank=True,
+        verbose_name="numero del documento",
+    )
+    documento_autorita = models.CharField(
+        max_length=120,
+        blank=True,
+        verbose_name="autorità che ha rilasciato il documento",
+    )
+    documento_data_rilascio = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="data di rilascio del documento",
     )
     giorno_pagamento_affitto = models.PositiveSmallIntegerField(
         validators=[MinValueValidator(1), MaxValueValidator(28)],

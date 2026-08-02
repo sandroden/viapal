@@ -1,4 +1,5 @@
 from ._base import TimestampedModel
+from .anagrafica import AnagraficaPersonaMixin
 from .membership import PropertyMembership, user_property_ids
 from .owner import (
     OwnerBankAccount,
@@ -20,6 +21,7 @@ from .tenant import TenantDocument, TenantProfile
 
 __all__ = [
     "TimestampedModel",
+    "AnagraficaPersonaMixin",
     "OwnerProfile",
     "OwnershipShare",
     "OwnerBankAccount",

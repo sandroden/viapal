@@ -642,6 +642,54 @@ class TestTenantCrud:
         )
         assert resp.status_code == 404
 
+    def test_anagrafica_estesa_e_documento(self, client_operativo, tenant):
+        """I dati che servono ai documenti generati si scrivono e rileggono
+        dall'API di gestione."""
+        payload = {
+            "cognome": "Bouchane",
+            "nome": "Oussama",
+            "data_nascita": "1998-10-03",
+            "comune_nascita": "El Oulfa",
+            "provincia_nascita": "Marocco",
+            "cittadinanza": "marocchina",
+            "residenza_via": "Via Palestrina 20",
+            "residenza_comune": "Monza",
+            "residenza_provincia": "MB",
+            "residenza_cap": "20900",
+            "documento_tipo": "carta_identita",
+            "documento_numero": "CA72894HS",
+            "documento_autorita": "Ministero dell'Interno",
+            "documento_data_rilascio": "2024-03-22",
+        }
+        resp = client_operativo.patch(
+            f"/api/v1/tenants/{tenant.id}/", payload, format="json"
+        )
+        assert resp.status_code == 200, resp.content
+        tenant.refresh_from_db()
+        assert tenant.cognome == "Bouchane"
+        assert tenant.data_nascita == datetime.date(1998, 10, 3)
+        assert tenant.documento_numero == "CA72894HS"
+        # nominativo resta il campo canonico e non viene toccato.
+        assert tenant.nominativo and tenant.nominativo != "Bouchane Oussama"
+        letto = client_operativo.get(f"/api/v1/tenants/{tenant.id}/").json()
+        assert letto["cittadinanza"] == "marocchina"
+        assert letto["documento_tipo"] == "carta_identita"
+
+    def test_nome_completo_ricade_su_nominativo(self, tenant):
+        assert tenant.nome_completo == tenant.nominativo
+        tenant.cognome, tenant.nome = "Rossi", "Mario"
+        assert tenant.nome_completo == "Rossi Mario"
+
+    def test_self_service_non_tocca_anagrafica_estesa(self, client_inquilino, tenant):
+        """L'inquilino non compila da sé i dati dei documenti: il posto è la
+        scheda inquilino lato proprietario."""
+        resp = client_inquilino.patch(
+            "/api/v1/tenants/me/", {"cognome": "Hacker"}, format="json"
+        )
+        assert resp.status_code == 200
+        tenant.refresh_from_db()
+        assert tenant.cognome == ""
+
 
 class TestTenantInvita:
     def test_crea_e_invita(self, client_operativo, mailoutbox):

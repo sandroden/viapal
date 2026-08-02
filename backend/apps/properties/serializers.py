@@ -21,6 +21,30 @@ from properties.models import (
 )
 
 
+# Campi di ``AnagraficaPersonaMixin``, condivisi da inquilini e proprietari.
+CAMPI_ANAGRAFICA = [
+    "cognome",
+    "nome",
+    "data_nascita",
+    "comune_nascita",
+    "provincia_nascita",
+    "cittadinanza",
+    "residenza_via",
+    "residenza_comune",
+    "residenza_provincia",
+    "residenza_cap",
+]
+
+# Estremi del documento d'identità: solo sull'inquilino (li chiede il modulo
+# di cessione di fabbricato per il cessionario).
+CAMPI_DOCUMENTO_IDENTITA = [
+    "documento_tipo",
+    "documento_numero",
+    "documento_autorita",
+    "documento_data_rilascio",
+]
+
+
 def _username_da_nominativo(nominativo: str) -> str:
     """Genera uno username dallo slug del nominativo (es. "Mario Rossi" →
     "mario-rossi"), con suffisso numerico se già occupato."""
@@ -48,6 +72,7 @@ class OwnerProfileSerializer(serializers.ModelSerializer):
             "codice_fiscale",
             "telefono",
             "note",
+            *CAMPI_ANAGRAFICA,
         ]
 
 
@@ -85,6 +110,8 @@ class TenantProfileSerializer(serializers.ModelSerializer):
             "data_restituzione_prevista",
             "saldo",
             "saldo_totale",
+            *CAMPI_ANAGRAFICA,
+            *CAMPI_DOCUMENTO_IDENTITA,
         ]
 
     def get_saldo(self, obj):
@@ -134,6 +161,8 @@ class TenantProfileWriteSerializer(serializers.ModelSerializer):
             "data_versamento_deposito",
             "deposito_da_restituire",
             "data_restituzione_prevista",
+            *CAMPI_ANAGRAFICA,
+            *CAMPI_DOCUMENTO_IDENTITA,
         ]
 
     def create(self, validated_data):
