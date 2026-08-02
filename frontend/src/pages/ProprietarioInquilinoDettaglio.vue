@@ -406,7 +406,20 @@
           <div class="vp-p-id__griglia">
             <q-card flat bordered class="vp-p-id__card-info">
               <q-card-section>
-                <div class="vp-eyebrow">Anagrafica</div>
+                <div class="row items-center no-wrap">
+                  <div class="vp-eyebrow col">Anagrafica</div>
+                  <q-btn
+                    v-if="puoModificare"
+                    dense
+                    flat
+                    no-caps
+                    size="sm"
+                    icon="edit"
+                    label="Modifica"
+                    data-testid="modifica-anagrafica"
+                    @click="apriAnagrafica()"
+                  />
+                </div>
                 <q-list dense>
                   <q-item>
                     <q-item-section>
@@ -893,6 +906,13 @@
       :tenant-id="tenantId"
       @saved="dopoSalvataggioPagamento"
     />
+
+    <AnagraficaInquilinoDialog
+      v-model="dialogAnagrafica"
+      :tenant-id="tenantId"
+      :campo="campoAnagrafica"
+      @salvato="dopoAnagrafica"
+    />
   </q-page>
 </template>
 
@@ -918,6 +938,7 @@ import PrevisionaleUtenzeDialog from 'src/components/PrevisionaleUtenzeDialog.vu
 import ConguagliaPrevisionaleDialog from 'src/components/ConguagliaPrevisionaleDialog.vue';
 import AssegnaStanzaDialog from 'src/components/AssegnaStanzaDialog.vue';
 import RestituzioneDepositoDialog from 'src/components/RestituzioneDepositoDialog.vue';
+import AnagraficaInquilinoDialog from 'src/components/inquilini/AnagraficaInquilinoDialog.vue';
 import FascicoloPannello from 'src/components/documenti/FascicoloPannello.vue';
 import ComunicazioniPannello from 'src/components/comunicazioni/ComunicazioniPannello.vue';
 
@@ -1000,6 +1021,13 @@ const puoAvanti = computed(() => annoSelezionato.value < annoCorrente);
 
 const tabAttivo = ref<'pagamenti' | 'profilo' | 'documenti' | 'inviati'>(
   parseTab(route.query.tab),
+);
+
+// Deep link dai "dati mancanti" della generazione documenti:
+// ?tab=profilo&modifica=anagrafica&campo=<nome>
+const dialogAnagrafica = ref(route.query.modifica === 'anagrafica');
+const campoAnagrafica = ref(
+  (Array.isArray(route.query.campo) ? route.query.campo[0] : route.query.campo) ?? null,
 );
 
 const filtroTipo = ref<FiltroTipo>(parseTipo(route.query.tipo));
@@ -1415,6 +1443,16 @@ function aprireRegistraPagamento(riga: RigaPagamento): void {
 }
 
 async function dopoSalvataggioPagamento(): Promise<void> {
+  await store.loadSituazione(tenantId.value, annoSelezionato.value, true);
+}
+
+function apriAnagrafica(campo: string | null = null): void {
+  campoAnagrafica.value = campo;
+  dialogAnagrafica.value = true;
+}
+
+async function dopoAnagrafica(): Promise<void> {
+  campoAnagrafica.value = null;
   await store.loadSituazione(tenantId.value, annoSelezionato.value, true);
 }
 

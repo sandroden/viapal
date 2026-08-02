@@ -30,13 +30,45 @@ export interface Quota {
   valid_to: string | null;
 }
 
-export interface PropertyDettaglio {
+/** Dati che il modulo di cessione di fabbricato chiede casella per casella.
+ *  Convivono con ``indirizzo``, che resta la stringa di visualizzazione:
+ *  i due non si aggiornano a vicenda. */
+export interface IndirizzoStrutturato {
+  via: string;
+  civico: string;
+  cap: string;
+  comune: string;
+  provincia: string;
+  piano: string;
+  scala: string;
+  interno: string;
+  vani: string;
+  accessori: string;
+  ingressi: string;
+}
+
+export const CAMPI_INDIRIZZO: Array<{ campo: keyof IndirizzoStrutturato; label: string }> = [
+  { campo: 'via', label: 'Via/piazza' },
+  { campo: 'civico', label: 'Numero civico' },
+  { campo: 'cap', label: 'CAP' },
+  { campo: 'comune', label: 'Comune' },
+  { campo: 'provincia', label: 'Provincia' },
+  { campo: 'piano', label: 'Piano' },
+  { campo: 'scala', label: 'Scala' },
+  { campo: 'interno', label: 'Interno' },
+  { campo: 'vani', label: 'Vani' },
+  { campo: 'accessori', label: 'Accessori' },
+  { campo: 'ingressi', label: 'Ingressi' },
+];
+
+export interface PropertyDettaglio extends IndirizzoStrutturato {
   id: number;
   nome: string;
   slug: string | null;
   indirizzo: string;
   bank_account_utenze: number | null;
   owner_anticipa_cessioni: number | null;
+  owner_firmatario: number | null;
   mio_ruolo: RuoloProperty | null;
   n_stanze: number;
   tipo_gestione?: TipoGestione;
@@ -150,7 +182,10 @@ export const usePropertiesStore = defineStore('properties', {
     },
     async aggiornaProperty(
       id: number,
-      payload: Partial<Pick<PropertyDettaglio, 'nome' | 'indirizzo'>>,
+      payload: Partial<
+        Pick<PropertyDettaglio, 'nome' | 'indirizzo' | 'owner_firmatario'> &
+          IndirizzoStrutturato
+      >,
     ): Promise<PropertyDettaglio> {
       const { data } = await api.patch<PropertyDettaglio>(
         `/api/v1/properties/${id}/`,

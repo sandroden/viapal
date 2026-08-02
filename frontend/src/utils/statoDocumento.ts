@@ -56,6 +56,9 @@ export function voceDaDocumento(doc: DocumentoFE): VoceFascicolo {
     tipo: doc.tipo,
     tipo_display: doc.tipo_display,
     a_carico_proprieta: false,
+    // I documenti della casa si caricano e basta: nessuno di essi è
+    // prodotto dall'applicazione.
+    generabile: null,
     suggerimento: '',
     stato,
     stato_display: STILI_STATO[stato].label,

@@ -49,7 +49,23 @@
               <q-icon name="download" size="17px" />
             </a>
             <button
-              v-else-if="!soloLettura"
+              v-if="voce.generabile && voce.pagine.length && !soloLettura"
+              class="vp-fasc__scarica"
+              aria-label="Rigenera"
+              @click.stop="apriGenerazione(voce)"
+            >
+              <q-icon name="autorenew" size="17px" />
+            </button>
+            <!-- Documento che produciamo noi: "Genera", non "Carica". -->
+            <button
+              v-else-if="voce.generabile && !soloLettura"
+              class="vp-btn vp-btn--soft vp-fasc__aggiungi"
+              @click.stop="apriGenerazione(voce)"
+            >
+              Genera
+            </button>
+            <button
+              v-else-if="!voce.pagine.length && !soloLettura"
               class="vp-btn vp-btn--soft vp-fasc__aggiungi"
               @click.stop="aggiungi(voce)"
             >
@@ -91,20 +107,26 @@
           <!-- Non ancora caricato: il pannello dice di chi è il turno -->
           <div v-if="!paginaCorrente" class="vp-fasc__vvuoto">
             <div class="vp-fasc__vplaceholder">
-              <q-icon name="bolt" size="28px" />
+              <q-icon :name="vuoto.icona" size="28px" />
             </div>
-            <div class="vp-fasc__vvuoto-titolo">Lo carichi tu, non l'inquilino</div>
-            <p class="vp-fasc__vvuoto-testo">
-              L'atto di subentro delle utenze arriva dal fornitore. Caricalo qui:
-              l'inquilino lo trova nel suo fascicolo.
-            </p>
+            <div class="vp-fasc__vvuoto-titolo">{{ vuoto.titolo }}</div>
+            <p class="vp-fasc__vvuoto-testo">{{ vuoto.testo }}</p>
+            <button
+              v-if="!soloLettura && selezionata.generabile"
+              class="vp-btn vp-btn--primary vp-fasc__vbtn"
+              @click="apriGenerazione(selezionata)"
+            >
+              <q-icon name="picture_as_pdf" size="15px" />
+              Genera il PDF
+            </button>
             <button
               v-if="!soloLettura"
-              class="vp-btn vp-btn--primary vp-fasc__vbtn"
+              class="vp-btn vp-fasc__vbtn"
+              :class="selezionata.generabile ? 'vp-btn--ghost' : 'vp-btn--primary'"
               @click="aggiungi(selezionata)"
             >
               <q-icon name="upload" size="15px" />
-              Carica l'atto
+              {{ selezionata.generabile ? 'Carica un file firmato' : 'Carica il documento' }}
             </button>
           </div>
 
@@ -170,6 +192,14 @@
       titolo="Carica un documento"
       @caricato="ricarica"
     />
+
+    <GeneraDocumentoDialog
+      v-model="generaAperto"
+      :tenant-id="tenantId"
+      :documento="documentoDaGenerare"
+      :titolo-atteso="titoloDaGenerare"
+      @generato="ricarica"
+    />
   </div>
 </template>
 
@@ -181,6 +211,7 @@ import DocBadgeStato from './DocBadgeStato.vue';
 import DocPagina from './DocPagina.vue';
 import DocVisoreDialog from './DocVisoreDialog.vue';
 import DocAggiungiSheet from './DocAggiungiSheet.vue';
+import GeneraDocumentoDialog from './GeneraDocumentoDialog.vue';
 import { useDocumentiStore, TIPI_DOCUMENTO_INQUILINO } from 'stores/documenti';
 import { useFascicoloStore, type VoceFascicolo } from 'stores/fascicolo';
 import { useFormatoData } from 'src/composables/useFormatoData';
@@ -203,6 +234,9 @@ const indicePagina = ref(0);
 const visoreAperto = ref(false);
 const aggiungiAperto = ref(false);
 const tipoIniziale = ref<string | null>(null);
+const generaAperto = ref(false);
+const documentoDaGenerare = ref<string | null>(null);
+const titoloDaGenerare = ref('');
 
 const tipi = TIPI_DOCUMENTO_INQUILINO;
 const voci = computed(() => fascicoloStore.voci);
@@ -230,6 +264,35 @@ const metaSelezionata = computed(() => {
   else if (voce.caricato_il) parti.push(`caricato il ${formattaData(voce.caricato_il)}`);
   if (voce.data_scadenza) parti.push(`scadenza ${formattaData(voce.data_scadenza)}`);
   return parti.join(' · ');
+});
+
+/** Testo del visore quando la voce non ha ancora file: cambia a seconda di
+ *  chi deve produrre il documento — il fornitore, noi o l'inquilino. */
+const vuoto = computed(() => {
+  const voce = selezionata.value;
+  if (voce?.generabile) {
+    return {
+      icona: 'auto_awesome',
+      titolo: 'Lo generi tu, dai dati che hai già',
+      testo:
+        'Il PDF si compila dai dati di contratto, immobile e anagrafiche. ' +
+        'Se ne manca qualcuno te lo dice, con il link per andarlo a scrivere.',
+    };
+  }
+  if (voce?.a_carico_proprieta) {
+    return {
+      icona: 'bolt',
+      titolo: "Lo carichi tu, non l'inquilino",
+      testo:
+        "L'atto di subentro delle utenze arriva dal fornitore. Caricalo qui: " +
+        'l\'inquilino lo trova nel suo fascicolo.',
+    };
+  }
+  return {
+    icona: 'upload_file',
+    titolo: 'Non ancora caricato',
+    testo: 'Carica qui il documento: l\'inquilino lo trova nel suo fascicolo.',
+  };
 });
 
 // ── Riepilogo in testa: nomi dei documenti, non solo conteggi ──
@@ -266,9 +329,11 @@ function seleziona(voce: VoceFascicolo) {
   indicePagina.value = 0;
   if (!compatto.value) return;
   // Senza visore affiancato: le pagine si aprono a schermo intero, le voci
-  // ancora vuote portano dritte al caricamento.
+  // ancora vuote portano dritte all'azione che le riempie.
   if (voce.pagine.length) visoreAperto.value = true;
-  else if (!props.soloLettura) aggiungi(voce);
+  else if (props.soloLettura) return;
+  else if (voce.generabile) apriGenerazione(voce);
+  else aggiungi(voce);
 }
 
 function ingrandisci() {
@@ -279,6 +344,14 @@ function aggiungi(voce?: VoceFascicolo) {
   tipoIniziale.value = voce?.tipo ?? null;
   visoreAperto.value = false;
   aggiungiAperto.value = true;
+}
+
+function apriGenerazione(voce: VoceFascicolo) {
+  if (!voce.generabile) return;
+  documentoDaGenerare.value = voce.generabile;
+  titoloDaGenerare.value = voce.tipo_display;
+  visoreAperto.value = false;
+  generaAperto.value = true;
 }
 
 function confermaElimina(pagina: { id: number; etichetta: string }) {

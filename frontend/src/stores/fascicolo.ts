@@ -23,6 +23,8 @@ export interface VoceFascicolo {
   tipo: string;
   tipo_display: string;
   a_carico_proprieta: boolean;
+  /** Codice del generatore se il documento lo produce l'applicazione. */
+  generabile: string | null;
   suggerimento: string;
   stato: StatoDocumento;
   stato_display: string;
@@ -51,7 +53,43 @@ export interface Fascicolo {
   };
 }
 
+/** Un dato che serve al documento e non è ancora stato compilato, con il
+ *  posto in cui compilarlo. È il cuore dell'anteprima: la generazione non
+ *  chiede nulla in un form, dice dove andare. */
+export interface DatoMancante {
+  campo: string;
+  etichetta: string;
+  fonte: string;
+  dove: string;
+  link: string;
+  /** Fuori dalla PWA (admin Django): va aperto in una nuova scheda. */
+  esterno: boolean;
+}
+
+export interface AnteprimaDocumento {
+  documento: string;
+  documento_display: string;
+  tenant: number;
+  assignment: number;
+  completo: boolean;
+  mancanti: DatoMancante[];
+  riepilogo: {
+    stanza: string;
+    decorrenza: string;
+    canone: string;
+    oneri_accessori: string | null;
+    deposito: string | null;
+    rate_deposito: number;
+    comproprietari: string[];
+    firmatario: string | null;
+    uscente: string | null;
+    contratto: string | null;
+  };
+  esistente: { id: number; descrizione: string; created_at: string } | null;
+}
+
 const ENDPOINT = '/api/v1/tenant-documents/fascicolo/';
+const GENERA = '/api/v1/tenant-documents/genera/';
 
 interface State {
   fascicolo: Fascicolo | null;
@@ -90,6 +128,28 @@ export const useFascicoloStore = defineStore('fascicolo', {
       } finally {
         this.loading = false;
       }
+    },
+
+    /** Cosa serve per generare un documento: campi risolti e dati mancanti.
+     *  Non scrive nulla. */
+    async anteprima(tenantId: number, documento: string): Promise<AnteprimaDocumento> {
+      const { data } = await api.post<AnteprimaDocumento>(GENERA, {
+        tenant: tenantId,
+        documento,
+        dry_run: true,
+      });
+      return data;
+    },
+
+    /** Genera il PDF e lo salva nel fascicolo dell'inquilino. Sostituisce
+     *  solo un precedente PDF generato, mai una scansione caricata a mano. */
+    async genera(tenantId: number, documento: string): Promise<{ id: number }> {
+      const { data } = await api.post<{ id: number }>(GENERA, {
+        tenant: tenantId,
+        documento,
+        dry_run: false,
+      });
+      return data;
     },
   },
 });

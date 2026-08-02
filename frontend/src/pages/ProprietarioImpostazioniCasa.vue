@@ -19,6 +19,7 @@
       <q-tab name="spese" label="Spese" />
       <q-tab name="tari" label="TARI" />
       <q-tab name="documenti" label="Documenti" />
+      <q-tab name="modelli" label="Modelli documenti" />
     </q-tabs>
 
     <q-tab-panels v-model="tabAttivo" animated class="vp-casa__panels">
@@ -345,6 +346,11 @@
           />
         </div>
       </q-tab-panel>
+
+      <!-- MODELLI DOCUMENTO -->
+      <q-tab-panel name="modelli" class="vp-casa__panel">
+        <ModelliDocumentoPannello :puo-modificare="puoModificare" />
+      </q-tab-panel>
     </q-tab-panels>
 
     <!-- Dialog stanza -->
@@ -442,7 +448,7 @@
             </div>
           </div>
           <div class="row q-col-gutter-sm">
-            <div class="col-6">
+            <div class="col-4">
               <q-input
                 v-model="formContratto.durata_anni"
                 label="Durata (anni)"
@@ -453,7 +459,19 @@
                 data-testid="contratto-durata"
               />
             </div>
-            <div class="col-6">
+            <div class="col-4">
+              <q-input
+                v-model="formContratto.durata_rinnovo_anni"
+                label="Rinnovo (anni)"
+                type="number"
+                min="0"
+                outlined
+                dense
+                hint="Il «+2» di 4+2"
+                data-testid="contratto-rinnovo"
+              />
+            </div>
+            <div class="col-4">
               <q-input
                 v-model="formContratto.termine"
                 label="Termine anticipato"
@@ -461,7 +479,7 @@
                 outlined
                 dense
                 clearable
-                hint="Solo se chiuso prima della scadenza"
+                hint="Solo se chiuso prima"
               />
             </div>
           </div>
@@ -490,6 +508,63 @@
             v-model="formContratto.asseverato"
             label="Asseverato"
             dense
+          />
+
+          <!-- Estremi citati nelle premesse dell'atto di subentro: finora
+               esistevano solo dentro la ricevuta di registrazione caricata. -->
+          <div class="vp-section-title q-mt-md">Registrazione</div>
+          <div class="vp-hint q-mb-sm">
+            Servono all'atto di subentro. Li trovi sulla ricevuta rilasciata
+            dall'Agenzia delle Entrate.
+          </div>
+          <div class="row q-col-gutter-sm">
+            <div class="col-7">
+              <q-input
+                v-model="formContratto.ufficio_registrazione"
+                label="Ufficio territoriale"
+                outlined
+                dense
+                data-testid="contratto-ufficio"
+              />
+            </div>
+            <div class="col-5">
+              <q-input
+                v-model="formContratto.data_registrazione"
+                label="Data registrazione"
+                type="date"
+                outlined
+                dense
+                clearable
+                data-testid="contratto-data-registrazione"
+              />
+            </div>
+          </div>
+          <div class="row q-col-gutter-sm">
+            <div class="col-7">
+              <q-input
+                v-model="formContratto.numero_registrazione"
+                label="Numero"
+                outlined
+                dense
+                data-testid="contratto-numero-registrazione"
+              />
+            </div>
+            <div class="col-5">
+              <q-input
+                v-model="formContratto.serie_registrazione"
+                label="Serie"
+                outlined
+                dense
+                data-testid="contratto-serie"
+              />
+            </div>
+          </div>
+          <q-input
+            v-model="formContratto.codice_identificativo"
+            label="Codice identificativo del contratto"
+            outlined
+            dense
+            data-testid="contratto-codice-identificativo"
           />
           <q-input
             v-model="formContratto.note"
@@ -718,9 +793,11 @@
 import { computed, onMounted, ref } from 'vue';
 import { isAxiosError } from 'axios';
 import { useQuasar, type QTableProps } from 'quasar';
+import { useRoute } from 'vue-router';
 import { api } from 'boot/axios';
 import { usePropertiesStore } from 'stores/properties';
 import DocumentiPannello from 'components/DocumentiPannello.vue';
+import ModelliDocumentoPannello from 'components/documenti/ModelliDocumentoPannello.vue';
 import { useDocumentiProprietaStore, TIPI_DOCUMENTO_PROPRIETA } from 'stores/documenti';
 
 // ---------------------------------------------------------------------------
@@ -743,11 +820,17 @@ interface Contratto {
   data_decorrenza: string;
   termine: string | null;
   durata_anni: number;
+  durata_rinnovo_anni: number;
   asseverato: boolean;
   regime_fiscale: RegimeFiscale;
   regime_fiscale_display?: string;
   default_pagatore_bollette: number | null;
   note: string;
+  ufficio_registrazione: string;
+  data_registrazione: string | null;
+  numero_registrazione: string;
+  serie_registrazione: string;
+  codice_identificativo: string;
 }
 
 interface Owner {
@@ -787,9 +870,21 @@ interface CostoAnnuale {
 }
 
 const $q = useQuasar();
+const route = useRoute();
 const propStore = usePropertiesStore();
 
-const tabAttivo = ref<'stanze' | 'contratti' | 'spese' | 'tari' | 'documenti'>('stanze');
+const TABS = ['stanze', 'contratti', 'spese', 'tari', 'documenti', 'modelli'] as const;
+type Tab = (typeof TABS)[number];
+
+/** Il tab arriva dalla query string: i "dati mancanti" della generazione
+ *  documenti linkano direttamente al punto in cui si compilano. */
+function tabDaRotta(): Tab {
+  const q = route.query.tab;
+  const nome = Array.isArray(q) ? q[0] : q;
+  return TABS.includes(nome as Tab) ? (nome as Tab) : 'stanze';
+}
+
+const tabAttivo = ref<Tab>(tabDaRotta());
 
 const documentiStore = useDocumentiProprietaStore();
 
@@ -999,10 +1094,16 @@ interface FormContratto {
   data_decorrenza: string;
   termine: string | null;
   durata_anni: string;
+  durata_rinnovo_anni: string;
   asseverato: boolean;
   regime_fiscale: RegimeFiscale;
   default_pagatore_bollette: number | null;
   note: string;
+  ufficio_registrazione: string;
+  data_registrazione: string | null;
+  numero_registrazione: string;
+  serie_registrazione: string;
+  codice_identificativo: string;
 }
 
 const formContratto = ref<FormContratto>({
@@ -1011,10 +1112,16 @@ const formContratto = ref<FormContratto>({
   data_decorrenza: '',
   termine: null,
   durata_anni: '4',
+  durata_rinnovo_anni: '2',
   asseverato: false,
   regime_fiscale: 'cedolare_10',
   default_pagatore_bollette: null,
   note: '',
+  ufficio_registrazione: '',
+  data_registrazione: null,
+  numero_registrazione: '',
+  serie_registrazione: '',
+  codice_identificativo: '',
 });
 const savingContratto = ref(false);
 const erroreContratto = ref('');
@@ -1028,10 +1135,16 @@ function apriDialogContratto(c: Contratto | null) {
     data_decorrenza: c?.data_decorrenza ?? '',
     termine: c?.termine ?? null,
     durata_anni: String(c?.durata_anni ?? 4),
+    durata_rinnovo_anni: String(c?.durata_rinnovo_anni ?? 2),
     asseverato: c?.asseverato ?? false,
     regime_fiscale: c?.regime_fiscale ?? 'cedolare_10',
     default_pagatore_bollette: c?.default_pagatore_bollette ?? null,
     note: c?.note ?? '',
+    ufficio_registrazione: c?.ufficio_registrazione ?? '',
+    data_registrazione: c?.data_registrazione ?? null,
+    numero_registrazione: c?.numero_registrazione ?? '',
+    serie_registrazione: c?.serie_registrazione ?? '',
+    codice_identificativo: c?.codice_identificativo ?? '',
   };
   dialogContratto.value = true;
 }
@@ -1054,10 +1167,16 @@ async function salvaContratto() {
     data_decorrenza: f.data_decorrenza,
     termine: f.termine || null,
     durata_anni: Number(f.durata_anni),
+    durata_rinnovo_anni: Number(f.durata_rinnovo_anni) || 0,
     asseverato: f.asseverato,
     regime_fiscale: f.regime_fiscale,
     default_pagatore_bollette: f.default_pagatore_bollette,
     note: f.note,
+    ufficio_registrazione: f.ufficio_registrazione.trim(),
+    data_registrazione: f.data_registrazione || null,
+    numero_registrazione: f.numero_registrazione.trim(),
+    serie_registrazione: f.serie_registrazione.trim(),
+    codice_identificativo: f.codice_identificativo.trim(),
   };
   try {
     if (contrattoInModifica.value) {
@@ -1437,9 +1556,21 @@ function eliminaCosto(c: CostoAnnuale) {
 
 // ---------------------------------------------------------------------------
 
+/** Deep link `?tab=contratti&contratto=<id>`: apre direttamente il dialog
+ *  del contratto da completare, altrimenti il link dei dati mancanti
+ *  atterrerebbe sulla lista lasciando all'utente il compito di ritrovarlo. */
+async function apriDaRotta() {
+  await caricaContratti();
+  const q = route.query.contratto;
+  const id = Number(Array.isArray(q) ? q[0] : q);
+  if (!id) return;
+  const contratto = contratti.value.find((c) => c.id === id);
+  if (contratto) apriDialogContratto(contratto);
+}
+
 onMounted(() => {
   void caricaStanze();
-  void caricaContratti();
+  void apriDaRotta();
   void caricaCategorie();
   void caricaFornitori();
   void caricaCosti();

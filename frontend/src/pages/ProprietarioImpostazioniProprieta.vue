@@ -41,7 +41,45 @@
               outlined
               dense
               :readonly="!puoModificare"
+              hint="Come compare nelle email e nella galleria pubblica"
             />
+
+            <!-- Le caselle del quadro "FABBRICATO" della comunicazione di
+                 cessione: separate dall'indirizzo qui sopra, che resta
+                 testo libero e non viene ricavato da queste. -->
+            <div class="vp-section-title q-mt-md">Indirizzo strutturato</div>
+            <div class="vp-hint">
+              Serve ai documenti generati (comunicazione di cessione di
+              fabbricato), che hanno una casella per ciascun dato.
+            </div>
+            <div class="row q-col-gutter-sm">
+              <div v-for="c in CAMPI_INDIRIZZO" :key="c.campo" class="col-6 col-md-4">
+                <q-input
+                  :ref="(el) => registraCampo(c.campo, el)"
+                  v-model="formIndirizzoStrutturato[c.campo]"
+                  :label="c.label"
+                  outlined
+                  dense
+                  :readonly="!puoModificare"
+                  :data-testid="`immobile-${c.campo}`"
+                />
+              </div>
+            </div>
+
+            <q-select
+              v-model="formFirmatario"
+              :options="opzioniFirmatario"
+              label="Firma come cedente"
+              outlined
+              dense
+              emit-value
+              map-options
+              clearable
+              :readonly="!puoModificare"
+              hint="Il modulo di cessione prevede un dichiarante solo"
+              data-testid="immobile-owner_firmatario"
+            />
+
             <q-btn
               v-if="puoModificare"
               type="submit"
@@ -251,18 +289,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { isAxiosError } from 'axios';
-import { useQuasar } from 'quasar';
+import { useQuasar, type QInput } from 'quasar';
+import { useRoute } from 'vue-router';
 import { type RuoloProperty } from 'stores/auth';
 import {
+  CAMPI_INDIRIZZO,
   usePropertiesStore,
+  type IndirizzoStrutturato,
   type Membro,
   type PropertyDettaglio,
   type Quota,
 } from 'stores/properties';
 
 const $q = useQuasar();
+const route = useRoute();
 const propStore = usePropertiesStore();
 
 const loading = ref(true);
@@ -272,7 +314,34 @@ const quote = ref<Quota[]>([]);
 
 const formNome = ref('');
 const formIndirizzo = ref('');
+const formIndirizzoStrutturato = ref<IndirizzoStrutturato>(indirizzoVuoto());
+const formFirmatario = ref<number | null>(null);
 const savingDati = ref(false);
+
+/** Riferimenti ai campi, per portare il fuoco dove il link dei "dati
+ *  mancanti" dice di andare (`?campo=<nome>`). */
+const campiIndirizzo = new Map<string, QInput>();
+
+function indirizzoVuoto(): IndirizzoStrutturato {
+  return {
+    via: '',
+    civico: '',
+    cap: '',
+    comune: '',
+    provincia: '',
+    piano: '',
+    scala: '',
+    interno: '',
+    vani: '',
+    accessori: '',
+    ingressi: '',
+  };
+}
+
+function registraCampo(campo: string, el: unknown) {
+  if (el) campiIndirizzo.set(campo, el as QInput);
+  else campiIndirizzo.delete(campo);
+}
 
 const dialogInvito = ref(false);
 const invitoEmail = ref('');
@@ -298,6 +367,11 @@ const puoModificare = computed(
   () => dettaglio.value?.mio_ruolo === 'proprietario' || dettaglio.value?.mio_ruolo === 'gestore',
 );
 const quoteCorrenti = computed(() => quote.value.filter((q) => q.valid_to === null));
+/** Chi può firmare come cedente: i proprietari con quota attiva, cioè la
+ *  stessa fonte da cui il generatore ricava la parte locatrice. */
+const opzioniFirmatario = computed(() =>
+  quoteCorrenti.value.map((q) => ({ label: q.owner_nominativo, value: q.owner })),
+);
 const totalePercento = computed(() =>
   quoteForm.value.reduce((tot, r) => tot + (Number(r.percento) || 0), 0),
 );
@@ -324,13 +398,34 @@ async function carica() {
   loading.value = true;
   try {
     dettaglio.value = await propStore.caricaDettaglio(id);
-    formNome.value = dettaglio.value.nome;
-    formIndirizzo.value = dettaglio.value.indirizzo;
+    riempiForm(dettaglio.value);
     membri.value = await propStore.caricaMembri(id);
     quote.value = await propStore.caricaQuote(id);
   } finally {
     loading.value = false;
   }
+  await focusCampoDaRotta();
+}
+
+function riempiForm(dati: PropertyDettaglio) {
+  formNome.value = dati.nome;
+  formIndirizzo.value = dati.indirizzo;
+  formFirmatario.value = dati.owner_firmatario;
+  const strutturato = indirizzoVuoto();
+  for (const c of CAMPI_INDIRIZZO) strutturato[c.campo] = dati[c.campo] ?? '';
+  formIndirizzoStrutturato.value = strutturato;
+}
+
+/** Deep link `?campo=<nome>`: il link dei dati mancanti deve atterrare sul
+ *  campo, non genericamente sulla pagina. */
+async function focusCampoDaRotta() {
+  const q = route.query.campo;
+  const nome = Array.isArray(q) ? q[0] : q;
+  if (!nome) return;
+  await nextTick();
+  const campo = campiIndirizzo.get(nome);
+  campo?.focus();
+  campo?.$el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
 }
 
 async function salvaDati() {
@@ -340,7 +435,10 @@ async function salvaDati() {
     dettaglio.value = await propStore.aggiornaProperty(dettaglio.value.id, {
       nome: formNome.value.trim(),
       indirizzo: formIndirizzo.value.trim(),
+      owner_firmatario: formFirmatario.value,
+      ...formIndirizzoStrutturato.value,
     });
+    riempiForm(dettaglio.value);
     $q.notify({ type: 'positive', message: 'Dati immobile salvati.' });
   } catch (e: unknown) {
     $q.notify({ type: 'negative', message: messaggioErrore(e, 'Salvataggio non riuscito.') });

@@ -33,7 +33,9 @@ export const TIPI_DOCUMENTO_INQUILINO: TipoDocumentoOption[] = [
   { label: 'Contratto di lavoro', value: 'contratto_lavoro' },
   { label: 'Ricevuta di registrazione (agenzia)', value: 'ricevuta_registrazione' },
   { label: 'Ricevuta del subentro', value: 'ricevuta_subentro' },
-  { label: 'Atto di subentro', value: 'atto_subentro' },
+  { label: 'Atto di subentro (utenze)', value: 'atto_subentro' },
+  { label: 'Atto di subentro nel contratto', value: 'atto_subentro_locazione' },
+  { label: 'Comunicazione di cessione di fabbricato', value: 'cessione_fabbricato' },
   { label: 'Altro', value: 'altro' },
 ];
 
