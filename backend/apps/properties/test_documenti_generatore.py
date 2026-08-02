@@ -284,6 +284,21 @@ class TestMancanti:
         assert da_assegnazione[0]["link"].startswith("/admin/properties/roomassignment/")
         assert not [m for m in mancanti if m["fonte"] == "uscente"]
 
+    def test_deposito_manda_alla_scheda_admin(self, scenario):
+        """Il deposito non è nel form anagrafica: il link deve portare dove
+        si può davvero sistemare, non su un dialog che non lo contiene."""
+        Receivable.objects.filter(
+            causale=Receivable.Causale.DEPOSITO
+        ).delete()
+        scenario["tenant"].deposito_versato = Decimal("0")
+        scenario["tenant"].save()
+        mancanti = anteprima(scenario["tenant"], ATTO, oggi=OGGI)["mancanti"]
+        voce = next(m for m in mancanti if m["campo"] == "deposito")
+        assert voce["link"] == (
+            f"/admin/properties/tenantprofile/{scenario['tenant'].pk}/change/"
+        )
+        assert voce["esterno"] is True
+
     def test_comproprietario_incompleto_e_nominato(self, scenario):
         fabio = scenario["owner2"]
         fabio.data_nascita = None

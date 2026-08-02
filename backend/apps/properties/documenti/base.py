@@ -212,12 +212,13 @@ DOVE = {
     "property": "Impostazioni → Proprietà",
     "contract": "Impostazioni → Casa → Contratti",
     "assignment": "Assegnazione stanza (admin)",
+    "deposito": "Deposito dell'inquilino (admin)",
     "owner": "Profilo proprietario (admin)",
     "modello": "Impostazioni → Casa → Modelli documenti",
 }
 
 #: Fonti che si compilano solo dall'admin Django, fuori dalla PWA.
-FONTI_ESTERNE = {"assignment", "owner"}
+FONTI_ESTERNE = {"assignment", "deposito", "owner"}
 
 
 @dataclass(frozen=True)
@@ -275,6 +276,11 @@ def link_per(campo: Campo, fonti: Fonti) -> str:
         return f"/admin/properties/ownerprofile/{oggetto.pk}/change/"
     if campo.fonte == "assignment":
         return f"/admin/properties/roomassignment/{fonti.assignment.pk}/change/"
+    if campo.fonte == "deposito":
+        # Il deposito non sta nel form anagrafica: nasce da
+        # ``deposito_versato`` o dalle rate della prima assegnazione, e si
+        # sistema dalla scheda admin dell'inquilino.
+        return f"/admin/properties/tenantprofile/{fonti.tenant.pk}/change/"
     return "/p/impostazioni/casa?tab=modelli"
 
 

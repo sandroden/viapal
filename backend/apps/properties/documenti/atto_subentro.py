@@ -243,13 +243,12 @@ class AttoSubentro(Documento):
             lambda f: eur(f.oneri_accessori) if f.oneri_accessori else "",
         ),
         Campo(
-            "deposito", "Deposito cauzionale", "tenant",
+            "deposito", "Deposito cauzionale", "deposito",
             lambda f: eur(f.deposito) if f.deposito else "",
-            campo_db="deposito_versato",
         ),
         Campo(
-            "deposito_rate", "Numero di rate del deposito", "tenant",
-            lambda f: f.rate_deposito or "", campo_db="deposito_versato",
+            "deposito_rate", "Numero di rate del deposito", "deposito",
+            lambda f: f.rate_deposito or "",
         ),
         Campo(
             "luogo_firma", "Luogo di sottoscrizione", "property",

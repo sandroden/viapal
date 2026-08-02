@@ -82,7 +82,11 @@ VOCI = (
     VoceFascicolo(
         Tipo.ATTO_SUBENTRO_LOCAZIONE,
         a_carico_proprieta=True,
-        suggerimento="lo generi tu dai dati del contratto",
+        # I suggerimenti descrivono il documento e nient'altro: lo stesso
+        # payload alimenta il fascicolo dell'inquilino, a cui un "lo generi
+        # tu" non direbbe nulla. L'invito ad agire sta nella UI del
+        # proprietario, che sa di essere tale.
+        suggerimento="ingresso nel contratto già in corso",
         generabile="atto_subentro_locazione",
         # Solo per chi è subentrato a qualcuno: al primo occupante di una
         # stanza questo atto non serve, e la voce non deve comparire.
@@ -91,7 +95,7 @@ VOCI = (
     VoceFascicolo(
         Tipo.CESSIONE_FABBRICATO,
         a_carico_proprieta=True,
-        suggerimento="da consegnare all'autorità entro 48 ore",
+        suggerimento="comunicazione all'autorità (art. 12)",
         generabile="cessione_fabbricato",
         # Incondizionata: l'art. 12 obbliga il cedente per ogni nuovo
         # occupante, non solo per i subentri.
