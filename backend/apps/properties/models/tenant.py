@@ -16,8 +16,52 @@ from ._base import TimestampedModel
 from .anagrafica import AnagraficaPersonaMixin
 
 
+def assegnazione_in_corso_q(oggi):
+    """Predicato «assegnazione valida *oggi*», in un posto solo.
+
+    Estremo destro **escluso** (``valid_to > oggi``): nel giorno di fine
+    l'inquilino non occupa più la stanza. È la stessa regola con cui
+    ``billing.calc.posizione`` calcola ``assignment_attivo``, da cui discende
+    il badge "ex inquilino" — se le due divergessero, la stessa persona
+    risulterebbe uscita in una schermata e attiva in un'altra.
+    """
+    return models.Q(valid_from__lte=oggi) & (
+        models.Q(valid_to__isnull=True) | models.Q(valid_to__gt=oggi)
+    )
+
+
+class TenantProfileQuerySet(models.QuerySet):
+    """Selettori condivisi fra API, admin e comandi."""
+
+    def _con_assegnazione(self, oggi=None, property=None):
+        import datetime
+
+        from django.db.models import Exists, OuterRef
+
+        RoomAssignment = self.model._meta.apps.get_model(
+            "properties", "RoomAssignment"
+        )
+        oggi = oggi or datetime.date.today()
+        qs = RoomAssignment.objects.filter(
+            assegnazione_in_corso_q(oggi), tenant=OuterRef("pk")
+        )
+        if property is not None:
+            qs = qs.filter(room__property=property)
+        return Exists(qs)
+
+    def attivi(self, oggi=None, property=None):
+        """Inquilini che **ora** occupano una stanza."""
+        return self.filter(self._con_assegnazione(oggi, property))
+
+    def usciti(self, oggi=None, property=None):
+        """Il complemento di :meth:`attivi`: nessuna assegnazione in corso."""
+        return self.exclude(self._con_assegnazione(oggi, property))
+
+
 class TenantProfile(AnagraficaPersonaMixin, TimestampedModel):
     """Profilo anagrafico di un inquilino."""
+
+    objects = TenantProfileQuerySet.as_manager()
 
     class FrequenzaConguagli(models.TextChoices):
         MENSILE = "mensile", "Mensile"

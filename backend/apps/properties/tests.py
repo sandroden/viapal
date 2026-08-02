@@ -834,3 +834,66 @@ class TestResolvePropertyCli:
 
         with pytest.raises(ValueError, match="id, nome o slug"):
             resolve_property_cli(None)
+
+
+# ---------------------------------------------------------------------------
+# Test TenantProfileQuerySet.attivi / usciti
+# ---------------------------------------------------------------------------
+
+
+class TestTenantAttivi:
+    """Il predicato "attivo ora" sta in un posto solo: se questi test e quelli
+    di `posizione_inquilino` divergessero, la stessa persona risulterebbe
+    uscita in una schermata e attiva in un'altra."""
+
+    def _assegna(self, tenant, room, da, a=None):
+        return RoomAssignment.objects.create(
+            room=room,
+            tenant=tenant,
+            valid_from=da,
+            valid_to=a,
+            canone_mensile=Decimal("400"),
+        )
+
+    def test_assegnazione_aperta_e_attivo(self, db, tenant, room):
+        self._assegna(tenant, room, datetime.date(2025, 1, 1))
+        assert list(TenantProfile.objects.attivi()) == [tenant]
+        assert list(TenantProfile.objects.usciti()) == []
+
+    def test_senza_assegnazioni_e_uscito(self, db, tenant):
+        assert list(TenantProfile.objects.attivi()) == []
+        assert list(TenantProfile.objects.usciti()) == [tenant]
+
+    def test_estremo_destro_escluso(self, db, tenant, room):
+        """Nel giorno di `valid_to` la stanza non è più occupata: stessa
+        regola di `assignment_attivo` (`valid_to > oggi`)."""
+        oggi = datetime.date(2026, 3, 10)
+        self._assegna(tenant, room, datetime.date(2026, 1, 1), oggi)
+        assert list(TenantProfile.objects.attivi(oggi=oggi)) == []
+        assert list(
+            TenantProfile.objects.attivi(oggi=oggi - datetime.timedelta(days=1))
+        ) == [tenant]
+
+    def test_non_ancora_entrato(self, db, tenant, room):
+        oggi = datetime.date(2026, 1, 1)
+        self._assegna(tenant, room, datetime.date(2026, 6, 1))
+        assert list(TenantProfile.objects.attivi(oggi=oggi)) == []
+
+    def test_una_chiusa_una_aperta_resta_attivo(self, db, tenant, room):
+        """Cambio stanza: il buco fra le due non deve farlo sparire."""
+        oggi = datetime.date(2026, 5, 1)
+        self._assegna(tenant, room, datetime.date(2025, 1, 1), datetime.date(2026, 2, 1))
+        altra = Room.objects.create(
+            property=room.property, nome="Camera 2", ordinamento=2
+        )
+        self._assegna(tenant, altra, datetime.date(2026, 2, 1))
+        assert list(TenantProfile.objects.attivi(oggi=oggi)) == [tenant]
+
+    def test_filtro_per_immobile(self, db, tenant, room, immobile2):
+        """Attivo altrove non è attivo qui."""
+        oggi = datetime.date(2026, 5, 1)
+        self._assegna(tenant, room, datetime.date(2025, 1, 1))
+        assert list(
+            TenantProfile.objects.attivi(oggi=oggi, property=room.property)
+        ) == [tenant]
+        assert list(TenantProfile.objects.attivi(oggi=oggi, property=immobile2)) == []

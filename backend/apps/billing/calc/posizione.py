@@ -66,13 +66,11 @@ def posizione_inquilino(
     if property is not None:
         assignments = assignments.filter(room__property=property)
 
-    assignment_attivo = (
-        RoomAssignment.objects.select_related(
-            "room__property__bank_account_utenze", "tenant"
-        )
-        .filter(tenant=tenant, valid_from__lte=oggi)
-        .filter(Q(valid_to__isnull=True) | Q(valid_to__gt=oggi))
-    )
+    from properties.models.tenant import assegnazione_in_corso_q
+
+    assignment_attivo = RoomAssignment.objects.select_related(
+        "room__property__bank_account_utenze", "tenant"
+    ).filter(assegnazione_in_corso_q(oggi), tenant=tenant)
     if property is not None:
         assignment_attivo = assignment_attivo.filter(room__property=property)
     assignment_attivo = assignment_attivo.first()
