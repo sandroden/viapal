@@ -104,7 +104,13 @@ export interface ProprietarioRiga {
   id: number;
   tenant: string;
   descrizione: string;
+  /** Dovuto pieno (retrocompatibilità). */
   importo: number;
+  importo_dovuto: number;
+  importo_pagato: number;
+  /** Quanto manca: è il numero che conta in una lista di scaduti. */
+  residuo: number;
+  parziale: boolean;
   scadenza: string;
   stato: string;
   giorni_ritardo: number;

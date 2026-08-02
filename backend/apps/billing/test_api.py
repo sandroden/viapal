@@ -932,6 +932,68 @@ class TestDashboardProprietario:
         assert kpi["incasso_anno"] == 800.0
         assert kpi["incasso_mese"] == 400.0
 
+    def test_ritardi_includono_deposito_dichiarato(self, client_prop, assignment_1):
+        """Un deposito dichiarato e mai confermato deve comparire in Ritardi:
+        è l'unica pagina da cui si conferma o si rifiuta una dichiarazione.
+
+        Caso reale: deposito versato "in natura" (un materasso lasciato alla
+        casa), dichiarato dall'inquilino e senza nessun bonifico da abbinare.
+        """
+        ieri = datetime.date.today() - datetime.timedelta(days=1)
+        r = Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.DEPOSITO,
+            competenza_da=ieri,
+            importo_dovuto=Decimal("130"),
+            scadenza=ieri,
+            stato=StatoPagamento.DICHIARATO,
+            descrizione="Deposito in natura: materasso",
+        )
+        ritardi = client_prop.get("/api/v1/dashboard/proprietario/").json()["ritardi"]
+        riga = next(x for x in ritardi if x["id"] == r.id)
+        assert riga["tipo"] == "deposit"
+        assert riga["stato"] == "dichiarato"
+        assert riga["residuo"] == 130.0
+
+    def test_ritardi_escludono_restituzione_deposito(self, client_prop, assignment_1):
+        """Le restituzioni (deposito negativo) non sono un debito
+        dell'inquilino: restano fuori, come nella home."""
+        ieri = datetime.date.today() - datetime.timedelta(days=1)
+        r = Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.DEPOSITO,
+            competenza_da=ieri,
+            importo_dovuto=Decimal("-900"),
+            scadenza=ieri,
+            stato=StatoPagamento.ATTESO,
+        )
+        ritardi = client_prop.get("/api/v1/dashboard/proprietario/").json()["ritardi"]
+        assert r.id not in [x["id"] for x in ritardi]
+
+    def test_ritardi_espongono_il_residuo_dei_parziali(
+        self, client_prop, assignment_1
+    ):
+        """Su un addebito coperto quasi del tutto la lista deve dire quanto
+        manca: il dovuto pieno da solo lo fa sembrare del tutto scoperto."""
+        ieri = datetime.date.today() - datetime.timedelta(days=1)
+        r = Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.UTENZE,
+            competenza_da=ieri,
+            importo_dovuto=Decimal("46.21"),
+            importo_pagato=Decimal("43.32"),
+            scadenza=ieri,
+            stato=StatoPagamento.ATTESO,
+        )
+        ritardi = client_prop.get("/api/v1/dashboard/proprietario/").json()["ritardi"]
+        riga = next(x for x in ritardi if x["id"] == r.id)
+        assert riga["importo_dovuto"] == 46.21
+        assert riga["importo_pagato"] == 43.32
+        assert riga["residuo"] == 2.89
+        assert riga["parziale"] is True
+        # `importo` resta il dovuto pieno: retrocompatibilità del payload
+        assert riga["importo"] == 46.21
+
     def test_dashboard_proprietario_anno_invalido_400(self, client_prop):
         resp = client_prop.get("/api/v1/dashboard/proprietario/?anno=abc")
         assert resp.status_code == 400

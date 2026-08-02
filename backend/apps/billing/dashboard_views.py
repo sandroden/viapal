@@ -477,11 +477,19 @@ class DashboardProprietarioView(APIView):
             # Ritardo = fatto temporale (scadenza passata) su Receivable non
             # ancora chiusi. Escludiamo PAGATO e INSOLUTO (insoluti storici
             # che non beccheremo più: non vogliamo ingolfare la dashboard).
+            # Stesse causali della home inquilino: operative + le rate di
+            # versamento del deposito (positive). Un deposito dichiarato e mai
+            # confermato deve comparire qui, perché questa è l'unica pagina da
+            # cui si conferma o si rifiuta una dichiarazione. Le restituzioni
+            # (importo negativo) non sono un debito e restano fuori.
+            causali_dovute = Q(causale__in=CAUSALI_OPERATIVE) | Q(
+                causale=Receivable.Causale.DEPOSITO, importo_dovuto__gt=0
+            )
             ritardi_qs = (
                 Receivable.objects.filter(
+                    causali_dovute,
                     assignment__room__property=prop,
                     scadenza__lt=oggi,
-                    causale__in=CAUSALI_OPERATIVE,
                 )
                 .exclude(stato__in=[StatoPagamento.PAGATO, StatoPagamento.INSOLUTO])
                 .select_related(
@@ -490,11 +498,11 @@ class DashboardProprietarioView(APIView):
             )
             scadenza_qs = (
                 Receivable.objects.filter(
+                    causali_dovute,
                     assignment__room__property=prop,
                     stato__in=[StatoPagamento.ATTESO, StatoPagamento.DICHIARATO],
                     scadenza__lte=soglia_scadenza,
                     scadenza__gte=oggi,
-                    causale__in=CAUSALI_OPERATIVE,
                 )
                 .select_related(
                     "assignment__tenant", "assignment__room", "utility_period"
@@ -503,12 +511,21 @@ class DashboardProprietarioView(APIView):
 
         def _fmt(r: Receivable) -> dict:
             giorni = _giorni_ritardo(r.scadenza, oggi)
+            dovuto = r.importo_dovuto
+            pagato = r.importo_pagato or Decimal("0")
             return {
                 "tipo": TIPO_PER_CAUSALE[r.causale],
                 "id": r.id,
                 "tenant": r.assignment.tenant.nominativo,
                 "descrizione": _descrizione_receivable(r),
-                "importo": float(r.importo_dovuto),
+                # `importo` resta il dovuto pieno per retrocompatibilità.
+                "importo": float(dovuto),
+                "importo_dovuto": float(dovuto),
+                "importo_pagato": float(pagato),
+                # Quanto manca davvero: senza, un addebito coperto al 94%
+                # sembra del tutto scoperto.
+                "residuo": float(dovuto - pagato),
+                "parziale": bool(0 < pagato < dovuto),
                 "scadenza": r.scadenza.isoformat(),
                 "stato": r.stato,
                 "giorni_ritardo": giorni,

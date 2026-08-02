@@ -64,7 +64,13 @@
       </template>
       <template #body-cell-importo="props">
         <q-td :props="props">
-          <span class="vp-mono">{{ formattaEuro(props.row.importo) }}</span>
+          <span class="vp-mono">{{ formattaEuro(props.row.residuo) }}</span>
+          <!-- Su un parziale il dovuto pieno da solo inganna: 46,21 € letto
+               come "non ha pagato" quando ne mancano 2,89. -->
+          <div v-if="props.row.parziale" class="vp-p-rit__parziale">
+            di {{ formattaEuro(props.row.importo_dovuto) }} ·
+            {{ formattaEuro(props.row.importo_pagato) }} già versati
+          </div>
         </q-td>
       </template>
       <template #body-cell-scadenza="props">
@@ -193,8 +199,8 @@ const colonne: QTableProps['columns'] = [
   },
   {
     name: 'importo',
-    label: 'Importo',
-    field: 'importo',
+    label: 'Da saldare',
+    field: 'residuo',
     align: 'right',
     sortable: true,
   },
@@ -343,6 +349,11 @@ async function rifiuta(row: RigaTabella) {
 .vp-p-rit__totali-label {
   color: var(--vp-ink-3);
   font-size: var(--vp-text-sm);
+}
+.vp-p-rit__parziale {
+  color: var(--vp-ink-3);
+  font-size: 11px;
+  white-space: nowrap;
 }
 .vp-p-rit__table {
   background: var(--vp-cream);
