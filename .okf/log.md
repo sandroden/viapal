@@ -1,6 +1,9 @@
 # Update Log
 
 ## 2026-08-02
+* **Creation**: `domain/generazione-documenti.md` — atto di subentro nel contratto e comunicazione di cessione di fabbricato generati in PDF (WeasyPrint): i campi dichiarati come tupla producono sia il contesto sia l'elenco dei dati mancanti, ciascuno col posto in cui compilarlo; il testo è un `DocumentTemplate` per immobile (nel repo solo gli esempi), sostituzione con `str.replace` e `url_fetcher` che blocca le risorse esterne; rigenerare tocca solo i PDF con `generato=True`.
+* **Maintain**: `domain/fascicolo-documenti.md` — due voci generabili, `VoceFascicolo.applicabile` (l'atto di subentro compare solo se c'è `subentra_a`), `costruisci_fascicolo` riceve l'assegnazione, campo `generabile` nel payload.
+* **Maintain**: `models/properties.md` — `AnagraficaPersonaMixin`, indirizzo strutturato e `owner_firmatario` su `Property`, estremi di registrazione e `durata_rinnovo_anni` su `Contract`, `RoomAssignment.subentra_a`, `TenantDocument.generato`, `DocumentTemplate`.
 * **Creation**: `domain/solleciti.md` — email di riepilogo addebiti (canone del mese in apertura, pendenti a 15 giorni, dichiarati a parte), niente totali/QR/IBAN, scadenze non riscritte, ex inquilini inclusi; registro comunicazioni su `Notification` (`corpo_html`, `destinatario`, `codice`, `errore`) con invariante `inviata_at` vs `errore`.
 * **Maintain**: `models/notifications.md` — nuovi campi di `Notification` e nota che `ReminderRule` resta senza engine.
 * **Maintain**: `domain/receivable.md` — rimando ai due flussi di sollecito.

@@ -26,11 +26,17 @@ del trattamento ai sensi dell'art. 28 GDPR per conto del titolare.
 ## 2. Dati trattati
 
 - **Dati anagrafici e di contatto**: nome, cognome, codice fiscale, telefono,
-  e-mail, credenziali di accesso all'app.
+  e-mail, credenziali di accesso all'app; **luogo e data di nascita,
+  cittadinanza e residenza**, e gli **estremi del documento d'identità**
+  (tipo, numero, autorità e data di rilascio), richiesti dall'atto di
+  subentro nel contratto e dalla comunicazione di cessione di fabbricato.
+  Vengono raccolti solo quando serve produrre uno di questi documenti.
 - **Documenti**: copia del documento d'identità (carta d'identità o
   passaporto), tessera del codice fiscale, permesso di soggiorno (se
   applicabile), contratto di locazione ed eventuali altri documenti
-  contrattuali.
+  contrattuali. Nel fascicolo trovi anche i documenti che prepariamo noi
+  (atto di subentro, comunicazione di cessione di fabbricato): riportano,
+  come prevede la legge, anche i dati anagrafici della proprietà.
 - **Documentazione reddituale** (es. contratto di lavoro): solo in fase
   precontrattuale, per la valutazione dell'affidabilità economica.
 - **Dati contabili**: canoni e oneri dovuti, pagamenti ricevuti (inclusi i

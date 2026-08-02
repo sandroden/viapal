@@ -4,7 +4,7 @@ title: Fascicolo documenti
 description: Checklist dei documenti dell'inquilino con stati derivati (valido/in scadenza/scaduto/a carico proprietà), servita a inquilino e proprietario dallo stesso servizio. Nessun documento è obbligatorio.
 resource: backend/apps/properties/fascicolo.py
 tags: [domain, documenti, inquilini, frontend]
-timestamp: 2026-08-01T00:00:00Z
+timestamp: 2026-08-02T00:00:00Z
 ---
 
 # Overview
@@ -45,15 +45,32 @@ quando è a carico della proprietà.
 |------|-------|
 | `carta_identita`, `codice_fiscale`, `passaporto`, `permesso_soggiorno`, `contratto_lavoro`, `ricevuta_registrazione`, `ricevuta_subentro` | compaiono **solo se caricati** |
 | `atto_subentro` | a carico della proprietà: sempre presente, `attesa` finché manca |
+| `atto_subentro_locazione` | a carico della proprietà, **generato** dall'app; compare **solo se** l'assegnazione ha `subentra_a` |
+| `cessione_fabbricato` | a carico della proprietà, **generato** dall'app; sempre presente |
 | `altro` | fuori checklist: ogni file è una voce a sé, in `altri` |
 
 `ricevuta_registrazione` = "Ricevuta di registrazione (agenzia)", la ricevuta
 che l'agenzia rilascia per la registrazione del contratto (2026-08-01).
 
-**Perché l'atto di subentro è diverso**: lo produce il fornitore di utenze e
-lo carica il proprietario. All'inquilino appare come «non devi fare nulla:
-lo carica la proprietà» (nessun bottone), al proprietario come «lo carichi
-tu, non l'inquilino» (riga attiva, con caricamento).
+**Perché l'atto di subentro (utenze) è diverso**: lo produce il fornitore di
+utenze e lo carica il proprietario. All'inquilino appare come «non devi fare
+nulla: lo carica la proprietà» (nessun bottone), al proprietario come «lo
+carichi tu, non l'inquilino» (riga attiva, con caricamento).
+
+**Voci condizionate** (2026-08-02): `VoceFascicolo.applicabile` è un
+predicato sull'assegnazione dell'inquilino. Serviva all'atto di subentro nel
+contratto, che ha senso solo per chi è subentrato a qualcuno: senza
+condizione, il primo occupante di una stanza resterebbe per sempre in
+`attesa` di un atto che non esisterà mai — l'opposto della regola "nessun
+documento è dovuto". La cessione di fabbricato resta invece incondizionata:
+l'art. 12 obbliga il cedente per **ogni** nuovo occupante. Per valutare il
+predicato, `costruisci_fascicolo` accetta l'assegnazione (default: l'ultima
+dell'inquilino). Un file già caricato si mostra comunque, anche se la voce
+non si applicherebbe: esiste, va visto.
+
+I `suggerimento` descrivono il documento e nient'altro: lo stesso payload
+alimenta entrambe le UI, e un «lo generi tu» nel fascicolo dell'inquilino
+non direbbe nulla. L'invito ad agire sta nel frontend del proprietario.
 
 # Pagine (fronte/retro)
 
@@ -72,7 +89,9 @@ non correlati non devono fondersi in una voce sola.
 
 Payload: `voci[]` (checklist), `altri[]`, `riepilogo` (conteggi per stato +
 `da_sistemare` = scaduti + in scadenza). Ogni voce porta `pagine[]` con `file`
-(URL `/media-private/…`), `etichetta`, `is_pdf`.
+(URL `/media-private/…`), `etichetta`, `is_pdf`, e `generabile` (codice del
+generatore o `null`): il fascicolo resta l'unica sorgente, non serve un
+endpoint per scoprire cosa si può generare.
 
 # Visualizzazione
 
@@ -85,6 +104,13 @@ del service worker esclude `^/media` dal navigation fallback (vedi
 
 Immagini in `<img>`, PDF in `<iframe>`; le miniature dei PDF restano una
 "carta rigata" con etichetta `PDF` (non c'è render server-side).
+
+# Documenti generati
+
+Due voci della checklist non si caricano: le **produce l'applicazione**
+(2026-08-02) — vedi [Generazione documenti](/domain/generazione-documenti.md).
+Il PDF prodotto è un `TenantDocument` come gli altri, con `generato=True`, e
+sfrutta storage privato, autorizzazioni, visore e fascicolo già esistenti.
 
 # Non implementato
 
@@ -99,6 +125,8 @@ Immagini in `<img>`, PDF in `<iframe>`; le miniature dei PDF restano una
 
 # Vedi anche
 
+- [Generazione documenti](/domain/generazione-documenti.md) — atto di
+  subentro e cessione di fabbricato.
 - [Modelli properties](/models/properties.md) — `TenantDocument`,
   `PropertyDocument`.
 - [PWA](/architecture/pwa.md) — service worker e denylist dei path non-SPA.

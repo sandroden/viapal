@@ -31,6 +31,7 @@ Partire da qui, poi seguire solo i link rilevanti (progressive disclosure).
 * [Solleciti e registro comunicazioni](domain/solleciti.md) - riepilogo addebiti (canone del mese + pendenti a 15 giorni), niente totali né QR, registro degli invii.
 * [Galleria pubblica](domain/galleria-pubblica.md) - annuncio affitto /g/slug, editing in-place, endpoint AllowAny.
 * [Fascicolo documenti](domain/fascicolo-documenti.md) - checklist documenti inquilino, stati derivati (scadenza/mancante/a carico proprietà), visore interno.
+* [Generazione documenti](domain/generazione-documenti.md) - atto di subentro e cessione di fabbricato in PDF; modello per immobile, dati mancanti con il posto in cui compilarli.
 * [Unità intera](domain/unita-intera.md) - Property.tipo_gestione, Room come unità locata, un solo pagatore.
 
 # Decisioni e invarianti

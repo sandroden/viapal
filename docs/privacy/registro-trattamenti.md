@@ -19,7 +19,7 @@ immobili in comproprietà), e-mail sandro.dentella@gmail.com.
 | Finalità | Gestione contratti di locazione: anagrafiche, canoni, utenze, depositi, riconciliazione bancaria, documenti, comunicazioni |
 | Basi giuridiche | Contratto (6.1.b); obblighi legali fiscali e di PS (6.1.c); legittimo interesse (6.1.f) per tutela dei diritti |
 | Categorie di interessati | Inquilini attuali e passati; candidati inquilini |
-| Categorie di dati | Anagrafici, contatto, CF, copie documenti d'identità e permessi di soggiorno, documentazione reddituale, dati contabili e bancari (bonifici, IBAN ordinante), credenziali, log |
+| Categorie di dati | Anagrafici (nome, cognome, **luogo e data di nascita, cittadinanza, residenza**), contatto, CF, **estremi del documento d'identità** (tipo, numero, autorità e data di rilascio), copie documenti d'identità e permessi di soggiorno, documentazione reddituale, dati contabili e bancari (bonifici, IBAN ordinante), credenziali, log |
 | Destinatari | Agenzia delle Entrate, autorità PS (obblighi di legge); fornitori tecnici (v. sotto) |
 | Trasferimenti extra-UE | Nessuno |
 | Conservazione | V. informativa inquilini: contratti/contabilità 10 anni; documenti identità durata rapporto + 5 anni; reddituale max 12 mesi dalla firma |
@@ -35,6 +35,19 @@ immobili in comproprietà), e-mail sandro.dentella@gmail.com.
 | Dati | Indirizzo e-mail effettivo di recapito (può essere l'e-mail alternativa) o etichetta del dispositivo per le notifiche push; oggetto e **corpo integrale** del messaggio, che riporta importi e scadenze degli addebiti; data di invio; eventuale messaggio d'errore |
 | Dove | Tabella `notifications_notification`; consultabile da `/p/riepilogo` (tab *Inviati*), dalla scheda inquilino e dall'admin |
 | Conservazione | **Da definire**: oggi nessuna cancellazione automatica. Valutare una purge oltre i 24 mesi, separata dalla conservazione decennale della contabilità (qui il dato utile è la prova dell'invio, non l'importo) |
+
+### A.1.2 Documenti generati (atto di subentro, cessione di fabbricato)
+
+| Voce | Contenuto |
+|---|---|
+| Finalità | Produrre l'atto di subentro nel contratto di locazione e la comunicazione di cessione di fabbricato (art. 12 D.L. 59/1978) dai dati già in archivio, invece di ricopiarli a mano |
+| Basi giuridiche | Contratto (6.1.b) per l'atto di subentro; obbligo legale (6.1.c) per la comunicazione all'autorità di PS |
+| Interessati | Inquilini entranti e uscenti; **proprietari** (compaiono come parte locatrice e come cedente) |
+| Dati | Nascita, cittadinanza e residenza di inquilini e proprietari; estremi del documento d'identità del cessionario; estremi di registrazione del contratto; canone, oneri accessori e deposito |
+| Nota sul flusso | Il PDF prodotto è un documento dell'inquilino ed è **visibile all'inquilino stesso**: la comunicazione di cessione porta quindi nascita, residenza e recapito del proprietario firmatario alla conoscenza dell'inquilino. È inerente al modulo, che quei dati li espone per legge, ma è un flusso proprietario → inquilino che prima non esisteva |
+| Dove | `properties_tenantdocument` con `generato=True`, su storage privato (`/media-private/`); modelli in `properties_documenttemplate` |
+| Minimizzazione | I campi anagrafici estesi si compilano **solo quando serve un documento**: fuori da questo trattamento restano vuoti. Dopo la consegna all'ufficio, gli estremi del documento d'identità possono essere cancellati |
+| Conservazione | Come i documenti contrattuali (v. A.1); l'atto di subentro segue il contratto a cui accede |
 
 ### A.2 Account dei proprietari accreditati
 
