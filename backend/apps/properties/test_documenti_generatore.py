@@ -352,6 +352,19 @@ class TestFonti:
         fonti = raccogli_fonti(scenario["tenant"], oggi=OGGI)
         assert [o.nominativo for o in fonti.comproprietari] == ["Dentella Alessandro"]
 
+    def test_quota_condominio_non_dipende_dal_contratto_attivo(self, scenario):
+        """La quota si cerca per immobile, come fa la generazione degli
+        addebiti: se il documento leggesse solo il contratto attivo,
+        dichiarerebbe una cifra diversa da quella che l'inquilino paga."""
+        contratto = scenario["contratto"]
+        # Decorrenza spostata dopo l'ingresso dell'inquilino: alla sua data
+        # il contratto attivo diventa un altro (o nessuno).
+        contratto.data_decorrenza = INGRESSO + datetime.timedelta(days=10)
+        contratto.save()
+        fonti = raccogli_fonti(scenario["tenant"], oggi=OGGI)
+        assert fonti.contract is None
+        assert fonti.oneri_accessori == Decimal("70")
+
     def test_quota_condominio_del_tenant_vince_sulla_generica(self, scenario):
         TenantCondominioRate.objects.create(
             contract=scenario["contratto"],

@@ -178,31 +178,26 @@ def raccogli_fonti(tenant, assignment=None, oggi=None) -> Fonti:
         uscente_assignment=uscente_assignment,
         comproprietari=comproprietari,
         firmatario=immobile.owner_firmatario,
-        oneri_accessori=_quota_condominio(contract, tenant, alla_data),
+        oneri_accessori=_quota_condominio(assignment, alla_data),
         deposito=totale_deposito or tenant.deposito_versato,
         rate_deposito=depositi.count(),
         oggi=oggi,
     )
 
 
-def _quota_condominio(contract, tenant, alla_data):
+def _quota_condominio(assignment, alla_data):
     """Quota mensile di oneri accessori in vigore a una data.
 
-    La quota intestata all'inquilino vince su quella generica del
-    contratto: è la stessa precedenza applicata dalla prima assegnazione.
+    Delega alla stessa funzione che genera gli addebiti d'affitto: il
+    documento deve dichiarare la cifra che l'inquilino paga davvero. Il
+    criterio è per **immobile**, non per contratto attivo — con contratti
+    che si accavallano (o una decorrenza spostata) le due letture
+    divergerebbero, e a divergere sarebbe l'atto.
     """
-    from billing.models import TenantCondominioRate
+    from billing.calc.rent import _quota_condominio_per
 
-    if contract is None:
-        return None
-    qs = TenantCondominioRate.objects.filter(
-        contract=contract, valid_from__lte=alla_data
-    ).exclude(valid_to__lt=alla_data)
-    specifica = qs.filter(tenant=tenant).order_by("-valid_from").first()
-    if specifica:
-        return specifica.importo_mensile
-    generica = qs.filter(tenant__isnull=True).order_by("-valid_from").first()
-    return generica.importo_mensile if generica else None
+    quota = _quota_condominio_per(assignment, alla_data)
+    return quota or None
 
 
 # ---------------------------------------------------------------------------
