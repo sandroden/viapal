@@ -225,6 +225,25 @@ class TestPropertyUpdateDelete:
         immobile.refresh_from_db()
         assert immobile.nome == "Rinominato"
 
+    def test_patch_indirizzo_strutturato(self, client_gestore, immobile):
+        """I campi che riempiono il quadro 'FABBRICATO' del modulo art. 12
+        si scrivono dall'API; ``indirizzo`` resta indipendente."""
+        resp = client_gestore.patch(
+            f"/api/v1/properties/{immobile.id}/",
+            {
+                "via": "Palestrina", "civico": "20", "cap": "20900",
+                "comune": "Monza", "provincia": "MB", "piano": "2",
+                "scala": "A", "interno": "3", "vani": "5",
+                "accessori": "cantina", "ingressi": "1",
+            },
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        immobile.refresh_from_db()
+        assert immobile.comune == "Monza"
+        assert immobile.vani == "5"
+        assert immobile.indirizzo == "Via Test 1"
+
     def test_patch_da_non_membro_404(self, client_altro, immobile):
         resp = client_altro.patch(
             f"/api/v1/properties/{immobile.id}/", {"nome": "Hack"}, format="json"

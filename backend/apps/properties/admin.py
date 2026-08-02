@@ -383,7 +383,9 @@ class PropertyAdmin(ModalEditMixin, JumboModelAdmin):
     list_filter = ("pubblica",)
     search_fields = ("nome", "indirizzo", "slug")
     prepopulated_fields = {"slug": ("nome",)}
-    autocomplete_fields = ("bank_account_utenze", "owner_anticipa_cessioni")
+    autocomplete_fields = (
+        "bank_account_utenze", "owner_anticipa_cessioni", "owner_firmatario",
+    )
     inlines = (
         PropertyMembershipInline,
         GalleryAreaInlineForProperty,
@@ -391,7 +393,24 @@ class PropertyAdmin(ModalEditMixin, JumboModelAdmin):
     )
     fieldsets = (
         ("Immobile", {
-            "fields": ("nome", "tipo_gestione", "indirizzo", "bank_account_utenze", "owner_anticipa_cessioni"),
+            "fields": (
+                "nome", "tipo_gestione", "indirizzo", "bank_account_utenze",
+                "owner_anticipa_cessioni", "owner_firmatario",
+            ),
+        }),
+        ("Indirizzo strutturato", {
+            "fields": (
+                ("via", "civico"),
+                ("cap", "comune", "provincia"),
+                ("piano", "scala", "interno"),
+                ("vani", "accessori", "ingressi"),
+            ),
+            "description": (
+                "Una casella per ciascun dato richiesto dalla comunicazione di "
+                "cessione di fabbricato. Il campo 'indirizzo' qui sopra resta la "
+                "stringa mostrata nelle email e nella galleria: i due non si "
+                "aggiornano a vicenda."
+            ),
         }),
         ("Galleria pubblica", {
             "fields": (

@@ -35,6 +35,23 @@ CAMPI_ANAGRAFICA = [
     "residenza_cap",
 ]
 
+# Indirizzo strutturato dell'immobile: una casella per ciascuno nel modulo
+# di cessione di fabbricato. ``indirizzo`` resta a parte, come stringa di
+# visualizzazione.
+CAMPI_INDIRIZZO_STRUTTURATO = [
+    "via",
+    "civico",
+    "cap",
+    "comune",
+    "provincia",
+    "piano",
+    "scala",
+    "interno",
+    "vani",
+    "accessori",
+    "ingressi",
+]
+
 # Estremi del documento d'identità: solo sull'inquilino (li chiede il modulo
 # di cessione di fabbricato per il cessionario).
 CAMPI_DOCUMENTO_IDENTITA = [
@@ -630,8 +647,10 @@ class PropertySerializer(serializers.ModelSerializer):
             "testi_pubblici",
             "bank_account_utenze",
             "owner_anticipa_cessioni",
+            "owner_firmatario",
             "mio_ruolo",
             "n_stanze",
+            *CAMPI_INDIRIZZO_STRUTTURATO,
         ]
         extra_kwargs = {"slug": {"required": False}}
 

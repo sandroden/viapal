@@ -60,6 +60,66 @@ class Property(TimestampedModel):
         max_length=255,
         blank=True,
         verbose_name="indirizzo",
+        help_text="Testo libero mostrato nelle email e nella galleria pubblica.",
+    )
+    # ── Indirizzo strutturato ────────────────────────────────────────────
+    # La comunicazione di cessione di fabbricato (art. 12 D.L. 59/1978) ha
+    # una casella per ciascuno di questi dati: `indirizzo` resta la stringa
+    # di visualizzazione e non viene derivato da qui (né viceversa).
+    via = models.CharField(
+        max_length=160,
+        blank=True,
+        verbose_name="via/piazza",
+    )
+    civico = models.CharField(
+        max_length=16,
+        blank=True,
+        verbose_name="numero civico",
+    )
+    cap = models.CharField(
+        max_length=8,
+        blank=True,
+        verbose_name="CAP",
+    )
+    comune = models.CharField(
+        max_length=120,
+        blank=True,
+        verbose_name="comune",
+    )
+    provincia = models.CharField(
+        max_length=4,
+        blank=True,
+        verbose_name="provincia",
+    )
+    piano = models.CharField(
+        max_length=16,
+        blank=True,
+        verbose_name="piano",
+    )
+    scala = models.CharField(
+        max_length=16,
+        blank=True,
+        verbose_name="scala",
+    )
+    interno = models.CharField(
+        max_length=16,
+        blank=True,
+        verbose_name="interno",
+    )
+    vani = models.CharField(
+        max_length=60,
+        blank=True,
+        verbose_name="vani",
+    )
+    accessori = models.CharField(
+        max_length=60,
+        blank=True,
+        verbose_name="accessori",
+    )
+    ingressi = models.CharField(
+        max_length=60,
+        blank=True,
+        verbose_name="ingressi",
     )
     bank_account_utenze = models.ForeignKey(
         OwnerBankAccount,
@@ -80,6 +140,19 @@ class Property(TimestampedModel):
         help_text=(
             "Proprietario che, per convenzione, anticipa il 50% dei costi "
             "di registrazione/cessione contratto di questo immobile."
+        ),
+    )
+    owner_firmatario = models.ForeignKey(
+        OwnerProfile,
+        on_delete=models.PROTECT,
+        related_name="properties_firmatario",
+        null=True,
+        blank=True,
+        verbose_name="firma come cedente",
+        help_text=(
+            "Proprietario che firma la comunicazione di cessione di "
+            "fabbricato: il modulo prevede un dichiarante solo. Cosa "
+            "diversa da chi anticipa i costi di cessione."
         ),
     )
 
