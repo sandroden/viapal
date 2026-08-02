@@ -20,6 +20,8 @@ export interface Segnaposto {
   etichetta: string;
   fonte: string;
   obbligatorio: boolean;
+  /** Composto da altri campi (riga anagrafica, blocco firme): non manca mai. */
+  derivato: boolean;
 }
 
 /** I due documenti generabili, nell'ordine in cui compaiono. */

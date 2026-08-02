@@ -107,8 +107,8 @@
                 </q-item-label>
                 <q-item-label caption>{{ s.etichetta }}</q-item-label>
               </q-item-section>
-              <q-item-section v-if="!s.obbligatorio" side>
-                <q-chip dense outline label="facoltativo" />
+              <q-item-section v-if="s.derivato || !s.obbligatorio" side>
+                <q-chip dense outline :label="s.derivato ? 'composto' : 'facoltativo'" />
               </q-item-section>
             </q-item>
           </q-list>

@@ -93,9 +93,12 @@ export function dettaglioVoce(
   opzioni: { scadenzaNelBadge?: boolean; latoProprieta?: boolean } = {},
 ): string {
   if (voce.stato === 'attesa') {
-    return opzioni.latoProprieta
-      ? 'a carico nostro: lo carichi tu, non l’inquilino'
-      : 'non devi fare nulla: lo carica la proprietà';
+    if (!opzioni.latoProprieta) return 'non devi fare nulla: lo carica la proprietà';
+    // Distinzione che conta per chi opera: alcuni documenti arrivano da
+    // fuori e si caricano, altri li produce l'applicazione.
+    return voce.generabile
+      ? 'a carico nostro: lo generi tu, dai dati che hai già'
+      : 'a carico nostro: lo carichi tu, non l’inquilino';
   }
   if (voce.data_scadenza && !opzioni.scadenzaNelBadge) {
     const data = formattaData(voce.data_scadenza);

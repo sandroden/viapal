@@ -1274,6 +1274,21 @@ watch(tenantId, (id) => {
 watch(tabAttivo, aggiornaQuery);
 watch(filtroTipo, aggiornaQuery);
 
+// I link dei "dati mancanti" possono puntare a questa stessa pagina: la
+// rotta non cambia, il componente non si rimonta, e senza questo watch la
+// query cambierebbe senza che succeda nulla.
+watch(
+  () => route.query,
+  (q) => {
+    const tab = parseTab(q.tab);
+    if (tab !== tabAttivo.value) tabAttivo.value = tab;
+    if (q.modifica === 'anagrafica') {
+      campoAnagrafica.value = (Array.isArray(q.campo) ? q.campo[0] : q.campo) ?? null;
+      dialogAnagrafica.value = true;
+    }
+  },
+);
+
 function onAnnoChange(v: number) {
   void store.loadSituazione(tenantId.value, v);
   void tenantsStore.fetchTenantsAnno(v);

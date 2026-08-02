@@ -477,6 +477,7 @@ class TestSegnaposto:
             "Cittadinanza (cessionario)"
         )
         assert per_chiave["fabbricato_scala"]["obbligatorio"] is False
+        assert per_chiave["uso"]["derivato"] is True
 
 
 def test_formattazione_importi():

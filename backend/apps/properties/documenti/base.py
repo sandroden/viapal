@@ -84,12 +84,16 @@ def residenza(persona) -> str:
 def descrivi_persona(persona) -> str:
     """Riga anagrafica per esteso, come la vuole un atto:
 
-    ``Rossi Mario, nato a Monza (MB) il 12/03/1990, residente a Monza (MB),
+    ``Rossi Mario, nato/a a Monza (MB) il 12/03/1990, residente a Monza (MB),
     Via Palestrina 20, C.F. RSSMRA90C12F704X``
+
+    "nato/a" e non "nato": il sesso non è un dato che raccogliamo, e
+    scriverlo al maschile su un atto che nomina anche delle donne è
+    semplicemente sbagliato.
     """
     pezzi = [persona.nome_completo]
     if nato := luogo_nascita(persona):
-        pezzi.append(f"nato a {nato} il {data_it(persona.data_nascita)}")
+        pezzi.append(f"nato/a a {nato} il {data_it(persona.data_nascita)}")
     if dove := residenza(persona):
         pezzi.append(f"residente a {dove}")
     if persona.codice_fiscale:
@@ -339,13 +343,19 @@ class Documento:
         }
 
     def segnaposto(self) -> list[dict]:
-        """Elenco dei segnaposto disponibili, per chi scrive il modello."""
+        """Elenco dei segnaposto disponibili, per chi scrive il modello.
+
+        ``derivato`` distingue i segnaposto *composti* da altri campi (una
+        riga anagrafica intera, il blocco firme) da quelli semplicemente
+        facoltativi: i primi non mancano mai, si compilano da soli.
+        """
         return [
             {
                 "chiave": campo.chiave,
                 "etichetta": campo.etichetta,
                 "fonte": campo.fonte,
-                "obbligatorio": campo.obbligatorio and not campo.derivato,
+                "obbligatorio": campo.obbligatorio,
+                "derivato": campo.derivato,
             }
             for campo in self.campi
             if campo.chiave
