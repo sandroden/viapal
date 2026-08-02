@@ -1,0 +1,474 @@
+<!--
+  ESEMPIO di comunicazione di cessione di fabbricato
+  (art. 12 D.L. 21.3.1978 n. 59, convertito in legge 18.5.1978 n. 191).
+
+  Non è il modello usato in produzione: quello sta in tabella
+  (DocumentTemplate), uno per immobile. Questo file è il punto di partenza
+  da scaricare, adattare e ricaricare.
+
+  Il modulo è una griglia di caselle: ogni casella ha il valore sopra la
+  riga e l'etichetta sotto, come nel modulo cartaceo. I segnaposto {{...}}
+  sono sostituiti alla generazione.
+-->
+<style>
+  /* Il modulo deve stare in una pagina sola, riquadro dell'ufficio incluso:
+     i margini e le spaziature qui sotto sono tarati su quello. */
+  @page {
+    size: A4;
+    margin: 12mm 14mm 10mm;
+  }
+
+  body {
+    font: 9.5pt/1.35 "DejaVu Sans", sans-serif;
+    color: #111;
+  }
+
+  .timbro {
+    width: 62mm;
+    margin: 0 0 4mm auto;
+    text-align: center;
+  }
+
+  .timbro-riga {
+    border-bottom: 0.5pt solid #333;
+    height: 7mm;
+  }
+
+  .timbro-etichetta {
+    font-size: 6.5pt;
+    color: #444;
+  }
+
+  h1 {
+    font-size: 12pt;
+    text-align: center;
+    margin: 0 0 1mm;
+  }
+
+  .riferimento {
+    font-size: 7pt;
+    text-align: center;
+    margin: 0 0 4mm;
+  }
+
+  .apertura {
+    margin: 0 0 1mm 8mm;
+    font-size: 11pt;
+  }
+
+  .apertura-signor {
+    margin: 0 0 1.5mm 14mm;
+    font-size: 11pt;
+  }
+
+  /* ── Banda con etichetta verticale (CEDENTE / CESSIONARIO / …) ────── */
+  .banda {
+    display: flex;
+    margin-bottom: 2.5mm;
+  }
+
+  .banda-etichetta {
+    width: 7mm;
+    background: #e9e9e9;
+    border: 0.4pt solid #ccc;
+    position: relative;
+  }
+
+  .banda-etichetta span {
+    position: absolute;
+    left: 3.5mm;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    white-space: nowrap;
+    font-size: 6pt;
+    letter-spacing: 0.12em;
+    color: #333;
+  }
+
+  .banda-caselle {
+    flex: 1;
+    padding-left: 3mm;
+  }
+
+  .riga {
+    display: flex;
+    gap: 5mm;
+    margin-bottom: 1.6mm;
+  }
+
+  .casella {
+    flex: 1;
+  }
+
+  .casella--largo {
+    flex: 2;
+  }
+
+  .valore {
+    border-bottom: 0.5pt solid #333;
+    min-height: 5mm;
+    padding: 0 1mm;
+  }
+
+  .etichetta {
+    font-size: 6pt;
+    color: #444;
+    padding-left: 1mm;
+  }
+
+  /* ── Righe discorsive fra una banda e l'altra ────────────────────── */
+  .dichiara {
+    display: flex;
+    align-items: flex-end;
+    gap: 2mm;
+    font-style: italic;
+    margin: 0 0 2.5mm;
+  }
+
+  .dichiara .compilato {
+    font-style: normal;
+    border-bottom: 0.5pt solid #333;
+    padding: 0 2mm;
+    min-width: 28mm;
+    text-align: center;
+  }
+
+  .dichiara .riempi {
+    flex: 1;
+    border-bottom: 0.5pt solid #333;
+  }
+
+  /* Riga lunga che deve poter andare a capo: qui il flex spingerebbe
+     "sito in:" fuori posto, quindi resta testo che scorre. */
+  .dichiara--flusso {
+    display: block;
+    font-style: italic;
+    margin: 0 0 2.5mm;
+  }
+
+  .dichiara--flusso .compilato {
+    display: inline-block;
+    min-width: 34mm;
+    font-style: normal;
+    text-align: center;
+    border-bottom: 0.5pt solid #333;
+  }
+
+  /* ── Piede ────────────────────────────────────────────────────────── */
+  .piede {
+    display: flex;
+    align-items: flex-end;
+    margin-top: 3mm;
+  }
+
+  .piede-data {
+    width: 60mm;
+    text-align: center;
+  }
+
+  .piede-data .valore {
+    border-bottom: none;
+    text-align: left;
+  }
+
+  .piede-data .tratteggio {
+    border-top: 0.5pt dashed #333;
+  }
+
+  .piede-firma {
+    flex: 1;
+    text-align: center;
+  }
+
+  .piede-firma .riga-firma {
+    border-bottom: 0.5pt solid #333;
+    height: 6mm;
+    margin: 0 6mm;
+  }
+
+  .piccolo {
+    font-size: 6.5pt;
+    color: #444;
+  }
+
+  .note {
+    border: 0.4pt solid #999;
+    padding: 1.5mm 3mm;
+    margin-top: 2.5mm;
+    font-size: 6.5pt;
+    color: #333;
+  }
+
+  .note div {
+    margin-bottom: 0.6mm;
+  }
+
+  .ufficio {
+    margin-top: 4mm;
+  }
+
+  .ufficio h2 {
+    font-size: 9.5pt;
+    margin: 0 0 1.5mm;
+  }
+
+  .ufficio p {
+    margin: 0 0 1.2mm;
+  }
+
+  .ufficio .riempi {
+    display: inline-block;
+    border-bottom: 0.5pt solid #333;
+    min-width: 70mm;
+  }
+</style>
+
+<div class="timbro">
+  <div class="timbro-riga"></div>
+  <div class="timbro-etichetta">(Timbro dell'Ufficio)</div>
+</div>
+
+<h1>Comunicazione di cessione di fabbricato</h1>
+<p class="riferimento">
+  Art. 12 del D.L. 21.3.1978, n. 59, convertito in legge 18.5.1978, n. 191
+</p>
+
+<p class="apertura">Io sottoscritto</p>
+<p class="apertura-signor">Il Signor</p>
+
+<div class="banda">
+  <div class="banda-etichetta"><span>CEDENTE</span></div>
+  <div class="banda-caselle">
+    <div class="riga">
+      <div class="casella">
+        <div class="valore">{{cedente_cognome}}</div>
+        <div class="etichetta">Cognome</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{cedente_nome}}</div>
+        <div class="etichetta">Nome</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{cedente_data_nascita}}</div>
+        <div class="etichetta">Data di nascita</div>
+      </div>
+    </div>
+    <div class="riga">
+      <div class="casella">
+        <div class="valore">{{cedente_comune_nascita}}</div>
+        <div class="etichetta">Comune di nascita</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{cedente_provincia_nascita}}</div>
+        <div class="etichetta">Provincia o Nazione estera di nascita</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{cedente_comune_residenza}}</div>
+        <div class="etichetta">Comune di residenza</div>
+      </div>
+    </div>
+    <div class="riga">
+      <div class="casella casella--largo">
+        <div class="valore">{{cedente_via}}</div>
+        <div class="etichetta">Via/Piazza e numero civico</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{cedente_telefono}}</div>
+        <div class="etichetta">Recapito telefonico</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dichiara">
+  <span>dichiara che in data <sup>(2)</sup></span>
+  <span class="compilato">{{data_cessione}}</span>
+  <span>ha ceduto in <sup>(3)</sup></span>
+  <span class="compilato">{{motivo_cessione}}</span>
+  <span class="riempi"></span>
+</div>
+
+<div class="dichiara">
+  <span>per uso (abitazione, negozio, ufficio, ecc.)</span>
+  <span class="compilato">{{uso}}</span>
+  <span class="riempi"></span>
+  <span>al Sig.:</span>
+</div>
+
+<div class="banda">
+  <div class="banda-etichetta"><span>CESSIONARIO</span></div>
+  <div class="banda-caselle">
+    <div class="riga">
+      <div class="casella">
+        <div class="valore">{{cessionario_cognome}}</div>
+        <div class="etichetta">Cognome</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{cessionario_nome}}</div>
+        <div class="etichetta">Nome</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{cessionario_data_nascita}}</div>
+        <div class="etichetta">Data di nascita</div>
+      </div>
+    </div>
+    <div class="riga">
+      <div class="casella">
+        <div class="valore">{{cessionario_comune_nascita}}</div>
+        <div class="etichetta">Comune di nascita</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{cessionario_provincia_nascita}}</div>
+        <div class="etichetta">Provincia o Nazione estera di nascita</div>
+      </div>
+    </div>
+    <div class="riga">
+      <div class="casella">
+        <div class="valore">{{cessionario_cittadinanza}}</div>
+        <div class="etichetta">Cittadinanza</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{cessionario_comune_residenza}}</div>
+        <div class="etichetta">Comune di residenza</div>
+      </div>
+    </div>
+    <div class="riga">
+      <div class="casella casella--largo">
+        <div class="valore">{{cessionario_via}}</div>
+        <div class="etichetta">Via/Piazza e numero civico</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{cessionario_telefono}}</div>
+        <div class="etichetta">Recapito telefonico</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{cessionario_documento_tipo}}</div>
+        <div class="etichetta">Tipo di documento</div>
+      </div>
+    </div>
+    <div class="riga">
+      <div class="casella">
+        <div class="valore">{{cessionario_documento_numero}}</div>
+        <div class="etichetta">Numero del documento</div>
+      </div>
+      <div class="casella casella--largo">
+        <div class="valore">{{cessionario_documento_autorita}}</div>
+        <div class="etichetta">Autorità che ha rilasciato il documento</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{cessionario_documento_rilascio}}</div>
+        <div class="etichetta">Data di rilascio</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="dichiara--flusso">
+  inerente il fabbricato sottoindicato, già adibito a (abitazione, negozio,
+  ufficio, ecc.) <span class="compilato">{{fabbricato_adibito_a}}</span>
+  sito in:
+</p>
+
+<div class="banda">
+  <div class="banda-etichetta"><span>FABBRICATO</span></div>
+  <div class="banda-caselle">
+    <div class="riga">
+      <div class="casella">
+        <div class="valore">{{fabbricato_comune}}</div>
+        <div class="etichetta">Comune</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{fabbricato_provincia}}</div>
+        <div class="etichetta">Provincia</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{fabbricato_via}}</div>
+        <div class="etichetta">Via/Piazza</div>
+      </div>
+    </div>
+    <div class="riga">
+      <div class="casella">
+        <div class="valore">{{fabbricato_civico}}</div>
+        <div class="etichetta">Numero civico</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{fabbricato_cap}}</div>
+        <div class="etichetta">C.A.P.</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{fabbricato_piano}}</div>
+        <div class="etichetta">Piano</div>
+      </div>
+    </div>
+    <div class="riga">
+      <div class="casella">
+        <div class="valore">{{fabbricato_scala}}</div>
+        <div class="etichetta">Scala</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{fabbricato_interno}}</div>
+        <div class="etichetta">Interno</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{fabbricato_vani}}</div>
+        <div class="etichetta">Vani</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{fabbricato_accessori}}</div>
+        <div class="etichetta">Accessori</div>
+      </div>
+      <div class="casella">
+        <div class="valore">{{fabbricato_ingressi}}</div>
+        <div class="etichetta">Ingressi</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="piede">
+  <div class="piede-data">
+    <div class="valore">{{data_compilazione}}</div>
+    <div class="tratteggio"></div>
+    <div class="piccolo">(DATA) <sup>(4)</sup></div>
+  </div>
+  <div class="piede-firma">
+    <div class="piccolo">IL DICHIARANTE</div>
+    <div class="riga-firma"></div>
+    <div class="piccolo">(FIRMA)</div>
+  </div>
+</div>
+
+<div class="note">
+  <div>(1) Cancellare la parte che non interessa.</div>
+  <div>(2) Indicare la data dell'atto di cessione.</div>
+  <div>(3) Indicare il motivo della cessione (es. vendita, affitto, ecc.).</div>
+  <div>(4) Indicare la data di compilazione del modulo.</div>
+</div>
+
+<div class="ufficio">
+  <div class="banda">
+    <div class="banda-etichetta"><span>UFFICIO</span></div>
+    <div class="banda-caselle">
+      <h2>SPAZIO RISERVATO ALL'UFFICIO ACCETTANTE</h2>
+      <p>Il Signor / la Signora <span class="riempi"></span></p>
+      <p>
+        ha presentato la comunicazione / ha trasmesso la raccomandata n.
+        <span class="riempi" style="min-width: 30mm"></span>
+      </p>
+      <p>
+        ai sensi dell'Art. 12 del D.L. 21.3.1978, n. 59, convertito in legge
+        18.5.1978, n. 191.
+      </p>
+      <div class="riga">
+        <div class="casella">
+          <div class="valore"></div>
+          <div class="etichetta">Data</div>
+        </div>
+        <div class="casella casella--largo">
+          <div class="valore"></div>
+          <div class="etichetta">L'incaricato</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

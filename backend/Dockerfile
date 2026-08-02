@@ -8,8 +8,17 @@ WORKDIR /code/
 
 # poppler-utils fornisce `pdftotext`, usato per il parsing delle bollette PDF
 # (billing.estrai_da_pdf). Senza, l'upload fallisce con 400 "importo non estraibile".
+#
+# Le librerie pango/cairo servono a WeasyPrint (generazione dei documenti in
+# properties.documenti): sono dipendenze di sistema, non pacchetti Python, e
+# senza di esse `import weasyprint` fallisce. fonts-dejavu-core fornisce il
+# font dichiarato nei modelli: con un fallback diverso la griglia del modulo
+# di cessione di fabbricato si sfalsa.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends poppler-utils \
+  && apt-get install -y --no-install-recommends \
+     poppler-utils \
+     libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b \
+     libcairo2 libgdk-pixbuf-2.0-0 shared-mime-info fonts-dejavu-core \
   && rm -rf /var/lib/apt/lists/*
 
 COPY backend/pyproject.toml backend/uv.lock /code/

@@ -215,7 +215,17 @@ class TenantDocument(TimestampedModel):
             "Ricevuta di registrazione (agenzia)",
         )
         RICEVUTA_SUBENTRO = "ricevuta_subentro", "Ricevuta del subentro"
-        ATTO_SUBENTRO = "atto_subentro", "Atto di subentro"
+        # Il subentro delle utenze: lo produce il fornitore, non noi.
+        ATTO_SUBENTRO = "atto_subentro", "Atto di subentro (utenze)"
+        # I due documenti che l'applicazione genera.
+        ATTO_SUBENTRO_LOCAZIONE = (
+            "atto_subentro_locazione",
+            "Atto di subentro nel contratto",
+        )
+        CESSIONE_FABBRICATO = (
+            "cessione_fabbricato",
+            "Comunicazione di cessione di fabbricato",
+        )
         ALTRO = "altro", "Altro"
 
     tenant = models.ForeignKey(
@@ -252,6 +262,15 @@ class TenantDocument(TimestampedModel):
         verbose_name="data di scadenza",
         help_text="Facoltativa: utile per carta d'identità, passaporto, "
         "permesso di soggiorno.",
+    )
+    generato = models.BooleanField(
+        default=False,
+        verbose_name="generato dal sistema",
+        help_text=(
+            "Vero se il PDF l'ha prodotto l'applicazione. Solo questi "
+            "vengono sostituiti quando si rigenera: la copia firmata e "
+            "scansionata, caricata sotto lo stesso tipo, non si tocca."
+        ),
     )
     caricato_da = models.ForeignKey(
         settings.AUTH_USER_MODEL,

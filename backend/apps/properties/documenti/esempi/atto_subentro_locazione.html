@@ -1,0 +1,225 @@
+<!--
+  ESEMPIO di atto di subentro nel contratto di locazione.
+
+  Non è il modello usato in produzione: quello sta in tabella
+  (DocumentTemplate), uno per immobile. Questo file è il punto di partenza
+  da scaricare, adattare alla propria proprietà e ricaricare.
+
+  I segnaposto {{...}} sono sostituiti alla generazione; l'elenco completo,
+  con la descrizione di ciascuno, è nella pagina "Modelli documenti".
+  Un segnaposto che non esiste resta scritto tale e quale nel PDF: è il
+  modo più rapido per accorgersi di un refuso.
+-->
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 18mm 15mm;
+    @bottom-center {
+      content: counter(page) " / " counter(pages);
+      font: 8pt "DejaVu Sans", sans-serif;
+      color: #666;
+    }
+  }
+
+  body {
+    font: 9.5pt/1.35 "DejaVu Sans", sans-serif;
+    color: #111;
+    text-align: justify;
+  }
+
+  h1 {
+    font-size: 12pt;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 0 0 4mm;
+  }
+
+  .sottotitolo {
+    text-align: center;
+    font-style: italic;
+    margin-bottom: 6mm;
+  }
+
+  .parte {
+    text-align: center;
+    font-weight: bold;
+    letter-spacing: 0.2em;
+    margin: 4mm 0 2.5mm;
+  }
+
+  h2 {
+    font-size: 9.5pt;
+    margin: 4mm 0 1.5mm;
+  }
+
+  .premesse {
+    margin: 3mm 0;
+    padding-left: 4mm;
+  }
+
+  .premesse li {
+    margin-bottom: 2mm;
+  }
+
+  /* Chiusura e firme restano insieme: un blocco firme orfano su una
+     pagina vuota è brutto da far firmare. */
+  .chiusura-blocco {
+    margin-top: 6mm;
+    break-inside: avoid;
+  }
+
+  /* Blocco firme: due colonne, una riga per comproprietario. */
+  .firme {
+    display: flex;
+    gap: 12mm;
+    margin-top: 6mm;
+  }
+
+  .firme > div {
+    flex: 1;
+  }
+
+  .firme-titolo {
+    font-weight: bold;
+    margin-bottom: 5mm;
+  }
+
+  .firma {
+    margin-bottom: 6mm;
+  }
+
+  .firma-riga {
+    display: block;
+    border-bottom: 0.4pt solid #111;
+    height: 7mm;
+  }
+
+  .firma-nome {
+    font-size: 8pt;
+    color: #555;
+  }
+</style>
+
+<h1>Atto di subentro nel contratto di locazione</h1>
+<p class="sottotitolo">Immobile sito in {{immobile}}</p>
+
+<p class="parte">TRA</p>
+
+<p>
+  {{locatori}}, nella qualità di comproprietari e parte locatrice (di seguito
+  «parte locatrice»),
+</p>
+
+<p class="parte">E</p>
+
+<p>{{subentrante}} (di seguito «parte subentrante»),</p>
+
+<p class="parte">PREMESSO CHE</p>
+
+<ul class="premesse">
+  <li>
+    in data {{contratto_data_stipula}} è stato stipulato un contratto di
+    locazione ad uso abitativo (durata {{contratto_durata}} anni, dal
+    {{contratto_decorrenza}} al {{contratto_scadenza}}) relativo all'immobile
+    in oggetto, {{contratto_regime}}, registrato presso l'Agenzia delle
+    Entrate — Ufficio Territoriale di {{registrazione_ufficio}} in data
+    {{registrazione_data}} al n. {{registrazione_numero}} — serie
+    {{registrazione_serie}} (codice identificativo contratto
+    {{registrazione_codice}});
+  </li>
+  <li>
+    il/la Sig./Sig.ra {{uscente}}, parte conduttrice occupante la stanza di cui
+    sopra, ha comunicato la propria volontà di recedere dal contratto ai sensi
+    dell'art. 8 del medesimo, con effetto dal {{uscente_data_recesso}};
+  </li>
+  <li>
+    la parte locatrice e la parte subentrante intendono regolare l'ingresso di
+    quest'ultima nel rapporto di locazione in corso, alle medesime condizioni
+    già pattuite nel contratto sopra citato;
+  </li>
+</ul>
+
+<p class="parte">SI CONVIENE E SI SOTTOSCRIVE QUANTO SEGUE</p>
+
+<h2>Art. 1 — Oggetto</h2>
+<p>
+  La parte subentrante assume, con decorrenza dal {{decorrenza_subentro}}, la
+  posizione di parte conduttrice relativamente alla stanza
+  «{{stanza}}» già occupata da {{uscente_nome}}, accettando integralmente
+  tutti i diritti e gli obblighi previsti dal contratto di locazione del
+  {{contratto_data_stipula}}, nessuno escluso.
+</p>
+
+<h2>Art. 2 — Canone e oneri accessori</h2>
+<p>
+  La parte subentrante corrisponderà un canone mensile di Euro {{canone}} ed
+  una quota di oneri accessori pari a Euro {{oneri_accessori}} a titolo di
+  acconto, salvo conguaglio, secondo le medesime modalità previste dal
+  contratto originario.
+</p>
+
+<h2>Art. 3 — Deposito cauzionale</h2>
+<p>
+  La parte locatrice restituisce a {{uscente_nome}} il deposito cauzionale da
+  questi versato all'atto della propria locazione, previa verifica dello stato
+  della stanza e dell'osservanza di ogni obbligazione contrattuale a suo
+  carico. Contestualmente, la parte subentrante versa alla parte locatrice, a
+  titolo di nuovo deposito cauzionale, la somma complessiva di Euro
+  {{deposito}}, da corrispondersi in n. {{deposito_rate}} rate di importo e
+  scadenza da concordare tra le parti, secondo le modalità previste dal
+  contratto originario.
+</p>
+
+<h2>Art. 4 — Rapporti pregressi</h2>
+<p>
+  Resta fermo che eventuali conguagli, spese o pendenze relativi a periodi
+  anteriori alla data di decorrenza di cui all'art. 1 restano di esclusiva
+  competenza di {{uscente_nome}}, e non sono in alcun modo trasferiti alla
+  parte subentrante.
+</p>
+
+<h2>Art. 5 — Obblighi di segnalazione di danni e guasti</h2>
+<p>
+  La parte subentrante è tenuta a segnalare tempestivamente alla parte
+  locatrice qualsiasi danno, guasto o malfunzionamento riscontrato negli
+  ambienti comuni o nella propria stanza (impianti idraulici, elettrici,
+  elettrodomestici, infissi, ecc.), non appena ne venga a conoscenza. La
+  segnalazione tardiva od omessa, che comporti un aggravamento del danno o
+  disagi per gli altri conviventi, potrà essere motivo di addebito delle spese
+  di riparazione aggiuntive a carico della parte subentrante.
+</p>
+
+<h2>Art. 6 — Regolamento di convivenza</h2>
+<p>
+  La parte subentrante dichiara di aver ricevuto, letto e accettato
+  integralmente il «Regolamento di Convivenza per l'Appartamento», allegato al
+  presente atto quale parte integrante e sostanziale, impegnandosi a
+  rispettarne il contenuto per l'intera durata della propria occupazione.
+</p>
+
+<h2>Art. 7 — Registrazione</h2>
+<p>
+  Il presente atto verrà comunicato dalla parte locatrice all'Agenzia delle
+  Entrate ai fini dell'aggiornamento della registrazione del contratto di
+  locazione, con le modalità e nei termini previsti dalla normativa vigente.
+</p>
+
+<div class="chiusura-blocco">
+<p>Letto, approvato e sottoscritto.</p>
+<p>{{luogo_firma}}, il ______________________</p>
+
+<div class="firme">
+  <div>
+    <div class="firme-titolo">La parte locatrice</div>
+    {{firme_locatori}}
+  </div>
+  <div>
+    <div class="firme-titolo">La parte subentrante</div>
+    <div class="firma">
+      <span class="firma-riga"></span>
+      <span class="firma-nome">{{subentrante_nome}}</span>
+    </div>
+  </div>
+</div>
+</div>
