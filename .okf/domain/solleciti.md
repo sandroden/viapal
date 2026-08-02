@@ -38,10 +38,21 @@ Riceve chi ha il canone del mese **oppure** almeno un pendente. Chi ha solo
 voci dichiarate compare in anteprima con `esito="niente_da_sollecitare"` e non
 riceve nulla.
 
-Gli inquilini **usciti** con arretrati **ricevono** (badge "ex inquilino",
-deselezionabili a mano): è l'opposto della regola degli avvisi utenze, dove
-chi è uscito è escluso d'ufficio — ma qui sono proprio la popolazione da
-sollecitare.
+Gli inquilini **usciti** (nessuna assegnazione attiva) restano in anteprima
+col badge "ex inquilino" ma **non ricevono**: `notificare=False`,
+`esito="ex_inquilino"`. All'inizio ricevevano — "sono la popolazione da
+sollecitare" — ma sul campo i loro arretrati si sono rivelati quasi sempre
+partite storiche mai riconciliate (vedi
+[riconciliazione](riconciliazione.md)): sollecitarli automaticamente
+significa chiedere soldi per un buco di anagrafica. Restano visibili, spenti, perché il proprietario possa spuntarli
+**uno per uno** dal frontend — `includi_ids` di `invia_riepiloghi`, campo
+`includi` dell'endpoint. La riga di comando non ha modo di forzarli: è la
+selezione simmetrica di `escludi_ids` (l'attivo si toglie, l'uscito si
+aggiunge) e deve restare un gesto deliberato.
+
+`da_sollecitare` distingue le due ragioni di `notificare=False`: c'è
+qualcosa da chiedere (canone o pendenti) ma manca l'assegnazione, oppure non
+c'è proprio nulla. `includi_ids` deroga solo alla prima.
 
 Conseguenza voluta della soglia di 1 € in `billing/signals.py`: un residuo
 sotto l'euro è già `PAGATO`, quindi gli spiccioli non entrano nei solleciti.

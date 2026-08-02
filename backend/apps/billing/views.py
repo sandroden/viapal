@@ -1801,6 +1801,17 @@ class RiepilogoAddebitiInviaView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Deroga esplicita: ex inquilini spuntati a mano, che l'invio
+        # automatico salta. Solo da qui — la CLI non la espone.
+        includi = request.data.get("includi") or []
+        if not isinstance(includi, list) or not all(
+            isinstance(x, int) for x in includi
+        ):
+            return Response(
+                {"detail": "'includi' deve essere una lista di id inquilino."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         giorni = request.data.get("giorni", GIORNI_PENDENTI)
         try:
             giorni = int(giorni)
@@ -1816,6 +1827,10 @@ class RiepilogoAddebitiInviaView(APIView):
             )
 
         risultato = invia_riepiloghi(
-            prop, dry_run=dry_run, escludi_ids=escludi, giorni=giorni
+            prop,
+            dry_run=dry_run,
+            escludi_ids=escludi,
+            includi_ids=includi,
+            giorni=giorni,
         )
         return Response(risultato)

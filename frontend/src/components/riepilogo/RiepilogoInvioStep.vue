@@ -4,18 +4,20 @@
 // Copia adattata di `components/utenze/InvioStep.vue`, non un refactor
 // condiviso: il wizard utenze è delicato e la semantica diverge in due punti.
 //   1. la chiave è il **tenant_id**, non il receivable;
-//   2. l'inquilino **uscito** qui riceve (è la popolazione da sollecitare):
-//      resta una checkbox spuntata e abilitata, con solo un badge.
+//   2. l'inquilino **uscito** resta in lista ma parte spento: la spunta è
+//      abilitata, così sollecitarlo è possibile ma deve essere un gesto
+//      deliberato (i suoi arretrati sono spesso partite storiche).
 // Niente QR client-side: la mail non ne ha, il pagamento si fa in app.
 import { computed, ref } from 'vue';
 import VpIcon from 'src/components/utenze/VpIcon.vue';
 import VpAvatar from 'src/components/utenze/VpAvatar.vue';
 import { eur } from 'src/components/utenze/format';
-import type { RiepilogoFE } from 'stores/riepilogoAddebiti';
+import { inviabile as calcolaInviabile, type RiepilogoFE } from 'stores/riepilogoAddebiti';
 
 const props = defineProps<{
   riepiloghi: RiepilogoFE[];
-  escludi: number[]; // tenant_id esclusi a mano
+  escludi: number[]; // tenant_id di attivi tolti a mano
+  includi: number[]; // tenant_id di ex inquilini rimessi a mano
   giorni: number;
   loading?: boolean;
 }>();
@@ -25,13 +27,17 @@ const openIdx = ref(-1);
 
 function senzaNulla(r: RiepilogoFE): boolean {
   // Solo voci dichiarate: niente da sollecitare, il backend non invia.
-  return r.notificare === false;
+  return !r.da_sollecitare;
 }
 function escluso(r: RiepilogoFE): boolean {
   return props.escludi.includes(r.tenant_id);
 }
+function bloccato(r: RiepilogoFE): boolean {
+  // La spunta non si tocca solo quando non c'è proprio nulla da mandare.
+  return senzaNulla(r) || !r.email;
+}
 function inviabile(r: RiepilogoFE): boolean {
-  return !senzaNulla(r) && !escluso(r) && !!r.email;
+  return calcolaInviabile(r, props.escludi, props.includi);
 }
 
 const daInviare = computed(() => props.riepiloghi.filter((r) => inviabile(r)));
@@ -54,9 +60,16 @@ function toggleRiga(i: number): void {
   openIdx.value = openIdx.value === i ? -1 : i;
 }
 function onFlag(r: RiepilogoFE): void {
-  if (senzaNulla(r) || !r.email) return;
+  if (bloccato(r)) return;
   emit('toggle', r.tenant_id);
 }
+
+/** Ex inquilini con arretrati che l'invio automatico sta saltando. Senza
+ *  email restano fuori dal conto: la spunta è disabilitata e il banner
+ *  suggerirebbe un gesto impossibile. */
+const usciti = computed(() =>
+  props.riepiloghi.filter((r) => r.uscito && !bloccato(r) && !inviabile(r)),
+);
 </script>
 
 <template>
@@ -93,13 +106,13 @@ function onFlag(r: RiepilogoFE): void {
           <div class="row">
             <label
               class="flag"
-              :class="{ disabled: senzaNulla(r) || !r.email, checked: inviabile(r) }"
+              :class="{ disabled: bloccato(r), checked: inviabile(r) }"
               @click.stop
             >
               <input
                 type="checkbox"
                 :checked="inviabile(r)"
-                :disabled="senzaNulla(r) || !r.email"
+                :disabled="bloccato(r)"
                 @change="onFlag(r)"
               />
               <VpIcon v-if="inviabile(r)" name="check" :size="13" :stroke="2.6" color="#fff" />
@@ -118,6 +131,9 @@ function onFlag(r: RiepilogoFE): void {
                   </template>
                   <template v-else-if="!r.email">
                     <span class="tag tag--warn">nessuna email</span>
+                  </template>
+                  <template v-else-if="r.uscito && !inviabile(r)">
+                    <span class="tag">fuori dall'invio: ha lasciato la casa</span>
                   </template>
                   <template v-else-if="escluso(r)">
                     <span class="tag">escluso dall'invio</span>
@@ -201,6 +217,10 @@ function onFlag(r: RiepilogoFE): void {
             <span>Con canone del mese</span>
             <span class="b">{{ daInviare.filter((r) => r.canone).length }}</span>
           </div>
+          <div v-if="usciti.length" class="kv">
+            <span>Ex inquilini non sollecitati</span>
+            <span class="b">{{ usciti.length }}</span>
+          </div>
           <div class="kv"><span>Canale</span><span class="b">Email</span></div>
         </div>
 
@@ -214,6 +234,17 @@ function onFlag(r: RiepilogoFE): void {
           Invia {{ daInviare.length }}
           {{ daInviare.length === 1 ? 'riepilogo' : 'riepiloghi' }}
         </button>
+      </div>
+
+      <div v-if="usciti.length" class="vp-banner" style="font-size: 13px">
+        <VpIcon name="message" :size="18" :stroke="2.4" color="var(--vp-clay)" />
+        <div>
+          {{ usciti.length }}
+          {{ usciti.length === 1 ? 'ex inquilino ha' : 'ex inquilini hanno' }}
+          arretrati ma non
+          {{ usciti.length === 1 ? 'riceve' : 'ricevono' }}: spesso sono partite
+          storiche mai riconciliate. Per sollecitarli davvero spuntali a mano.
+        </div>
       </div>
 
       <div class="vp-banner vp-banner--ok" style="font-size: 13px">

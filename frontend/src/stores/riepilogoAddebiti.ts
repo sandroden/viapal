@@ -24,10 +24,12 @@ export interface RiepilogoFE {
   tenant_id: number;
   tenant_nominativo: string;
   email: string;
-  /** Nessuna assegnazione attiva: ex inquilino con arretrati. Riceve
-   *  comunque (deselezionabile a mano), al contrario degli avvisi utenze. */
+  /** Nessuna assegnazione attiva: ex inquilino. Resta in anteprima ma è
+   *  fuori dall'invio automatico — si spunta a mano per sollecitarlo. */
   uscito: boolean;
-  /** false = solo voci dichiarate, niente da sollecitare. */
+  /** C'è davvero qualcosa da chiedere (canone del mese o pendenti). */
+  da_sollecitare: boolean;
+  /** false = non parte da solo: o non c'è niente da sollecitare, o è uscito. */
   notificare: boolean;
   canone: VoceFE | null;
   pendenti: VoceFE[];
@@ -54,7 +56,25 @@ export interface InvioRiepiloghiResponse {
   senza_email: string[];
   non_inviati: string[];
   esclusi: string[];
+  /** Ex inquilini con arretrati saltati dall'invio automatico. */
+  ex_inquilini: string[];
   riepiloghi: RiepilogoFE[];
+}
+
+/**
+ * Chi parte davvero. Le due selezioni sono speculari:
+ * - inquilino **attivo**: parte di default, `escludi` lo toglie;
+ * - **ex inquilino**: fermo di default, `includi` lo rimette (mai se non
+ *   c'è nulla da sollecitare — il backend lo rifiuterebbe comunque).
+ */
+export function inviabile(
+  r: RiepilogoFE,
+  escludi: number[],
+  includi: number[],
+): boolean {
+  if (!r.email) return false;
+  if (r.uscito) return r.da_sollecitare && includi.includes(r.tenant_id);
+  return r.notificare && !escludi.includes(r.tenant_id);
 }
 
 interface State {
@@ -78,18 +98,20 @@ export const useRiepilogoAddebitiStore = defineStore('riepilogoAddebiti', {
     /**
      * Un solo endpoint per anteprima e invio: con `dryRun` non parte nulla e
      * la risposta contiene il testo esatto delle email da approvare.
-     * `escludi` sono **tenant_id** deselezionati a mano.
+     * `escludi` sono **tenant_id** deselezionati a mano; `includi` sono ex
+     * inquilini spuntati a mano, che altrimenti l'invio salterebbe.
      */
     async invia(
       dryRun: boolean,
       escludi: number[] = [],
+      includi: number[] = [],
     ): Promise<InvioRiepiloghiResponse | null> {
       this.loading = true;
       this.errore = null;
       try {
         const { data } = await api.post<InvioRiepiloghiResponse>(
           '/api/v1/riepilogo-addebiti/invia/',
-          { dry_run: dryRun, escludi },
+          { dry_run: dryRun, escludi, includi },
         );
         // L'anteprima resta quella del dry-run: dopo un invio reale la
         // rileggiamo comunque, così i badge "già inviato il …" si aggiornano.

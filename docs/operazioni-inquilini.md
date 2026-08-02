@@ -136,12 +136,16 @@ inquilini non hanno l'addebito del canone.
 Dopo la generazione degli affitti, `/p/riepilogo` mostra per ogni inquilino il
 canone appena addebitato, le voci scadute o in scadenza entro 15 giorni e
 quelle *dichiarate* in attesa di riscontro. Si controlla l'anteprima (è il
-testo esatto dell'email), si deseleziona chi non deve riceverla e si invia.
+testo esatto dell'email), si aggiusta la selezione dei destinatari e si invia.
 
 - La mail **non** contiene totali, QR o IBAN: il conto completo e i pagamenti
   stanno in app. Non tocca le scadenze degli addebiti.
-- Gli **ex inquilini con arretrati ricevono** (badge "ex inquilino"): sono la
-  popolazione da sollecitare. Si deselezionano a mano se non serve.
+- Gli **ex inquilini non ricevono** (badge "ex inquilino", riga spenta): i
+  loro arretrati sono quasi sempre partite storiche mai riconciliate, non
+  crediti da sollecitare. Restano visibili in anteprima; per sollecitarne uno
+  davvero lo si **spunta a mano** — è la selezione opposta a quella degli
+  attivi, che invece si deselezionano. Anche la riga di cron li salta per
+  costruzione: da terminale non c'è modo di forzarli.
 - Il tab *Inviati* (stessa pagina, e nella scheda del singolo inquilino)
   elenca cosa è partito, a quale indirizzo, quando, e i tentativi falliti con
   il messaggio d'errore.

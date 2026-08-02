@@ -11,6 +11,11 @@ Uso:
 La forma di default è la **prova a vuoto**: stampa chi riceverebbe cosa senza
 spedire niente. Solo ``--invia`` manda le email davvero.
 
+Gli **ex inquilini** (nessuna assegnazione attiva) compaiono nell'elenco ma
+non ricevono: i loro arretrati sono quasi sempre partite storiche non
+riconciliate. Per sollecitarne uno davvero si passa da ``/p/riepilogo``,
+spuntandolo a mano; da qui non c'è modo di forzarli.
+
 Finché dura il rodaggio l'invio quotidiano passa da ``/p/riepilogo``, dove si
 vede l'anteprima e si deselezionano i destinatari. Il comando è già
 automatizzabile (non interattivo, exit != 0 sugli errori, reinviare non
@@ -156,6 +161,12 @@ class Command(BaseCommand):
             f"{risultato['inviati']} inviati, {risultato['errori']} errori, "
             f"{risultato['push_inviate']} push"
         )
+        if risultato.get("ex_inquilini"):
+            self.stdout.write(
+                f"  non sollecitati perché senza assegnazione attiva "
+                f"({len(risultato['ex_inquilini'])}): "
+                f"{', '.join(risultato['ex_inquilini'])}"
+            )
         if risultato["senza_email"]:
             self.stdout.write(
                 self.style.WARNING(

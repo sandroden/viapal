@@ -112,13 +112,13 @@ class TestSelezioneDestinatari:
         assert esito["inviati"] == 0
         assert len(mailoutbox) == 0
 
-    def test_uscito_con_pendenti_riceve(self, mailoutbox, immobile):
-        """Opposto della regola degli avvisi utenze: gli ex inquilini con
-        arretrati sono proprio la popolazione da sollecitare."""
+    def test_uscito_con_pendenti_non_riceve(self, mailoutbox, immobile):
+        """Chi non ha più una stanza assegnata resta fuori dall'invio: i suoi
+        arretrati sono quasi sempre partite storiche non riconciliate."""
         from billing.calc.riepilogo import invia_riepiloghi
         from billing.models import Receivable
 
-        _, assignment = _inquilino(
+        tenant, assignment = _inquilino(
             immobile,
             "uscito",
             email="uscito@example.com",
@@ -133,8 +133,75 @@ class TestSelezioneDestinatari:
         esito = invia_riepiloghi(immobile, dry_run=False)
         r = esito["riepiloghi"][0]
         assert r["uscito"] is True
+        assert r["da_sollecitare"] is True  # l'arretrato c'è
+        assert r["notificare"] is False  # ma non parte da solo
+        assert r["esito"] == "ex_inquilino"
+        assert esito["ex_inquilini"] == [tenant.nominativo]
+        assert esito["inviati"] == 0
+        assert len(mailoutbox) == 0
+        # Resta in anteprima: sparire sarebbe peggio che comparire spento.
+        assert esito["totale"] == 1
+
+    def test_uscito_riceve_se_incluso_a_mano(self, mailoutbox, immobile):
+        """La deroga del frontend: spuntato uno per uno, l'ex inquilino parte."""
+        from billing.calc.riepilogo import invia_riepiloghi
+        from billing.models import Receivable
+
+        tenant, assignment = _inquilino(
+            immobile,
+            "forzato",
+            email="forzato@example.com",
+            valid_to=OGGI - datetime.timedelta(days=30),
+        )
+        _rec(
+            assignment,
+            Receivable.Causale.UTENZE,
+            "70.00",
+            OGGI - datetime.timedelta(days=20),
+        )
+        esito = invia_riepiloghi(
+            immobile, dry_run=False, includi_ids=[tenant.id]
+        )
+        assert esito["riepiloghi"][0]["esito"] == "inviato"
+        assert esito["ex_inquilini"] == []
+        assert len(mailoutbox) == 1
+
+    def test_uscito_senza_nulla_resta_fermo_anche_incluso(
+        self, mailoutbox, immobile
+    ):
+        """`includi_ids` deroga all'uscita, non al «niente da sollecitare»."""
+        from billing.calc.riepilogo import invia_riepiloghi
+        from billing.models import Receivable, StatoPagamento
+
+        tenant, assignment = _inquilino(
+            immobile,
+            "forz_dich",
+            email="forz_dich@example.com",
+            valid_to=OGGI - datetime.timedelta(days=30),
+        )
+        _rec(
+            assignment,
+            Receivable.Causale.UTENZE,
+            "60.00",
+            OGGI - datetime.timedelta(days=3),
+            stato=StatoPagamento.DICHIARATO,
+        )
+        esito = invia_riepiloghi(
+            immobile, dry_run=False, includi_ids=[tenant.id]
+        )
+        assert esito["riepiloghi"][0]["esito"] == "niente_da_sollecitare"
+        assert len(mailoutbox) == 0
+
+    def test_attivo_riceve(self, mailoutbox, immobile):
+        """Contraltare: con l'assegnazione in corso l'invio è automatico."""
+        from billing.calc.riepilogo import invia_riepiloghi
+
+        _, assignment = _inquilino(immobile, "attivo", email="attivo@example.com")
+        _canone_del_mese(assignment)
+        esito = invia_riepiloghi(immobile, dry_run=False)
+        r = esito["riepiloghi"][0]
+        assert r["uscito"] is False
         assert r["notificare"] is True
-        assert r["canone"] is None  # nessun canone del mese
         assert r["esito"] == "inviato"
         assert len(mailoutbox) == 1
 
@@ -644,5 +711,42 @@ class TestEndpointInvia:
             self.URL, {"escludi": "tutti"}, format="json"
         ).status_code == 400
         assert c.post(
+            self.URL, {"includi": "tutti"}, format="json"
+        ).status_code == 400
+        assert c.post(
             self.URL, {"giorni": -3}, format="json"
         ).status_code == 400
+
+    def test_ex_inquilino_solo_se_incluso(self, mailoutbox, immobile):
+        """L'unica via per sollecitare chi è uscito passa da qui."""
+        from billing.models import Receivable
+        from properties.models import PropertyMembership
+
+        tenant, assignment = _inquilino(
+            immobile,
+            "ep9",
+            email="ep9@example.com",
+            valid_to=OGGI - datetime.timedelta(days=30),
+        )
+        _rec(
+            assignment,
+            Receivable.Causale.UTENZE,
+            "70.00",
+            OGGI - datetime.timedelta(days=20),
+        )
+        c = self._client(
+            _membro(immobile, PropertyMembership.Ruolo.PROPRIETARIO, "propr_ep9")
+        )
+
+        body = c.post(self.URL, {"dry_run": False}, format="json").json()
+        assert body["inviati"] == 0
+        assert body["ex_inquilini"] == [tenant.nominativo]
+        assert len(mailoutbox) == 0
+
+        body = c.post(
+            self.URL,
+            {"dry_run": False, "includi": [tenant.id]},
+            format="json",
+        ).json()
+        assert body["inviati"] == 1
+        assert [m.to for m in mailoutbox] == [["ep9@example.com"]]

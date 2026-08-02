@@ -21,6 +21,7 @@
         v-if="tab === 'da-inviare'"
         :riepiloghi="riepiloghi"
         :escludi="escludi"
+        :includi="includi"
         :giorni="giorni"
         :loading="store.loading"
         @invia="confermaInvio"
@@ -34,7 +35,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
-import { useRiepilogoAddebitiStore } from 'stores/riepilogoAddebiti';
+import { inviabile, useRiepilogoAddebitiStore } from 'stores/riepilogoAddebiti';
 import RiepilogoInvioStep from 'src/components/riepilogo/RiepilogoInvioStep.vue';
 import ComunicazioniPannello from 'src/components/comunicazioni/ComunicazioniPannello.vue';
 
@@ -44,25 +45,35 @@ const store = useRiepilogoAddebitiStore();
 const tab = ref<'da-inviare' | 'inviati'>('da-inviare');
 /** tenant_id deselezionati a mano dal proprietario. */
 const escludi = ref<number[]>([]);
+/** tenant_id di **ex inquilini** rimessi a mano: fuori dall'invio
+ *  automatico, ci finiscono solo con una spunta deliberata. */
+const includi = ref<number[]>([]);
 
 const riepiloghi = computed(() => store.anteprima?.riepiloghi ?? []);
 const giorni = computed(() => store.anteprima?.giorni ?? 15);
 
 function onToggle(tenantId: number): void {
-  const i = escludi.value.indexOf(tenantId);
-  if (i >= 0) escludi.value.splice(i, 1);
-  else escludi.value.push(tenantId);
+  // Selezioni speculari: l'attivo si toglie, l'uscito si aggiunge.
+  const r = riepiloghi.value.find((x) => x.tenant_id === tenantId);
+  const lista = r?.uscito ? includi : escludi;
+  const i = lista.value.indexOf(tenantId);
+  if (i >= 0) lista.value.splice(i, 1);
+  else lista.value.push(tenantId);
 }
 
 function confermaInvio(): void {
-  const daInviare = riepiloghi.value.filter(
-    (r) => r.notificare && r.email && !escludi.value.includes(r.tenant_id),
+  const daInviare = riepiloghi.value.filter((r) =>
+    inviabile(r, escludi.value, includi.value),
   );
   const giaInviati = daInviare.filter((r) => r.ultimo_invio_at).length;
+  const usciti = daInviare.filter((r) => r.uscito).length;
   $q.dialog({
     title: 'Conferma invio',
     message:
       `Invio reale delle email a ${daInviare.length} inquilini.` +
+      (usciti
+        ? ` ${usciti} ${usciti === 1 ? 'ha' : 'hanno'} già lasciato la casa.`
+        : '') +
       (giaInviati
         ? ` ${giaInviati} ${giaInviati === 1 ? 'ha' : 'hanno'} già ricevuto un riepilogo: procedere comunque?`
         : ' Procedere?'),
@@ -74,7 +85,7 @@ function confermaInvio(): void {
 }
 
 async function inviaReale(): Promise<void> {
-  const res = await store.invia(false, [...escludi.value]);
+  const res = await store.invia(false, [...escludi.value], [...includi.value]);
   if (!res) return;
   $q.notify({
     type: res.errori ? 'warning' : 'positive',
@@ -82,7 +93,7 @@ async function inviaReale(): Promise<void> {
   });
   // Ricarica l'anteprima: i badge "già inviato il …" si aggiornano e le voci
   // nel frattempo saldate escono dalla lista.
-  await store.invia(true, [...escludi.value]);
+  await store.invia(true, [...escludi.value], [...includi.value]);
 }
 
 onMounted(async () => {

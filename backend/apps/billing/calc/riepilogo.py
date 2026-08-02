@@ -256,8 +256,17 @@ def costruisci_riepiloghi(
     da sollecitare, ma vederlo in anteprima evita il dubbio "e questo perché
     non c'è?". Chi non ha né l'uno né gli altri resta fuori.
 
-    Gli inquilini **usciti** con arretrati ricevono (badge ``uscito``): è la
-    popolazione da sollecitare, al contrario degli avvisi utenze.
+    Gli inquilini **usciti** (nessuna assegnazione attiva) restano in lista
+    col badge ``uscito`` ma **fuori dall'invio automatico**
+    (``notificare=False``, ``esito="ex_inquilino"``): i loro arretrati sono
+    quasi sempre partite storiche non riconciliate, non crediti da
+    sollecitare. Restano visibili perché il proprietario possa selezionarli
+    **uno per uno** dal frontend (``includi_ids`` di ``invia_riepiloghi``);
+    la riga di comando non ha modo di forzarli.
+
+    ``da_sollecitare`` distingue le due ragioni di ``notificare=False``:
+    è vero quando qualcosa da chiedere c'è davvero (canone o pendenti) e
+    manca solo l'assegnazione attiva.
     """
     from properties.models import TenantProfile
 
@@ -288,13 +297,15 @@ def costruisci_riepiloghi(
             property=property,
         )
         da_sollecitare = canone is not None or bool(pendenti)
+        uscito = posizione["assignment_attivo"] is None
         riepiloghi.append(
             {
                 "tenant_id": tenant.id,
                 "tenant_nominativo": tenant.nominativo,
                 "email": _email_inquilino(tenant),
-                "uscito": posizione["assignment_attivo"] is None,
-                "notificare": da_sollecitare,
+                "uscito": uscito,
+                "da_sollecitare": da_sollecitare,
+                "notificare": da_sollecitare and not uscito,
                 "canone": canone,
                 "pendenti": pendenti,
                 "in_attesa": in_attesa,
@@ -315,6 +326,7 @@ def invia_riepiloghi(
     oggi: datetime.date | None = None,
     giorni: int = GIORNI_PENDENTI,
     tenant_ids=None,
+    includi_ids=None,
 ) -> dict:
     """Invia (o simula con ``dry_run``, che è il default) i riepiloghi.
 
@@ -322,9 +334,16 @@ def invia_riepiloghi(
     → ``esito="escluso"``. L'esito per destinatario finisce nel dict, la
     forma del ritorno è la stessa di ``invia_avvisi_utenze`` così il
     frontend può riusare lo stesso componente.
+
+    ``includi_ids`` è la deroga opposta: **tenant_id di ex inquilini**
+    selezionati uno per uno dal frontend, che l'invio automatico salterebbe
+    (vedi ``costruisci_riepiloghi``). Non riabilita chi non ha nulla da
+    sollecitare, e non è esposto dalla riga di comando: forzare un sollecito
+    a chi ha già lasciato la casa deve restare un gesto deliberato.
     """
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) or "noreply@viapal.local"
     escludi_set = {int(x) for x in (escludi_ids or [])}
+    includi_set = {int(x) for x in (includi_ids or [])}
     oggi = oggi or _oggi()
 
     riepiloghi = costruisci_riepiloghi(
@@ -341,11 +360,19 @@ def invia_riepiloghi(
     senza_email = []
     non_inviati = []
     esclusi = []
+    ex_inquilini = []
 
     for r in riepiloghi:
-        if not r["notificare"]:
-            r["esito"] = "niente_da_sollecitare"
-            non_inviati.append(r["tenant_nominativo"])
+        # Un ex inquilino parte solo se il proprietario l'ha spuntato a mano,
+        # e comunque mai se non c'è nulla da sollecitare.
+        forzato = r["uscito"] and r["da_sollecitare"] and r["tenant_id"] in includi_set
+        if not r["notificare"] and not forzato:
+            if r["uscito"] and r["da_sollecitare"]:
+                r["esito"] = "ex_inquilino"
+                ex_inquilini.append(r["tenant_nominativo"])
+            else:
+                r["esito"] = "niente_da_sollecitare"
+                non_inviati.append(r["tenant_nominativo"])
             continue
         if r["tenant_id"] in escludi_set:
             r["esito"] = "escluso"
@@ -404,6 +431,7 @@ def invia_riepiloghi(
         "senza_email": senza_email,
         "non_inviati": non_inviati,
         "esclusi": esclusi,
+        "ex_inquilini": ex_inquilini,
         "riepiloghi": riepiloghi,
     }
 
