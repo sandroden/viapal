@@ -1,5 +1,6 @@
 from ._base import TimestampedModel
 from .anagrafica import AnagraficaPersonaMixin
+from .document_template import DocumentTemplate
 from .membership import PropertyMembership, user_property_ids
 from .owner import (
     OwnerBankAccount,
@@ -34,6 +35,7 @@ __all__ = [
     "GalleryArea",
     "GalleryImage",
     "Contract",
+    "DocumentTemplate",
     "RoomAssignment",
     "quote_attive_at",
     "get_or_create_owner_profile",

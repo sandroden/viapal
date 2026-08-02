@@ -15,6 +15,7 @@ from jmb.jadmin import JumboModelAdmin, ModalEditMixin
 
 from .models import (
     Contract,
+    DocumentTemplate,
     GalleryArea,
     GalleryImage,
     OwnerBankAccount,
@@ -594,6 +595,42 @@ class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
         ("Cessione", {
             "fields": ("costo_cessione", "data_atto_cessione", "subentra_a"),
             "classes": ("collapse",),
+        }),
+        ("Note", {
+            "fields": ("note",),
+            "classes": ("collapse",),
+        }),
+    )
+    readonly_fields = ("created_at", "updated_at")
+
+
+# ---------------------------------------------------------------------------
+# DocumentTemplate
+# ---------------------------------------------------------------------------
+
+
+@admin.register(DocumentTemplate)
+class DocumentTemplateAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 1100
+    list_display = (
+        "property", "codice", "nome",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
+    list_filter = ("codice",)
+    list_select_related = ("property",)
+    search_fields = ("nome", "property__nome")
+    fieldsets = (
+        ("Modello", {
+            "fields": ("property", "codice", "nome"),
+        }),
+        ("Corpo", {
+            "fields": ("corpo_html",),
+            "description": (
+                "Documento HTML completo, CSS incluso. I segnaposto "
+                "{{chiave}} vengono sostituiti alla generazione: l'elenco "
+                "di quelli disponibili è nella pagina 'Modelli documenti' "
+                "dell'immobile."
+            ),
         }),
         ("Note", {
             "fields": ("note",),
