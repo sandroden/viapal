@@ -1,4 +1,3 @@
-# TODO: migrare a jmb.jadmin (admin-tabs, ajax-inlines, modal-edit) quando il pacchetto sarà disponibile
 """
 Admin Django per l'app accounting.
 Gestisce il partitario ufficiale proprietari, chiusure conti,
@@ -52,6 +51,14 @@ class OwnerLedgerEntryAdmin(ModalEditMixin, JumboModelAdmin):
     autocomplete_fields = ("owner", "riferimento_receivable", "riferimento_expense")
     date_hierarchy = "data"
     ordering = ("-data", "owner__nominativo")
+    advanced_search_fields = (
+        ("descrizione__icontains", "owner", "tipo"),
+        ("data__range:Data tra", "data__gte:Data >=", "data__lte:Data <="),
+        ("importo:Importo =", "importo__gte:Importo >=", "importo__lte:Importo <="),
+        ("riferimento_receivable__isnull:senza addebito collegato",
+         "riferimento_expense__isnull:senza spesa collegata"),
+    )
+    advanced_search_autocomplete_fields = ("owner",)
     fieldsets = (
         ("Voce", {
             "fields": ("data", "owner", "tipo", "importo", "descrizione"),

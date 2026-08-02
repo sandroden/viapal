@@ -1,4 +1,3 @@
-# TODO: migrare a jmb.jadmin (admin-tabs, ajax-inlines, modal-edit) quando il pacchetto sarà disponibile
 """
 Admin Django per l'app properties.
 Gestisce proprietari, quote di proprietà, conti bancari,
@@ -8,10 +7,10 @@ from io import StringIO
 
 from django.contrib import admin, messages
 from django.core.management import call_command
+from django.utils import timezone
 from django.utils.html import format_html
-from django.utils.translation import gettext_lazy as _
 
-from jmb.jadmin import JumboModelAdmin, ModalEditMixin
+from jmb.jadmin import AjaxInline, ConstrainedModelForm, JumboModelAdmin, ModalEditMixin, register_inline
 
 from .models import (
     Contract,
@@ -54,36 +53,145 @@ class OwnerBankAccountInline(admin.TabularInline):
     ordering = ("ordinamento", "banca")
 
 
-class RoomAssignmentInlineForTenant(admin.TabularInline):
-    """Assegnazioni stanza in linea nel profilo inquilino."""
+# RoomAssignment ha due contesti padre (tenant e room). jmb.jadmin ammette
+# una sola AjaxInline per modello (il registry è chiave per classe): non è
+# possibile registrarne due con fk_name diverso per lo stesso model. Il lato
+# inquilino (elenco più consultato: storico stanze/canoni/cessioni di un
+# tenant) diventa AjaxInline; il lato stanza resta TabularInline classico
+# (vedi RoomAssignmentInlineForRoom più sotto) — stesso limite per
+# GalleryImage (room XOR area), lasciato TabularInline su entrambi i lati.
+class RoomAssignmentAjaxInlineForTenant(AjaxInline):
+    """Assegnazioni stanza dell'inquilino, in tab (modal add/edit)."""
 
     model = RoomAssignment
-    extra = 0
-    fields = (
+    fk_name = "tenant"
+    width = 1100
+    list_display = (
         "room", "valid_from", "valid_to", "canone_mensile",
         "bank_account_affitto", "costo_cessione",
+        "get_edit_icon_iframe", "get_delete_icon_iframe",
     )
-    autocomplete_fields = ("room", "bank_account_affitto")
-    ordering = ("-valid_from",)
-    show_change_link = True
 
 
-class TenantDocumentInline(admin.TabularInline):
-    """Documenti dell'inquilino in linea nel profilo."""
+register_inline(RoomAssignmentAjaxInlineForTenant)
+
+
+class TenantDocumentForm(ConstrainedModelForm):
+    class Meta:
+        model = TenantDocument
+        fields = "__all__"
+
+    hidden_fields = ("tenant",)
+
+
+class TenantDocumentAjaxInline(AjaxInline):
+    """Documenti dell'inquilino, in tab (modal add/edit dei file).
+
+    ``file_link`` è definito sul ``TenantDocumentAdmin`` sotto, non qui:
+    ``ChildrenChangeList`` risolve le colonne di ``list_display`` sul
+    ModelAdmin *registrato* per il modello figlio, non sull'istanza
+    ``AjaxInline`` (altrimenti ``get_ordering_field`` cerca 'file_link' come
+    campo del modello e va in ``FieldDoesNotExist``).
+    """
 
     model = TenantDocument
-    extra = 0
-    fields = ("tipo", "file", "descrizione", "data_scadenza")
-    ordering = ("tipo", "-created_at")
+    fk_name = "tenant"
+    width = 700
+    list_display = (
+        "tipo", "descrizione", "data_scadenza", "generato", "file_link",
+        "get_edit_icon_iframe", "get_delete_icon_iframe",
+    )
 
 
-class PropertyDocumentInline(admin.TabularInline):
-    """Documenti dell'immobile in linea nell'immobile."""
+register_inline(TenantDocumentAjaxInline)
+
+
+@admin.register(TenantDocument)
+class TenantDocumentAdmin(ModalEditMixin, JumboModelAdmin):
+    form = TenantDocumentForm
+    modal_edit_width = 700
+    list_display = (
+        "tenant", "tipo", "descrizione", "data_scadenza", "generato",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
+    list_filter = ("tipo", "generato")
+    list_select_related = ("tenant",)
+    search_fields = ("tenant__nominativo", "descrizione")
+    autocomplete_fields = ("tenant",)
+    fieldsets = (
+        ("Documento", {
+            "fields": (
+                "tenant", "tipo", "file", "descrizione", "data_scadenza",
+            ),
+        }),
+    )
+    readonly_fields = ("created_at", "updated_at", "generato", "caricato_da")
+
+    @admin.display(description="file")
+    def file_link(self, obj):
+        if obj.file:
+            return format_html(
+                '<a href="{}" target="_blank" rel="noopener">apri</a>', obj.file.url
+            )
+        return "—"
+
+
+class PropertyDocumentForm(ConstrainedModelForm):
+    class Meta:
+        model = PropertyDocument
+        fields = "__all__"
+
+    hidden_fields = ("property",)
+
+
+class PropertyDocumentAjaxInline(AjaxInline):
+    """Documenti dell'immobile, in tab (modal add/edit dei file).
+
+    ``file_link`` sta sul ``PropertyDocumentAdmin`` sotto, stesso motivo
+    spiegato su ``TenantDocumentAjaxInline``.
+    """
 
     model = PropertyDocument
-    extra = 0
-    fields = ("tipo", "file", "descrizione", "data_scadenza", "visibile_inquilini")
-    ordering = ("tipo", "-created_at")
+    fk_name = "property"
+    width = 700
+    list_display = (
+        "tipo", "descrizione", "data_scadenza", "visibile_inquilini", "file_link",
+        "get_edit_icon_iframe", "get_delete_icon_iframe",
+    )
+
+
+register_inline(PropertyDocumentAjaxInline)
+
+
+@admin.register(PropertyDocument)
+class PropertyDocumentAdmin(ModalEditMixin, JumboModelAdmin):
+    form = PropertyDocumentForm
+    modal_edit_width = 700
+    list_display = (
+        "property", "tipo", "descrizione", "data_scadenza", "visibile_inquilini",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
+    list_filter = ("tipo", "visibile_inquilini", "property")
+    list_select_related = ("property",)
+    search_fields = ("property__nome", "descrizione")
+    autocomplete_fields = ("property",)
+    fieldsets = (
+        ("Documento", {
+            "fields": (
+                "property", "tipo", "file", "descrizione", "data_scadenza",
+                "visibile_inquilini",
+            ),
+        }),
+    )
+    readonly_fields = ("created_at", "updated_at", "caricato_da")
+
+    @admin.display(description="file")
+    def file_link(self, obj):
+        if obj.file:
+            return format_html(
+                '<a href="{}" target="_blank" rel="noopener">apri</a>', obj.file.url
+            )
+        return "—"
 
 
 class RoomAssignmentInlineForRoom(admin.TabularInline):
@@ -210,6 +318,32 @@ class OwnerBankAccountAdmin(ModalEditMixin, JumboModelAdmin):
 # ---------------------------------------------------------------------------
 
 
+class TenantAttivoFilter(admin.SimpleListFilter):
+    """Inquilini con una ``RoomAssignment`` in corso **oggi**.
+
+    Delega a ``TenantProfileQuerySet.attivi()``/``.usciti()`` (vedi
+    ``properties.models.tenant.assegnazione_in_corso_q``): è il selettore
+    condiviso fra API, admin e comandi, con ``valid_to`` **escluso**
+    (``valid_to__gt``) — la stessa regola di ``billing.calc.posizione``, da
+    cui discende il badge "ex inquilino". Non duplicare la query qui: se la
+    regola cambia, cambia in un posto solo.
+    """
+
+    title = "attivo oggi"
+    parameter_name = "attivo"
+
+    def lookups(self, request, model_admin):
+        return (("si", "Attivi"), ("no", "Non attivi"))
+
+    def queryset(self, request, queryset):
+        oggi = timezone.localdate()
+        if self.value() == "si":
+            return queryset.attivi(oggi)
+        if self.value() == "no":
+            return queryset.usciti(oggi)
+        return queryset
+
+
 @admin.register(TenantProfile)
 class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
     # 1100 (era 900): l'inline assegnazioni ha una colonna in più (costo cessione).
@@ -221,9 +355,20 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
         "get_modal_delete_icon",
     )
     search_fields = ("nominativo", "user__username", "user__email")
-    list_filter = ("frequenza_conguagli", "ciclo_fatturazione")
-    list_select_related = ("user",)
-    inlines = (RoomAssignmentInlineForTenant, TenantDocumentInline)
+    list_filter = ("frequenza_conguagli", "ciclo_fatturazione", TenantAttivoFilter)
+    list_select_related = ("user", "property")
+    advanced_search_fields = (
+        ("nominativo__icontains", "codice_fiscale__icontains", "telefono__icontains"),
+        ("property", "ciclo_fatturazione", "frequenza_conguagli"),
+        ("giorno_pagamento_affitto__gte:giorno pagamento ≥",
+         "giorno_pagamento_affitto__lte:giorno pagamento ≤"),
+        ("deposito_versato__gte:deposito ≥", "deposito_versato__lte:deposito ≤",
+         "data_versamento_deposito__range:versamento tra"),
+        ("data_restituzione_prevista__isnull:senza restituzione prevista",
+         "data_restituzione_prevista__range:restituzione tra"),
+        ("documento_tipo",),
+    )
+    advanced_search_autocomplete_fields = ("property",)
     fieldsets = (
         ("Anagrafica", {
             "fields": ("user", "nominativo", "codice_fiscale", "telefono", "email_alt"),
@@ -286,8 +431,8 @@ class TenantProfileAdmin(ModalEditMixin, JumboModelAdmin):
             "items": ["Pagamenti", "Deposito"],
             "active": True,
         }),
-        ("Assegnazione stanze", {"items": [RoomAssignmentInlineForTenant]}),
-        ("Documenti", {"items": [TenantDocumentInline]}),
+        ("Assegnazione stanze", {"items": [RoomAssignmentAjaxInlineForTenant]}),
+        ("Documenti", {"items": [TenantDocumentAjaxInline]}),
     )
     actions = ["invia_invito", "salda_con_resti_dry_run", "salda_con_resti_apply"]
 
@@ -390,7 +535,6 @@ class PropertyAdmin(ModalEditMixin, JumboModelAdmin):
     inlines = (
         PropertyMembershipInline,
         GalleryAreaInlineForProperty,
-        PropertyDocumentInline,
     )
     fieldsets = (
         ("Immobile", {
@@ -425,6 +569,13 @@ class PropertyAdmin(ModalEditMixin, JumboModelAdmin):
             ),
         }),
     )
+    tabs = (
+        ("Immobile", {"items": ["Immobile", "Indirizzo strutturato"]}),
+        ("Membri", {"items": [PropertyMembershipInline]}),
+        ("Ambienti comuni", {"items": [GalleryAreaInlineForProperty]}),
+        ("Documenti", {"items": [PropertyDocumentAjaxInline]}),
+        ("Galleria pubblica", {"items": ["Galleria pubblica"]}),
+    )
 
 
 @admin.register(PropertyMembership)
@@ -452,6 +603,9 @@ class RoomAdmin(ModalEditMixin, JumboModelAdmin):
     list_filter = ("property", "disponibile", "pubblica")
     autocomplete_fields = ("property",)
     ordering = ("ordinamento", "nome")
+    # GalleryImage e RoomAssignment restano TabularInline classici (vedi nota
+    # sopra su RoomAssignmentAjaxInlineForTenant): entrambi hanno un secondo
+    # contesto padre che occupa già l'unica AjaxInline ammessa per modello.
     inlines = (GalleryImageInlineForRoom, RoomAssignmentInlineForRoom)
     fieldsets = (
         ("Stanza", {
@@ -465,6 +619,12 @@ class RoomAdmin(ModalEditMixin, JumboModelAdmin):
                 "descrizione",
             ),
         }),
+    )
+    tabs = (
+        ("Stanza", {"items": ["Stanza"]}),
+        ("Galleria pubblica", {"items": ["Galleria pubblica"]}),
+        ("Foto", {"items": [GalleryImageInlineForRoom]}),
+        ("Assegnazioni", {"items": [RoomAssignmentInlineForRoom]}),
     )
 
 
@@ -530,25 +690,26 @@ class ContractAdmin(ModalEditMixin, JumboModelAdmin):
         ("Convenzioni di pagamento", {
             "fields": ("default_pagatore_bollette",),
         }),
-        ("Note", {
+        ("Note interne", {
             "fields": ("note",),
         }),
     )
     readonly_fields = ("created_at", "updated_at")
     tabs = (
-        # "Registrazione" resta non traducibile: con la locale italiana
-        # gettext può restituire una stringa diversa dal titolo del fieldset
-        # e jmb.jadmin solleva MissingFieldsetException.
-        (_("Anagrafica"), {
+        # Chiavi non traducibili (stringhe semplici): jmb.jadmin confronta
+        # gettext(nome_fieldset) col nome scritto in items, e "Note" da solo
+        # collide con una entry del catalogo di traduzione django (→ "Nota"),
+        # sollevando MissingFieldsetException — da qui "Note interne".
+        ("Anagrafica", {
             "items": [
-                _("Anagrafica"), "Registrazione", _("Fiscale"),
-                _("Convenzioni di pagamento"),
+                "Anagrafica", "Registrazione", "Fiscale",
+                "Convenzioni di pagamento",
             ],
         }),
-        (_("Quote condominio inquilini"), {
+        ("Quote condominio inquilini", {
             "items": [TenantCondominioRateAjaxInline],
         }),
-        (_("Note"), {"items": [_("Note")]}),
+        ("Note interne", {"items": ["Note interne"]}),
     )
 
 
@@ -585,6 +746,25 @@ class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
     list_select_related = ("tenant", "room")
     autocomplete_fields = ("tenant", "room", "bank_account_affitto", "subentra_a")
     ordering = ("-valid_from", "room__nome")
+
+    def get_form(self, request, obj=None, **kwargs):
+        """Changelist/change_form standalone: form invariato. Aperto invece
+        dall'AjaxInline del tenant (querystring ``?tenant=<pk>``, vedi
+        ``RoomAssignmentAjaxInlineForTenant``): nasconde quel campo, già
+        impostato dal parent — pattern "ConstrainedModelForm + get_form()
+        dinamico" della skill jmb-jadmin, che preserva gli altri widget
+        (autocomplete room/bank_account_affitto/subentra_a) costruiti da
+        ``super().get_form()``.
+        """
+        base_form = super().get_form(request, obj, **kwargs)
+        hidden_fields = [key for key in request.GET if not key.startswith("_")]
+        if not hidden_fields:
+            return base_form
+        return type(
+            "RoomAssignmentAjaxForm",
+            (ConstrainedModelForm, base_form),
+            {"hidden_fields": tuple(hidden_fields)},
+        )
     fieldsets = (
         ("Periodo", {
             "fields": ("room", "tenant", "valid_from", "valid_to"),

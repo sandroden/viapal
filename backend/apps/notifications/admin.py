@@ -1,4 +1,3 @@
-# TODO: migrare a jmb.jadmin (admin-tabs, ajax-inlines, modal-edit) quando il pacchetto sarà disponibile
 """
 Admin Django per l'app notifications.
 Gestisce template messaggi, regole sollecito,
@@ -131,6 +130,14 @@ class NotificationAdmin(ModalEditMixin, JumboModelAdmin):
     autocomplete_fields = ("regola",)
     date_hierarchy = "inviata_at"
     ordering = ("-created_at",)
+    advanced_search_fields = (
+        ("user__username__icontains:utente", "destinatario__icontains", "oggetto__icontains"),
+        ("canale", "codice", "regola"),
+        ("created_at__range:creata tra", "created_at__gte:creata ≥", "created_at__lte:creata ≤"),
+        ("inviata_at__range:inviata tra", "inviata_at__isnull:non inviata"),
+        ("letta_at__isnull:non letta", "errore__icontains:errore"),
+    )
+    advanced_search_autocomplete_fields = ("user", "regola")
     fieldsets = (
         ("Notifica", {
             "fields": ("user", "canale", "codice", "destinatario", "oggetto", "corpo"),

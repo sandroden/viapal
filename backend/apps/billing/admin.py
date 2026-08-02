@@ -391,12 +391,25 @@ class ReceivableAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboMode
             "fields": ("incassato_da_owner", "bank_account_destinazione", "ricevuta"),
             "classes": ("collapse",),
         }),
-        ("Note", {
+        ("Note interne", {
             "fields": ("note",),
             "classes": ("collapse",),
         }),
     )
     readonly_fields = ("created_at", "updated_at", "dettaglio_calcolo")
+    tabs = (
+        # "Note interne" e non "Note": jmb.jadmin confronta gettext(nome
+        # fieldset) col nome in items, e "Note" da solo collide con una
+        # entry del catalogo di traduzione django (→ "Nota" in it),
+        # sollevando MissingFieldsetException (vedi properties.admin.ContractAdmin).
+        ("Addebito", {"items": ["Addebito", "Importi e stato"]}),
+        ("Calcolo utenze", {"items": ["Calcolo utenze"]}),
+        ("Riconciliazione", {
+            "items": ["Riconciliazione bancaria", ReceivableAllocationsInline],
+        }),
+        ("Commenti", {"items": [ReceivableCommentInline]}),
+        ("Note interne", {"items": ["Note interne"]}),
+    )
 
     @admin.display(description="Dettaglio calcolo")
     def dettaglio_calcolo(self, obj):
