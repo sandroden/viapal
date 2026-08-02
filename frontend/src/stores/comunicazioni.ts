@@ -32,6 +32,8 @@ export interface ComunicazioniFiltri {
   canale?: string | null;
   tipo?: string | null;
   esito?: string | null;
+  /** Solo inquilini che occupano una stanza **oggi** (non "allora"). */
+  attivi?: boolean | null;
   limit?: number;
   offset?: number;
 }

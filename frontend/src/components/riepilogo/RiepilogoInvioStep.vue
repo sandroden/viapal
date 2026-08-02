@@ -19,9 +19,14 @@ const props = defineProps<{
   escludi: number[]; // tenant_id di attivi tolti a mano
   includi: number[]; // tenant_id di ex inquilini rimessi a mano
   giorni: number;
+  soloAttivi: boolean;
   loading?: boolean;
 }>();
-const emit = defineEmits<{ invia: []; toggle: [tenantId: number] }>();
+const emit = defineEmits<{
+  invia: [];
+  toggle: [tenantId: number];
+  'update:soloAttivi': [value: boolean];
+}>();
 
 const openIdx = ref(-1);
 
@@ -40,8 +45,21 @@ function inviabile(r: RiepilogoFE): boolean {
   return calcolaInviabile(r, props.escludi, props.includi);
 }
 
+/**
+ * Le righe a schermo. Col filtro acceso restano gli inquilini di adesso —
+ * più gli ex già spuntati a mano: nasconderli farebbe partire email da una
+ * riga invisibile, ed è la sorpresa peggiore su una schermata d'invio.
+ */
+const visibili = computed(() =>
+  props.riepiloghi.filter(
+    (r) =>
+      !props.soloAttivi || !r.uscito || props.includi.includes(r.tenant_id),
+  ),
+);
+const nascosti = computed(() => props.riepiloghi.length - visibili.value.length);
+
 const daInviare = computed(() => props.riepiloghi.filter((r) => inviabile(r)));
-const esclusiCount = computed(() => props.riepiloghi.length - daInviare.value.length);
+const esclusiCount = computed(() => visibili.value.length - daInviare.value.length);
 
 function dataIt(iso: string | null): string {
   if (!iso) return '';
@@ -77,10 +95,24 @@ const usciti = computed(() =>
     <!-- Destinatari -->
     <div class="vp-card list">
       <div class="list-head">
-        <div class="vp-display" style="font-size: 20px">Riepiloghi agli inquilini</div>
-        <span class="vp-badge vp-badge--wait">
-          <VpIcon name="message" :size="13" /> anteprima
-        </span>
+        <div class="vp-display" style="font-size: 20px">Notifiche agli inquilini</div>
+        <div class="list-head__dx">
+          <q-toggle
+            :model-value="soloAttivi"
+            dense
+            size="sm"
+            color="primary"
+            label="solo attivi"
+            @update:model-value="emit('update:soloAttivi', $event)"
+          >
+            <q-tooltip v-if="nascosti">
+              {{ nascosti }} ex {{ nascosti === 1 ? 'inquilino' : 'inquilini' }} nascosti
+            </q-tooltip>
+          </q-toggle>
+          <span class="vp-badge vp-badge--wait">
+            <VpIcon name="message" :size="13" /> anteprima
+          </span>
+        </div>
       </div>
 
       <div v-if="loading && !riepiloghi.length" class="empty">
@@ -88,9 +120,14 @@ const usciti = computed(() =>
         <div>Sto preparando l'anteprima…</div>
       </div>
 
-      <div v-else-if="!riepiloghi.length" class="empty">
+      <div v-else-if="!visibili.length" class="empty">
         <VpIcon name="check" :size="22" color="var(--vp-ink-3)" />
-        <div>
+        <div v-if="nascosti">
+          Nessun inquilino attivo da sollecitare. {{ nascosti }} ex
+          {{ nascosti === 1 ? 'inquilino ha' : 'inquilini hanno' }} arretrati:
+          togli il filtro «solo attivi» per vederli.
+        </div>
+        <div v-else>
           Nessun inquilino da sollecitare: nessuno ha il canone del mese né voci
           scadute o in scadenza entro {{ giorni }} giorni.
         </div>
@@ -98,10 +135,10 @@ const usciti = computed(() =>
 
       <template v-else>
         <div
-          v-for="(r, i) in riepiloghi"
+          v-for="(r, i) in visibili"
           :key="r.tenant_id"
           class="rowwrap"
-          :class="{ last: i === riepiloghi.length - 1, off: !inviabile(r) }"
+          :class="{ last: i === visibili.length - 1, off: !inviabile(r) }"
         >
           <div class="row">
             <label
@@ -243,7 +280,11 @@ const usciti = computed(() =>
           {{ usciti.length === 1 ? 'ex inquilino ha' : 'ex inquilini hanno' }}
           arretrati ma non
           {{ usciti.length === 1 ? 'riceve' : 'ricevono' }}: spesso sono partite
-          storiche mai riconciliate. Per sollecitarli davvero spuntali a mano.
+          storiche mai riconciliate.
+          <template v-if="nascosti">
+            Togli «solo attivi» per vederli.
+          </template>
+          <template v-else>Per sollecitarli davvero spuntali a mano.</template>
         </div>
       </div>
 
@@ -280,6 +321,11 @@ const usciti = computed(() =>
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid var(--vp-paper-3);
+}
+.list-head__dx {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .empty {
   display: flex;

@@ -73,7 +73,7 @@ sotto l'euro è già `PAGATO`, quindi gli spiccioli non entrano nei solleciti.
 
 # Invio
 
-Manuale, con anteprima, come per le utenze: `/p/riepilogo` chiama
+Manuale, con anteprima, come per le utenze: `/p/notifiche` chiama
 `POST /api/v1/riepilogo-addebiti/invia/` in `dry_run=true` al mount, mostra il
 testo reale di ogni email, permette di deselezionare per `tenant_id` e poi
 invia.
@@ -108,8 +108,23 @@ distingue.
 Lettura dal sito: `GET /api/v1/comunicazioni/` (paginata, scoping su
 `user__tenant_profile__property`, che esclude di suo le notifiche verso
 proprietari e gestori). Il corpo sta solo nel dettaglio. Due punti di accesso
-in UI, stesso componente: tab "Inviati" di `/p/riepilogo` (tutto l'immobile) e
+in UI, stesso componente: tab "Inviati" di `/p/notifiche` (tutto l'immobile) e
 tab "Inviati" della scheda inquilino.
+
+Filtri del registro: `tenant`, `da`/`a`, `canale`, `tipo` (= `codice`),
+`esito` e **`attivi`**. Quest'ultimo guarda l'inquilino *ora*, non a quando la
+comunicazione partì: un'email a chi nel frattempo se n'è andato esce
+dall'elenco. È voluto — risponde a "cosa ho scritto a chi ho in casa" — ed è
+acceso di default nel frontend, dove le scorciatoie *ultimo mese* / anno
+riempiono `da`/`a`.
+
+Il predicato "attivo ora" vive in **un posto solo**:
+`properties.models.tenant.assegnazione_in_corso_q(oggi)`, usato da
+`TenantProfileQuerySet.attivi()/usciti()`, da `posizione_inquilino`
+(`assignment_attivo`, da cui il badge "ex inquilino") e dal filtro admin. Se
+divergessero, la stessa persona risulterebbe uscita in una schermata e attiva
+in un'altra. Estremo destro escluso: nel giorno di `valid_to` la stanza non è
+più occupata.
 
 Gli avvisi utenze scrivono **due righe** per lo stesso evento (email + push):
 non si deduplica, la colonna canale le distingue.

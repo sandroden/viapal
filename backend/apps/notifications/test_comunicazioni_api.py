@@ -221,3 +221,57 @@ class TestPayload:
         n = _notifica(t2.user, "riepilogo_addebiti")
         c = _client(_membro(immobile, "propr_404"))
         assert c.get(f"{URL}{n.id}/").status_code == 404
+
+
+class TestFiltroAttivi:
+    """``attivi=1`` guarda l'inquilino **ora**, non a quando la comunicazione
+    partì: è la domanda "cosa ho scritto a chi ho in casa"."""
+
+    def _uscito(self, immobile, suffisso, valid_to):
+        from properties.models import RoomAssignment
+
+        tenant = _tenant(immobile, suffisso)
+        RoomAssignment.objects.filter(tenant=tenant).update(valid_to=valid_to)
+        return tenant
+
+    def test_esclude_chi_non_ha_piu_la_stanza(self, immobile):
+        attivo = _tenant(immobile, "att")
+        uscito = self._uscito(
+            immobile, "usc", datetime.date.today() - datetime.timedelta(days=30)
+        )
+        _notifica(attivo.user, "riepilogo_addebiti", oggetto="Ad attivo")
+        _notifica(uscito.user, "riepilogo_addebiti", oggetto="A uscito")
+        c = _client(_membro(immobile, "propr_att"))
+
+        tutte = c.get(URL).json()
+        assert tutte["count"] == 2
+
+        solo_attivi = c.get(URL, {"attivi": "1"}).json()
+        assert [r["oggetto"] for r in solo_attivi["results"]] == ["Ad attivo"]
+
+    def test_uscito_oggi_e_gia_fuori(self, immobile):
+        """Estremo destro escluso, come ``assignment_attivo``: nel giorno di
+        fine la stanza non è più occupata."""
+        oggi = self._uscito(immobile, "oggi", datetime.date.today())
+        _notifica(oggi.user, "riepilogo_addebiti")
+        c = _client(_membro(immobile, "propr_oggi"))
+        assert c.get(URL, {"attivi": "1"}).json()["count"] == 0
+
+    def test_falso_non_filtra(self, immobile):
+        uscito = self._uscito(
+            immobile, "falso", datetime.date.today() - datetime.timedelta(days=5)
+        )
+        _notifica(uscito.user, "riepilogo_addebiti")
+        c = _client(_membro(immobile, "propr_falso"))
+        assert c.get(URL, {"attivi": "false"}).json()["count"] == 1
+        assert c.get(URL).json()["count"] == 1
+
+    def test_non_perde_l_isolamento_per_immobile(self, immobile, immobile2):
+        _tenant(immobile2, "altro_att")
+        t2 = _tenant(immobile2, "altro_due")
+        _notifica(t2.user, "riepilogo_addebiti")
+        attivo = _tenant(immobile, "mio_att")
+        _notifica(attivo.user, "riepilogo_addebiti", oggetto="Mia")
+        c = _client(_membro(immobile, "propr_iso_att"))
+        body = c.get(URL, {"attivi": "1"}).json()
+        assert [r["oggetto"] for r in body["results"]] == ["Mia"]

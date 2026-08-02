@@ -13,10 +13,10 @@ spedire niente. Solo ``--invia`` manda le email davvero.
 
 Gli **ex inquilini** (nessuna assegnazione attiva) compaiono nell'elenco ma
 non ricevono: i loro arretrati sono quasi sempre partite storiche non
-riconciliate. Per sollecitarne uno davvero si passa da ``/p/riepilogo``,
+riconciliate. Per sollecitarne uno davvero si passa da ``/p/notifiche``,
 spuntandolo a mano; da qui non c'è modo di forzarli.
 
-Finché dura il rodaggio l'invio quotidiano passa da ``/p/riepilogo``, dove si
+Finché dura il rodaggio l'invio quotidiano passa da ``/p/notifiche``, dove si
 vede l'anteprima e si deselezionano i destinatari. Il comando è già
 automatizzabile (non interattivo, exit != 0 sugli errori, reinviare non
 altera dati), ma la riga di cron resta **commentata** in
@@ -57,7 +57,10 @@ class Command(BaseCommand):
             type=int,
             default=None,
             metavar="ID",
-            help="Limita a un singolo inquilino (id del profilo).",
+            help=(
+                "Limita a un singolo inquilino (id del profilo). Restringe "
+                "l'elenco, non forza l'invio: un ex inquilino resta escluso."
+            ),
         )
         parser.add_argument(
             "--escludi",

@@ -1,5 +1,5 @@
 <template>
-  <q-page class="vp-riepilogo">
+  <q-page class="vp-notifiche">
     <q-banner v-if="store.errore" class="vp-banner-error" rounded>
       <template #avatar><q-icon name="error" /></template>
       {{ store.errore }}
@@ -16,9 +16,10 @@
       </button>
     </div>
 
-    <div class="vp-riepilogo__body">
+    <div class="vp-notifiche__body">
       <RiepilogoInvioStep
         v-if="tab === 'da-inviare'"
+        v-model:solo-attivi="soloAttivi"
         :riepiloghi="riepiloghi"
         :escludi="escludi"
         :includi="includi"
@@ -48,6 +49,10 @@ const escludi = ref<number[]>([]);
 /** tenant_id di **ex inquilini** rimessi a mano: fuori dall'invio
  *  automatico, ci finiscono solo con una spunta deliberata. */
 const includi = ref<number[]>([]);
+/** Acceso di default: la lista di lavoro sono gli inquilini di adesso.
+ *  Spegnendolo ricompaiono gli usciti, che restano gli unici spuntabili
+ *  a mano per un sollecito deliberato. */
+const soloAttivi = ref(true);
 
 const riepiloghi = computed(() => store.anteprima?.riepiloghi ?? []);
 const giorni = computed(() => store.anteprima?.giorni ?? 15);
@@ -102,10 +107,10 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.vp-riepilogo {
+.vp-notifiche {
   background: var(--vp-paper);
 }
-.vp-riepilogo__body {
+.vp-notifiche__body {
   padding: 22px 20px 40px;
 }
 

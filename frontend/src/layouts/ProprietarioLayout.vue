@@ -127,7 +127,7 @@ const vociMenu = computed(() => {
   const voci = [
     { to: '/p/', label: 'Dashboard', icon: 'dashboard' },
     { to: '/p/ritardi', label: 'Ritardi', icon: 'warning_amber' },
-    { to: '/p/riepilogo', label: 'Riepilogo addebiti', icon: 'mark_email_read' },
+    { to: '/p/notifiche', label: 'Notifiche addebiti', icon: 'mark_email_read' },
     { to: '/p/inquilini', label: 'Inquilini', icon: 'group' },
     { to: '/p/quadro-annuale', label: 'Quadro annuale', icon: 'table_view' },
     { to: '/p/spese', label: 'Spese', icon: 'shopping_cart' },

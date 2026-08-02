@@ -33,7 +33,7 @@ immobili in comproprietà), e-mail sandro.dentella@gmail.com.
 | Base giuridica | Contratto (6.1.b) per le comunicazioni contrattuali; legittimo interesse (6.1.f) per la tracciabilità degli invii |
 | Interessati | Inquilini attuali e passati |
 | Dati | Indirizzo e-mail effettivo di recapito (può essere l'e-mail alternativa) o etichetta del dispositivo per le notifiche push; oggetto e **corpo integrale** del messaggio, che riporta importi e scadenze degli addebiti; data di invio; eventuale messaggio d'errore |
-| Dove | Tabella `notifications_notification`; consultabile da `/p/riepilogo` (tab *Inviati*), dalla scheda inquilino e dall'admin |
+| Dove | Tabella `notifications_notification`; consultabile da `/p/notifiche` (tab *Inviati*), dalla scheda inquilino e dall'admin |
 | Conservazione | **Da definire**: oggi nessuna cancellazione automatica. Valutare una purge oltre i 24 mesi, separata dalla conservazione decennale della contabilità (qui il dato utile è la prova dell'invio, non l'importo) |
 
 ### A.1.2 Documenti generati (atto di subentro, cessione di fabbricato)

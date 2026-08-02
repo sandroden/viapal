@@ -12,6 +12,17 @@
         class="vp-com__filtro"
       />
       <q-select
+        v-model="filtroPeriodo"
+        :options="opzioniPeriodo"
+        label="Periodo"
+        dense
+        outlined
+        emit-value
+        map-options
+        class="vp-com__filtro"
+        @update:model-value="applicaPeriodo"
+      />
+      <q-select
         v-model="filtroCanale"
         :options="opzioniCanale"
         label="Canale"
@@ -35,6 +46,20 @@
         class="vp-com__filtro" />
       <q-input v-model="filtroA" type="date" label="Al" dense outlined stack-label
         class="vp-com__filtro" />
+      <!-- Su una singola scheda inquilino non ha senso: stai già guardando lui. -->
+      <q-toggle
+        v-if="!tenantId"
+        v-model="soloAttivi"
+        dense
+        size="sm"
+        color="primary"
+        label="solo attivi"
+      >
+        <q-tooltip>
+          Solo gli inquilini che occupano una stanza oggi, non quelli che
+          l'occupavano quando la comunicazione è partita.
+        </q-tooltip>
+      </q-toggle>
       <q-space />
       <q-btn
         flat
@@ -138,14 +163,14 @@
 
 <script setup lang="ts">
 // Registro delle comunicazioni inviate, riusabile in due punti:
-//   - senza `tenantId`: tutto l'immobile (tab "Inviati" di /p/riepilogo);
+//   - senza `tenantId`: tutto l'immobile (tab "Inviati" di /p/notifiche);
 //   - con `tenantId`: il singolo inquilino (tab della sua scheda).
 // Stesso approccio di DocumentiPannello.
 //
 // Nota: gli avvisi utenze scrivono due righe per lo stesso evento (email +
 // push). Non si deduplica: la colonna canale le distingue e il filtro le
 // separa.
-import { onMounted, ref, watch } from 'vue';
+import { nextTick, onMounted, ref, watch } from 'vue';
 import type { QTableProps } from 'quasar';
 import {
   useComunicazioniStore,
@@ -167,13 +192,58 @@ const filtroCanale = ref<string | null>(null);
 const filtroEsito = ref<string | null>(null);
 const filtroDa = ref<string>('');
 const filtroA = ref<string>('');
+const filtroPeriodo = ref<string | null>(null);
+/** Acceso di default: di norma interessa cosa è stato scritto a chi c'è ora. */
+const soloAttivi = ref(true);
 
 const opzioniTipo = [
   { label: 'Tutti', value: null },
-  { label: 'Riepilogo addebiti', value: 'riepilogo_addebiti' },
+  { label: 'Notifica addebiti', value: 'riepilogo_addebiti' },
   { label: 'Avviso utenze', value: 'avviso_utenze' },
-  { label: 'Invito inquilino', value: 'invito_inquilino' },
+  { label: 'Benvenuto / invito', value: 'invito_inquilino' },
 ];
+
+/** Ultimo mese + gli ultimi cinque anni: le scorciatoie coprono il 99% dei
+ *  casi, i campi Dal/Al restano per il resto. */
+const opzioniPeriodo = (() => {
+  const anno = new Date().getFullYear();
+  return [
+    { label: 'Sempre', value: null },
+    { label: 'Ultimo mese', value: 'ultimo-mese' },
+    ...Array.from({ length: 5 }, (_, i) => ({
+      label: String(anno - i),
+      value: String(anno - i),
+    })),
+  ];
+})();
+
+/** Il select scrive in Dal/Al; senza questa guardia il watch sotto lo
+ *  azzererebbe subito dopo, come se le date le avesse messe l'utente. */
+let impostandoPeriodo = false;
+
+function iso(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function applicaPeriodo(v: string | null): void {
+  impostandoPeriodo = true;
+  if (v === null) {
+    filtroDa.value = '';
+    filtroA.value = '';
+  } else if (v === 'ultimo-mese') {
+    const oggi = new Date();
+    const mesePrima = new Date(oggi);
+    mesePrima.setMonth(mesePrima.getMonth() - 1);
+    filtroDa.value = iso(mesePrima);
+    filtroA.value = iso(oggi);
+  } else {
+    filtroDa.value = `${v}-01-01`;
+    filtroA.value = `${v}-12-31`;
+  }
+  void nextTick(() => {
+    impostandoPeriodo = false;
+  });
+}
 const opzioniCanale = [
   { label: 'Tutti', value: null },
   { label: 'Email', value: 'email' },
@@ -220,6 +290,7 @@ function filtriCorrenti(page = paginazione.value.page, perPage = paginazione.val
     esito: filtroEsito.value,
     da: filtroDa.value || null,
     a: filtroA.value || null,
+    attivi: props.tenantId ? null : soloAttivi.value,
     limit: perPage,
     offset: (page - 1) * perPage,
   };
@@ -243,8 +314,14 @@ async function apriDettaglio(riga: ComunicazioneFE): Promise<void> {
   mostraDettaglio.value = !!dettaglio.value;
 }
 
-watch([filtroTipo, filtroCanale, filtroEsito, filtroDa, filtroA], () => {
+watch([filtroTipo, filtroCanale, filtroEsito, filtroDa, filtroA, soloAttivi], () => {
   void carica(1);
+});
+
+// Date toccate a mano: la scorciatoia non descrive più l'intervallo, ma le
+// date restano quelle scelte dall'utente.
+watch([filtroDa, filtroA], () => {
+  if (!impostandoPeriodo) filtroPeriodo.value = null;
 });
 
 // Le frecce prev/next della scheda inquilino cambiano solo il param di rotta:

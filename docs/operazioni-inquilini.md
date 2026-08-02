@@ -95,8 +95,8 @@ via `BankTransactionAllocation` (M:N con importo).
 | Riconciliare un bonifico | Edit `BankTransaction` → inline allocazioni | — | — |
 | Settlement annuale (fratelli) | *Strumenti rapidi* → Genera settlement annuale | — | `genera_settlement` |
 | Avvisare delle utenze emesse | — | flusso `/p/utenze` → *Invia avvisi* | — |
-| Riepilogo addebiti all'inquilino | — | pagina `/p/riepilogo` (anteprima + invio) | `invia_riepilogo_addebiti [--invia]` (senza `--invia` è una prova a vuoto) |
-| Rileggere cosa è stato inviato | changelist `Notifiche` (filtri tipo/canale/esito) | tab *Inviati* in `/p/riepilogo` e nella scheda inquilino | — |
+| Notifica addebiti all'inquilino | — | pagina `/p/notifiche` — voce di menu *Notifiche addebiti* (anteprima + invio) | `invia_riepilogo_addebiti [--invia]` (senza `--invia` è una prova a vuoto) |
+| Rileggere cosa è stato inviato | changelist `Notifiche` (filtri tipo/canale/esito) | tab *Inviati* in `/p/notifiche` e nella scheda inquilino | — |
 
 ## 5. Manutenzione ordinaria
 
@@ -113,7 +113,7 @@ inquilini non hanno l'addebito del canone.
 5 6 1 * *   cd /path/viapal/backend && ENV=production uv run manage.py genera_rent_payments
 
 # Post-rodaggio: riepilogo addebiti agli inquilini il 1° del mese alle 07:00.
-# Per ora l'invio si fa a mano da /p/riepilogo, con anteprima e deselezione.
+# Per ora l'invio si fa a mano da /p/notifiche, con anteprima e deselezione.
 # 0 7 1 * *   cd /path/viapal/backend && ENV=production uv run manage.py invia_riepilogo_addebiti --invia
 ```
 
@@ -131,9 +131,14 @@ inquilini non hanno l'addebito del canone.
 **Manuale, in alternativa, dall'admin**:
 1. *Strumenti rapidi → Genera Receivable affitto (mese)* → scegli anno/mese, **dry-run** la prima volta per controllare, poi rilancia senza dry-run.
 
-### 5.1.1 · **riepilogo addebiti agli inquilini** (quando si vuole)
+### 5.1.1 · **notifiche addebiti agli inquilini** (quando si vuole)
 
-Dopo la generazione degli affitti, `/p/riepilogo` mostra per ogni inquilino il
+La pagina si chiama *Notifiche addebiti* (`/p/notifiche`; il vecchio
+`/p/riepilogo` reindirizza). Il **comando** e il codice interno delle
+comunicazioni restano `invia_riepilogo_addebiti` / `riepilogo_addebiti`: sono
+dati già scritti nel registro, rinominarli spezzerebbe lo storico.
+
+Dopo la generazione degli affitti, `/p/notifiche` mostra per ogni inquilino il
 canone appena addebitato, le voci scadute o in scadenza entro 15 giorni e
 quelle *dichiarate* in attesa di riscontro. Si controlla l'anteprima (è il
 testo esatto dell'email), si aggiusta la selezione dei destinatari e si invia.
@@ -148,7 +153,16 @@ testo esatto dell'email), si aggiusta la selezione dei destinatari e si invia.
   costruzione: da terminale non c'è modo di forzarli.
 - Il tab *Inviati* (stessa pagina, e nella scheda del singolo inquilino)
   elenca cosa è partito, a quale indirizzo, quando, e i tentativi falliti con
-  il messaggio d'errore.
+  il messaggio d'errore. Filtri: tipo (notifica addebiti / avviso utenze /
+  benvenuto-invito), periodo (*ultimo mese* o un anno, che riempiono Dal/Al —
+  modificabili a mano), canale, esito.
+- **«solo attivi»** è acceso di default su entrambi i tab e guarda l'inquilino
+  *adesso*: in *Da inviare* nasconde gli ex inquilini (tranne quelli già
+  spuntati a mano, che sparire mentre stanno per ricevere un'email sarebbe la
+  sorpresa peggiore); in *Inviati* mostra solo le comunicazioni verso chi
+  occupa una stanza oggi — quindi un'email a chi nel frattempo se n'è andato
+  esce dall'elenco anche se all'epoca era in casa. Spegnilo per lo storico
+  completo.
 - Da terminale: `manage.py invia_riepilogo_addebiti` è una prova a vuoto,
   `--invia` spedisce davvero. Opzioni: `--property`, `--tenant`, `--escludi`,
   `--giorni`. `--property` accetta id, nome o slug dell'immobile

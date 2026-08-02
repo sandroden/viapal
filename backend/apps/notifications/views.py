@@ -56,7 +56,13 @@ class ComunicazioniViewSet(ReadOnlyModelViewSet):
 
     Filtri (query string): ``tenant``, ``da``/``a`` (YYYY-MM-DD su
     ``created_at``), ``canale``, ``tipo`` (= ``codice``), ``esito``
-    (``inviato``/``errore``).
+    (``inviato``/``errore``), ``attivi`` (solo inquilini che occupano una
+    stanza *oggi*).
+
+    ``attivi`` guarda l'inquilino **adesso**, non a quando la comunicazione
+    partì: un'email mandata a chi allora era in casa sparisce dall'elenco
+    quando quello se ne va. È voluto — serve a rispondere a "cosa ho scritto
+    alla gente che ho in casa", non a ricostruire la storia.
 
     Nota: gli avvisi utenze scrivono due righe per lo stesso evento (una push
     e una email). Non si deduplica lato server: la colonna canale le
@@ -87,6 +93,15 @@ class ComunicazioniViewSet(ReadOnlyModelViewSet):
         tenant = params.get("tenant")
         if tenant:
             qs = qs.filter(user__tenant_profile__id=tenant)
+
+        if params.get("attivi") in ("1", "true", "True"):
+            from properties.models import TenantProfile
+
+            qs = qs.filter(
+                user__tenant_profile__in=TenantProfile.objects.attivi(
+                    property=prop
+                )
+            )
 
         da = params.get("da")
         if da:
