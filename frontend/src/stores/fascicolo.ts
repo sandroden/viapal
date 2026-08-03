@@ -2,8 +2,10 @@ import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
 
 /** Stato di una voce del fascicolo, calcolato dal backend
- *  (``properties/fascicolo.py``): un'unica definizione per tutte le UI. */
-export type StatoDocumento = 'ok' | 'scadenza' | 'scaduto' | 'attesa';
+ *  (``properties/fascicolo.py``): un'unica definizione per tutte le UI.
+ *  Il fascicolo elenca solo documenti esistenti, quindi non c'è uno stato
+ *  "in attesa": ciò che si può generare sta nell'azione apposita. */
+export type StatoDocumento = 'ok' | 'scadenza' | 'scaduto';
 
 /** Un file: le voci fronte/retro sono due pagine dello stesso documento. */
 export interface PaginaDocumento {
@@ -22,8 +24,8 @@ export interface PaginaDocumento {
 export interface VoceFascicolo {
   tipo: string;
   tipo_display: string;
-  a_carico_proprieta: boolean;
-  /** Codice del generatore se il documento lo produce l'applicazione. */
+  /** Codice del generatore se il documento lo produce l'applicazione:
+   *  qui serve solo a offrire "Rigenera" su un PDF già prodotto. */
   generabile: string | null;
   suggerimento: string;
   stato: StatoDocumento;
@@ -47,10 +49,21 @@ export interface Fascicolo {
     ok: number;
     scadenza: number;
     scaduto: number;
-    attesa: number;
     voci: number;
     da_sistemare: number;
   };
+}
+
+/** Un documento che l'applicazione sa produrre. L'elenco arriva dal backend
+ *  (``documenti.GENERATORI``): il fascicolo non lo racconta più, perché
+ *  mostra solo i file che esistono davvero. */
+export interface DocumentoGenerabile {
+  codice: string;
+  titolo: string;
+  tipo: string;
+  tipo_display: string;
+  /** Il PDF che abbiamo già prodotto (una rigenerazione lo sostituisce). */
+  esistente: { id: number; descrizione: string; created_at: string } | null;
 }
 
 /** Un dato che serve al documento e non è ancora stato compilato, con il
@@ -95,6 +108,7 @@ export interface AnteprimaDocumento {
 
 const ENDPOINT = '/api/v1/tenant-documents/fascicolo/';
 const GENERA = '/api/v1/tenant-documents/genera/';
+const GENERABILI = '/api/v1/tenant-documents/generabili/';
 
 interface State {
   fascicolo: Fascicolo | null;
@@ -133,6 +147,15 @@ export const useFascicoloStore = defineStore('fascicolo', {
       } finally {
         this.loading = false;
       }
+    },
+
+    /** Documenti che l'applicazione sa produrre per quell'inquilino, con
+     *  l'indicazione di quelli già generati. */
+    async generabili(tenantId: number): Promise<DocumentoGenerabile[]> {
+      const { data } = await api.get<{ documenti: DocumentoGenerabile[] }>(
+        `${GENERABILI}?tenant=${tenantId}`,
+      );
+      return data.documenti;
     },
 
     /** Cosa serve per generare un documento: campi risolti e dati mancanti.

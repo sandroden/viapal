@@ -1,20 +1,16 @@
 <template>
   <div
     class="vp-dvoce"
-    :class="{
-      'vp-dvoce--vuota': vuota,
-      'vp-dvoce--attiva': selezionata,
-      'vp-dvoce--cliccabile': cliccabile,
-    }"
-    :role="cliccabile ? 'button' : undefined"
-    :tabindex="cliccabile ? 0 : undefined"
-    @click="attiva"
-    @keydown.enter="attiva"
+    :class="{ 'vp-dvoce--attiva': selezionata }"
+    role="button"
+    tabindex="0"
+    @click="emit('apri', voce)"
+    @keydown.enter="emit('apri', voce)"
   >
     <DocMiniatura
-      :pagina="voce.pagine[0] ?? null"
+      v-if="voce.pagine[0]"
+      :pagina="voce.pagine[0]"
       :stato="voce.stato"
-      :attesa="voce.stato === 'attesa'"
       :larghezza="larghezza"
       :altezza="altezza"
     />
@@ -49,8 +45,6 @@ import { useFormatoData } from 'src/composables/useFormatoData';
 const props = withDefaults(
   defineProps<{
     voce: VoceFascicolo;
-    /** Niente azioni di caricamento (documenti della casa, ruolo sola lettura). */
-    soloLettura?: boolean;
     /** Riga evidenziata: il documento aperto nel visore affiancato (desktop). */
     selezionata?: boolean;
     larghezza?: number;
@@ -60,17 +54,13 @@ const props = withDefaults(
     /** Badge con la data ("scade 14/10/2026"): la riga di dettaglio mostra
      *  allora il caricamento invece della scadenza (uso desktop). */
     badgeConData?: boolean;
-    /** Vista del proprietario: "lo carichi tu" invece di "non devi fare nulla". */
-    latoProprieta?: boolean;
   }>(),
   {
-    soloLettura: false,
     selezionata: false,
     larghezza: 40,
     altezza: 50,
     badgeSempre: false,
     badgeConData: false,
-    latoProprieta: false,
   },
 );
 
@@ -78,13 +68,6 @@ const emit = defineEmits<{ apri: [voce: VoceFascicolo] }>();
 
 const { formattaData } = useFormatoData();
 
-const vuota = computed(() => props.voce.pagine.length === 0);
-// Per l'inquilino la voce "a carico della proprietà" è inerte: nessun bottone,
-// nessuna ansia. Per il proprietario è invece la riga da cui caricarla.
-const cliccabile = computed(() => {
-  if (props.voce.pagine.length) return true;
-  return !props.soloLettura && props.latoProprieta;
-});
 const mostraBadge = computed(() => props.badgeSempre || props.voce.stato !== 'ok');
 const testoBadge = computed(() => {
   const { stato, data_scadenza } = props.voce;
@@ -96,17 +79,8 @@ const testoBadge = computed(() => {
 // Con la data nel badge la riga sotto racconta il caricamento, non la scadenza:
 // ripetere due volte la stessa data è rumore.
 const dettaglio = computed(() =>
-  dettaglioVoce(props.voce, formattaData, {
-    scadenzaNelBadge: props.badgeConData,
-    latoProprieta: props.latoProprieta,
-  }),
+  dettaglioVoce(props.voce, formattaData, { scadenzaNelBadge: props.badgeConData }),
 );
-
-function attiva() {
-  // Lato proprietario anche le voci vuote si "aprono": il pannello mostra di
-  // chi è il turno e il bottone per caricare.
-  if (cliccabile.value) emit('apri', props.voce);
-}
 </script>
 
 <style scoped>
@@ -118,17 +92,12 @@ function attiva() {
   background: var(--vp-cream);
   border-bottom: 1px solid var(--vp-paper-3);
   text-align: left;
+  cursor: pointer;
 }
 .vp-dvoce:last-child {
   border-bottom: none;
 }
-.vp-dvoce--vuota {
-  background: transparent;
-}
-.vp-dvoce--cliccabile {
-  cursor: pointer;
-}
-.vp-dvoce--cliccabile:hover {
+.vp-dvoce:hover {
   background: var(--vp-paper-2);
 }
 .vp-dvoce--attiva,
@@ -145,9 +114,6 @@ function attiva() {
   font-weight: 500;
   color: var(--vp-ink);
   margin-bottom: 3px;
-}
-.vp-dvoce--vuota .vp-dvoce__nome {
-  color: var(--vp-ink-2);
 }
 .vp-dvoce__riga {
   display: flex;

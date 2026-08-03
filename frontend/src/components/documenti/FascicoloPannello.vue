@@ -8,38 +8,50 @@
         <q-icon name="error_outline" size="19px" class="vp-fasc__banner-ic" />
         <div class="vp-fasc__banner-txt">
           <div v-html="riepilogoHtml" />
-          <div v-if="daNoi.length" class="vp-fasc__banner-nota">
-            {{ notaAttesa }}
-          </div>
         </div>
       </div>
 
       <div class="vp-fasc__intestazione">
         <span class="vp-eyebrow">Fascicolo personale</span>
         <div class="vp-fasc__riga" />
-        <button v-if="!soloLettura" class="vp-btn vp-btn--soft vp-fasc__carica" @click="aggiungi()">
-          <q-icon name="upload" size="15px" />
-          Carica documento
-        </button>
+        <!-- Generare è un'azione, non una casella vuota nell'elenco: alcuni
+             documenti non servono affatto, e il fascicolo non deve chiederli.
+             Resta però la strada secondaria: il gesto abituale è caricare.
+             I due bottoni stanno insieme, così su schermo stretto vanno a
+             capo in blocco invece di sparpagliarsi. -->
+        <div v-if="!soloLettura" class="vp-fasc__azioni-testa">
+          <button class="vp-btn vp-btn--ghost vp-fasc__azione" @click="generaAperto = true">
+            <q-icon name="auto_awesome" size="15px" />
+            Genera
+          </button>
+          <button class="vp-btn vp-btn--soft vp-fasc__azione" @click="aggiungi()">
+            <q-icon name="upload" size="15px" />
+            Carica documento
+          </button>
+        </div>
       </div>
 
       <div class="vp-card vp-fasc__lista">
         <q-inner-loading :showing="fascicoloStore.loading" />
+        <!-- Nessun documento è dovuto: il vuoto va spiegato, non riempito
+             di caselle da compilare. -->
+        <div v-if="senzaDocumenti" class="vp-fasc__nessuno">
+          Nessun documento, per ora.<template v-if="!soloLettura">
+            Carica le copie che servono, o genera l'atto di subentro e la
+            cessione di fabbricato.</template>
+        </div>
         <FascicoloVoce
           v-for="voce in voci"
           :key="voce.tipo"
           :voce="voce"
           :selezionata="!compatto && voce.tipo === tipoSelezionato"
-          :solo-lettura="soloLettura"
           badge-con-data
-          lato-proprieta
           :larghezza="38"
           :altezza="48"
           @apri="seleziona"
         >
           <template #azioni>
             <a
-              v-if="voce.pagine.length"
               :href="voce.pagine[0]?.file"
               :download="voce.pagine[0]?.nome_file"
               class="vp-fasc__scarica"
@@ -48,28 +60,14 @@
             >
               <q-icon name="download" size="17px" />
             </a>
+            <!-- Su un PDF che abbiamo prodotto noi la scorciatoia è rifarlo. -->
             <button
-              v-if="voce.generabile && voce.pagine.length && !soloLettura"
+              v-if="voce.generabile && !soloLettura"
               class="vp-fasc__scarica"
               aria-label="Rigenera"
-              @click.stop="apriGenerazione(voce)"
+              @click.stop="apriGenerazione(voce.generabile, voce.tipo_display)"
             >
               <q-icon name="autorenew" size="17px" />
-            </button>
-            <!-- Documento che produciamo noi: "Genera", non "Carica". -->
-            <button
-              v-else-if="voce.generabile && !soloLettura"
-              class="vp-btn vp-btn--soft vp-fasc__aggiungi"
-              @click.stop="apriGenerazione(voce)"
-            >
-              Genera
-            </button>
-            <button
-              v-else-if="!voce.pagine.length && !soloLettura"
-              class="vp-btn vp-btn--soft vp-fasc__aggiungi"
-              @click.stop="aggiungi(voce)"
-            >
-              Carica
             </button>
           </template>
         </FascicoloVoce>
@@ -83,7 +81,6 @@
             :key="i"
             :voce="voce"
             :selezionata="!compatto && voce.pagine[0]?.id === paginaSelezionataId"
-            :solo-lettura="soloLettura"
             :larghezza="38"
             :altezza="48"
             @apri="seleziona"
@@ -104,33 +101,7 @@
         </header>
 
         <div class="vp-fasc__vcorpo">
-          <!-- Non ancora caricato: il pannello dice di chi è il turno -->
-          <div v-if="!paginaCorrente" class="vp-fasc__vvuoto">
-            <div class="vp-fasc__vplaceholder">
-              <q-icon :name="vuoto.icona" size="28px" />
-            </div>
-            <div class="vp-fasc__vvuoto-titolo">{{ vuoto.titolo }}</div>
-            <p class="vp-fasc__vvuoto-testo">{{ vuoto.testo }}</p>
-            <button
-              v-if="!soloLettura && selezionata.generabile"
-              class="vp-btn vp-btn--primary vp-fasc__vbtn"
-              @click="apriGenerazione(selezionata)"
-            >
-              <q-icon name="picture_as_pdf" size="15px" />
-              Genera il PDF
-            </button>
-            <button
-              v-if="!soloLettura"
-              class="vp-btn vp-fasc__vbtn"
-              :class="selezionata.generabile ? 'vp-btn--ghost' : 'vp-btn--primary'"
-              @click="aggiungi(selezionata)"
-            >
-              <q-icon name="upload" size="15px" />
-              {{ selezionata.generabile ? 'Carica un file firmato' : 'Carica il documento' }}
-            </button>
-          </div>
-
-          <DocPagina v-else :key="paginaCorrente.id" :pagina="paginaCorrente" />
+          <DocPagina v-if="paginaCorrente" :key="paginaCorrente.id" :pagina="paginaCorrente" />
         </div>
 
         <div v-if="selezionata.pagine.length > 1" class="vp-fasc__vpagine">
@@ -170,7 +141,11 @@
       </template>
 
       <div v-else class="vp-fasc__vvuoto vp-fasc__vvuoto--nessuno">
-        Scegli un documento a sinistra per vederlo qui.
+        {{
+          senzaDocumenti
+            ? 'Qui compaiono i documenti dell’inquilino, quando ce ne sono.'
+            : 'Scegli un documento a sinistra per vederlo qui.'
+        }}
       </div>
     </aside>
 
@@ -193,8 +168,14 @@
       @caricato="ricarica"
     />
 
-    <GeneraDocumentoDialog
+    <GeneraDocumentiSheet
       v-model="generaAperto"
+      :tenant-id="tenantId"
+      @scelto="(d) => apriGenerazione(d.codice, d.titolo)"
+    />
+
+    <GeneraDocumentoDialog
+      v-model="dialogGenerazione"
       :tenant-id="tenantId"
       :documento="documentoDaGenerare"
       :titolo-atteso="titoloDaGenerare"
@@ -211,6 +192,7 @@ import DocBadgeStato from './DocBadgeStato.vue';
 import DocPagina from './DocPagina.vue';
 import DocVisoreDialog from './DocVisoreDialog.vue';
 import DocAggiungiSheet from './DocAggiungiSheet.vue';
+import GeneraDocumentiSheet from './GeneraDocumentiSheet.vue';
 import GeneraDocumentoDialog from './GeneraDocumentoDialog.vue';
 import { useDocumentiStore, TIPI_DOCUMENTO_INQUILINO } from 'stores/documenti';
 import { useFascicoloStore, type VoceFascicolo } from 'stores/fascicolo';
@@ -234,13 +216,19 @@ const indicePagina = ref(0);
 const visoreAperto = ref(false);
 const aggiungiAperto = ref(false);
 const tipoIniziale = ref<string | null>(null);
+/** Elenco dei documenti producibili (l'azione "Genera"). */
 const generaAperto = ref(false);
+/** Anteprima/generazione del documento scelto. */
+const dialogGenerazione = ref(false);
 const documentoDaGenerare = ref<string | null>(null);
 const titoloDaGenerare = ref('');
 
 const tipi = TIPI_DOCUMENTO_INQUILINO;
 const voci = computed(() => fascicoloStore.voci);
 const altri = computed(() => fascicoloStore.altri);
+const senzaDocumenti = computed(
+  () => !fascicoloStore.loading && !voci.value.length && !altri.value.length,
+);
 const preavviso = computed(() => fascicoloStore.fascicolo?.giorni_preavviso_scadenza ?? 60);
 /** Sotto i 1024px il visore affiancato non ci sta: si apre a schermo intero. */
 const compatto = computed(() => $q.screen.lt.md);
@@ -260,46 +248,15 @@ const metaSelezionata = computed(() => {
   const voce = selezionata.value;
   if (!voce) return '';
   const parti: string[] = [];
-  if (voce.stato === 'attesa') parti.push('a carico della proprietà · non ancora caricato');
-  else if (voce.caricato_il) parti.push(`caricato il ${formattaData(voce.caricato_il)}`);
+  if (voce.caricato_il) parti.push(`caricato il ${formattaData(voce.caricato_il)}`);
   if (voce.data_scadenza) parti.push(`scadenza ${formattaData(voce.data_scadenza)}`);
   return parti.join(' · ');
-});
-
-/** Testo del visore quando la voce non ha ancora file: cambia a seconda di
- *  chi deve produrre il documento — il fornitore, noi o l'inquilino. */
-const vuoto = computed(() => {
-  const voce = selezionata.value;
-  if (voce?.generabile) {
-    return {
-      icona: 'auto_awesome',
-      titolo: 'Lo generi tu, dai dati che hai già',
-      testo:
-        'Il PDF si compila dai dati di contratto, immobile e anagrafiche. ' +
-        'Se ne manca qualcuno te lo dice, con il link per andarlo a scrivere.',
-    };
-  }
-  if (voce?.a_carico_proprieta) {
-    return {
-      icona: 'bolt',
-      titolo: "Lo carichi tu, non l'inquilino",
-      testo:
-        "L'atto di subentro delle utenze arriva dal fornitore. Caricalo qui: " +
-        'l\'inquilino lo trova nel suo fascicolo.',
-    };
-  }
-  return {
-    icona: 'upload_file',
-    titolo: 'Non ancora caricato',
-    testo: 'Carica qui il documento: l\'inquilino lo trova nel suo fascicolo.',
-  };
 });
 
 // ── Riepilogo in testa: nomi dei documenti, non solo conteggi ──
 const scaduti = computed(() => voci.value.filter((v) => v.stato === 'scaduto'));
 const inScadenza = computed(() => voci.value.filter((v) => v.stato === 'scadenza'));
 const daSegnalare = computed(() => [...scaduti.value, ...inScadenza.value]);
-const daNoi = computed(() => voci.value.filter((v) => v.stato === 'attesa'));
 
 function frase(voci: VoceFascicolo[], singolare: string, plurale: string): string {
   if (!voci.length) return '';
@@ -317,23 +274,12 @@ const riepilogoHtml = computed(() =>
     .join(' · '),
 );
 
-const notaAttesa = computed(() =>
-  daNoi.value.length === 1
-    ? `${daNoi.value[0]?.tipo_display} lo carichi tu, quando arriva dal fornitore.`
-    : 'Alcuni documenti sono a carico della proprietà.',
-);
-
 function seleziona(voce: VoceFascicolo) {
   tipoSelezionato.value = voce.tipo;
   paginaSelezionataId.value = voce.pagine[0]?.id ?? null;
   indicePagina.value = 0;
-  if (!compatto.value) return;
-  // Senza visore affiancato: le pagine si aprono a schermo intero, le voci
-  // ancora vuote portano dritte all'azione che le riempie.
-  if (voce.pagine.length) visoreAperto.value = true;
-  else if (props.soloLettura) return;
-  else if (voce.generabile) apriGenerazione(voce);
-  else aggiungi(voce);
+  // Senza visore affiancato (mobile) il documento si apre a schermo intero.
+  if (compatto.value) visoreAperto.value = true;
 }
 
 function ingrandisci() {
@@ -346,12 +292,11 @@ function aggiungi(voce?: VoceFascicolo) {
   aggiungiAperto.value = true;
 }
 
-function apriGenerazione(voce: VoceFascicolo) {
-  if (!voce.generabile) return;
-  documentoDaGenerare.value = voce.generabile;
-  titoloDaGenerare.value = voce.tipo_display;
+function apriGenerazione(codice: string, titolo: string) {
+  documentoDaGenerare.value = codice;
+  titoloDaGenerare.value = titolo;
   visoreAperto.value = false;
-  generaAperto.value = true;
+  dialogGenerazione.value = true;
 }
 
 function confermaElimina(pagina: { id: number; etichetta: string }) {
@@ -393,11 +338,9 @@ async function ricarica() {
 /** Apre da subito il documento che chiede attenzione: il visore vuoto non
  *  dice nulla, e il primo sguardo del proprietario è per ciò che non va. */
 function preseleziona() {
-  const conFile = voci.value.filter((v) => v.pagine.length);
   const scelta =
-    conFile.find((v) => v.stato === 'scaduto') ??
-    conFile.find((v) => v.stato === 'scadenza') ??
-    conFile[0] ??
+    voci.value.find((v) => v.stato === 'scaduto') ??
+    voci.value.find((v) => v.stato === 'scadenza') ??
     voci.value[0] ??
     null;
   tipoSelezionato.value = scelta?.tipo ?? null;
@@ -435,23 +378,26 @@ watch(
 .vp-fasc__banner-txt {
   flex: 1;
 }
-.vp-fasc__banner-nota {
-  color: var(--vp-ink-2);
-  font-size: var(--vp-text-sm);
-  margin-top: 2px;
-}
 .vp-fasc__intestazione {
   display: flex;
   align-items: center;
-  gap: var(--vp-gap-3);
+  gap: var(--vp-gap-2);
+  /* Su schermo stretto i due bottoni vanno a capo invece di schiacciarsi. */
+  flex-wrap: wrap;
   margin: var(--vp-gap-5) 0 var(--vp-gap-2);
 }
 .vp-fasc__riga {
   flex: 1;
+  min-width: 16px;
   height: 1px;
   background: var(--vp-paper-3);
 }
-.vp-fasc__carica {
+.vp-fasc__azioni-testa {
+  display: flex;
+  gap: var(--vp-gap-2);
+  margin-left: auto;
+}
+.vp-fasc__azione {
   height: 32px;
   font-size: var(--vp-text-sm);
   white-space: nowrap;
@@ -464,6 +410,12 @@ watch(
   overflow: hidden;
   min-height: 60px;
 }
+.vp-fasc__nessuno {
+  padding: var(--vp-gap-4);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-ink-3);
+  line-height: 1.5;
+}
 .vp-fasc__scarica {
   display: flex;
   align-items: center;
@@ -472,16 +424,6 @@ watch(
 }
 .vp-fasc__scarica:hover {
   color: var(--vp-terra);
-}
-/* Fondo pieno: sulla riga selezionata (anch'essa terracotta tenue) un
-   bottone "soft" sparirebbe. */
-.vp-fasc__aggiungi {
-  height: 30px;
-  padding: 0 12px;
-  font-size: 12.5px;
-  background: var(--vp-cream);
-  color: var(--vp-terra-deep);
-  border: 1px solid var(--vp-terra-soft);
 }
 
 /* ── Visore affiancato ── */
@@ -535,32 +477,6 @@ watch(
   margin: auto;
   padding: var(--vp-gap-5);
   color: var(--vp-ink-3);
-  font-size: var(--vp-text-sm);
-}
-.vp-fasc__vplaceholder {
-  width: 108px;
-  height: 132px;
-  margin: 0 auto var(--vp-gap-4);
-  border: 1.5px dashed var(--vp-terra);
-  border-radius: var(--vp-r-md);
-  background: var(--vp-terra-soft);
-  color: var(--vp-terra-deep);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.vp-fasc__vvuoto-titolo {
-  font-size: 14.5px;
-  margin-bottom: var(--vp-gap-1);
-}
-.vp-fasc__vvuoto-testo {
-  font-size: var(--vp-text-sm);
-  color: var(--vp-ink-3);
-  line-height: 1.5;
-  margin: 0 0 var(--vp-gap-3);
-}
-.vp-fasc__vbtn {
-  height: 36px;
   font-size: var(--vp-text-sm);
 }
 .vp-fasc__vpagine {

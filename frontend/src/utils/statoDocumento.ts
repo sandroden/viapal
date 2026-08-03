@@ -34,13 +34,6 @@ export const STILI_STATO: Record<StatoDocumento, StileStato> = {
     label: 'scaduto',
     icona: 'error_outline',
   },
-  attesa: {
-    dot: 'var(--vp-terra)',
-    bg: 'var(--vp-terra-soft)',
-    fg: 'var(--vp-terra-deep)',
-    label: 'a carico della proprietà',
-    icona: 'hourglass_empty',
-  },
 };
 
 /** Tipi che si caricano in due pagine: il modulo propone fronte e retro. */
@@ -55,7 +48,6 @@ export function voceDaDocumento(doc: DocumentoFE): VoceFascicolo {
   return {
     tipo: doc.tipo,
     tipo_display: doc.tipo_display,
-    a_carico_proprieta: false,
     // I documenti della casa si caricano e basta: nessuno di essi è
     // prodotto dall'applicazione.
     generabile: null,
@@ -90,16 +82,8 @@ export function voceDaDocumento(doc: DocumentoFE): VoceFascicolo {
 export function dettaglioVoce(
   voce: VoceFascicolo,
   formattaData: (d: string) => string,
-  opzioni: { scadenzaNelBadge?: boolean; latoProprieta?: boolean } = {},
+  opzioni: { scadenzaNelBadge?: boolean } = {},
 ): string {
-  if (voce.stato === 'attesa') {
-    if (!opzioni.latoProprieta) return 'non devi fare nulla: lo carica la proprietà';
-    // Distinzione che conta per chi opera: alcuni documenti arrivano da
-    // fuori e si caricano, altri li produce l'applicazione.
-    return voce.generabile
-      ? 'a carico nostro: lo generi tu, dai dati che hai già'
-      : 'a carico nostro: lo carichi tu, non l’inquilino';
-  }
   if (voce.data_scadenza && !opzioni.scadenzaNelBadge) {
     const data = formattaData(voce.data_scadenza);
     return voce.stato === 'scaduto' ? `scaduto il ${data}` : `scade il ${data}`;
