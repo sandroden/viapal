@@ -254,11 +254,13 @@ class TenantDocument(TimestampedModel):
         PASSAPORTO = "passaporto", "Passaporto"
         PERMESSO_SOGGIORNO = "permesso_soggiorno", "Permesso di soggiorno"
         CONTRATTO_LAVORO = "contratto_lavoro", "Contratto di lavoro"
+        # La ricevuta telematica dell'Agenzia: vale sia per la registrazione
+        # del contratto sia per l'adempimento successivo di subentro, che non
+        # riceve un numero proprio ma si aggancia al contratto originario.
         RICEVUTA_REGISTRAZIONE = (
             "ricevuta_registrazione",
-            "Ricevuta di registrazione (agenzia)",
+            "Registrazione contratto subentro",
         )
-        RICEVUTA_SUBENTRO = "ricevuta_subentro", "Ricevuta del subentro"
         # Il subentro delle utenze: lo produce il fornitore, non noi.
         ATTO_SUBENTRO = "atto_subentro", "Atto di subentro (utenze)"
         # I due documenti che l'applicazione genera.

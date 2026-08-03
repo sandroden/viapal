@@ -363,3 +363,54 @@ class TestFascicoloDopoGenerazione:
             file=ContentFile(b"%PDF-1.4", name="atto.pdf"),
         )
         assert ATTO in self._voci(client_prop, mondo["tenant"])
+
+
+# ---------------------------------------------------------------------------
+# Fusione dei due tipi "ricevuta"
+# ---------------------------------------------------------------------------
+
+
+class TestFusioneRicevuteSubentro:
+    """La 0032 fonde ``ricevuta_subentro`` in ``ricevuta_registrazione``.
+
+    In locale non esistono righe del vecchio tipo: senza questo test la
+    migrazione girerebbe per la prima volta in produzione senza essere mai
+    stata eseguita su dati reali.
+    """
+
+    def _funzione_di_migrazione(self):
+        import importlib
+
+        modulo = importlib.import_module(
+            "properties.migrations.0032_fonde_ricevuta_subentro"
+        )
+        return modulo.fonde_ricevuta_subentro
+
+    def test_rimappa_il_vecchio_tipo(self, mondo):
+        from django.apps import apps as django_apps
+
+        doc = TenantDocument.objects.create(
+            tenant=mondo["tenant"],
+            tipo="altro",
+            file=ContentFile(b"%PDF-1.4", name="ricevuta.pdf"),
+        )
+        # Il vecchio valore non è più fra le choices: si scrive aggirando il
+        # modello, come farebbe una riga già presente nel database.
+        TenantDocument.objects.filter(pk=doc.pk).update(tipo="ricevuta_subentro")
+
+        self._funzione_di_migrazione()(django_apps, None)
+
+        doc.refresh_from_db()
+        assert doc.tipo == "ricevuta_registrazione"
+
+    def test_non_tocca_gli_altri_tipi(self, mondo):
+        from django.apps import apps as django_apps
+
+        altro = TenantDocument.objects.create(
+            tenant=mondo["tenant"],
+            tipo=ATTO,
+            file=ContentFile(b"%PDF-1.4", name="atto.pdf"),
+        )
+        self._funzione_di_migrazione()(django_apps, None)
+        altro.refresh_from_db()
+        assert altro.tipo == ATTO

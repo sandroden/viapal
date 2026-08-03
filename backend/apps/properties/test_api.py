@@ -537,7 +537,7 @@ class TestFascicolo:
             tenant=tenant_1, tipo="ricevuta_registrazione", file=_pdf_finto()
         )
         voce = self._voci(client_inq_1.get(self.URL))["ricevuta_registrazione"]
-        assert voce["tipo_display"] == "Ricevuta di registrazione (agenzia)"
+        assert voce["tipo_display"] == "Registrazione contratto subentro"
         assert voce["stato"] == "ok"
 
     def test_fronte_retro_una_voce_due_pagine(self, client_inq_1, tenant_1):

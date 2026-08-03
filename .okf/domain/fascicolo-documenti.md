@@ -4,7 +4,7 @@ title: Fascicolo documenti
 description: Checklist dei documenti dell'inquilino con stati derivati (valido/in scadenza/scaduto/a carico proprietà), servita a inquilino e proprietario dallo stesso servizio. Nessun documento è obbligatorio.
 resource: backend/apps/properties/fascicolo.py
 tags: [domain, documenti, inquilini, frontend]
-timestamp: 2026-08-02T00:00:00Z
+timestamp: 2026-08-03T00:00:00Z
 ---
 
 # Overview
@@ -43,14 +43,18 @@ quando è a carico della proprietà.
 
 | Tipo | Ruolo |
 |------|-------|
-| `carta_identita`, `codice_fiscale`, `passaporto`, `permesso_soggiorno`, `contratto_lavoro`, `ricevuta_registrazione`, `ricevuta_subentro` | compaiono **solo se caricati** |
+| `carta_identita`, `codice_fiscale`, `passaporto`, `permesso_soggiorno`, `contratto_lavoro`, `ricevuta_registrazione` | compaiono **solo se caricati** |
 | `atto_subentro` | a carico della proprietà: sempre presente, `attesa` finché manca |
 | `atto_subentro_locazione` | a carico della proprietà, **generato** dall'app; compare **solo se** l'assegnazione ha `subentra_a` |
 | `cessione_fabbricato` | a carico della proprietà, **generato** dall'app; sempre presente |
 | `altro` | fuori checklist: ogni file è una voce a sé, in `altri` |
 
-`ricevuta_registrazione` = "Ricevuta di registrazione (agenzia)", la ricevuta
-che l'agenzia rilascia per la registrazione del contratto (2026-08-01).
+`ricevuta_registrazione` = "Registrazione contratto subentro", la ricevuta
+telematica che l'agenzia rilascia registrando il contratto (2026-08-01).
+Copre anche il subentro: è un adempimento successivo sullo stesso contratto,
+non riceve estremi propri e quindi non è un documento diverso. Il tipo
+`ricevuta_subentro`, che diceva la stessa cosa, è stato fuso qui dalla
+migrazione `0032` (2026-08-03).
 
 **Perché l'atto di subentro (utenze) è diverso**: lo produce il fornitore di
 utenze e lo carica il proprietario. All'inquilino appare come «non devi fare

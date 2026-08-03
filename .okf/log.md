@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-08-03
+* **Maintain**: `domain/fascicolo-documenti.md` — `ricevuta_subentro` fuso in `ricevuta_registrazione` (migrazione `0032`, remap dei dati esistenti): erano lo stesso documento, la ricevuta telematica dell'agenzia. Nuova etichetta "Registrazione contratto subentro".
+
 ## 2026-08-02
 * **Creation**: `domain/generazione-documenti.md` — atto di subentro nel contratto e comunicazione di cessione di fabbricato generati in PDF (WeasyPrint): i campi dichiarati come tupla producono sia il contesto sia l'elenco dei dati mancanti, ciascuno col posto in cui compilarlo; il testo è un `DocumentTemplate` per immobile (nel repo solo gli esempi), sostituzione con `str.replace` e `url_fetcher` che blocca le risorse esterne; rigenerare tocca solo i PDF con `generato=True`.
 * **Maintain**: `domain/fascicolo-documenti.md` — due voci generabili, `VoceFascicolo.applicabile` (l'atto di subentro compare solo se c'è `subentra_a`), `costruisci_fascicolo` riceve l'assegnazione, campo `generabile` nel payload.

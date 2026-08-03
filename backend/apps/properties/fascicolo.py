@@ -72,8 +72,10 @@ VOCI = (
     VoceFascicolo(Tipo.PASSAPORTO, suggerimento="pagina con la foto"),
     VoceFascicolo(Tipo.PERMESSO_SOGGIORNO, suggerimento="o ricevuta di rinnovo"),
     VoceFascicolo(Tipo.CONTRATTO_LAVORO, suggerimento="o busta paga"),
-    VoceFascicolo(Tipo.RICEVUTA_REGISTRAZIONE, suggerimento="rilasciata dall'agenzia"),
-    VoceFascicolo(Tipo.RICEVUTA_SUBENTRO, suggerimento="ricevuta del subentro utenze"),
+    VoceFascicolo(
+        Tipo.RICEVUTA_REGISTRAZIONE,
+        suggerimento="ricevuta telematica dell'agenzia",
+    ),
     VoceFascicolo(
         Tipo.ATTO_SUBENTRO,
         a_carico_proprieta=True,
