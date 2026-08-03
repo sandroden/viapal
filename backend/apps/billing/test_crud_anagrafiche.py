@@ -356,3 +356,165 @@ class TestAnnualUtilityCostCrud:
             f"/api/v1/annual-utility-costs/{mondo_b.costo_annuale.id}/"
         )
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# TenantCondominioRateViewSet
+# ---------------------------------------------------------------------------
+
+
+def _tenant(property, nominativo):
+    """TenantProfile con il suo utente (la FK a User è obbligatoria)."""
+    u = User.objects.create_user(
+        f"inq_{nominativo.lower()}_{property.pk}", password="pwd123!"
+    )
+    return TenantProfile.objects.create(
+        user=u, property=property, nominativo=nominativo,
+        giorno_pagamento_affitto=1,
+    )
+
+
+@pytest.fixture
+def quota_base(immobile):
+    from billing.models import TenantCondominioRate
+
+    return TenantCondominioRate.objects.create(
+        property=immobile,
+        valid_from=datetime.date(2026, 1, 1),
+        importo_mensile=Decimal("90.00"),
+    )
+
+
+class TestQuotaCondominioCrud:
+    URL = "/api/v1/quote-condominio/"
+
+    def test_create_senza_contratto(self, client_operativo, immobile):
+        """Il caso dell'immobile appena creato: nessun contratto registrato,
+        la quota base si inserisce lo stesso."""
+        from billing.models import TenantCondominioRate
+
+        resp = client_operativo.post(
+            self.URL,
+            {"valid_from": "2026-08-01", "importo_mensile": "100.00"},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        creata = TenantCondominioRate.objects.get(pk=resp.json()["id"])
+        assert creata.property_id == immobile.id
+        assert creata.contract_id is None
+        assert creata.tenant_id is None
+
+    def test_create_eccezione_per_inquilino(self, client_operativo, immobile):
+        inq = _tenant(immobile, "Eccezione")
+        resp = client_operativo.post(
+            self.URL,
+            {
+                "tenant": inq.id,
+                "valid_from": "2026-08-01",
+                "importo_mensile": "70.00",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        assert resp.json()["tenant_nominativo"] == "Eccezione"
+
+    def test_create_inquilino_di_altro_immobile_400(
+        self, client_operativo, immobile2
+    ):
+        altrui = _tenant(immobile2, "Altrui")
+        resp = client_operativo.post(
+            self.URL,
+            {
+                "tenant": altrui.id,
+                "valid_from": "2026-08-01",
+                "importo_mensile": "70.00",
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert "tenant" in resp.json()
+
+    def test_fine_validita_prima_dell_inizio_400(self, client_operativo):
+        resp = client_operativo.post(
+            self.URL,
+            {
+                "valid_from": "2026-08-01",
+                "valid_to": "2026-07-01",
+                "importo_mensile": "70.00",
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert "valid_to" in resp.json()
+
+    def test_list_scopata(self, client_operativo, quota_base, immobile2):
+        from billing.models import TenantCondominioRate
+
+        altrui = TenantCondominioRate.objects.create(
+            property=immobile2,
+            valid_from=datetime.date(2026, 1, 1),
+            importo_mensile=Decimal("50.00"),
+        )
+        resp = client_operativo.get(self.URL)
+        assert resp.status_code == 200
+        ids = {q["id"] for q in resp.json()}
+        assert quota_base.id in ids
+        assert altrui.id not in ids
+
+    def test_filtro_per_inquilino(self, client_operativo, immobile, quota_base):
+        """?tenant=<id>: la base più le eccezioni di quell'inquilino, non
+        quelle degli altri."""
+        from billing.models import TenantCondominioRate
+
+        uno = _tenant(immobile, "Uno")
+        due = _tenant(immobile, "Due")
+        sua = TenantCondominioRate.objects.create(
+            property=immobile, tenant=uno,
+            valid_from=datetime.date(2026, 2, 1), importo_mensile=Decimal("70.00"),
+        )
+        altrui = TenantCondominioRate.objects.create(
+            property=immobile, tenant=due,
+            valid_from=datetime.date(2026, 2, 1), importo_mensile=Decimal("60.00"),
+        )
+        resp = client_operativo.get(f"{self.URL}?tenant={uno.id}")
+        assert resp.status_code == 200
+        ids = {q["id"] for q in resp.json()}
+        assert ids == {quota_base.id, sua.id}
+        assert altrui.id not in ids
+
+    def test_update_e_delete(self, client_operativo, quota_base):
+        from billing.models import TenantCondominioRate
+
+        resp = client_operativo.patch(
+            f"{self.URL}{quota_base.id}/", {"importo_mensile": "95.00"},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        quota_base.refresh_from_db()
+        assert quota_base.importo_mensile == Decimal("95.00")
+
+        resp = client_operativo.delete(f"{self.URL}{quota_base.id}/")
+        assert resp.status_code == 204
+        assert not TenantCondominioRate.objects.filter(pk=quota_base.id).exists()
+
+    def test_sola_lettura_non_scrive(self, client_sola_lettura, quota_base):
+        resp = client_sola_lettura.patch(
+            f"{self.URL}{quota_base.id}/", {"importo_mensile": "1.00"},
+            format="json",
+        )
+        assert resp.status_code == 403
+
+    def test_inquilino_non_accede(self, client_inquilino):
+        resp = client_inquilino.get(self.URL)
+        assert resp.status_code == 403
+
+    def test_quota_altrui_404(self, client_operativo, immobile2):
+        from billing.models import TenantCondominioRate
+
+        altrui = TenantCondominioRate.objects.create(
+            property=immobile2,
+            valid_from=datetime.date(2026, 1, 1),
+            importo_mensile=Decimal("50.00"),
+        )
+        resp = client_operativo.delete(f"{self.URL}{altrui.id}/")
+        assert resp.status_code == 404

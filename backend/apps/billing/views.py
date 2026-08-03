@@ -38,6 +38,7 @@ from billing.models import (
     ReceivableComment,
     StatoPagamento,
     Supplier,
+    TenantCondominioRate,
     UtilityBill,
     UtilityChargePeriod,
 )
@@ -52,6 +53,7 @@ from billing.serializers import (
     RegistraPagamentoInputSerializer,
     RentPaymentSerializer,
     SupplierSerializer,
+    TenantCondominioRateSerializer,
     UtilityBillSerializer,
     UtilityChargePeriodSerializer,
     UtilityChargeSerializer,
@@ -804,6 +806,36 @@ class SupplierViewSet(ProtectedDestroyMixin, ModelViewSet):
         return super().get_queryset().filter(
             property=get_request_property(self.request)
         )
+
+    def perform_create(self, serializer):
+        serializer.save(property=get_request_property(self.request))
+
+
+class TenantCondominioRateViewSet(ModelViewSet):
+    """Quote di spese condominiali a carico degli inquilini dell'immobile
+    attivo: la base dell'immobile (``tenant`` vuoto) e le eccezioni per
+    singolo inquilino. CRUD per i membri operativi; la property è assegnata
+    dal server.
+
+    Filtro opzionale ``?tenant=<id>``: la base più le eccezioni di
+    quell'inquilino, cioè le righe che concorrono al suo canone.
+    """
+
+    serializer_class = TenantCondominioRateSerializer
+    permission_classes = [IsPropertyMember]
+    queryset = TenantCondominioRate.objects.select_related("tenant").order_by(
+        "-valid_from"
+    )
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = super().get_queryset().filter(
+            property=get_request_property(self.request)
+        )
+        tenant = self.request.query_params.get("tenant")
+        if tenant:
+            qs = qs.filter(Q(tenant__isnull=True) | Q(tenant_id=tenant))
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(property=get_request_property(self.request))

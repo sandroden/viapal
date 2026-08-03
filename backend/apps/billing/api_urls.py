@@ -19,6 +19,7 @@ from billing.views import (
     RentPaymentViewSet,
     RiepilogoAddebitiInviaView,
     SupplierViewSet,
+    TenantCondominioRateViewSet,
     UtenzeInquilinoView,
     UtilityBillViewSet,
     UtilityChargeViewSet,
@@ -32,6 +33,9 @@ router.register(r"utility-periods", UtilityChargePeriodViewSet, basename="utilit
 router.register(r"utility-bills", UtilityBillViewSet, basename="utility-bill")
 router.register(r"expense-categories", ExpenseCategoryViewSet, basename="expense-category")
 router.register(r"suppliers", SupplierViewSet, basename="supplier")
+router.register(
+    r"quote-condominio", TenantCondominioRateViewSet, basename="quota-condominio"
+)
 router.register(
     r"annual-utility-costs", AnnualUtilityCostViewSet, basename="annual-utility-cost"
 )

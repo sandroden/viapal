@@ -150,6 +150,76 @@
         <q-card flat bordered class="vp-card q-mb-md" style="max-width: 720px">
           <q-card-section>
             <div class="row items-center">
+              <div class="vp-section-title">Spese condominiali degli inquilini</div>
+              <q-space />
+              <q-btn
+                v-if="puoModificare"
+                dense
+                color="primary"
+                icon="add"
+                label="Nuova quota"
+                data-testid="nuova-quota-condominio"
+                @click="apriDialogQuota(null)"
+              />
+            </div>
+            <div class="vp-hint q-mt-xs">
+              Quota mensile che si somma al canone. Senza inquilino vale per
+              tutti; con un inquilino indicato vale solo per lui e prevale
+              sulla quota di tutti.
+            </div>
+            <q-list separator class="q-mt-sm">
+              <q-item v-for="q in quoteCondominio" :key="q.id" data-testid="riga-quota">
+                <q-item-section>
+                  <q-item-label>
+                    {{ formattaImporto(q.importo_mensile) }}/mese
+                    <q-chip v-if="q.tenant" dense outline class="q-ml-xs">
+                      {{ q.tenant_nominativo }}
+                    </q-chip>
+                    <q-chip v-else dense outline class="q-ml-xs">Tutti</q-chip>
+                  </q-item-label>
+                  <q-item-label caption>
+                    dal {{ q.valid_from }}
+                    <template v-if="q.valid_to"> al {{ q.valid_to }}</template>
+                    <template v-else> · tuttora in vigore</template>
+                    <template v-if="q.note"> · {{ q.note }}</template>
+                  </q-item-label>
+                </q-item-section>
+                <q-item-section side>
+                  <div class="row items-center q-gutter-xs">
+                    <q-btn
+                      v-if="puoModificare"
+                      flat
+                      dense
+                      round
+                      icon="edit"
+                      :aria-label="`Modifica quota dal ${q.valid_from}`"
+                      @click="apriDialogQuota(q)"
+                    />
+                    <q-btn
+                      v-if="puoModificare"
+                      flat
+                      dense
+                      round
+                      icon="delete_outline"
+                      color="negative"
+                      :aria-label="`Elimina quota dal ${q.valid_from}`"
+                      @click="eliminaQuota(q)"
+                    />
+                  </div>
+                </q-item-section>
+              </q-item>
+              <q-item v-if="!loadingQuote && quoteCondominio.length === 0">
+                <q-item-section class="text-grey">
+                  Nessuna quota condominiale a carico degli inquilini.
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-card-section>
+        </q-card>
+
+        <q-card flat bordered class="vp-card q-mb-md" style="max-width: 720px">
+          <q-card-section>
+            <div class="row items-center">
               <div class="vp-section-title">Categorie di spesa</div>
               <q-space />
               <q-btn
@@ -786,6 +856,88 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Dialog quota condominio -->
+    <q-dialog v-model="dialogQuota">
+      <q-card style="min-width: 420px">
+        <q-card-section>
+          <div class="vp-section-title">
+            {{ quotaInModifica ? 'Modifica quota condominio' : 'Nuova quota condominio' }}
+          </div>
+        </q-card-section>
+        <q-card-section class="q-gutter-md">
+          <q-select
+            v-model="formQuota.tenant"
+            :options="opzioniInquilino"
+            label="Vale per"
+            outlined
+            dense
+            emit-value
+            map-options
+            data-testid="quota-tenant"
+          />
+          <q-input
+            v-model="formQuota.importo_mensile"
+            label="Importo mensile"
+            type="number"
+            min="0"
+            step="0.01"
+            suffix="€"
+            outlined
+            dense
+            data-testid="quota-importo"
+          />
+          <div class="row q-col-gutter-sm">
+            <div class="col-6">
+              <q-input
+                v-model="formQuota.valid_from"
+                label="Valida dal"
+                type="date"
+                outlined
+                dense
+                data-testid="quota-valid-from"
+              />
+            </div>
+            <div class="col-6">
+              <q-input
+                v-model="formQuota.valid_to"
+                label="Valida fino al"
+                type="date"
+                outlined
+                dense
+                clearable
+                hint="Vuoto = tuttora in vigore"
+              />
+            </div>
+          </div>
+          <q-input
+            v-model="formQuota.note"
+            label="Note"
+            type="textarea"
+            autogrow
+            outlined
+            dense
+          />
+          <div class="vp-hint">
+            La modifica vale sui canoni generati d'ora in poi: quelli già
+            emessi non cambiano da soli.
+          </div>
+          <q-banner v-if="erroreQuota" class="vp-banner-errore" rounded dense>
+            {{ erroreQuota }}
+          </q-banner>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn v-close-popup flat label="Annulla" />
+          <q-btn
+            color="primary"
+            label="Salva"
+            :loading="savingQuota"
+            data-testid="salva-quota"
+            @click="salvaQuota"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -796,6 +948,7 @@ import { useQuasar, type QTableProps } from 'quasar';
 import { useRoute } from 'vue-router';
 import { api } from 'boot/axios';
 import { usePropertiesStore } from 'stores/properties';
+import { useTenantsStore } from 'stores/tenants';
 import DocumentiPannello from 'components/DocumentiPannello.vue';
 import ModelliDocumentoPannello from 'components/documenti/ModelliDocumentoPannello.vue';
 import { useDocumentiProprietaStore, TIPI_DOCUMENTO_PROPRIETA } from 'stores/documenti';
@@ -869,9 +1022,20 @@ interface CostoAnnuale {
   note: string;
 }
 
+interface QuotaCondominio {
+  id: number;
+  tenant: number | null;
+  tenant_nominativo: string | null;
+  valid_from: string;
+  valid_to: string | null;
+  importo_mensile: string;
+  note: string;
+}
+
 const $q = useQuasar();
 const route = useRoute();
 const propStore = usePropertiesStore();
+const tenantsStore = useTenantsStore();
 
 const TABS = ['stanze', 'contratti', 'spese', 'tari', 'documenti', 'modelli'] as const;
 type Tab = (typeof TABS)[number];
@@ -1555,6 +1719,125 @@ function eliminaCosto(c: CostoAnnuale) {
 }
 
 // ---------------------------------------------------------------------------
+// Quote condominio a carico degli inquilini
+// ---------------------------------------------------------------------------
+
+const quoteCondominio = ref<QuotaCondominio[]>([]);
+const loadingQuote = ref(false);
+
+/** "Tutti" (quota base dell'immobile) più i singoli inquilini, per cui la
+ *  quota è un'eccezione che prevale sulla base. */
+const opzioniInquilino = computed(() => [
+  { label: 'Tutti gli inquilini', value: null },
+  ...tenantsStore.tenants.map((t) => ({ label: t.nominativo, value: t.id })),
+]);
+
+async function caricaQuote() {
+  loadingQuote.value = true;
+  try {
+    const { data } = await api.get<QuotaCondominio[] | { results: QuotaCondominio[] }>(
+      '/api/v1/quote-condominio/',
+    );
+    quoteCondominio.value = asArray(data);
+  } catch (e: unknown) {
+    $q.notify({
+      type: 'negative',
+      message: messaggioErrore(e, 'Caricamento quote condominio non riuscito.'),
+    });
+  } finally {
+    loadingQuote.value = false;
+  }
+}
+
+const dialogQuota = ref(false);
+const quotaInModifica = ref<QuotaCondominio | null>(null);
+interface FormQuota {
+  tenant: number | null;
+  importo_mensile: string;
+  valid_from: string;
+  valid_to: string | null;
+  note: string;
+}
+
+const formQuota = ref<FormQuota>({
+  tenant: null,
+  importo_mensile: '',
+  valid_from: '',
+  valid_to: null,
+  note: '',
+});
+const savingQuota = ref(false);
+const erroreQuota = ref('');
+
+function apriDialogQuota(q: QuotaCondominio | null) {
+  quotaInModifica.value = q;
+  erroreQuota.value = '';
+  formQuota.value = {
+    tenant: q?.tenant ?? null,
+    importo_mensile: q?.importo_mensile ?? '',
+    valid_from: q?.valid_from ?? new Date().toISOString().slice(0, 10),
+    valid_to: q?.valid_to ?? null,
+    note: q?.note ?? '',
+  };
+  void tenantsStore.fetchTenants(true);
+  dialogQuota.value = true;
+}
+
+async function salvaQuota() {
+  erroreQuota.value = '';
+  const f = formQuota.value;
+  if (f.importo_mensile === '' || !f.valid_from) {
+    erroreQuota.value = 'Importo e data di inizio validità sono obbligatori.';
+    return;
+  }
+  savingQuota.value = true;
+  const payload = {
+    tenant: f.tenant,
+    importo_mensile: f.importo_mensile,
+    valid_from: f.valid_from,
+    valid_to: f.valid_to || null,
+    note: f.note,
+  };
+  try {
+    if (quotaInModifica.value) {
+      await api.patch(`/api/v1/quote-condominio/${quotaInModifica.value.id}/`, payload);
+      $q.notify({ type: 'positive', message: 'Quota condominio aggiornata.' });
+    } else {
+      await api.post('/api/v1/quote-condominio/', payload);
+      $q.notify({ type: 'positive', message: 'Quota condominio creata.' });
+    }
+    dialogQuota.value = false;
+    await caricaQuote();
+  } catch (e: unknown) {
+    erroreQuota.value = messaggioErrore(e, 'Salvataggio non riuscito.');
+  } finally {
+    savingQuota.value = false;
+  }
+}
+
+function eliminaQuota(q: QuotaCondominio) {
+  $q.dialog({
+    title: 'Eliminare la quota?',
+    message: `La quota di ${q.importo_mensile}€/mese dal ${q.valid_from} verrà rimossa.`,
+    cancel: { flat: true, label: 'Annulla' },
+    ok: { color: 'negative', label: 'Elimina' },
+  }).onOk(() => {
+    void (async () => {
+      try {
+        await api.delete(`/api/v1/quote-condominio/${q.id}/`);
+        quoteCondominio.value = quoteCondominio.value.filter((x) => x.id !== q.id);
+        $q.notify({ type: 'positive', message: 'Quota eliminata.' });
+      } catch (e: unknown) {
+        $q.notify({
+          type: 'negative',
+          message: messaggioErrore(e, 'Eliminazione non riuscita.'),
+        });
+      }
+    })();
+  });
+}
+
+// ---------------------------------------------------------------------------
 
 /** Deep link `?tab=contratti&contratto=<id>`: apre direttamente il dialog
  *  del contratto da completare, altrimenti il link dei dati mancanti
@@ -1574,6 +1857,8 @@ onMounted(() => {
   void caricaCategorie();
   void caricaFornitori();
   void caricaCosti();
+  void caricaQuote();
+  void tenantsStore.fetchTenants(true);
 });
 </script>
 

@@ -166,6 +166,51 @@ class SupplierSerializer(serializers.ModelSerializer):
         ]
 
 
+class TenantCondominioRateSerializer(serializers.ModelSerializer):
+    """Quota mensile di spese condominiali a carico degli inquilini.
+
+    ``tenant`` vuoto = quota base dell'immobile; valorizzato = eccezione per
+    quell'inquilino. La property è assegnata dal server (immobile attivo)."""
+
+    property = serializers.PrimaryKeyRelatedField(read_only=True)
+    tenant_nominativo = serializers.CharField(
+        source="tenant.nominativo", read_only=True, default=None
+    )
+
+    class Meta:
+        from billing.models import TenantCondominioRate
+
+        model = TenantCondominioRate
+        fields = [
+            "id", "property", "tenant", "tenant_nominativo",
+            "valid_from", "valid_to", "importo_mensile", "note",
+        ]
+
+    def validate_tenant(self, tenant):
+        """L'eccezione vale per un inquilino dell'immobile attivo."""
+        request = self.context.get("request")
+        if tenant is not None and request is not None:
+            from properties.context import get_request_property
+
+            prop = get_request_property(request)
+            if prop is not None and tenant.property_id != prop.pk:
+                raise serializers.ValidationError(
+                    "L'inquilino appartiene a un altro immobile."
+                )
+        return tenant
+
+    def validate(self, attrs):
+        valid_from = attrs.get("valid_from") or getattr(
+            self.instance, "valid_from", None
+        )
+        valid_to = attrs.get("valid_to", getattr(self.instance, "valid_to", None))
+        if valid_from and valid_to and valid_to < valid_from:
+            raise serializers.ValidationError(
+                {"valid_to": "La fine validità precede l'inizio."}
+            )
+        return attrs
+
+
 class AnnualUtilityCostSerializer(serializers.ModelSerializer):
     """Costo annuale spalmato (es. TARI) di un immobile."""
 
