@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-08-03
+* **Maintain**: `domain/fascicolo-documenti.md` — `atto_subentro` (utenze) tolto dai documenti dell'inquilino (migrazione `0033`, file esistenti declassati ad `altro` col nome in descrizione): riguarda l'immobile, non la persona.
 * **Maintain**: `domain/fascicolo-documenti.md` — `ricevuta_subentro` fuso in `ricevuta_registrazione` (migrazione `0032`, remap dei dati esistenti): erano lo stesso documento, la ricevuta telematica dell'agenzia. Nuova etichetta "Registrazione contratto subentro".
 
 ## 2026-08-02

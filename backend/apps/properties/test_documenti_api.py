@@ -414,3 +414,63 @@ class TestFusioneRicevuteSubentro:
         self._funzione_di_migrazione()(django_apps, None)
         altro.refresh_from_db()
         assert altro.tipo == ATTO
+
+
+class TestDeclassamentoAttoSubentroUtenze:
+    """La 0033 toglie ``atto_subentro`` (utenze) dai documenti dell'inquilino.
+
+    Riguarda l'immobile, non la persona. I file già caricati non si perdono:
+    diventano documenti liberi e conservano il nome nella descrizione.
+    """
+
+    def _funzione_di_migrazione(self):
+        import importlib
+
+        modulo = importlib.import_module(
+            "properties.migrations.0033_toglie_atto_subentro_utenze"
+        )
+        return modulo.declassa_atto_subentro
+
+    def _vecchio_documento(self, tenant, descrizione=""):
+        doc = TenantDocument.objects.create(
+            tenant=tenant,
+            tipo="altro",
+            descrizione=descrizione,
+            file=ContentFile(b"%PDF-1.4", name="utenze.pdf"),
+        )
+        TenantDocument.objects.filter(pk=doc.pk).update(tipo="atto_subentro")
+        return doc
+
+    def test_diventa_documento_libero_col_nome_in_descrizione(self, mondo):
+        from django.apps import apps as django_apps
+
+        doc = self._vecchio_documento(mondo["tenant"])
+        self._funzione_di_migrazione()(django_apps, None)
+        doc.refresh_from_db()
+        assert doc.tipo == "altro"
+        assert doc.descrizione == "Atto di subentro (utenze)"
+
+    def test_la_descrizione_esistente_non_si_perde(self, mondo):
+        from django.apps import apps as django_apps
+
+        doc = self._vecchio_documento(mondo["tenant"], descrizione="Enel")
+        self._funzione_di_migrazione()(django_apps, None)
+        doc.refresh_from_db()
+        assert doc.descrizione == "Atto di subentro (utenze) · Enel"
+
+    def test_una_descrizione_gia_lunga_non_fa_esplodere_la_migrazione(self, mondo):
+        """Il prefisso non deve sfondare il varchar: in prod sarebbe un
+        `DataError` a metà del ciclo, su dati che non si vedono."""
+        from django.apps import apps as django_apps
+
+        massimo = TenantDocument._meta.get_field("descrizione").max_length
+        doc = self._vecchio_documento(mondo["tenant"], descrizione="x" * massimo)
+        self._funzione_di_migrazione()(django_apps, None)
+        doc.refresh_from_db()
+        assert len(doc.descrizione) == massimo
+        assert doc.descrizione.startswith("Atto di subentro (utenze) · ")
+
+    def test_la_voce_sparisce_dalla_checklist(self, client_prop, mondo):
+        resp = client_prop.get(FASCICOLO, {"tenant": mondo["tenant"].pk})
+        tipi = {v["tipo"] for v in resp.json()["voci"]}
+        assert "atto_subentro" not in tipi

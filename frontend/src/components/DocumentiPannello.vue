@@ -199,8 +199,6 @@ function iconaTipo(t: string): string {
       return 'work';
     case 'ricevuta_registrazione':
       return 'receipt_long';
-    case 'atto_subentro':
-      return 'history_edu';
     case 'contratto':
       return 'gavel';
     case 'side_letter':

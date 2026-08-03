@@ -32,7 +32,6 @@ export const TIPI_DOCUMENTO_INQUILINO: TipoDocumentoOption[] = [
   { label: 'Permesso di soggiorno', value: 'permesso_soggiorno' },
   { label: 'Contratto di lavoro', value: 'contratto_lavoro' },
   { label: 'Registrazione contratto subentro', value: 'ricevuta_registrazione' },
-  { label: 'Atto di subentro (utenze)', value: 'atto_subentro' },
   { label: 'Atto di subentro nel contratto', value: 'atto_subentro_locazione' },
   { label: 'Comunicazione di cessione di fabbricato', value: 'cessione_fabbricato' },
   { label: 'Altro', value: 'altro' },

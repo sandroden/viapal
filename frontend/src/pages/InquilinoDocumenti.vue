@@ -80,7 +80,7 @@
     <DocAggiungiSheet
       v-model="aggiungiAperto"
       :store="store"
-      :tipi="tipiCaricabili"
+      :tipi="TIPI_DOCUMENTO_INQUILINO"
       :tipo-iniziale="tipoIniziale"
       :preavviso="preavviso"
       @caricato="ricarica"
@@ -121,9 +121,6 @@ const voci = computed(() => fascicoloStore.voci);
 const altri = computed(() => fascicoloStore.altri);
 const documentiCasa = computed(() => storeCasa.documenti);
 const preavviso = computed(() => fascicoloStore.fascicolo?.giorni_preavviso_scadenza ?? 60);
-
-/** L'atto di subentro lo carica la proprietà: non è tra le scelte dell'inquilino. */
-const tipiCaricabili = TIPI_DOCUMENTO_INQUILINO.filter((t) => t.value !== 'atto_subentro');
 
 function iconaCasa(tipo: string): string {
   switch (tipo) {

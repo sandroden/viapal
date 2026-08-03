@@ -261,8 +261,6 @@ class TenantDocument(TimestampedModel):
             "ricevuta_registrazione",
             "Registrazione contratto subentro",
         )
-        # Il subentro delle utenze: lo produce il fornitore, non noi.
-        ATTO_SUBENTRO = "atto_subentro", "Atto di subentro (utenze)"
         # I due documenti che l'applicazione genera.
         ATTO_SUBENTRO_LOCAZIONE = (
             "atto_subentro_locazione",

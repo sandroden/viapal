@@ -44,7 +44,6 @@ quando è a carico della proprietà.
 | Tipo | Ruolo |
 |------|-------|
 | `carta_identita`, `codice_fiscale`, `passaporto`, `permesso_soggiorno`, `contratto_lavoro`, `ricevuta_registrazione` | compaiono **solo se caricati** |
-| `atto_subentro` | a carico della proprietà: sempre presente, `attesa` finché manca |
 | `atto_subentro_locazione` | a carico della proprietà, **generato** dall'app; compare **solo se** l'assegnazione ha `subentra_a` |
 | `cessione_fabbricato` | a carico della proprietà, **generato** dall'app; sempre presente |
 | `altro` | fuori checklist: ogni file è una voce a sé, in `altri` |
@@ -56,10 +55,11 @@ non riceve estremi propri e quindi non è un documento diverso. Il tipo
 `ricevuta_subentro`, che diceva la stessa cosa, è stato fuso qui dalla
 migrazione `0032` (2026-08-03).
 
-**Perché l'atto di subentro (utenze) è diverso**: lo produce il fornitore di
-utenze e lo carica il proprietario. All'inquilino appare come «non devi fare
-nulla: lo carica la proprietà» (nessun bottone), al proprietario come «lo
-carichi tu, non l'inquilino» (riga attiva, con caricamento).
+**L'atto di subentro delle utenze non è più qui** (2026-08-03): riguarda
+l'immobile, non la persona, e semmai va fra i documenti della casa. La
+migrazione `0033` toglie il tipo `atto_subentro` e declassa i file già
+caricati ad `altro`, conservandone il nome nella descrizione. Il pattern «a
+carico della proprietà» resta, usato dai due documenti generati.
 
 **Voci condizionate** (2026-08-02): `VoceFascicolo.applicabile` è un
 predicato sull'assegnazione dell'inquilino. Serviva all'atto di subentro nel

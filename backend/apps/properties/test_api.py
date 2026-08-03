@@ -514,11 +514,11 @@ class TestFascicolo:
     ):
         voci = self._voci(client_inq_1.get(self.URL))
         # Nessun documento è dovuto: senza file non c'è nulla da elencare...
-        assert set(voci) == {"atto_subentro", "cessione_fabbricato"}
-        # ...tranne quelli a carico della proprietà: il subentro utenze e la
-        # comunicazione ex art. 12, dovuta per ogni nuovo occupante.
-        assert voci["atto_subentro"]["stato"] == "attesa"
-        assert voci["atto_subentro"]["a_carico_proprieta"] is True
+        assert set(voci) == {"cessione_fabbricato"}
+        # ...tranne quelli a carico della proprietà: qui la comunicazione ex
+        # art. 12, dovuta per ogni nuovo occupante.
+        assert voci["cessione_fabbricato"]["stato"] == "attesa"
+        assert voci["cessione_fabbricato"]["a_carico_proprieta"] is True
         assert voci["cessione_fabbricato"]["generabile"] == "cessione_fabbricato"
         # L'atto di subentro nel contratto non compare: tenant_1 non è
         # subentrato a nessuno.
@@ -615,11 +615,11 @@ class TestFascicolo:
             data_scadenza=oggi - datetime.timedelta(days=3),
         )
         riepilogo = client_inq_1.get(self.URL).json()["riepilogo"]
-        # carta d'identità ok, passaporto scaduto, e in attesa le due voci a
-        # carico della proprietà (subentro utenze e cessione di fabbricato).
+        # carta d'identità ok, passaporto scaduto, e in attesa la voce a
+        # carico della proprietà (la cessione di fabbricato).
         assert riepilogo["ok"] == 1
         assert riepilogo["scaduto"] == 1
-        assert riepilogo["attesa"] == 2
+        assert riepilogo["attesa"] == 1
         assert riepilogo["da_sistemare"] == 1
         # Nessun conteggio di "mancanti": non c'è un minimo da caricare.
         assert "mancante" not in riepilogo

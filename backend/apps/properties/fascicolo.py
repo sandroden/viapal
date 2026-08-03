@@ -76,11 +76,8 @@ VOCI = (
         Tipo.RICEVUTA_REGISTRAZIONE,
         suggerimento="ricevuta telematica dell'agenzia",
     ),
-    VoceFascicolo(
-        Tipo.ATTO_SUBENTRO,
-        a_carico_proprieta=True,
-        suggerimento="utenze intestate all'inquilino",
-    ),
+    # Il subentro delle utenze non è un documento dell'inquilino: riguarda
+    # l'immobile e semmai va fra i documenti della casa.
     VoceFascicolo(
         Tipo.ATTO_SUBENTRO_LOCAZIONE,
         a_carico_proprieta=True,
