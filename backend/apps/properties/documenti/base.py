@@ -356,6 +356,15 @@ class Documento:
             if campo.chiave
         ]
 
+    def riepilogo(self, fonti: Fonti) -> dict:
+        """I dati che l'utente vuole rileggere prima di premere Genera.
+
+        Dichiarato da ciascun documento e non qui: il riepilogo deve mostrare
+        quello che finisce *in quel* documento. Una base che elencasse canoni
+        e depositi li farebbe comparire anche dove non c'entrano.
+        """
+        return {}
+
     def nome_file(self, fonti: Fonti) -> str:
         from django.utils.text import slugify
 

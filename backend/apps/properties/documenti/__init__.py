@@ -74,7 +74,7 @@ def anteprima(tenant, codice, assignment=None, oggi=None) -> dict:
         "assignment": fonti.assignment.pk,
         "completo": not mancanti,
         "mancanti": mancanti,
-        "riepilogo": _riepilogo(fonti),
+        "riepilogo": documento.riepilogo(fonti),
     }
 
 
@@ -86,24 +86,6 @@ def _modello_mancante(documento) -> dict:
         "dove": "Impostazioni → Casa → Modelli documenti",
         "link": f"/p/impostazioni/casa?tab=modelli&codice={documento.chiave}",
         "esterno": False,
-    }
-
-
-def _riepilogo(fonti: Fonti) -> dict:
-    """I dati che l'utente vuole rileggere prima di premere Genera."""
-    from .base import eur
-
-    return {
-        "stanza": fonti.stanza.nome,
-        "decorrenza": fonti.assignment.valid_from,
-        "canone": eur(fonti.canone),
-        "oneri_accessori": eur(fonti.oneri_accessori) if fonti.oneri_accessori else None,
-        "deposito": eur(fonti.deposito) if fonti.deposito else None,
-        "rate_deposito": fonti.rate_deposito,
-        "comproprietari": [o.nominativo for o in fonti.comproprietari],
-        "firmatario": fonti.firmatario.nominativo if fonti.firmatario else None,
-        "uscente": fonti.uscente.nominativo if fonti.uscente else None,
-        "contratto": str(fonti.contract) if fonti.contract else None,
     }
 
 

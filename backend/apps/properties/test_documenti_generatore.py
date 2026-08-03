@@ -222,6 +222,19 @@ class TestScenarioCompleto:
         assert riepilogo["uscente"] == "Di Maio Davide"
         assert riepilogo["comproprietari"] == ["Dentella Alessandro", "Dentella Fabio"]
 
+    def test_riepilogo_cessione_non_parla_di_soldi(self, scenario):
+        """La comunicazione all'autorità non dice a che prezzo si è ceduto.
+
+        Canone, oneri, deposito e comproprietari non compaiono nel modulo:
+        rileggerli prima di generarlo confondeva e basta.
+        """
+        riepilogo = anteprima(scenario["tenant"], CESSIONE, oggi=OGGI)["riepilogo"]
+        assert riepilogo == {
+            "data_cessione": INGRESSO,
+            "firmatario": "Dentella Alessandro",
+            "fabbricato": "Palestrina 20, 20900 Monza (MB)",
+        }
+
     def test_documento_sconosciuto(self, scenario):
         with pytest.raises(KeyError):
             anteprima(scenario["tenant"], "inesistente", oggi=OGGI)

@@ -18,6 +18,20 @@ def _cedente(fonti: Fonti):
     return fonti.firmatario
 
 
+def _indirizzo(immobile) -> str:
+    """L'indirizzo strutturato, quello che finisce nelle caselle del modulo.
+
+    Non ``Property.indirizzo``, che è testo libero di visualizzazione: qui
+    si rilegge ciò che andrà nel documento, campi vuoti compresi (mancano
+    già nell'elenco dei dati da compilare).
+    """
+    via = " ".join(p for p in (immobile.via, immobile.civico) if p)
+    comune = " ".join(p for p in (immobile.cap, immobile.comune) if p)
+    if immobile.provincia:
+        comune = f"{comune} ({immobile.provincia})".strip()
+    return ", ".join(p for p in (via, comune) if p)
+
+
 def _campi_persona(prefisso, etichetta, fonte, estrai, richiede=None, oggetto=None):
     """Le caselle anagrafiche comuni a cedente e cessionario.
 
@@ -163,3 +177,16 @@ class CessioneFabbricato(Documento):
             lambda f: f.oggi, derivato=True,
         ),
     )
+
+    def riepilogo(self, fonti: Fonti) -> dict:
+        """Chi cede, a partire da quando, e quale fabbricato.
+
+        Niente canone, deposito, oneri o comproprietari: la comunicazione
+        all'autorità non dice a che prezzo si è ceduto né chi altro possiede
+        l'immobile, e il cedente è una persona sola (vedi il modulo).
+        """
+        return {
+            "data_cessione": fonti.assignment.valid_from,
+            "firmatario": fonti.firmatario.nominativo if fonti.firmatario else None,
+            "fabbricato": _indirizzo(fonti.property),
+        }

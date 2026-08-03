@@ -73,17 +73,22 @@ export interface AnteprimaDocumento {
   assignment: number;
   completo: boolean;
   mancanti: DatoMancante[];
+  /** Dichiarato dal singolo documento: ogni chiave è presente solo se
+   *  quel documento la riporta davvero. */
   riepilogo: {
-    stanza: string;
-    decorrenza: string;
-    canone: string;
-    oneri_accessori: string | null;
-    deposito: string | null;
-    rate_deposito: number;
-    comproprietari: string[];
-    firmatario: string | null;
-    uscente: string | null;
-    contratto: string | null;
+    stanza?: string;
+    decorrenza?: string;
+    canone?: string;
+    oneri_accessori?: string | null;
+    deposito?: string | null;
+    rate_deposito?: number;
+    comproprietari?: string[];
+    firmatario?: string | null;
+    uscente?: string | null;
+    contratto?: string | null;
+    // Solo la comunicazione di cessione di fabbricato.
+    data_cessione?: string;
+    fabbricato?: string;
   };
   esistente: { id: number; descrizione: string; created_at: string } | null;
 }

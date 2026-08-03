@@ -4,7 +4,7 @@ title: Generazione documenti
 description: Atto di subentro nel contratto e comunicazione di cessione di fabbricato generati in PDF dai dati già in archivio; il testo è un modello caricato per immobile, e i dati che mancano vengono elencati con il posto in cui compilarli.
 resource: backend/apps/properties/documenti/
 tags: [domain, documenti, pdf, proprietari]
-timestamp: 2026-08-02T00:00:00Z
+timestamp: 2026-08-03T00:00:00Z
 ---
 
 # Overview
@@ -112,6 +112,10 @@ dal database e dallo storage, senza undo.
 `IsPropertyMember`), body `{tenant, documento, dry_run=true, assignment?}`.
 
 * `dry_run` → 200 con `completo`, `mancanti[]`, `riepilogo`, `esistente`;
+  il `riepilogo` è **dichiarato dal singolo documento** (`Documento.riepilogo`,
+  base vuota): l'atto di subentro riporta le condizioni economiche, la
+  cessione di fabbricato data, cedente e indirizzo — e nient'altro, perché
+  quel modulo non dice a che prezzo si è ceduto (2026-08-03);
 * `dry_run=false` e completo → 201 col `TenantDocument` e `sostituito`;
 * 400 documento sconosciuto, tenant assente, nessuna assegnazione, dati
   incompleti (con l'elenco); 403 `sola_lettura`; 404 tenant di altro

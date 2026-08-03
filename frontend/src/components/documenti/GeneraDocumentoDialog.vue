@@ -109,14 +109,24 @@ const aperto = computed({
   set: (v: boolean) => emit('update:modelValue', v),
 });
 
+// Ogni documento dichiara il proprio riepilogo: le righe che non gli
+// appartengono non arrivano affatto (la cessione di fabbricato non parla di
+// canoni, l'atto di subentro non ripete l'indirizzo).
 const righeRiepilogo = computed(() => {
   const r = anteprima.value?.riepilogo;
   if (!r) return [];
-  const righe: { etichetta: string; valore: string }[] = [
-    { etichetta: 'Stanza', valore: r.stanza },
-    { etichetta: 'Decorrenza', valore: formattaData(r.decorrenza) },
-    { etichetta: 'Canone mensile', valore: `${r.canone} €` },
-  ];
+  const righe: { etichetta: string; valore: string }[] = [];
+  if (r.stanza) righe.push({ etichetta: 'Stanza', valore: r.stanza });
+  if (r.decorrenza) {
+    righe.push({ etichetta: 'Decorrenza', valore: formattaData(r.decorrenza) });
+  }
+  if (r.data_cessione) {
+    righe.push({
+      etichetta: 'Data della cessione',
+      valore: formattaData(r.data_cessione),
+    });
+  }
+  if (r.canone) righe.push({ etichetta: 'Canone mensile', valore: `${r.canone} €` });
   if (r.oneri_accessori) {
     righe.push({ etichetta: 'Oneri accessori', valore: `${r.oneri_accessori} €` });
   }
@@ -128,10 +138,11 @@ const righeRiepilogo = computed(() => {
   }
   if (r.uscente) righe.push({ etichetta: 'Inquilino uscente', valore: r.uscente });
   if (r.firmatario) righe.push({ etichetta: 'Firma come cedente', valore: r.firmatario });
-  if (r.comproprietari.length) {
+  if (r.comproprietari?.length) {
     righe.push({ etichetta: 'Comproprietari', valore: r.comproprietari.join(', ') });
   }
   if (r.contratto) righe.push({ etichetta: 'Contratto', valore: r.contratto });
+  if (r.fabbricato) righe.push({ etichetta: 'Fabbricato', valore: r.fabbricato });
   return righe;
 });
 

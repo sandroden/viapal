@@ -260,6 +260,23 @@ class AttoSubentro(Documento):
         ),
     )
 
+    def riepilogo(self, fonti: Fonti) -> dict:
+        """Le condizioni economiche del subentro, che l'atto riporta."""
+        return {
+            "stanza": fonti.stanza.nome,
+            "decorrenza": fonti.assignment.valid_from,
+            "canone": eur(fonti.canone),
+            "oneri_accessori": (
+                eur(fonti.oneri_accessori) if fonti.oneri_accessori else None
+            ),
+            "deposito": eur(fonti.deposito) if fonti.deposito else None,
+            "rate_deposito": fonti.rate_deposito,
+            "comproprietari": [o.nominativo for o in fonti.comproprietari],
+            "firmatario": fonti.firmatario.nominativo if fonti.firmatario else None,
+            "uscente": fonti.uscente.nominativo if fonti.uscente else None,
+            "contratto": str(fonti.contract) if fonti.contract else None,
+        }
+
     def campi_extra(self, fonti: Fonti):
         """Un campo per comproprietario: dice *quale* fratello è incompleto."""
         extra = []
