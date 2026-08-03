@@ -100,14 +100,16 @@ export interface ReceivableInput {
   descrizione: string;
   tenant_nominativo: string;
   scadenza: string;
+  /** Conto su cui l'incasso è già stato registrato, se c'è. */
   bank_account_destinazione_id: number | null;
+  /** Conto dell'immobile su cui l'inquilino deve versare (dal backend). */
+  conto_suggerito_id?: number | null;
 }
 
 const props = defineProps<{
   modelValue: boolean;
   receivable: ReceivableInput;
   ownerAccounts: BankAccountInfo[];
-  defaultOwnerAccountId: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -174,26 +176,18 @@ function descrizioneSuggerita(): string {
   return `Bonifico ${r.tenant_nominativo} — ${CAUSALE_LABEL[r.causale]} ${mese} ${anno}`;
 }
 
+/** Il conto proposto è quello dove il denaro doveva arrivare — mai quello di
+ *  chi sta registrando l'incasso, che può essere un gestore senza parte in
+ *  causa. Prima il conto su cui l'incasso risulta già registrato, poi quello
+ *  dell'immobile; se manca, nessun default e si sceglie a mano. */
 function contoDiDefault(): number | null {
-  if (props.receivable.bank_account_destinazione_id) {
-    if (
-      props.ownerAccounts.some(
-        (a) => a.id === props.receivable.bank_account_destinazione_id,
-      )
-    ) {
-      return props.receivable.bank_account_destinazione_id;
-    }
-  }
-  if (
-    props.defaultOwnerAccountId &&
-    props.ownerAccounts.some((a) => a.id === props.defaultOwnerAccountId)
-  ) {
-    return props.defaultOwnerAccountId;
-  }
-  if (props.ownerAccounts.length === 1) {
-    return props.ownerAccounts[0]!.id;
-  }
-  return null;
+  const disponibile = (id: number | null | undefined): number | null =>
+    id && props.ownerAccounts.some((a) => a.id === id) ? id : null;
+  return (
+    disponibile(props.receivable.bank_account_destinazione_id) ??
+    disponibile(props.receivable.conto_suggerito_id) ??
+    null
+  );
 }
 
 interface FormPagamento {

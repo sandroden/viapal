@@ -791,7 +791,6 @@
       v-model="dialogPagamento"
       :receivable="receivableSelezionato"
       :owner-accounts="contiUtente"
-      :default-owner-account-id="contoDiDefaultUtente"
       @saved="dopoSalvataggioPagamento"
     />
 
@@ -953,6 +952,7 @@ interface ReceivableInput {
   tenant_nominativo: string;
   scadenza: string;
   bank_account_destinazione_id: number | null;
+  conto_suggerito_id: number | null;
 }
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
@@ -978,6 +978,7 @@ interface RigaPagamento {
   data_pagamento: string | null;
   receivable_id: number;
   bank_account_destinazione_id: number | null;
+  conto_suggerito_id: number | null;
 }
 
 const route = useRoute();
@@ -1101,6 +1102,7 @@ const righePagamenti = computed<RigaPagamento[]>(() => {
       data_pagamento: r.data_pagamento,
       receivable_id: r.id,
       bank_account_destinazione_id: r.bank_account_destinazione_id,
+      conto_suggerito_id: r.conto_suggerito_id,
     });
   }
   for (const c of situazione.value.utility.righe) {
@@ -1116,6 +1118,7 @@ const righePagamenti = computed<RigaPagamento[]>(() => {
       data_pagamento: c.data_pagamento,
       receivable_id: c.id,
       bank_account_destinazione_id: c.bank_account_destinazione_id,
+      conto_suggerito_id: c.conto_suggerito_id,
     });
   }
   for (const e of situazione.value.extra.righe) {
@@ -1131,6 +1134,7 @@ const righePagamenti = computed<RigaPagamento[]>(() => {
       data_pagamento: e.data_pagamento,
       receivable_id: e.id,
       bank_account_destinazione_id: e.bank_account_destinazione_id,
+      conto_suggerito_id: e.conto_suggerito_id,
     });
   }
   for (const c of situazione.value.deposito?.righe ?? []) {
@@ -1146,6 +1150,7 @@ const righePagamenti = computed<RigaPagamento[]>(() => {
       data_pagamento: c.data_pagamento,
       receivable_id: c.id,
       bank_account_destinazione_id: c.bank_account_destinazione_id,
+      conto_suggerito_id: c.conto_suggerito_id,
     });
   }
   out.sort((a, b) => (a.scadenza ?? '').localeCompare(b.scadenza ?? ''));
@@ -1453,6 +1458,7 @@ function aprireRegistraPagamento(riga: RigaPagamento): void {
     tenant_nominativo: t.nominativo,
     scadenza: riga.scadenza ?? new Date().toISOString().slice(0, 10),
     bank_account_destinazione_id: riga.bank_account_destinazione_id,
+    conto_suggerito_id: riga.conto_suggerito_id,
   };
   dialogPagamento.value = true;
 }
@@ -1591,9 +1597,6 @@ const contiUtente = computed(() =>
   contiStore.accounts.length > 0
     ? contiStore.accounts
     : (auth.user?.bank_accounts ?? []),
-);
-const contoDiDefaultUtente = computed(
-  () => auth.user?.bank_accounts?.[0]?.id ?? null,
 );
 </script>
 

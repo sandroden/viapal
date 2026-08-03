@@ -133,7 +133,6 @@
       v-model="dialogPagamento"
       :receivable="receivableSelezionato"
       :owner-accounts="contiUtente"
-      :default-owner-account-id="contoDiDefaultUtente"
       @saved="dopoSalvataggio"
     />
   </q-page>
@@ -168,6 +167,7 @@ interface ReceivableRiga {
   stato: string;
   stato_display: string;
   bank_account_destinazione: number | null;
+  conto_suggerito: number | null;
 }
 
 interface ReceivableInput {
@@ -179,6 +179,7 @@ interface ReceivableInput {
   tenant_nominativo: string;
   scadenza: string;
   bank_account_destinazione_id: number | null;
+  conto_suggerito_id: number | null;
 }
 
 const { formattaEuro } = useFormatoEuro();
@@ -316,9 +317,6 @@ const contiUtente = computed(() =>
     ? contiStore.accounts
     : (auth.user?.bank_accounts ?? []),
 );
-const contoDiDefaultUtente = computed(
-  () => auth.user?.bank_accounts?.[0]?.id ?? null,
-);
 
 function livelloStato(_: string, scadenza: string | null): SemaforoLivello {
   if (!scadenza) return 'salvia';
@@ -392,6 +390,7 @@ function aprireRegistraPagamento(r: ReceivableRiga): void {
     tenant_nominativo: r.tenant_nominativo,
     scadenza: r.scadenza ?? new Date().toISOString().slice(0, 10),
     bank_account_destinazione_id: r.bank_account_destinazione,
+    conto_suggerito_id: r.conto_suggerito,
   };
   dialogPagamento.value = true;
 }

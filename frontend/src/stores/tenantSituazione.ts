@@ -24,6 +24,7 @@ export interface RentRiga {
   data_pagamento: string | null;
   is_aggiustamento: boolean;
   bank_account_destinazione_id: number | null;
+  conto_suggerito_id: number | null;
 }
 
 export interface UtilityLine {
@@ -43,6 +44,7 @@ export interface UtilityRiga {
   data_pagamento: string | null;
   lines: UtilityLine[];
   bank_account_destinazione_id: number | null;
+  conto_suggerito_id: number | null;
 }
 
 export interface ExtraRiga {
@@ -55,6 +57,7 @@ export interface ExtraRiga {
   stato: string;
   data_pagamento: string | null;
   bank_account_destinazione_id: number | null;
+  conto_suggerito_id: number | null;
 }
 
 export interface DepositoRiga {
@@ -67,6 +70,7 @@ export interface DepositoRiga {
   stato: string;
   data_pagamento: string | null;
   bank_account_destinazione_id: number | null;
+  conto_suggerito_id: number | null;
 }
 
 export interface QuotaCondominioRiga {

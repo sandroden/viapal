@@ -84,6 +84,14 @@ def _giorni_ritardo(scadenza: datetime.date, oggi: datetime.date) -> int:
     return (oggi - scadenza).days
 
 
+def _conto_suggerito_id(r: Receivable) -> int | None:
+    """Conto su cui l'inquilino deve versare l'addebito: quello dell'immobile
+    (o l'override sull'assegnazione, per l'affitto). Serve al frontend come
+    default quando si registra un incasso — che non dipende da chi guarda."""
+    conto = conto_per_receivable(r)
+    return conto.pk if conto else None
+
+
 def _competenza_base(r: Receivable) -> datetime.date:
     """Mese di competenza di riferimento, coerente con la descrizione mostrata."""
     if r.causale == Receivable.Causale.UTENZE and r.utility_period:
@@ -1049,7 +1057,10 @@ class TenantSituazioneView(APIView):
                 causale=Receivable.Causale.AFFITTO,
                 competenza_da__year=anno,
             )
-            .select_related("assignment__room")
+            .select_related(
+                "assignment__bank_account_affitto",
+                "assignment__room__property__bank_account_utenze",
+            )
             .order_by("competenza_da")
         )
         rent_righe = []
@@ -1069,6 +1080,7 @@ class TenantSituazioneView(APIView):
                 "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
                 "is_aggiustamento": r.is_aggiustamento,
                 "bank_account_destinazione_id": r.bank_account_destinazione_id,
+                "conto_suggerito_id": _conto_suggerito_id(r),
             })
             rent_dovuto += r.importo_dovuto
             if r.importo_pagato:
@@ -1081,7 +1093,9 @@ class TenantSituazioneView(APIView):
                 causale=Receivable.Causale.UTENZE,
                 utility_period__periodo_da__year=anno,
             )
-            .select_related("utility_period")
+            .select_related(
+                "utility_period", "assignment__room__property__bank_account_utenze"
+            )
             .order_by("utility_period__periodo_da")
         )
         utility_righe = []
@@ -1118,6 +1132,7 @@ class TenantSituazioneView(APIView):
                 "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
                 "lines": lines,
                 "bank_account_destinazione_id": r.bank_account_destinazione_id,
+                "conto_suggerito_id": _conto_suggerito_id(r),
             })
             utility_dovuto += r.importo_dovuto
             if r.importo_pagato:
@@ -1136,6 +1151,7 @@ class TenantSituazioneView(APIView):
                 ),
                 competenza_da__year=anno,
             )
+            .select_related("assignment__room__property__bank_account_utenze")
             .order_by("competenza_da")
         )
         extra_righe = []
@@ -1158,6 +1174,7 @@ class TenantSituazioneView(APIView):
                 "stato": r.stato,
                 "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
                 "bank_account_destinazione_id": r.bank_account_destinazione_id,
+                "conto_suggerito_id": _conto_suggerito_id(r),
                 "is_previsionale": is_previsionale,
                 "previsionale_conguagliato": previsionale_conguagliato,
             })
@@ -1182,7 +1199,9 @@ class TenantSituazioneView(APIView):
             # Senza data di restituzione mostriamo solo il versamento
             # (importo positivo), mai la restituzione.
             deposito_qs = deposito_qs.filter(importo_dovuto__gt=0)
-        deposito_qs = deposito_qs.order_by("competenza_da")
+        deposito_qs = deposito_qs.select_related(
+            "assignment__room__property__bank_account_utenze"
+        ).order_by("competenza_da")
         for r in deposito_qs:
             deposito_righe.append({
                 "id": r.id,
@@ -1194,6 +1213,7 @@ class TenantSituazioneView(APIView):
                 "stato": r.stato,
                 "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
                 "bank_account_destinazione_id": r.bank_account_destinazione_id,
+                "conto_suggerito_id": _conto_suggerito_id(r),
             })
             deposito_dovuto += r.importo_dovuto
             if r.importo_pagato:

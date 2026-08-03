@@ -563,6 +563,7 @@ class ReceivableForReconcileSerializer(serializers.ModelSerializer):
     residuo = serializers.SerializerMethodField()
     stato_display = serializers.CharField(source="get_stato_display", read_only=True)
     allocations = serializers.SerializerMethodField()
+    conto_suggerito = serializers.SerializerMethodField()
 
     class Meta:
         model = Receivable
@@ -583,7 +584,18 @@ class ReceivableForReconcileSerializer(serializers.ModelSerializer):
             "stato_display",
             "allocations",
             "bank_account_destinazione",
+            "conto_suggerito",
         ]
+
+    def get_conto_suggerito(self, r: Receivable) -> int | None:
+        """Conto su cui l'inquilino deve versare questo addebito: quello
+        dell'immobile (o l'override sull'assegnazione per l'affitto). È il
+        default con cui il frontend precompila la registrazione dell'incasso
+        — che non ha niente a che vedere con chi sta guardando la pagina."""
+        from billing._payments import conto_per_receivable
+
+        conto = conto_per_receivable(r)
+        return conto.pk if conto else None
 
     def get_allocations(self, r: Receivable) -> list[dict]:
         return [
