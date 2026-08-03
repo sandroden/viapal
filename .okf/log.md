@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-08-03
+* **Maintain**: `domain/fascicolo-documenti.md`, `domain/generazione-documenti.md` — il fascicolo elenca solo i documenti esistenti: via lo stato `attesa`, `a_carico_proprieta` e `applicabile` (le voci vuote erano una richiesta implicita, non dovuta a nessuno). Generare diventa un'azione invocata dal pannello, alimentata dal nuovo `GET tenant-documents/generabili/`.
 * **Maintain**: `domain/generazione-documenti.md` — `riepilogo` dell'anteprima per documento (`Documento.riepilogo`, base vuota): la cessione di fabbricato non mostra più canone, deposito, oneri e comproprietari.
 * **Maintain**: `domain/fascicolo-documenti.md` — `atto_subentro` (utenze) tolto dai documenti dell'inquilino (migrazione `0033`, file esistenti declassati ad `altro` col nome in descrizione): riguarda l'immobile, non la persona.
 * **Maintain**: `domain/fascicolo-documenti.md` — `ricevuta_subentro` fuso in `ricevuta_registrazione` (migrazione `0032`, remap dei dati esistenti): erano lo stesso documento, la ricevuta telematica dell'agenzia. Nuova etichetta "Registrazione contratto subentro".

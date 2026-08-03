@@ -106,7 +106,20 @@ reale è genera → stampa → firma → scansiona → ricarica sotto lo stesso 
 senza quel filtro un "Rigenera" distruggerebbe l'unico originale firmato,
 dal database e dallo storage, senza undo.
 
+# Da dove si parte
+
+L'azione **"Genera"** sta nel pannello del fascicolo, accanto a "Carica
+documento" (scheda inquilino → Documenti, lato proprietario): apre l'elenco
+dei documenti producibili e da lì il dialog di anteprima. Fino al 2026-08-03
+i due documenti erano invece righe *in attesa* dentro il fascicolo — vedi
+[Fascicolo documenti](/domain/fascicolo-documenti.md) per il perché sono
+state tolte. Sulle voci già generate resta la scorciatoia "Rigenera".
+
 # API
+
+`GET /api/v1/tenant-documents/generabili/?tenant=<id>` — cosa si può
+produrre (`codice`, `titolo`, `tipo`, `tipo_display`, `esistente`). Nessun
+render, nessuna riga scritta: è la sorgente dell'elenco.
 
 `POST /api/v1/tenant-documents/genera/` (header `X-Property-Id`,
 `IsPropertyMember`), body `{tenant, documento, dry_run=true, assignment?}`.
