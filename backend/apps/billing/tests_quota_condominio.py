@@ -101,6 +101,16 @@ COMPETENZA = datetime.date(2026, 5, 1)
 
 
 class TestQuotaCondominioPer:
+    def test_senza_contratto(self, immobile, assignment_a):
+        """La quota è dell'immobile: vale anche se nessun contratto è stato
+        registrato (immobile appena creato, accordo verbale)."""
+        TenantCondominioRate.objects.create(
+            property=immobile,
+            valid_from=datetime.date(2025, 1, 1),
+            importo_mensile=Decimal("100.00"),
+        )
+        assert _quota_condominio_per(assignment_a, COMPETENZA) == Decimal("100.00")
+
     def test_solo_generica(self, contract_1, assignment_a):
         TenantCondominioRate.objects.create(
             contract=contract_1,

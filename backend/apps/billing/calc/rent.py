@@ -56,19 +56,18 @@ def _quota_condominio_per(assignment, competenza_da: date) -> Decimal:
     (``TenantCondominioRate``) valida per la data di competenza, o 0 se non
     è configurata.
 
-    La quota è definita per immobile tramite il contratto
-    (``TenantCondominioRate.contract.property``): si considerano solo le
-    righe del contratto/i dell'immobile di ``assignment``. Ogni riga con
+    La quota è definita per immobile (``TenantCondominioRate.property``): si
+    considerano solo le righe dell'immobile di ``assignment``. Ogni riga con
     ``tenant`` vuoto è la base dell'immobile; una riga con ``tenant``
     valorizzato è un'eccezione per quell'inquilino e PREVALE sulla base. Se
-    più righe dello stesso tipo (base o eccezione) sono valide alla data
-    (es. contratti sovrapposti), vince quella con ``valid_from`` più
-    recente. Non si sommano mai più righe.
+    più righe dello stesso tipo (base o eccezione) sono valide alla data,
+    vince quella con ``valid_from`` più recente. Non si sommano mai più
+    righe.
     """
     from billing.models import TenantCondominioRate
 
     qs = TenantCondominioRate.objects.filter(
-        contract__property_id=assignment.room.property_id,
+        property_id=assignment.room.property_id,
         valid_from__lte=competenza_da,
     ).filter(Q(valid_to__isnull=True) | Q(valid_to__gte=competenza_da))
 

@@ -879,33 +879,24 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
         if quota_condominio_mensile is not None:
             from billing.models import TenantCondominioRate
 
+            # Il contratto, se c'è, è solo il documento in cui la quota è
+            # pattuita: la quota resta registrabile anche senza.
             contratto_attivo_quota = prop.contratto_attivo(valid_from)
-            quota_generica_corrente = None
-            if contratto_attivo_quota is not None:
-                quota_generica_corrente = (
-                    TenantCondominioRate.objects.filter(
-                        contract=contratto_attivo_quota,
-                        tenant__isnull=True,
-                        valid_from__lte=valid_from,
-                    )
-                    .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=valid_from))
-                    .order_by("-valid_from")
-                    .first()
+            quota_generica_corrente = (
+                TenantCondominioRate.objects.filter(
+                    property=prop,
+                    tenant__isnull=True,
+                    valid_from__lte=valid_from,
                 )
+                .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=valid_from))
+                .order_by("-valid_from")
+                .first()
+            )
             quota_diversa = (
                 quota_generica_corrente is None
                 or quota_generica_corrente.importo_mensile.quantize(Decimal("0.01"))
                 != quota_condominio_mensile.quantize(Decimal("0.01"))
             )
-            if quota_diversa and contratto_attivo_quota is None:
-                raise ValidationError(
-                    {
-                        "quota_condominio_mensile": (
-                            "Nessun contratto attivo: impossibile registrare "
-                            "la quota condominio."
-                        )
-                    }
-                )
 
         with transaction.atomic():
             tenant.ciclo_fatturazione = v["ciclo_fatturazione"]
@@ -960,6 +951,7 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
                 from billing.models import TenantCondominioRate
 
                 TenantCondominioRate.objects.create(
+                    property=prop,
                     contract=contratto_attivo_quota,
                     tenant=tenant,
                     valid_from=valid_from,

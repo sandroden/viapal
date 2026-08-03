@@ -963,16 +963,32 @@ class TestPrimaAssegnazioneAPI:
         assert resp.json()["quota_condominio_creata"] is False
         assert not TenantCondominioRate.objects.filter(tenant=tenant_2).exists()
 
-    def test_quota_diversa_senza_contratto_attivo_400(
-        self, client_prop, tenant_2, room_2
-    ):
-        # Nessun Contract creato per questo immobile in questo test.
+    def test_quota_senza_contratto_attivo_ok(self, client_prop, tenant_2, room_2):
+        """Immobile appena creato, nessun contratto ancora registrato: la
+        quota condominio si registra lo stesso, sull'immobile."""
+        from billing.models import Receivable, TenantCondominioRate
+
         payload = self._payload(
-            tenant_2.id, room_2.id, quota_condominio_mensile="70.00"
+            tenant_2.id,
+            room_2.id,
+            canone_mensile="600.00",
+            quota_condominio_mensile="100.00",
         )
         resp = client_prop.post(self.URL, payload, format="json")
-        assert resp.status_code == 400
-        assert "quota_condominio_mensile" in resp.json()
+        assert resp.status_code == 201, resp.content
+        assert resp.json()["quota_condominio_creata"] is True
+
+        rata = TenantCondominioRate.objects.get(tenant=tenant_2)
+        assert rata.property_id == room_2.property_id
+        assert rata.contract_id is None
+        assert rata.importo_mensile == Decimal("100.00")
+
+        # E finisce nel canone: 600 di affitto + 100 di quota.
+        affitto = Receivable.objects.filter(
+            assignment__tenant=tenant_2, causale=Receivable.Causale.AFFITTO
+        ).first()
+        assert affitto is not None
+        assert affitto.importo_dovuto == Decimal("700.00")
 
     def test_deposito_gia_esistente_con_payload_deposito_400(
         self, client_prop, tenant_2, room_2

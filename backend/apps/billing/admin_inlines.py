@@ -8,9 +8,12 @@ from .models import TenantCondominioRate
 
 
 class TenantCondominioRateForm(ConstrainedModelForm):
+    """Form dell'inline sul contratto: l'immobile non si chiede, lo deduce
+    ``TenantCondominioRate.save()`` dal contratto del parent."""
+
     class Meta:
         model = TenantCondominioRate
-        fields = "__all__"
+        exclude = ("property",)
 
     hidden_fields = ("contract",)
 

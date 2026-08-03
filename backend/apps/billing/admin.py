@@ -1354,17 +1354,24 @@ class UtilityChargePeriodAdmin(ModalEditMixin, JumboModelAdmin):
 
 @admin.register(TenantCondominioRate)
 class TenantCondominioRateAdmin(ModalEditMixin, JumboModelAdmin):
-    from .admin_inlines import TenantCondominioRateForm  # noqa: PLC0415
-    form = TenantCondominioRateForm
     modal_edit_width = 700
     list_display = (
-        "contract", "valid_from", "valid_to", "importo_mensile",
+        "property", "tenant", "valid_from", "valid_to", "importo_mensile",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
-    list_select_related = ("contract",)
+    list_filter = ("property",)
+    list_select_related = ("property", "tenant", "contract")
     ordering = ("-valid_from",)
     fieldsets = (
         ("Quota a carico inquilini", {
-            "fields": ("contract", "valid_from", "valid_to", "importo_mensile", "note"),
+            "fields": (
+                "property", "tenant", "valid_from", "valid_to",
+                "importo_mensile", "contract", "note",
+            ),
+            "description": (
+                "L'immobile è obbligatorio; il contratto è solo il documento "
+                "in cui la quota è pattuita e può mancare. Inquilino vuoto = "
+                "quota base dell'immobile."
+            ),
         }),
     )

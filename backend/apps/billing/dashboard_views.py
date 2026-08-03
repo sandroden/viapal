@@ -1264,12 +1264,7 @@ class TenantSituazioneView(APIView):
             if x["anno"] <= anno:
                 saldo_totale_globale = x["saldo_progressivo"]
 
-        # Quota condominio: dal contratto attivo dell'immobile dell'inquilino
         contract_attivo = tenant.property.contratto_attivo(oggi)
-        quota_condominio = {
-            "corrente": None,
-            "storico": [],
-        }
         contract_payload = None
         if contract_attivo:
             contract_payload = {
@@ -1281,38 +1276,45 @@ class TenantSituazioneView(APIView):
                     else None
                 ),
             }
-            # Solo la base dell'immobile (tenant vuoto) e le eventuali
-            # eccezioni di QUESTO inquilino: mai le eccezioni di altri.
-            quote_qs = (
-                TenantCondominioRate.objects
-                .filter(contract=contract_attivo)
-                .filter(Q(tenant__isnull=True) | Q(tenant=tenant))
-                .order_by("-valid_from")
-            )
-            quote_storico = []
-            attive_specifiche = []
-            attive_generiche = []
-            for q in quote_qs:
-                specifica = q.tenant_id is not None
-                row = {
-                    "valid_from": q.valid_from.isoformat(),
-                    "valid_to": q.valid_to.isoformat() if q.valid_to else None,
-                    "importo_mensile": float(q.importo_mensile),
-                    "note": q.note,
-                    "specifica": specifica,
-                }
-                quote_storico.append(row)
-                attiva = q.valid_from <= oggi and (q.valid_to is None or q.valid_to >= oggi)
-                if attiva:
-                    (attive_specifiche if specifica else attive_generiche).append(row)
-            quota_condominio["storico"] = quote_storico
-            # La quota specifica dell'inquilino prevale sulla base
-            # dell'immobile; tra righe valide alla stessa data vince quella
-            # con valid_from più recente (quote_qs è ordinato -valid_from).
-            if attive_specifiche:
-                quota_condominio["corrente"] = attive_specifiche[0]
-            elif attive_generiche:
-                quota_condominio["corrente"] = attive_generiche[0]
+
+        # Quota condominio: dell'immobile dell'inquilino, contratto o meno.
+        # Solo la base (tenant vuoto) e le eventuali eccezioni di QUESTO
+        # inquilino: mai le eccezioni di altri.
+        quota_condominio = {
+            "corrente": None,
+            "storico": [],
+        }
+        quote_qs = (
+            TenantCondominioRate.objects
+            .filter(property=tenant.property)
+            .filter(Q(tenant__isnull=True) | Q(tenant=tenant))
+            .order_by("-valid_from")
+        )
+        quote_storico = []
+        attive_specifiche = []
+        attive_generiche = []
+        for q in quote_qs:
+            specifica = q.tenant_id is not None
+            row = {
+                "id": q.id,
+                "valid_from": q.valid_from.isoformat(),
+                "valid_to": q.valid_to.isoformat() if q.valid_to else None,
+                "importo_mensile": float(q.importo_mensile),
+                "note": q.note,
+                "specifica": specifica,
+            }
+            quote_storico.append(row)
+            attiva = q.valid_from <= oggi and (q.valid_to is None or q.valid_to >= oggi)
+            if attiva:
+                (attive_specifiche if specifica else attive_generiche).append(row)
+        quota_condominio["storico"] = quote_storico
+        # La quota specifica dell'inquilino prevale sulla base dell'immobile;
+        # tra righe valide alla stessa data vince quella con valid_from più
+        # recente (quote_qs è ordinato -valid_from).
+        if attive_specifiche:
+            quota_condominio["corrente"] = attive_specifiche[0]
+        elif attive_generiche:
+            quota_condominio["corrente"] = attive_generiche[0]
 
         return Response({
             "tenant": TenantProfileSerializer(tenant).data,

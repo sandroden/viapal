@@ -1,6 +1,7 @@
 """
 Modelli per fornitori, categorie di spesa e spese dell'immobile.
 """
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from core.storages import media_private_storage
@@ -171,21 +172,35 @@ class Expense(TimestampedModel):
 
 class TenantCondominioRate(TimestampedModel):
     """
-    Quota mensile delle spese condominiali a carico degli inquilini, definita
-    dal contratto e aggiornata dopo ogni consuntivo dell'amministratore.
+    Quota mensile delle spese condominiali a carico degli inquilini, di norma
+    fissata dal contratto e aggiornata dopo ogni consuntivo
+    dell'amministratore.
 
-    Storicizzato per contratto e, opzionalmente, per inquilino: la riga con
+    La quota appartiene all'**immobile**: il contratto è solo il documento in
+    cui è scritta, e può mancare (immobile appena creato, accordo verbale)
+    senza per questo impedire di addebitarla.
+
+    Storicizzata per immobile e, opzionalmente, per inquilino: la riga con
     ``tenant`` vuoto è la quota base dell'immobile, quella con ``tenant``
     valorizzato è un'eccezione per il singolo inquilino (es. tetto ridotto
     per i nuovi ingressi) e prevale sulla base. Ogni record vale dalla data
     valid_from fino a valid_to (incluso), o indefinitamente se valid_to nullo.
     """
 
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.CASCADE,
+        related_name="quote_condominio",
+        verbose_name="immobile",
+    )
     contract = models.ForeignKey(
         Contract,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="quote_condominio_inquilini",
         verbose_name="contratto",
+        help_text="Facoltativo: il contratto in cui la quota è pattuita.",
     )
     tenant = models.ForeignKey(
         "properties.TenantProfile",
@@ -217,6 +232,25 @@ class TenantCondominioRate(TimestampedModel):
         verbose_name = "quota spese condominiali"
         verbose_name_plural = "quote spese condominiali"
         ordering = ["-valid_from"]
+
+    def clean(self):
+        super().clean()
+        if (
+            self.contract_id
+            and self.property_id
+            and self.contract.property_id != self.property_id
+        ):
+            raise ValidationError(
+                {"contract": "Il contratto è di un altro immobile."}
+            )
+
+    def save(self, *args, **kwargs):
+        # L'immobile si deduce dal contratto quando non è indicato: tiene in
+        # piedi i chiamanti storici, nati quando la quota pendeva dal
+        # contratto.
+        if self.property_id is None and self.contract_id:
+            self.property_id = self.contract.property_id
+        super().save(*args, **kwargs)
 
     def __str__(self):
         base = f"{self.importo_mensile}€/mese dal {self.valid_from}"
