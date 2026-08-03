@@ -4,7 +4,7 @@ title: App billing
 description: Addebiti (Receivable), incassi bancari, utenze e spese.
 resource: backend/apps/billing/models/
 tags: [models, billing]
-timestamp: 2026-07-08T00:00:00Z
+timestamp: 2026-08-03T00:00:00Z
 ---
 
 # Overview
@@ -25,7 +25,7 @@ utenze e spese. La logica sta nei concetti di [dominio](/domain/).
 | `Supplier` | `nome`, `tipo`, `partita_iva` | fornitore |
 | `ExpenseCategory` | `nome`, `codice`, `ripartibile_inquilini` | categoria spesa |
 | `Expense` | `data`, `category`, `importo`, `anticipata_da_owner`, `ripartibile_su_inquilini`, `is_straordinaria`, `riferimento_quota_owner` | spesa |
-| `TenantCondominioRate` | `contract`, `valid_from`/`_to`, `importo_mensile` | quota condominio a carico inquilino (data-driven) |
+| `TenantCondominioRate` | `property`, `tenant` (opz.), `contract` (opz., SET_NULL), `valid_from`/`_to`, `importo_mensile` | quota condominio a carico inquilino (data-driven); appartiene all'immobile, il contratto è solo il documento in cui è pattuita |
 
 # Vedi anche
 

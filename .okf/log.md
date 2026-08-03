@@ -1,6 +1,9 @@
 # Update Log
 
 ## 2026-08-03
+* **Maintain**: `domain/generazione-affitti.md`, `models/billing.md` — la quota condominio (`TenantCondominioRate`) pende dall'immobile (`property` obbligatoria, backfill dal contratto) e non più dal contratto, ora riferimento facoltativo con `SET_NULL`: su una casa appena creata la prima assegnazione con quota falliva con "Nessun contratto attivo". Le quote si gestiscono da `/api/v1/quote-condominio/` (tab Spese della casa).
+* **Maintain**: `domain/receivable.md` — sezione "Conto di destinazione": `conto_per_receivable` è la fonte del conto **proposto** quando si registra un incasso (`conto_suggerito`), mai il conto di chi guarda; le spese restano sul conto di chi anticipa.
+* **Maintain**: `architecture/auth-e-ruoli.md` — l'invito membro manda il link imposta-password a chiunque non abbia una password utilizzabile, non solo a chi è appena stato creato.
 * **Maintain**: `domain/fascicolo-documenti.md`, `domain/generazione-documenti.md` — il fascicolo elenca solo i documenti esistenti: via lo stato `attesa`, `a_carico_proprieta` e `applicabile` (le voci vuote erano una richiesta implicita, non dovuta a nessuno). Generare diventa un'azione invocata dal pannello, alimentata dal nuovo `GET tenant-documents/generabili/`.
 * **Maintain**: `domain/generazione-documenti.md` — `riepilogo` dell'anteprima per documento (`Documento.riepilogo`, base vuota): la cessione di fabbricato non mostra più canone, deposito, oneri e comproprietari.
 * **Maintain**: `domain/fascicolo-documenti.md` — `atto_subentro` (utenze) tolto dai documenti dell'inquilino (migrazione `0033`, file esistenti declassati ad `altro` col nome in descrizione): riguarda l'immobile, non la persona.

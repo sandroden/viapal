@@ -4,7 +4,7 @@ title: Auth e ruoli
 description: Autenticazione a sessione, gruppi proprietari/inquilini, inviti e impersonation.
 resource: backend/apps/accounts/
 tags: [architecture, auth, permissions]
-timestamp: 2026-07-08T00:00:00Z
+timestamp: 2026-08-03T00:00:00Z
 ---
 
 # Overview
@@ -28,6 +28,11 @@ redirect è automatico in base al gruppo: proprietari → `/p/`, inquilini → `
 # Inviti e password
 
 - Invito inquilino da azione admin; token allauth (base36) riusato come token d'invito.
+- Invito membro (`POST properties/<id>/inviti/`): crea utente + membership e
+  manda l'email. Il link imposta-password si manda a chi **non ha una
+  password utilizzabile** (`has_usable_password()`), non solo a chi è appena
+  stato creato: altrimenti chi era stato invitato in precedenza e non aveva
+  mai completato l'attivazione riceveva un avviso senza modo di entrare.
 - Self-service: reset / cambio / imposta-password.
 - Doppio login: username **oppure** email.
 

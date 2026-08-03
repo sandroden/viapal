@@ -4,7 +4,7 @@ title: Receivable — l'addebito unificato
 description: Il modello unico che rappresenta ogni importo dovuto dall'inquilino.
 resource: backend/apps/billing/models/receivables.py
 tags: [domain, receivable, billing]
-timestamp: 2026-07-29T00:00:00Z
+timestamp: 2026-08-03T00:00:00Z
 ---
 
 # Overview
@@ -50,6 +50,19 @@ append-only della macchina a stati). Il proprietario poi **conferma**
 (`rifiuta_pagato` → riallineamento dalla verità bancaria, l'addebito torna
 da pagare). Una riconciliazione bancaria vince sempre sul dichiarato: il
 signal su `BankTransactionAllocation` ricalcola stato/importi a ogni tocco.
+
+# Conto di destinazione
+
+Su quale conto va versato un addebito lo decide `conto_per_receivable`
+(`billing/_payments.py`): override `assignment.bank_account_affitto` per
+l'affitto, altrimenti `property.bank_account_utenze`. È la fonte sia del QR
+di pagamento sia del conto **proposto** quando un membro registra l'incasso
+(campo `conto_suggerito` nell'API): mai il conto di chi sta guardando la
+pagina, che su un immobile altrui può essere un gestore senza parte in
+causa. Se non è risolvibile (immobile senza conto) non c'è default e si
+sceglie a mano. Fa eccezione la registrazione di **spese** (`/p/spese`,
+quick add), dove il conto proposto è quello di chi scrive: lì è chi ha
+anticipato il denaro.
 
 # Commenti
 
