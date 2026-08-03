@@ -31,6 +31,7 @@ from properties.models import (
 pytestmark = pytest.mark.django_db
 
 URL = "/api/v1/tenant-documents/genera/"
+GENERABILI = "/api/v1/tenant-documents/generabili/"
 FASCICOLO = "/api/v1/tenant-documents/fascicolo/"
 ATTO = "atto_subentro_locazione"
 CESSIONE = "cessione_fabbricato"
@@ -333,36 +334,87 @@ class TestFascicoloDopoGenerazione:
         resp = client.get(FASCICOLO, {"tenant": tenant.pk})
         return {v["tipo"]: v for v in resp.json()["voci"]}
 
-    def test_voce_da_attesa_a_ok(self, client_prop, mondo):
+    def test_niente_voce_finche_il_documento_non_esiste(self, client_prop, mondo):
+        """Il fascicolo non pretende: la generazione è un'azione a parte,
+        non una riga vuota che aspetta di essere riempita."""
         voci = self._voci(client_prop, mondo["tenant"])
-        assert voci[ATTO]["stato"] == "attesa"
-        assert voci[ATTO]["generabile"] == ATTO
+        assert ATTO not in voci
+        assert CESSIONE not in voci
+
+    def test_la_voce_compare_dopo_la_generazione(self, client_prop, mondo):
         client_prop.post(URL, _payload(mondo, dry_run=False), format="json")
         voci = self._voci(client_prop, mondo["tenant"])
         assert voci[ATTO]["stato"] == "ok"
+        assert voci[ATTO]["generabile"] == ATTO
         assert len(voci[ATTO]["pagine"]) == 1
 
-    def test_atto_di_subentro_assente_senza_subentro(self, client_prop, mondo):
-        """Chi non è subentrato a nessuno non deve vedere per sempre una
-        voce in attesa di un atto che non esisterà mai."""
-        assegnazione = mondo["assegnazione"]
-        assegnazione.subentra_a = None
-        assegnazione.save()
-        voci = self._voci(client_prop, mondo["tenant"])
-        assert ATTO not in voci
-        assert CESSIONE in voci
-
     def test_atto_caricato_a_mano_compare_comunque(self, client_prop, mondo):
-        """Se il file esiste va mostrato, anche se la voce non si
-        applicherebbe: un documento caricato non si nasconde."""
-        assegnazione = mondo["assegnazione"]
-        assegnazione.subentra_a = None
-        assegnazione.save()
+        """Un documento caricato a mano non si distingue: esiste, si vede."""
         TenantDocument.objects.create(
             tenant=mondo["tenant"], tipo=ATTO,
             file=ContentFile(b"%PDF-1.4", name="atto.pdf"),
         )
         assert ATTO in self._voci(client_prop, mondo["tenant"])
+
+
+# ---------------------------------------------------------------------------
+# Elenco dei documenti generabili (l'azione "Genera documento")
+# ---------------------------------------------------------------------------
+
+
+class TestGenerabili:
+    """Da qui il proprietario scopre *cosa* può generare: il fascicolo non
+    lo dice più, perché elenca solo i file esistenti."""
+
+    def _elenco(self, client, tenant):
+        resp = client.get(GENERABILI, {"tenant": tenant.pk})
+        assert resp.status_code == 200
+        return {d["codice"]: d for d in resp.json()["documenti"]}
+
+    def test_elenca_entrambi_i_documenti(self, client_prop, mondo):
+        elenco = self._elenco(client_prop, mondo["tenant"])
+        assert set(elenco) == {ATTO, CESSIONE}
+        assert elenco[CESSIONE]["tipo"] == CESSIONE
+        assert elenco[ATTO]["titolo"]
+        # Nessuno è ancora stato prodotto.
+        assert all(d["esistente"] is None for d in elenco.values())
+
+    def test_esistente_dopo_la_generazione(self, client_prop, mondo):
+        client_prop.post(URL, _payload(mondo, dry_run=False), format="json")
+        elenco = self._elenco(client_prop, mondo["tenant"])
+        assert elenco[ATTO]["esistente"]["descrizione"].startswith("generato il")
+        assert elenco[CESSIONE]["esistente"] is None
+
+    def test_documento_caricato_a_mano_non_e_un_esistente(self, client_prop, mondo):
+        """``esistente`` è ciò che rigenereremmo: la scansione firmata
+        caricata a mano non si tocca, e non va spacciata per nostra."""
+        TenantDocument.objects.create(
+            tenant=mondo["tenant"], tipo=ATTO,
+            file=ContentFile(b"%PDF-1.4", name="atto-firmato.pdf"),
+        )
+        elenco = self._elenco(client_prop, mondo["tenant"])
+        assert elenco[ATTO]["esistente"] is None
+
+    def test_senza_tenant_400(self, client_prop):
+        assert client_prop.get(GENERABILI).status_code == 400
+
+    def test_inquilino_403(self, client_inq, mondo):
+        resp = client_inq.get(GENERABILI, {"tenant": mondo["tenant"].pk})
+        assert resp.status_code == 403
+
+    def test_sola_lettura_vede_lelenco(self, client_sola_lettura, mondo):
+        """In GET non si produce nulla: chi guarda può guardare (generare
+        resta una POST, e lì il 403 arriva)."""
+        resp = client_sola_lettura.get(GENERABILI, {"tenant": mondo["tenant"].pk})
+        assert resp.status_code == 200
+
+    def test_inquilino_di_altro_immobile_404(self, client_prop, immobile2):
+        estraneo = _persona(
+            TenantProfile, "Estranea Persona", property=immobile2,
+            giorno_pagamento_affitto=5,
+        )
+        resp = client_prop.get(GENERABILI, {"tenant": estraneo.pk})
+        assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------

@@ -509,20 +509,13 @@ class TestFascicolo:
     def _voci(self, resp):
         return {v["tipo"]: v for v in resp.json()["voci"]}
 
-    def test_fascicolo_vuoto_mostra_solo_le_voci_a_carico_nostro(
-        self, client_inq_1, tenant_1
-    ):
-        voci = self._voci(client_inq_1.get(self.URL))
-        # Nessun documento è dovuto: senza file non c'è nulla da elencare...
-        assert set(voci) == {"cessione_fabbricato"}
-        # ...tranne quelli a carico della proprietà: qui la comunicazione ex
-        # art. 12, dovuta per ogni nuovo occupante.
-        assert voci["cessione_fabbricato"]["stato"] == "attesa"
-        assert voci["cessione_fabbricato"]["a_carico_proprieta"] is True
-        assert voci["cessione_fabbricato"]["generabile"] == "cessione_fabbricato"
-        # L'atto di subentro nel contratto non compare: tenant_1 non è
-        # subentrato a nessuno.
-        assert "atto_subentro_locazione" not in voci
+    def test_fascicolo_vuoto_non_elenca_nulla(self, client_inq_1, tenant_1):
+        payload = client_inq_1.get(self.URL).json()
+        # Nessun documento è dovuto: senza file non c'è nulla da elencare —
+        # nemmeno i due che generiamo noi, che si producono da un'azione
+        # apposita e non da una riga vuota nel fascicolo.
+        assert payload["voci"] == []
+        assert payload["altri"] == []
 
     def test_voce_compare_solo_se_caricata(self, client_inq_1, tenant_1):
         TenantDocument.objects.create(
@@ -615,15 +608,17 @@ class TestFascicolo:
             data_scadenza=oggi - datetime.timedelta(days=3),
         )
         riepilogo = client_inq_1.get(self.URL).json()["riepilogo"]
-        # carta d'identità ok, passaporto scaduto, e in attesa la voce a
-        # carico della proprietà (la cessione di fabbricato).
+        # Carta d'identità valida, passaporto scaduto: due voci, entrambe
+        # con un file dietro.
         assert riepilogo["ok"] == 1
         assert riepilogo["scaduto"] == 1
-        assert riepilogo["attesa"] == 1
+        assert riepilogo["voci"] == 2
         assert riepilogo["da_sistemare"] == 1
-        # Nessun conteggio di "mancanti": non c'è un minimo da caricare.
+        # Nessun conteggio di "mancanti" né di documenti attesi: non c'è un
+        # minimo da caricare.
         assert "mancante" not in riepilogo
         assert "completezza" not in riepilogo
+        assert "attesa" not in riepilogo
 
     def test_inquilino_non_vede_documenti_altrui(self, client_inq_1, tenant_1, tenant_2):
         TenantDocument.objects.create(

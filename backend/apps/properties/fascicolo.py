@@ -15,23 +15,21 @@ Stati di una voce:
     scade entro :data:`GIORNI_PREAVVISO_SCADENZA` giorni.
 ``scaduto``
     la data di scadenza è passata.
-``attesa``
-    documento a carico della proprietà (l'atto di subentro lo carica il
-    proprietario, l'inquilino non deve fare nulla).
 
 **Nessun documento è obbligatorio**: non esiste uno stato "mancante" e il
 fascicolo non conta quanto manca. I documenti sono copie di cortesia, e dopo
 la verifica possono anche essere cancellati (meno dati conservati, meno
-rischio). Una voce senza file compare solo quando è a carico della proprietà.
+rischio).
 
-Corollario: una voce a carico della proprietà che *non si applica* a quel
-rapporto non deve comparire affatto. L'atto di subentro nel contratto ha
-senso solo per chi è subentrato a qualcuno; per il primo occupante di una
-stanza resterebbe in ``attesa`` per sempre, aspettando un documento che non
-esisterà mai. Per questo :func:`costruisci_fascicolo` conosce anche
-l'assegnazione dell'inquilino.
+**Il fascicolo elenca solo i file che esistono** (2026-08-03): nessuna voce
+vuota, nemmeno per i documenti che produce l'applicazione. Una riga in attesa
+di un documento è già una richiesta, e non tutti i casi la meritano — la
+comunicazione di cessione di fabbricato, per dire, non serve per ogni
+inquilino. Generare è quindi un'**azione che si invoca** (l'elenco dei
+documenti producibili sta in ``documenti.GENERATORI``, servito
+dall'endpoint ``generabili/``), non un posto vuoto che chiede di essere
+riempito.
 """
-from collections.abc import Callable
 from dataclasses import dataclass
 
 from django.utils import timezone
@@ -49,23 +47,17 @@ class VoceFascicolo:
     """Definizione di una voce della checklist (indipendente dai file)."""
 
     tipo: str
-    a_carico_proprieta: bool = False
     suggerimento: str = ""
-    #: Codice del generatore, se il documento lo produce l'applicazione.
+    #: Codice del generatore, se il documento lo produce l'applicazione:
+    #: serve alla UI per offrire "Rigenera" invece di "Sostituisci".
     generabile: str = ""
-    #: Se presente e falso per quell'assegnazione, la voce non compare.
-    applicabile: Callable | None = None
 
     @property
     def tipo_display(self):
         return TenantDocument.Tipo(self.tipo).label
 
 
-def _e_un_subentro(assignment) -> bool:
-    return assignment is not None and assignment.subentra_a_id is not None
-
-
-#: Voci della checklist, nell'ordine in cui compaiono nel fascicolo.
+#: Ordine in cui i tipi compaiono nel fascicolo (solo quelli con file).
 VOCI = (
     VoceFascicolo(Tipo.CARTA_IDENTITA, suggerimento="fronte e retro"),
     VoceFascicolo(Tipo.CODICE_FISCALE, suggerimento="tessera sanitaria"),
@@ -80,24 +72,16 @@ VOCI = (
     # l'immobile e semmai va fra i documenti della casa.
     VoceFascicolo(
         Tipo.ATTO_SUBENTRO_LOCAZIONE,
-        a_carico_proprieta=True,
         # I suggerimenti descrivono il documento e nient'altro: lo stesso
-        # payload alimenta il fascicolo dell'inquilino, a cui un "lo generi
-        # tu" non direbbe nulla. L'invito ad agire sta nella UI del
-        # proprietario, che sa di essere tale.
+        # payload alimenta il fascicolo dell'inquilino e quello del
+        # proprietario.
         suggerimento="ingresso nel contratto già in corso",
         generabile="atto_subentro_locazione",
-        # Solo per chi è subentrato a qualcuno: al primo occupante di una
-        # stanza questo atto non serve, e la voce non deve comparire.
-        applicabile=_e_un_subentro,
     ),
     VoceFascicolo(
         Tipo.CESSIONE_FABBRICATO,
-        a_carico_proprieta=True,
         suggerimento="comunicazione all'autorità (art. 12)",
         generabile="cessione_fabbricato",
-        # Incondizionata: l'art. 12 obbliga il cedente per ogni nuovo
-        # occupante, non solo per i subentri.
     ),
 )
 
@@ -108,7 +92,6 @@ STATI_DISPLAY = {
     "ok": "valido",
     "scadenza": "in scadenza",
     "scaduto": "scaduto",
-    "attesa": "lo carica la proprietà",
 }
 
 #: Ordine di gravità: lo stato di una voce è il peggiore delle sue pagine.
@@ -150,29 +133,23 @@ def _pagina(doc, indice, oggi):
 
 
 def _voce(definizione, documenti, oggi):
-    """Voce della checklist per un tipo, con le sue pagine."""
+    """Voce della checklist per un tipo, con le sue pagine (mai vuota)."""
     pagine = [_pagina(d, i + 1, oggi) for i, d in enumerate(documenti)]
-    if not pagine:
-        stato = "attesa"  # senza file esistono solo le voci a carico nostro
-    else:
-        stato = max((p["stato"] for p in pagine), key=lambda s: _GRAVITA[s])
+    stato = max((p["stato"] for p in pagine), key=lambda s: _GRAVITA[s])
     scadenze = [d.data_scadenza for d in documenti if d.data_scadenza]
     data_scadenza = min(scadenze) if scadenze else None
     return {
         "tipo": str(definizione.tipo),
         "tipo_display": definizione.tipo_display,
-        "a_carico_proprieta": definizione.a_carico_proprieta,
         "generabile": definizione.generabile or None,
         "suggerimento": definizione.suggerimento,
         "stato": stato,
         "stato_display": STATI_DISPLAY[stato],
         "data_scadenza": data_scadenza,
         "giorni_alla_scadenza": (data_scadenza - oggi).days if data_scadenza else None,
-        "caricato_il": (
-            timezone.localtime(min(d.created_at for d in documenti)).date()
-            if documenti
-            else None
-        ),
+        "caricato_il": timezone.localtime(
+            min(d.created_at for d in documenti)
+        ).date(),
         "pagine": pagine,
     }
 
@@ -183,7 +160,6 @@ def _altro(doc, oggi):
     return {
         "tipo": doc.tipo,
         "tipo_display": doc.get_tipo_display(),
-        "a_carico_proprieta": False,
         "generabile": None,
         "suggerimento": "",
         "stato": pagina["stato"],
@@ -198,23 +174,17 @@ def _altro(doc, oggi):
     }
 
 
-def costruisci_fascicolo(tenant, documenti=None, oggi=None, assignment=None):
+def costruisci_fascicolo(tenant, documenti=None, oggi=None):
     """Fascicolo di un inquilino: checklist per tipo + riepilogo.
 
     ``documenti`` permette di passare un queryset già filtrato/prefetchato
     (evita una query per inquilino quando si costruiscono più fascicoli).
-
-    ``assignment`` (default: l'ultima assegnazione dell'inquilino) serve
-    alle voci condizionate: senza sapere se c'è stato un subentro non si
-    può dire se l'atto di subentro nel contratto vada preteso o ignorato.
     """
     # Ora locale, non del server: un documento caricato alle 00:30 a Roma è
     # delle 22:30 del giorno prima in UTC, e mostrerebbe la data sbagliata.
     oggi = oggi or timezone.localdate()
     if documenti is None:
         documenti = tenant.documenti.all()
-    if assignment is None:
-        assignment = tenant.assignments.order_by("-valid_from").first()
     per_tipo = {}
     liberi = []
     for doc in sorted(documenti, key=lambda d: (d.created_at, d.pk)):
@@ -226,17 +196,10 @@ def costruisci_fascicolo(tenant, documenti=None, oggi=None, assignment=None):
     voci = []
     for definizione in VOCI:
         docs = per_tipo.get(definizione.tipo, [])
-        # Nessun documento è dovuto: una voce senza file compare solo se la
-        # deve caricare la proprietà...
-        if not docs and not definizione.a_carico_proprieta:
-            continue
-        # ...e solo se quel documento ha senso per questo rapporto. Un file
-        # già caricato invece si mostra sempre: esiste, va visto.
-        if (
-            not docs
-            and definizione.applicabile is not None
-            and not definizione.applicabile(assignment)
-        ):
+        # Nessun documento è dovuto: il fascicolo elenca ciò che c'è, non
+        # ciò che manca. Anche per i documenti che generiamo noi — la
+        # generazione è un'azione a parte, non un vuoto da riempire.
+        if not docs:
             continue
         voci.append(_voce(definizione, docs, oggi))
 

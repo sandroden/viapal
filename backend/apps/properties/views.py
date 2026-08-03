@@ -306,7 +306,7 @@ class TenantDocumentViewSet(ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_permissions(self):
-        if self.action == "genera":
+        if self.action in {"genera", "generabili"}:
             # Generare un documento è un atto della proprietà, non
             # dell'inquilino.
             return [IsPropertyMember()]
@@ -348,6 +348,39 @@ class TenantDocumentViewSet(ModelViewSet):
                 raise PermissionDenied("Nessun profilo inquilino associato all'utente.")
         return Response(costruisci_fascicolo(tenant, documenti))
 
+    @action(detail=False, methods=["get"], url_path="generabili")
+    def generabili(self, request):
+        """Documenti che l'applicazione sa produrre per un inquilino.
+
+        Il fascicolo elenca solo i file che esistono: senza questo elenco
+        non ci sarebbe modo di sapere *cosa* si può generare. È una GET
+        perché non produce nulla — a differenza dell'anteprima, che passa
+        dal generatore e resta una POST.
+
+        ``?tenant=<id>`` (dell'immobile attivo); per ciascun documento,
+        ``esistente`` è il PDF che abbiamo già prodotto, se c'è.
+        """
+        from properties.documenti import GENERATORI
+
+        tenant = self._tenant_per_elenco(request)
+        return Response(
+            {
+                "tenant": tenant.pk,
+                "documenti": [
+                    {
+                        "codice": str(documento.chiave),
+                        "titolo": documento.titolo,
+                        "tipo": str(documento.tipo_documento),
+                        "tipo_display": TenantDocument.Tipo(
+                            documento.tipo_documento
+                        ).label,
+                        "esistente": self._esistente(tenant, documento.tipo_documento),
+                    }
+                    for documento in GENERATORI.values()
+                ],
+            }
+        )
+
     @action(detail=False, methods=["post"], url_path="genera")
     def genera(self, request):
         """Anteprima o generazione di un documento PDF per un inquilino.
@@ -377,15 +410,7 @@ class TenantDocumentViewSet(ModelViewSet):
             raise ValidationError({"detail": str(e)})
 
         esistente = self._documento_generato(tenant, esito["documento"])
-        esito["esistente"] = (
-            {
-                "id": esistente.pk,
-                "descrizione": esistente.descrizione,
-                "created_at": esistente.created_at,
-            }
-            if esistente
-            else None
-        )
+        esito["esistente"] = self._riferimento(esistente)
         if request.data.get("dry_run", True):
             return Response(esito)
 
@@ -403,9 +428,15 @@ class TenantDocumentViewSet(ModelViewSet):
         )
 
     def _tenant_per_generazione(self, request):
+        return self._tenant_indicato(request, request.data.get("tenant"))
+
+    def _tenant_per_elenco(self, request):
+        return self._tenant_indicato(request, request.query_params.get("tenant"))
+
+    @staticmethod
+    def _tenant_indicato(request, tenant_id):
         from rest_framework.exceptions import ValidationError
 
-        tenant_id = request.data.get("tenant")
         if not tenant_id:
             raise ValidationError({"tenant": "Indicare l'inquilino."})
         return get_object_or_404(
@@ -424,6 +455,20 @@ class TenantDocumentViewSet(ModelViewSet):
     def _documento_generato(tenant, tipo):
         """Il PDF prodotto dal sistema per quel tipo, se già esiste."""
         return tenant.documenti.filter(tipo=tipo, generato=True).first()
+
+    @staticmethod
+    def _riferimento(documento):
+        """Il minimo per dire «ne esiste già uno, del giorno tale»."""
+        if documento is None:
+            return None
+        return {
+            "id": documento.pk,
+            "descrizione": documento.descrizione,
+            "created_at": documento.created_at,
+        }
+
+    def _esistente(self, tenant, tipo):
+        return self._riferimento(self._documento_generato(tenant, tipo))
 
     def _salva_generato(self, request, tenant, codice, assignment):
         """Genera il PDF e sostituisce il precedente, se il sistema ne
