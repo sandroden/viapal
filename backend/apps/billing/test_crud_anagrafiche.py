@@ -518,3 +518,143 @@ class TestQuotaCondominioCrud:
         )
         resp = client_operativo.delete(f"{self.URL}{altrui.id}/")
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Conto suggerito: niente query per riga
+# ---------------------------------------------------------------------------
+
+
+class TestContoSuggeritoQuery:
+    """Il conto proposto risale assignment → stanza → immobile → conto: se il
+    queryset non lo porta con sé, la pagina "Da incassare" fa una coppia di
+    query per riga."""
+
+    def _crea_riga(self, immobile, n):
+        from billing.models import Receivable, StatoPagamento
+        from properties.models import Room, RoomAssignment
+
+        room = Room.objects.create(property=immobile, nome=f"Camera {n}")
+        a = RoomAssignment.objects.create(
+            room=room, tenant=_tenant(immobile, f"Inq{n}"),
+            valid_from=datetime.date(2026, 1, 1),
+            canone_mensile=Decimal("400.00"),
+        )
+        Receivable.objects.create(
+            assignment=a,
+            causale=Receivable.Causale.AFFITTO,
+            competenza_da=datetime.date(2026, 1, 1),
+            competenza_a=datetime.date(2026, 1, 31),
+            scadenza=datetime.date(2026, 1, 5),
+            importo_dovuto=Decimal("400.00"),
+            stato=StatoPagamento.ATTESO,
+        )
+
+    def test_lista_receivable_non_cresce_con_le_righe(
+        self, client_operativo, immobile, owner_profile
+    ):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from properties.models import OwnerBankAccount
+
+        conto = OwnerBankAccount.objects.create(
+            owner=owner_profile,
+            banca="Banca Test",
+            intestatario="Titolare",
+            iban="IT60X0542811101000000123456",
+        )
+        immobile.bank_account_utenze = conto
+        immobile.save(update_fields=["bank_account_utenze"])
+
+        self._crea_riga(immobile, 1)
+        with CaptureQueriesContext(connection) as una:
+            resp = client_operativo.get("/api/v1/receivables/")
+        assert resp.status_code == 200, resp.content
+
+        for n in range(2, 7):
+            self._crea_riga(immobile, n)
+        with CaptureQueriesContext(connection) as sei:
+            resp = client_operativo.get("/api/v1/receivables/")
+        assert resp.status_code == 200, resp.content
+        assert len(resp.json()["results"]) == 6
+
+        if len(sei) != len(una):
+            extra = [q["sql"][:160] for q in sei.captured_queries[len(una):]]
+            raise AssertionError(
+                f"query cresciute da {len(una)} a {len(sei)}: " + "\n".join(extra[:4])
+            )
+        assert {r["conto_suggerito"] for r in resp.json()["results"]} == {conto.id}
+
+
+# ---------------------------------------------------------------------------
+# Admin: quota condominio dall'inline sul contratto
+# ---------------------------------------------------------------------------
+
+
+class TestQuotaCondominioAdminForm:
+    """L'inline sul contratto non chiede l'immobile: lo deriva il modello dal
+    contratto del parent. Se la derivazione salta, la FK non-null esplode."""
+
+    def test_form_inline_deriva_immobile_dal_contratto(self, immobile):
+        from billing.admin_inlines import TenantCondominioRateForm
+        from properties.models import Contract
+
+        contratto = Contract.objects.create(
+            property=immobile,
+            data_stipula=datetime.date(2026, 1, 1),
+            data_decorrenza=datetime.date(2026, 1, 1),
+            durata_anni=4,
+        )
+        form = TenantCondominioRateForm(data={
+            "contract": contratto.pk,
+            "valid_from": "2026-01-01",
+            "importo_mensile": "90.00",
+            "note": "",
+        })
+        assert form.is_valid(), form.errors
+        rata = form.save()
+        assert rata.property_id == immobile.id
+
+    def test_pagine_admin_si_aprono(self, immobile, quota_base):
+        """Fieldset e inline restano coerenti col modello: senza questo
+        controllo un campo rinominato si scopre solo aprendo l'admin."""
+        from properties.models import Contract
+
+        contratto = Contract.objects.create(
+            property=immobile,
+            data_stipula=datetime.date(2026, 1, 1),
+            data_decorrenza=datetime.date(2026, 1, 1),
+            durata_anni=4,
+        )
+        admin = User.objects.create_superuser("admin_qc", "a@v.it", "pwd123!")
+        c = APIClient(enforce_csrf_checks=False)
+        c.force_login(admin)
+        for url in (
+            "/admin/billing/tenantcondominiorate/",
+            "/admin/billing/tenantcondominiorate/add/",
+            f"/admin/billing/tenantcondominiorate/{quota_base.id}/change/",
+            f"/admin/properties/contract/{contratto.id}/change/",
+        ):
+            assert c.get(url).status_code == 200, url
+
+    def test_quota_di_altro_immobile_sul_contratto_rifiutata(
+        self, immobile, immobile2
+    ):
+        from billing.models import TenantCondominioRate
+        from django.core.exceptions import ValidationError
+        from properties.models import Contract
+
+        contratto_b = Contract.objects.create(
+            property=immobile2,
+            data_stipula=datetime.date(2026, 1, 1),
+            data_decorrenza=datetime.date(2026, 1, 1),
+            durata_anni=4,
+        )
+        rata = TenantCondominioRate(
+            property=immobile,
+            contract=contratto_b,
+            valid_from=datetime.date(2026, 1, 1),
+            importo_mensile=Decimal("90.00"),
+        )
+        with pytest.raises(ValidationError):
+            rata.full_clean()

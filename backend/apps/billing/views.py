@@ -1047,6 +1047,11 @@ class ReceivableViewSet(ReadOnlyModelViewSet):
                 "assignment__tenant",
                 "assignment__room",
                 "utility_period",
+                # Il conto suggerito del serializer risale a
+                # assignment → room → property → conto: senza questi, una
+                # coppia di query per riga sulla pagina "Da incassare".
+                "assignment__bank_account_affitto",
+                "assignment__room__property__bank_account_utenze",
             )
             .prefetch_related(
                 Prefetch(

@@ -620,10 +620,13 @@ class ReceivableForReconcileSerializer(serializers.ModelSerializer):
         return r.descrizione or "Addebito extra"
 
     def get_importo_allocato(self, r: Receivable):
-        # Se la queryset è già annotata con _alloc, riusala per non rifare la SUM.
-        cached = getattr(r, "_alloc", None)
-        if cached is not None:
-            return cached
+        # Se la queryset è già annotata con _alloc, riusala per non rifare la
+        # SUM. Il test è sulla *presenza* dell'annotazione, non sul valore:
+        # senza allocazioni la SUM è NULL, e un controllo su None rimandava
+        # all'aggregate proprio le righe da incassare — una query per riga
+        # sulla pagina che le carica tutte.
+        if hasattr(r, "_alloc"):
+            return r._alloc or 0
         from django.db.models import Sum
         agg = r.allocations.aggregate(tot=Sum("importo"))["tot"]
         return agg or 0
