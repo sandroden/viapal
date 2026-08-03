@@ -66,6 +66,23 @@
               </div>
             </div>
 
+            <!-- Conto su cui gli inquilini versano: è il conto che finisce
+                 nel QR di pagamento e che l'app propone quando si registra
+                 un incasso. Le opzioni sono i conti dei membri. -->
+            <q-select
+              v-model="formContoUtenze"
+              :options="opzioniConto"
+              label="Conto per incassi e utenze"
+              outlined
+              dense
+              emit-value
+              map-options
+              clearable
+              :readonly="!puoModificare"
+              hint="Dove gli inquilini versano affitto e utenze"
+              data-testid="immobile-bank_account_utenze"
+            />
+
             <q-select
               v-model="formFirmatario"
               :options="opzioniFirmatario"
@@ -141,6 +158,78 @@
                     @click="rimuovi(m)"
                   />
                 </div>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </q-card-section>
+      </q-card>
+
+      <!-- Conti bancari dei membri -->
+      <q-card flat bordered class="vp-card q-mb-md" style="max-width: 720px">
+        <q-card-section>
+          <div class="row items-center">
+            <div class="vp-section-title">Conti bancari</div>
+            <q-space />
+            <q-btn
+              dense
+              color="primary"
+              icon="add"
+              label="Nuovo conto"
+              data-testid="nuovo-conto"
+              @click="apriDialogConto(null)"
+            />
+          </div>
+          <div class="vp-hint q-mt-xs">
+            I conti dei membri: da qui si sceglie quello su cui gli inquilini
+            versano. Ognuno può modificare solo i propri.
+          </div>
+          <q-list separator class="q-mt-sm">
+            <q-item v-for="c in conti" :key="c.id" data-testid="riga-conto">
+              <q-item-section>
+                <q-item-label>
+                  {{ c.intestatario }} — {{ c.banca }}
+                  <q-chip
+                    v-if="c.id === dettaglio.bank_account_utenze"
+                    dense
+                    outline
+                    class="q-ml-xs"
+                  >
+                    incassi e utenze
+                  </q-chip>
+                </q-item-label>
+                <q-item-label caption>
+                  {{ c.iban }}
+                  <template v-if="!c.attivo"> · non attivo</template>
+                </q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <div class="row items-center q-gutter-xs">
+                  <q-btn
+                    v-if="c.owner === mioOwnerProfileId"
+                    flat
+                    dense
+                    round
+                    icon="edit"
+                    :aria-label="`Modifica conto ${c.banca}`"
+                    @click="apriDialogConto(c)"
+                  />
+                  <q-btn
+                    v-if="c.owner === mioOwnerProfileId"
+                    flat
+                    dense
+                    round
+                    icon="delete_outline"
+                    color="negative"
+                    :aria-label="`Elimina conto ${c.banca}`"
+                    @click="eliminaConto(c)"
+                  />
+                </div>
+              </q-item-section>
+            </q-item>
+            <q-item v-if="conti.length === 0">
+              <q-item-section class="text-grey">
+                Nessun conto registrato: senza, gli inquilini non hanno un
+                IBAN su cui versare.
               </q-item-section>
             </q-item>
           </q-list>
@@ -233,6 +322,58 @@
       </q-card>
     </q-dialog>
 
+    <!-- Dialog conto bancario -->
+    <q-dialog v-model="dialogConto">
+      <q-card style="min-width: 420px">
+        <q-card-section>
+          <div class="vp-section-title">
+            {{ contoInModifica ? 'Modifica conto' : 'Nuovo conto' }}
+          </div>
+          <div class="vp-hint">
+            Il conto è tuo: gli altri membri lo vedono ma non lo modificano.
+          </div>
+        </q-card-section>
+        <q-card-section class="q-gutter-md">
+          <q-input
+            v-model="formConto.banca"
+            label="Banca"
+            outlined
+            dense
+            autofocus
+            data-testid="conto-banca"
+          />
+          <q-input
+            v-model="formConto.intestatario"
+            label="Intestatario"
+            outlined
+            dense
+            data-testid="conto-intestatario"
+          />
+          <q-input
+            v-model="formConto.iban"
+            label="IBAN"
+            outlined
+            dense
+            data-testid="conto-iban"
+          />
+          <q-toggle v-model="formConto.attivo" label="Attivo" />
+          <q-banner v-if="erroreConto" class="vp-banner-errore" rounded dense>
+            {{ erroreConto }}
+          </q-banner>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn v-close-popup flat label="Annulla" />
+          <q-btn
+            color="primary"
+            label="Salva"
+            :loading="savingConto"
+            data-testid="salva-conto"
+            @click="salvaConto"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
     <!-- Dialog nuovo assetto quote -->
     <q-dialog v-model="dialogQuote">
       <q-card style="min-width: 420px">
@@ -293,7 +434,9 @@ import { computed, nextTick, onMounted, ref } from 'vue';
 import { isAxiosError } from 'axios';
 import { useQuasar, type QInput } from 'quasar';
 import { useRoute } from 'vue-router';
-import { type RuoloProperty } from 'stores/auth';
+import { api } from 'boot/axios';
+import { useAuthStore, type RuoloProperty } from 'stores/auth';
+import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
 import {
   CAMPI_INDIRIZZO,
   usePropertiesStore,
@@ -306,6 +449,18 @@ import {
 const $q = useQuasar();
 const route = useRoute();
 const propStore = usePropertiesStore();
+const auth = useAuthStore();
+const contiStore = useOwnerBankAccountsStore();
+
+interface ContoBancario {
+  id: number;
+  owner: number;
+  owner_nominativo: string;
+  banca: string;
+  intestatario: string;
+  iban: string;
+  attivo: boolean;
+}
 
 const loading = ref(true);
 const dettaglio = ref<PropertyDettaglio | null>(null);
@@ -316,6 +471,7 @@ const formNome = ref('');
 const formIndirizzo = ref('');
 const formIndirizzoStrutturato = ref<IndirizzoStrutturato>(indirizzoVuoto());
 const formFirmatario = ref<number | null>(null);
+const formContoUtenze = ref<number | null>(null);
 const savingDati = ref(false);
 
 /** Riferimenti ai campi, per portare il fuoco dove il link dei "dati
@@ -350,6 +506,13 @@ const invitoRuolo = ref<RuoloProperty>('proprietario');
 const invitoSaving = ref(false);
 const invitoErrore = ref('');
 
+const conti = ref<ContoBancario[]>([]);
+const dialogConto = ref(false);
+const contoInModifica = ref<ContoBancario | null>(null);
+const formConto = ref({ banca: '', intestatario: '', iban: '', attivo: true });
+const savingConto = ref(false);
+const erroreConto = ref('');
+
 const dialogQuote = ref(false);
 const quoteValidFrom = ref(new Date().toISOString().slice(0, 10));
 const quoteForm = ref<Array<{ user: number; nominativo: string; percento: string }>>([]);
@@ -362,6 +525,7 @@ const opzioniRuolo = [
   { label: 'Sola lettura', value: 'sola_lettura' },
 ];
 
+const mioOwnerProfileId = computed(() => auth.user?.owner_profile_id ?? null);
 const sonoProprietario = computed(() => dettaglio.value?.mio_ruolo === 'proprietario');
 const puoModificare = computed(
   () => dettaglio.value?.mio_ruolo === 'proprietario' || dettaglio.value?.mio_ruolo === 'gestore',
@@ -371,6 +535,14 @@ const quoteCorrenti = computed(() => quote.value.filter((q) => q.valid_to === nu
  *  stessa fonte da cui il generatore ricava la parte locatrice. */
 const opzioniFirmatario = computed(() =>
   quoteCorrenti.value.map((q) => ({ label: q.owner_nominativo, value: q.owner })),
+);
+/** I conti dei membri dell'immobile: l'endpoint è già scopato sull'immobile
+ *  attivo, quindi non compaiono conti di estranei. */
+const opzioniConto = computed(() =>
+  contiStore.accounts.map((c) => ({
+    label: `${c.intestatario} — ${c.banca}`,
+    value: c.id,
+  })),
 );
 const totalePercento = computed(() =>
   quoteForm.value.reduce((tot, r) => tot + (Number(r.percento) || 0), 0),
@@ -399,7 +571,9 @@ async function carica() {
   try {
     dettaglio.value = await propStore.caricaDettaglio(id);
     riempiForm(dettaglio.value);
+    await contiStore.ensureLoaded(true);
     membri.value = await propStore.caricaMembri(id);
+    await caricaConti();
     quote.value = await propStore.caricaQuote(id);
   } finally {
     loading.value = false;
@@ -411,6 +585,7 @@ function riempiForm(dati: PropertyDettaglio) {
   formNome.value = dati.nome;
   formIndirizzo.value = dati.indirizzo;
   formFirmatario.value = dati.owner_firmatario;
+  formContoUtenze.value = dati.bank_account_utenze;
   const strutturato = indirizzoVuoto();
   for (const c of CAMPI_INDIRIZZO) strutturato[c.campo] = dati[c.campo] ?? '';
   formIndirizzoStrutturato.value = strutturato;
@@ -436,6 +611,7 @@ async function salvaDati() {
       nome: formNome.value.trim(),
       indirizzo: formIndirizzo.value.trim(),
       owner_firmatario: formFirmatario.value,
+      bank_account_utenze: formContoUtenze.value,
       ...formIndirizzoStrutturato.value,
     });
     riempiForm(dettaglio.value);
@@ -445,6 +621,80 @@ async function salvaDati() {
   } finally {
     savingDati.value = false;
   }
+}
+
+async function caricaConti() {
+  const { data } = await api.get<ContoBancario[] | { results: ContoBancario[] }>(
+    '/api/v1/bank-accounts/',
+  );
+  conti.value = Array.isArray(data) ? data : (data.results ?? []);
+}
+
+function apriDialogConto(c: ContoBancario | null) {
+  contoInModifica.value = c;
+  erroreConto.value = '';
+  formConto.value = {
+    banca: c?.banca ?? '',
+    intestatario: c?.intestatario ?? '',
+    iban: c?.iban ?? '',
+    attivo: c?.attivo ?? true,
+  };
+  dialogConto.value = true;
+}
+
+async function salvaConto() {
+  erroreConto.value = '';
+  const f = formConto.value;
+  if (!f.banca.trim() || !f.intestatario.trim() || !f.iban.trim()) {
+    erroreConto.value = 'Banca, intestatario e IBAN sono obbligatori.';
+    return;
+  }
+  savingConto.value = true;
+  const payload = {
+    banca: f.banca.trim(),
+    intestatario: f.intestatario.trim(),
+    iban: f.iban.replace(/\s+/g, '').toUpperCase(),
+    attivo: f.attivo,
+  };
+  try {
+    if (contoInModifica.value) {
+      await api.patch(`/api/v1/bank-accounts/${contoInModifica.value.id}/`, payload);
+    } else {
+      await api.post('/api/v1/bank-accounts/', payload);
+    }
+    dialogConto.value = false;
+    await caricaConti();
+    // Il select del conto dell'immobile pesca dallo store: va riallineato.
+    await contiStore.ensureLoaded(true);
+    $q.notify({ type: 'positive', message: 'Conto salvato.' });
+  } catch (e: unknown) {
+    erroreConto.value = messaggioErrore(e, 'Salvataggio non riuscito.');
+  } finally {
+    savingConto.value = false;
+  }
+}
+
+function eliminaConto(c: ContoBancario) {
+  $q.dialog({
+    title: 'Eliminare il conto?',
+    message: `${c.intestatario} — ${c.banca} verrà rimosso.`,
+    cancel: { flat: true, label: 'Annulla' },
+    ok: { color: 'negative', label: 'Elimina' },
+  }).onOk(() => {
+    void (async () => {
+      try {
+        await api.delete(`/api/v1/bank-accounts/${c.id}/`);
+        await caricaConti();
+        await contiStore.ensureLoaded(true);
+        $q.notify({ type: 'positive', message: 'Conto eliminato.' });
+      } catch (e: unknown) {
+        $q.notify({
+          type: 'negative',
+          message: messaggioErrore(e, 'Eliminazione non riuscita: ha movimenti collegati.'),
+        });
+      }
+    })();
+  });
 }
 
 async function invia() {

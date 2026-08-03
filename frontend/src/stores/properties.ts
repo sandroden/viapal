@@ -183,7 +183,10 @@ export const usePropertiesStore = defineStore('properties', {
     async aggiornaProperty(
       id: number,
       payload: Partial<
-        Pick<PropertyDettaglio, 'nome' | 'indirizzo' | 'owner_firmatario'> &
+        Pick<
+          PropertyDettaglio,
+          'nome' | 'indirizzo' | 'owner_firmatario' | 'bank_account_utenze'
+        > &
           IndirizzoStrutturato
       >,
     ): Promise<PropertyDettaglio> {
