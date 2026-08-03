@@ -234,7 +234,9 @@ def invia_invito_membro(
     """Invita una persona come membro (proprietario/gestore/sola_lettura).
 
     - Se esiste già un utente con quell'email: aggiunge solo la membership e
-      manda una notifica (senza link password: ha già le credenziali).
+      manda una notifica. Il link imposta-password ci va lo stesso se
+      l'utente non ha ancora una password utilizzabile (invito precedente
+      mai completato), altrimenti resterebbe senza modo di entrare.
     - Altrimenti crea l'utente (username = email), la membership e manda
       l'email con il link imposta-password.
     - Per il ruolo 'proprietario' crea anche l'OwnerProfile se manca
@@ -317,6 +319,11 @@ def _crea_e_invia_membro(property, email, ruolo, *, nominativo, invitato_da):
             defaults={"nominativo": nominativo or user.get_full_name() or email},
         )
 
+    # Il link imposta-password si manda a chi non può ancora entrare: sia
+    # l'utente appena creato, sia quello di un invito precedente rimasto
+    # senza password utilizzabile.
+    ha_credenziali = user.has_usable_password()
+
     ruolo_label = dict(PropertyMembership.Ruolo.choices).get(ruolo, ruolo)
     invitante = ""
     if invitato_da is not None:
@@ -333,8 +340,8 @@ def _crea_e_invia_membro(property, email, ruolo, *, nominativo, invitato_da):
     oggetto = _applica(MEMBRO_OGGETTO, contesto)
     corpo = _applica(MEMBRO_CORPO, contesto)
     corpo_html = _applica(MEMBRO_CORPO_HTML, contesto)
-    if not creato:
-        # Utente esistente: niente link password, solo avviso.
+    if ha_credenziali:
+        # Ha già le sue credenziali: niente link password, solo avviso.
         corpo = corpo.replace(contesto["link"], contesto["app_url"])
         corpo_html = corpo_html.replace(contesto["link"], contesto["app_url"])
 

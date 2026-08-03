@@ -599,6 +599,30 @@ class TestInviti:
         assert len(mailoutbox) == 1
         assert "/imposta-password/" not in mailoutbox[0].body
 
+    def test_invito_email_esistente_senza_password_rimanda_il_link(
+        self, client_prop, immobile, immobile2, gruppo_proprietari, mailoutbox
+    ):
+        """Utente creato da un invito precedente e mai attivato: il secondo
+        invito deve riproporre il link, altrimenti non ha modo di entrare."""
+        mai_attivato = User.objects.create_user("mai", email="mai@v.it")
+        mai_attivato.set_unusable_password()
+        mai_attivato.save()
+        mai_attivato.groups.add(gruppo_proprietari)
+        PropertyMembership.objects.create(
+            property=immobile2, user=mai_attivato,
+            ruolo=PropertyMembership.Ruolo.PROPRIETARIO,
+        )
+
+        resp = client_prop.post(
+            f"/api/v1/properties/{immobile.id}/inviti/",
+            {"email": "mai@v.it", "ruolo": "proprietario"},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        assert resp.json()["creato"] is False
+        assert len(mailoutbox) == 1
+        assert "/imposta-password/" in mailoutbox[0].body
+
     def test_invito_doppio_400(self, client_prop, immobile, mailoutbox):
         payload = {"email": "doppio@v.it", "ruolo": "gestore"}
         resp1 = client_prop.post(
