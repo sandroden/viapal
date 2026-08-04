@@ -227,11 +227,6 @@ class ViapalIndexDashboard(Dashboard):
                         "Saldi live + storico settlement",
                     ),
                     _link(
-                        "Quadro annuale (frontend)",
-                        "/p/quadro-annuale/",
-                        "Vista riepilogo utenze annuale",
-                    ),
-                    _link(
                         "Ritardi (frontend)",
                         "/p/ritardi/",
                         "Cruscotto pagamenti in ritardo",

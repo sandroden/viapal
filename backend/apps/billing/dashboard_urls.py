@@ -10,7 +10,6 @@ from billing.dashboard_views import (
     DashboardInquilinoView,
     DashboardProprietarioView,
     PrevisionaleUtenzeView,
-    QuadroAnnualeView,
     RendicontoView,
     RestituzioneDepositoView,
     TenantSituazioneView,
@@ -29,7 +28,6 @@ urlpatterns = [
         BilancioOwnerDettaglioView.as_view(),
         name="dashboard-proprietario-dettaglio-bilancio",
     ),
-    path("quadro-annuale/<int:anno>/", QuadroAnnualeView.as_view(), name="quadro-annuale"),
     path(
         "tenants/<int:tenant_id>/situazione/",
         TenantSituazioneView.as_view(),

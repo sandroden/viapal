@@ -1,5 +1,5 @@
 """
-Endpoint custom per le dashboard inquilino, proprietario e quadro annuale.
+Endpoint custom per le dashboard inquilino e proprietario.
 """
 import datetime
 from decimal import Decimal
@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsInquilino, IsPropertyMember, IsProprietario  # noqa: F401
-from billing._dates import format_mese, format_mese_anno
+from billing._dates import format_mese_anno
 from billing._payments import conto_per_receivable, iban_valido
 from billing.calc.posizione import posizione_inquilino
 from billing.models import (
@@ -20,7 +20,6 @@ from billing.models import (
     Receivable,
     StatoPagamento,
     TenantCondominioRate,
-    UtilityChargePeriod,
 )
 from properties.models import OwnerProfile, RoomAssignment, TenantProfile
 from properties.serializers import TenantProfileSerializer  # noqa: F401
@@ -887,105 +886,6 @@ class ContoEconomicoView(APIView):
                 "tasso_medio": tasso_medio,
                 "per_stanza": occupazione,
             },
-        })
-
-
-# ---------------------------------------------------------------------------
-# Quadro annuale
-# ---------------------------------------------------------------------------
-
-class QuadroAnnualeView(APIView):
-    """
-    GET /api/v1/quadro-annuale/<anno>/ — Riproduce il foglio Excel delle utenze.
-    Solo membri dell'immobile.
-    """
-
-    permission_classes = [IsPropertyMember]
-
-    def get(self, request, anno: int):
-        from properties.context import get_request_property
-
-        prop = get_request_property(request)
-        periods = UtilityChargePeriod.objects.filter(
-            property=prop, periodo_da__year=anno,
-        ).order_by("periodo_da")
-
-        if not periods.exists():
-            periods = UtilityChargePeriod.objects.filter(
-                property=prop, periodo_a__year=anno,
-            ).order_by("periodo_da")
-
-        receivables = (
-            Receivable.objects.filter(
-                causale=Receivable.Causale.UTENZE,
-                utility_period__in=periods,
-            )
-            .select_related("assignment__tenant", "utility_period")
-            .order_by("utility_period__periodo_da", "assignment__tenant__nominativo")
-        )
-
-        tenant_names_set = set()
-        for r in receivables:
-            tenant_names_set.add(r.assignment.tenant.nominativo)
-        tenant_names = sorted(tenant_names_set)
-
-        receivable_index = {}
-        for r in receivables:
-            key = (r.utility_period_id, r.assignment.tenant.nominativo)
-            receivable_index[key] = r
-
-        righe = []
-        totale_anno_per_tenant: dict[str, Decimal] = {n: Decimal("0") for n in tenant_names}
-        totale_anno = Decimal("0")
-
-        for period in periods:
-            if period.periodo_da.month == period.periodo_a.month:
-                label = format_mese_anno(period.periodo_da)
-            else:
-                label = (
-                    f"{format_mese(period.periodo_da)} - "
-                    f"{format_mese_anno(period.periodo_a)}"
-                )
-
-            totale_periodo = Decimal("0")
-            per_tenant = {}
-
-            for nome in tenant_names:
-                r = receivable_index.get((period.id, nome))
-                if r:
-                    importo = r.importo_dovuto
-                    stato = r.stato
-                    giorni = (period.periodo_a - period.periodo_da).days + 1
-                else:
-                    importo = Decimal("0")
-                    stato = None
-                    giorni = 0
-
-                per_tenant[nome] = {
-                    "giorni": giorni,
-                    "importo": float(importo),
-                    "stato": stato,
-                }
-                totale_periodo += importo
-                totale_anno_per_tenant[nome] += importo
-
-            totale_anno += totale_periodo
-
-            righe.append({
-                "periodo_id": period.id,
-                "periodo_label": label,
-                "periodo_da": period.periodo_da.isoformat(),
-                "periodo_a": period.periodo_a.isoformat(),
-                "totale_periodo": float(totale_periodo),
-                "per_tenant": per_tenant,
-            })
-
-        return Response({
-            "anno": anno,
-            "tenants": tenant_names,
-            "righe": righe,
-            "totale_anno_per_tenant": {k: float(v) for k, v in totale_anno_per_tenant.items()},
-            "totale_anno": float(totale_anno),
         })
 
 

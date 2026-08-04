@@ -129,7 +129,6 @@ const vociMenu = computed(() => {
     { to: '/p/ritardi', label: 'Ritardi', icon: 'warning_amber' },
     { to: '/p/notifiche', label: 'Notifiche addebiti', icon: 'mark_email_read' },
     { to: '/p/inquilini', label: 'Inquilini', icon: 'group' },
-    { to: '/p/quadro-annuale', label: 'Quadro annuale', icon: 'table_view' },
     { to: '/p/spese', label: 'Spese', icon: 'shopping_cart' },
     { to: '/p/utenze', label: 'Utenze', icon: 'bolt' },
     { to: '/p/riconciliazione', label: 'Riconciliazione', icon: 'compare_arrows' },

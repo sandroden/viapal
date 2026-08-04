@@ -1130,43 +1130,6 @@ class TestBilancioOwnerDettaglio:
 
 
 # ---------------------------------------------------------------------------
-# Test Quadro Annuale
-# ---------------------------------------------------------------------------
-
-
-class TestQuadroAnnuale:
-    def test_proprietario_accede_2026(self, client_prop, period, charge_1, charge_2):
-        resp = client_prop.get("/api/v1/quadro-annuale/2026/")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["anno"] == 2026
-        assert "tenants" in data
-        assert "righe" in data
-        assert "totale_anno_per_tenant" in data
-        assert "totale_anno" in data
-
-    def test_righe_contengono_tenant(self, client_prop, period, charge_1, charge_2):
-        resp = client_prop.get("/api/v1/quadro-annuale/2026/")
-        data = resp.json()
-        assert len(data["righe"]) >= 1
-        riga = data["righe"][0]
-        assert "per_tenant" in riga
-        assert "totale_periodo" in riga
-
-    def test_anno_senza_dati(self, client_prop):
-        resp = client_prop.get("/api/v1/quadro-annuale/2000/")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["anno"] == 2000
-        assert data["righe"] == []
-        assert data["totale_anno"] == 0.0
-
-    def test_inquilino_non_accede(self, client_inq_1):
-        resp = client_inq_1.get("/api/v1/quadro-annuale/2026/")
-        assert resp.status_code == 403
-
-
-# ---------------------------------------------------------------------------
 # Test Tenant Situazione (drilldown inquilino)
 # ---------------------------------------------------------------------------
 
