@@ -79,22 +79,26 @@
       </div>
 
       <q-list padding>
-        <q-item-label header class="vp-drawer__header">Navigazione</q-item-label>
+        <template v-for="sezione in sezioniMenu" :key="sezione.label ?? 'top'">
+          <q-item-label v-if="sezione.label" header class="vp-drawer__header">
+            {{ sezione.label }}
+          </q-item-label>
 
-        <q-item
-          v-for="voce in vociMenu"
-          :key="voce.to"
-          v-ripple
-          clickable
-          :to="voce.to"
-          exact
-          class="vp-drawer__item"
-        >
-          <q-item-section avatar>
-            <q-icon :name="voce.icon" />
-          </q-item-section>
-          <q-item-section>{{ voce.label }}</q-item-section>
-        </q-item>
+          <q-item
+            v-for="voce in sezione.voci"
+            :key="voce.to"
+            v-ripple
+            clickable
+            :to="voce.to"
+            exact
+            class="vp-drawer__item"
+          >
+            <q-item-section avatar>
+              <q-icon :name="voce.icon" />
+            </q-item-section>
+            <q-item-section>{{ voce.label }}</q-item-section>
+          </q-item>
+        </template>
       </q-list>
     </q-drawer>
 
@@ -123,28 +127,56 @@ function etichettaRuolo(ruolo: RuoloProperty | null): string {
   return '';
 }
 
-const vociMenu = computed(() => {
-  const voci = [
-    { to: '/p/', label: 'Dashboard', icon: 'dashboard' },
-    { to: '/p/ritardi', label: 'Ritardi', icon: 'warning_amber' },
-    { to: '/p/notifiche', label: 'Notifiche addebiti', icon: 'mark_email_read' },
-    { to: '/p/inquilini', label: 'Inquilini', icon: 'group' },
-    { to: '/p/spese', label: 'Spese', icon: 'shopping_cart' },
-    { to: '/p/utenze', label: 'Utenze', icon: 'bolt' },
-    { to: '/p/riconciliazione', label: 'Riconciliazione', icon: 'compare_arrows' },
-    { to: '/p/saldi-proprietari', label: 'Saldi proprietari', icon: 'account_balance' },
-    { to: '/p/conto-economico', label: 'Conto economico', icon: 'assessment' },
+interface VoceMenu {
+  to: string;
+  label: string;
+  icon: string;
+}
+
+interface SezioneMenu {
+  label: string | null;
+  voci: VoceMenu[];
+}
+
+// Sezioni per ambito contabile: lato inquilini (incassi) e lato
+// proprietari (uscite e conti tra loro), più l'immobile.
+const sezioniMenu = computed<SezioneMenu[]>(() => {
+  const immobile: VoceMenu[] = [
     { to: '/p/impostazioni/proprieta', label: 'Immobile e membri', icon: 'home_work' },
     { to: '/p/impostazioni/casa', label: 'La casa', icon: 'meeting_room' },
   ];
   if (galleriaSlug.value) {
-    voci.push({
+    immobile.push({
       to: `/g/${galleriaSlug.value}`,
       label: 'Galleria annuncio',
       icon: 'photo_library',
     });
   }
-  return voci;
+  return [
+    {
+      label: null,
+      voci: [{ to: '/p/', label: 'Dashboard', icon: 'dashboard' }],
+    },
+    {
+      label: 'Inquilini',
+      voci: [
+        { to: '/p/inquilini', label: 'Inquilini', icon: 'group' },
+        { to: '/p/ritardi', label: 'Ritardi', icon: 'warning_amber' },
+        { to: '/p/notifiche', label: 'Notifiche addebiti', icon: 'mark_email_read' },
+        { to: '/p/utenze', label: 'Utenze', icon: 'bolt' },
+        { to: '/p/riconciliazione', label: 'Riconciliazione', icon: 'compare_arrows' },
+      ],
+    },
+    {
+      label: 'Proprietari',
+      voci: [
+        { to: '/p/spese', label: 'Spese', icon: 'shopping_cart' },
+        { to: '/p/saldi-proprietari', label: 'Saldi proprietari', icon: 'account_balance' },
+        { to: '/p/conto-economico', label: 'Conto economico', icon: 'assessment' },
+      ],
+    },
+    { label: 'Immobile', voci: immobile },
+  ];
 });
 
 // Slug della galleria dell'immobile ATTIVO (multiproprietà: mai list[0]).
