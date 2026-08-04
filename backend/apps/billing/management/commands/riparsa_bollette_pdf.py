@@ -7,8 +7,8 @@ ha già il PDF allegato). Da `pdftotext -layout` estraiamo:
 - data di emissione
 - numero fattura reale (se presente)
 
-Funziona oggi sui template "tipo Acea/Wind3" (italiani standard); per
-template differenti il command logga "non riconosciuto" e salta.
+Funziona oggi sui template "tipo Acea/Wind3" (italiani standard), Enel e
+Iren; per template differenti il command logga "non riconosciuto" e salta.
 """
 import datetime
 import re
@@ -61,12 +61,22 @@ RX_FORNITORI = [
     (re.compile(r"Eni\s+Plenitude", re.IGNORECASE), "Eni Plenitude"),
     (re.compile(r"A2A\s+Energia", re.IGNORECASE), "A2A Energia"),
     (re.compile(r"BrianzAcque", re.IGNORECASE), "BrianzAcque"),
+    # Iren: la ragione sociale cambia col servizio (Iren Mercato per l'energia,
+    # Iren Luce Gas e Servizi per il retail) → un solo Supplier "Iren".
+    (re.compile(r"IREN\s+MERCATO", re.IGNORECASE), "Iren"),
+    (re.compile(r"Iren\s+Luce\s+Gas\s+e\s+Servizi", re.IGNORECASE), "Iren"),
+    (re.compile(r"\birenlucegas\.it\b", re.IGNORECASE), "Iren"),
 ]
 
 # Identificazione prodotto: solo pattern contestuali specifici (la bolletta
 # Enel/Acea menziona spesso anche l'altro servizio in testo informativo, per
 # cui il match generico "GAS NATURALE" produrrebbe falsi positivi).
 RX_PRODOTTO = [
+    # Codici di fornitura: il dato più affidabile, perché è strutturale e non
+    # prosa. Il POD (IT001E…) esiste solo sulle bollette elettriche, il PDR
+    # (14 cifre, etichettato) solo su quelle gas.
+    (re.compile(r"\bPDR\b[\s\S]{0,80}?\b\d{10,}\b"), "gas"),
+    (re.compile(r"\bIT\d{3}E\d{6,}\b"), "luce"),
     # Acea: "BOLLETTA PER LA FORNITURA DI GAS NATURALE" / "DI ENERGIA ELETTRICA"
     (re.compile(r"FORNITURA\s+DI\s+GAS\s+NATURALE", re.IGNORECASE), "gas"),
     (re.compile(r"FORNITURA\s+DI\s+ENERGIA\s+ELETTRICA", re.IGNORECASE), "luce"),
@@ -99,6 +109,35 @@ RX_CONSUMO_ENEL = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
+# --- Template Iren -------------------------------------------------------
+# "** Periodo di riferimento:\n01 MAGGIO 2026 - 31 MAGGIO 2026" (mesi estesi).
+RX_PERIODO_IREN = re.compile(
+    r"Periodo\s+di\s+riferimento\s*:?\s*\**\s*"
+    r"(\d{1,2})\s+([A-Za-zÀ-ÿ]{3,})\s+(\d{4})"
+    r"\s*[-–]\s*"
+    r"(\d{1,2})\s+([A-Za-zÀ-ÿ]{3,})\s+(\d{4})",
+    re.IGNORECASE,
+)
+# "Emessa in data: 04 giugno 2026" (frontespizio) / "Emessa il\n04 giugno 2026"
+# (intestazione delle pagine successive).
+RX_EMISSIONE_IREN = re.compile(
+    r"Emessa\s+(?:in\s+data|il)\s*:?\s*(\d{1,2})\s+([A-Za-zÀ-ÿ]{3,})\s+(\d{4})",
+    re.IGNORECASE,
+)
+# "Fattura n. 38502606937372 *" (il numero fattura sta su riga propria sotto
+# l'etichetta "Numero fattura", quindi RX_NUM_FATTURA non lo vede).
+RX_NUM_FATTURA_IREN = re.compile(
+    r"Fattura\s+n\.\s*(\d{8,})",
+    re.IGNORECASE,
+)
+# "Consumo totale fatturato nel periodo **" e, su una riga successiva della
+# stessa tabella, "130 kWh" (in mezzo c'è la scadenza offerta, con cifre).
+RX_CONSUMO_IREN = re.compile(
+    r"Consumo\s+totale\s+fatturato\s+nel\s+periodo.{0,300}?"
+    r"([\d\.]+,?\d*)\s*(kWh|Smc|m³|mc)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
 
 def _ultimo_giorno_mese(anno: int, mese: int) -> int:
     if mese == 12:
@@ -111,6 +150,18 @@ def _parse_data(s: str) -> datetime.date | None:
     try:
         return datetime.datetime.strptime(s, "%d/%m/%Y").date()
     except (TypeError, ValueError):
+        return None
+
+
+def _parse_data_estesa(giorno: str, mese: str, anno: str) -> datetime.date | None:
+    """"04", "giugno", "2026" → date(2026, 6, 4). Le prime tre lettere bastano
+    a distinguere i dodici mesi italiani."""
+    num_mese = MESI_IT_ABBR.get(mese[:3].upper())
+    if not num_mese:
+        return None
+    try:
+        return datetime.date(int(anno), num_mese, int(giorno))
+    except ValueError:
         return None
 
 
@@ -138,7 +189,12 @@ def estrai_da_pdf(path: str) -> dict:
         ).stdout
     except (subprocess.SubprocessError, FileNotFoundError):
         return {}
+    return estrai_da_testo(out)
 
+
+def estrai_da_testo(out: str) -> dict:
+    """Stessa estrazione di :func:`estrai_da_pdf`, ma a partire dal testo già
+    prodotto da ``pdftotext -layout`` (separata per poterla testare senza PDF)."""
     risultato: dict = {
         "importo": None,
         "data_emissione": None,
@@ -153,11 +209,15 @@ def estrai_da_pdf(path: str) -> dict:
     if m:
         risultato["importo"] = _parse_importo(m.group(1))
 
-    # Periodo: prima Acea (date numeriche), poi Enel (mesi testuali)
+    # Periodo: prima Acea (date numeriche), poi Iren (giorno + mese esteso),
+    # infine Enel (solo mesi abbreviati, quindi periodo dedotto a mese intero)
     m = RX_PERIODO.search(out)
     if m:
         risultato["periodo_da"] = _parse_data(m.group(1))
         risultato["periodo_a"] = _parse_data(m.group(2))
+    elif (m := RX_PERIODO_IREN.search(out)) is not None:
+        risultato["periodo_da"] = _parse_data_estesa(*m.group(1, 2, 3))
+        risultato["periodo_a"] = _parse_data_estesa(*m.group(4, 5, 6))
     else:
         m = RX_PERIODO_ENEL.search(out)
         if m:
@@ -171,22 +231,25 @@ def estrai_da_pdf(path: str) -> dict:
                     anno_a, mese_a, _ultimo_giorno_mese(anno_a, mese_a)
                 )
 
-    # Data emissione: prima Acea, poi Enel
+    # Data emissione: prima Acea, poi Enel, poi Iren ("04 giugno 2026")
     m = RX_EMISSIONE.search(out)
     if m:
         risultato["data_emissione"] = _parse_data(m.group(1))
-    else:
-        m = RX_EMISSIONE_ENEL.search(out)
-        if m:
-            risultato["data_emissione"] = _parse_data(m.group(1))
+    elif (m := RX_EMISSIONE_ENEL.search(out)) is not None:
+        risultato["data_emissione"] = _parse_data(m.group(1))
+    elif (m := RX_EMISSIONE_IREN.search(out)) is not None:
+        risultato["data_emissione"] = _parse_data_estesa(*m.group(1, 2, 3))
 
-    m = RX_NUM_FATTURA.search(out)
+    m = RX_NUM_FATTURA.search(out) or RX_NUM_FATTURA_IREN.search(out)
     if m:
         risultato["numero_fattura_reale"] = m.group(1)
 
-    # Consumo: prima Acea, poi Enel (numero subito dopo "Totale da pagare X €")
+    # Consumo: prima Acea, poi Iren (etichetta esplicita), infine il fallback
+    # Enel — che è posizionale ("dopo Totale da pagare") e quindi il più fragile.
     m = RX_CONSUMO.search(out)
     if m:
+        risultato["consumo"] = _parse_importo(m.group(1))
+    elif (m := RX_CONSUMO_IREN.search(out)) is not None:
         risultato["consumo"] = _parse_importo(m.group(1))
     else:
         m = RX_CONSUMO_ENEL.search(out)

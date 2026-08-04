@@ -1,10 +1,12 @@
-"""Carica le bollette PDF di Monza presenti in ~/scanner come UtilityBill.
+"""Carica le bollette PDF presenti in una cartella (default ~/scanner) come
+UtilityBill dell'immobile indicato.
 
-Strategia: il **nome file** serve solo per identificare il prodotto
-(`utenze-mz-(luce|gas|acqua)-...`) e come `numero_fattura` (=basename, per
-idempotenza). Tutto il resto — importo, periodo, data emissione, consumo,
-fornitore — viene estratto direttamente dal PDF tramite la funzione
-`estrai_da_pdf` di ``riparsa_bollette_pdf``.
+Strategia: il nome file serve come `numero_fattura` (=basename, per
+idempotenza) e come *ripiego* per il prodotto (`utenze-<immobile>-(luce|gas|
+acqua)-...`). Tutto il resto — prodotto, importo, periodo, data emissione,
+consumo, fornitore — viene estratto direttamente dal PDF tramite la funzione
+`estrai_da_pdf` di ``riparsa_bollette_pdf``: il PDF vince sul nome file, che
+in archivio si è già rivelato sbagliato (bollette gas chiamate "luce").
 
 Per "rodare" il flusso senza alterare i Receivable degli inquilini:
 le UtilityBill sono entità separate dal calcolo dei conguagli (che si basa
@@ -22,12 +24,17 @@ from billing.management.commands.riparsa_bollette_pdf import estrai_da_pdf
 from billing.models import Supplier, UtilityBill
 from properties.models import OwnerProfile
 
-# Pattern ampio: cattura il prodotto (gas/luce/acqua) ovunque appaia dopo
-# `utenze-mz-`, tollerante anche a `_` come separatore. Tutto il resto del
-# nome è ignorato — i metadati arrivano dal PDF.
+# Pattern ampio: cattura il prodotto (gas/luce/acqua) ovunque appaia dopo il
+# token dell'immobile (`utenze-mz-`, `utenze-nova-`, …), tollerante anche a `_`
+# come separatore. Serve solo come ripiego se il PDF non dice il prodotto.
 PATTERN = re.compile(
-    r"^utenze[-_]mz[-_].*?(?P<prodotto>luce|gas|acqua)[-_].*\.pdf$",
+    r"^utenze[-_].*?(?P<prodotto>luce|gas|acqua)[-_].*\.pdf$",
     re.IGNORECASE,
+)
+# Token dell'immobile: la prima parola dopo `utenze-` (`mz`, `nova`, …), a meno
+# che sia il prodotto (nell'archivio storico esistono anche `utenze-gas-mz-…`).
+PATTERN_IMMOBILE = re.compile(
+    r"^utenze[-_](?!luce|gas|acqua)(?P<token>[a-z0-9]+)[-_]", re.IGNORECASE
 )
 
 
@@ -37,17 +44,21 @@ def _ultimo_giorno_mese(d: datetime.date) -> datetime.date:
     return datetime.date(d.year, d.month + 1, 1) - datetime.timedelta(days=1)
 
 
-def _supplier_default() -> Supplier:
-    sup, _ = Supplier.objects.get_or_create(
-        nome="Sconosciuto",
-        defaults={"tipo": Supplier.TipoFornitore.ALTRO},
-    )
+def _supplier(nome: str, immobile) -> Supplier:
+    """Fornitore dell'immobile con quel nome, creandolo se non esiste
+    (``Supplier.property`` è obbligatoria: i fornitori non sono condivisi
+    tra immobili)."""
+    sup = Supplier.objects.filter(property=immobile, nome__iexact=nome).first()
+    if sup is None:
+        sup = Supplier.objects.create(
+            property=immobile, nome=nome, tipo=Supplier.TipoFornitore.ALTRO,
+        )
     return sup
 
 
 class Command(BaseCommand):
     help = (
-        "Carica le bollette PDF (utenze-mz-*) presenti in ~/scanner come "
+        "Carica le bollette PDF (utenze-*) presenti in ~/scanner come "
         "UtilityBill, leggendo i metadati direttamente dal PDF. Idempotente."
     )
 
@@ -56,6 +67,13 @@ class Command(BaseCommand):
             "--cartella",
             default=str(Path.home() / "scanner"),
             help="Cartella sorgente (default ~/scanner).",
+        )
+        parser.add_argument(
+            "--glob", default="utenze-*.pdf",
+            help=(
+                "Glob dei file da caricare (default 'utenze-*.pdf'). Con più "
+                "immobili restringerlo, es. 'utenze-nova-*.pdf'."
+            ),
         )
         parser.add_argument(
             "--mesi", type=int, default=None,
@@ -103,22 +121,60 @@ class Command(BaseCommand):
                 anno_s -= 1
             soglia = datetime.date(anno_s, mese_s, 1)
 
+        files = sorted(cartella.glob(opts["glob"]))
+        # Guardia multiproprietà: i nomi file portano il token dell'immobile
+        # (`utenze-mz-…`, `utenze-nova-…`). Se il glob ne pesca più di uno si
+        # finirebbe per caricare le bollette di una casa sull'altra, e
+        # l'idempotenza per numero_fattura renderebbe l'errore definitivo.
+        token = {
+            m.group("token").lower()
+            for m in (PATTERN_IMMOBILE.match(p.name) for p in files)
+            if m
+        }
+        if len(token) > 1:
+            raise CommandError(
+                f"Il glob '{opts['glob']}' pesca bollette di più immobili "
+                f"({', '.join(sorted(token))}): restringilo, es. "
+                f"--glob 'utenze-{sorted(token)[0]}-*.pdf'."
+            )
+
         creati = aggiornati_pdf = saltati = errori = 0
-        for path in sorted(cartella.glob("utenze-mz-*.pdf")):
-            m = PATTERN.match(path.name)
-            if not m:
-                self.stdout.write(self.style.WARNING(
-                    f"  skip: prodotto non riconosciuto — {path.name}"
-                ))
-                saltati += 1
-                continue
-            prodotto = m.group("prodotto").lower()
+        self.stdout.write(
+            f"Cartella {cartella}, glob '{opts['glob']}', immobile {immobile}"
+        )
+        for path in files:
             base = path.stem
 
-            existing = UtilityBill.objects.filter(numero_fattura=base).first()
+            existing = UtilityBill.objects.filter(
+                numero_fattura=base, immobile=immobile,
+            ).first()
+            if existing is None:
+                altrove = UtilityBill.objects.filter(
+                    numero_fattura=base,
+                ).exclude(immobile=immobile).first()
+                if altrove is not None:
+                    self.stdout.write(self.style.ERROR(
+                        f"  skip: {base} è già caricata sull'immobile "
+                        f"{altrove.immobile} — controlla --glob e --property"
+                    ))
+                    errori += 1
+                    continue
 
-            # Estrai i metadati dal PDF (importo, periodo, ecc.)
+            # Estrai i metadati dal PDF (prodotto, importo, periodo, ecc.)
             dati = estrai_da_pdf(str(path))
+
+            # Prodotto: dal PDF (POD/PDR e voci di spesa), col nome file come
+            # ripiego per i template non riconosciuti.
+            prodotto = (dati or {}).get("prodotto")
+            if not prodotto:
+                m = PATTERN.match(path.name)
+                if not m:
+                    self.stdout.write(self.style.WARNING(
+                        f"  skip: prodotto non riconosciuto — {path.name}"
+                    ))
+                    saltati += 1
+                    continue
+                prodotto = m.group("prodotto").lower()
 
             if existing:
                 # Già presente: aggiorna solo file_pdf se mancante.
@@ -157,14 +213,7 @@ class Command(BaseCommand):
 
             data_emiss = dati["data_emissione"] or periodo_a or periodo_da
 
-            nome_forn = dati["fornitore"]
-            if nome_forn:
-                supplier, _ = Supplier.objects.get_or_create(
-                    nome=nome_forn,
-                    defaults={"tipo": Supplier.TipoFornitore.ALTRO},
-                )
-            else:
-                supplier = _supplier_default()
+            supplier = _supplier(dati["fornitore"] or "Sconosciuto", immobile)
 
             if opts["dry_run"]:
                 self.stdout.write(

@@ -4,7 +4,7 @@ title: Calcolo utenze
 description: Da bolletta a periodo di addebito con pro-rata giorni, pinning e invio avvisi.
 resource: backend/apps/billing/calc/utility.py
 tags: [domain, utenze, utility, billing]
-timestamp: 2026-07-08T00:00:00Z
+timestamp: 2026-08-04T00:00:00Z
 ---
 
 # Overview
@@ -28,6 +28,23 @@ Regola centrale: quando un periodo è **inviato** (`data_invio` valorizzato), i
 suoi importi sono **congelati** (pinning tramite le M2M). Le bollette arrivate in
 ritardo/retroattive si ribaltano sull'**ultimo periodo ancora aperto**, non su
 quelli già inviati. Comando `pin_bollette_storiche` per il pinning storico.
+
+# Acquisizione della bolletta (parsing PDF)
+
+`billing/management/commands/riparsa_bollette_pdf.py` estrae importo, periodo,
+data emissione, consumo, fornitore e prodotto dal testo di `pdftotext -layout`
+(`estrai_da_testo`, testabile senza PDF). Template riconosciuti: Acea/Wind3
+(date numeriche), Enel (mesi abbreviati), **Iren** (mesi estesi, "Fattura n.",
+"Consumo totale fatturato nel periodo"). Stessa funzione dietro l'upload UI
+(`UtilityBillViewSet.create`) e il command `carica_bollette_scanner`.
+
+Due regole imparate sul campo:
+
+- il **prodotto si deduce dai codici di fornitura** (POD `IT…E…` → luce, PDR →
+  gas), non dalla prosa: le bollette gas Edison citano l'energia elettrica nel
+  testo sui bonus sociali e venivano classificate "luce";
+- il **PDF vince sul nome file**: in archivio esistono bollette gas chiamate
+  `utenze-mz-luce-…`.
 
 # Emissione e avvisi
 
