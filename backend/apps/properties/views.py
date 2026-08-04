@@ -1267,10 +1267,34 @@ class OwnerBankAccountViewSet(ProtectedDestroyMixin, ModelViewSet):
 
         profilo = getattr(self.request.user, "owner_profile", None)
         if profilo is None:
+            if self.request.user.is_superuser:
+                raise PermissionDenied(
+                    "Sei superuser senza profilo proprietario: scegli "
+                    "l'intestatario del conto tra i membri."
+                )
             raise PermissionDenied(
                 "Nessun profilo proprietario associato all'utente."
             )
         return profilo
+
+    def _owner_per_create(self):
+        """L'owner del conto è il profilo del richiedente; il superuser può
+        indicarne un altro col campo ``owner`` (coerente col bypass di
+        ``_richiedi_titolare``), purché membro dell'immobile attivo."""
+        from rest_framework.exceptions import ValidationError
+
+        owner_id = self.request.data.get("owner")
+        if owner_id and self.request.user.is_superuser:
+            prop = get_request_property(self.request)
+            profilo = OwnerProfile.objects.filter(
+                pk=owner_id, user__property_memberships__property=prop
+            ).first()
+            if profilo is None:
+                raise ValidationError(
+                    {"owner": "Il profilo indicato non è membro dell'immobile."}
+                )
+            return profilo
+        return self._profilo_richiedente()
 
     def _richiedi_titolare(self, conto):
         from rest_framework.exceptions import PermissionDenied
@@ -1281,7 +1305,7 @@ class OwnerBankAccountViewSet(ProtectedDestroyMixin, ModelViewSet):
             raise PermissionDenied("Puoi modificare solo i tuoi conti.")
 
     def perform_create(self, serializer):
-        serializer.save(owner=self._profilo_richiedente())
+        serializer.save(owner=self._owner_per_create())
 
     def perform_update(self, serializer):
         self._richiedi_titolare(serializer.instance)

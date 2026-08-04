@@ -763,19 +763,32 @@ class PropertyMembershipSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     email = serializers.EmailField(source="user.email", read_only=True)
     nominativo = serializers.SerializerMethodField()
+    # Id dell'OwnerProfile del membro (None se non ne ha): serve al frontend
+    # per proporre l'intestatario quando il superuser crea un conto altrui.
+    owner_profile = serializers.SerializerMethodField()
 
     class Meta:
         from .models import PropertyMembership
 
         model = PropertyMembership
-        fields = ["id", "user", "username", "email", "nominativo", "ruolo", "invitato_da"]
-        read_only_fields = ["id", "username", "email", "nominativo", "invitato_da"]
+        fields = [
+            "id", "user", "username", "email", "nominativo", "owner_profile",
+            "ruolo", "invitato_da",
+        ]
+        read_only_fields = [
+            "id", "username", "email", "nominativo", "owner_profile",
+            "invitato_da",
+        ]
 
     def get_nominativo(self, obj):
         profilo = getattr(obj.user, "owner_profile", None)
         if profilo:
             return profilo.nominativo
         return obj.user.get_full_name() or obj.user.username
+
+    def get_owner_profile(self, obj):
+        profilo = getattr(obj.user, "owner_profile", None)
+        return profilo.id if profilo else None
 
 
 class OwnershipShareSerializer(serializers.ModelSerializer):

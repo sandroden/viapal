@@ -205,7 +205,7 @@
               <q-item-section side>
                 <div class="row items-center q-gutter-xs">
                   <q-btn
-                    v-if="c.owner === mioOwnerProfileId"
+                    v-if="c.owner === mioOwnerProfileId || sonoSuperuser"
                     flat
                     dense
                     round
@@ -214,7 +214,7 @@
                     @click="apriDialogConto(c)"
                   />
                   <q-btn
-                    v-if="c.owner === mioOwnerProfileId"
+                    v-if="c.owner === mioOwnerProfileId || sonoSuperuser"
                     flat
                     dense
                     round
@@ -330,10 +330,26 @@
             {{ contoInModifica ? 'Modifica conto' : 'Nuovo conto' }}
           </div>
           <div class="vp-hint">
-            Il conto è tuo: gli altri membri lo vedono ma non lo modificano.
+            {{
+              sonoSuperuser
+                ? 'Da superuser puoi gestire i conti di tutti i membri.'
+                : 'Il conto è tuo: gli altri membri lo vedono ma non lo modificano.'
+            }}
           </div>
         </q-card-section>
         <q-card-section class="q-gutter-md">
+          <q-select
+            v-if="sonoSuperuser && !contoInModifica"
+            v-model="formContoOwner"
+            :options="opzioniIntestatario"
+            label="Membro intestatario"
+            outlined
+            dense
+            emit-value
+            map-options
+            data-testid="conto-owner"
+            @update:model-value="precompilaIntestatario"
+          />
           <q-input
             v-model="formConto.banca"
             label="Banca"
@@ -510,6 +526,8 @@ const conti = ref<ContoBancario[]>([]);
 const dialogConto = ref(false);
 const contoInModifica = ref<ContoBancario | null>(null);
 const formConto = ref({ banca: '', intestatario: '', iban: '', attivo: true });
+/** Solo superuser: profilo proprietario per cui si crea il conto. */
+const formContoOwner = ref<number | null>(null);
 const savingConto = ref(false);
 const erroreConto = ref('');
 
@@ -526,6 +544,7 @@ const opzioniRuolo = [
 ];
 
 const mioOwnerProfileId = computed(() => auth.user?.owner_profile_id ?? null);
+const sonoSuperuser = computed(() => !!auth.user?.is_superuser);
 const sonoProprietario = computed(() => dettaglio.value?.mio_ruolo === 'proprietario');
 const puoModificare = computed(
   () => dettaglio.value?.mio_ruolo === 'proprietario' || dettaglio.value?.mio_ruolo === 'gestore',
@@ -546,6 +565,13 @@ const opzioniConto = computed(() =>
 );
 const totalePercento = computed(() =>
   quoteForm.value.reduce((tot, r) => tot + (Number(r.percento) || 0), 0),
+);
+/** I membri con profilo proprietario: gli intestatari possibili quando il
+ *  superuser crea un conto a nome altrui. */
+const opzioniIntestatario = computed(() =>
+  membri.value
+    .filter((m) => m.owner_profile !== null)
+    .map((m) => ({ label: m.nominativo, value: m.owner_profile as number })),
 );
 
 function etichettaRuolo(ruolo: RuoloProperty | null): string {
@@ -632,7 +658,16 @@ function apriDialogConto(c: ContoBancario | null) {
     iban: c?.iban ?? '',
     attivo: c?.attivo ?? true,
   };
+  formContoOwner.value = c?.owner ?? mioOwnerProfileId.value;
   dialogConto.value = true;
+}
+
+/** Alla scelta del membro, propone il suo nominativo come intestatario
+ *  (se il campo non è già stato compilato a mano). */
+function precompilaIntestatario(ownerId: number | null) {
+  if (formConto.value.intestatario.trim()) return;
+  const scelto = opzioniIntestatario.value.find((o) => o.value === ownerId);
+  if (scelto) formConto.value.intestatario = scelto.label;
 }
 
 async function salvaConto() {
@@ -642,13 +677,22 @@ async function salvaConto() {
     erroreConto.value = 'Banca, intestatario e IBAN sono obbligatori.';
     return;
   }
+  if (sonoSuperuser.value && !contoInModifica.value && !formContoOwner.value) {
+    erroreConto.value = 'Scegli il membro intestatario del conto.';
+    return;
+  }
   savingConto.value = true;
-  const payload = {
+  const payload: Record<string, unknown> = {
     banca: f.banca.trim(),
     intestatario: f.intestatario.trim(),
     iban: f.iban.replace(/\s+/g, '').toUpperCase(),
     attivo: f.attivo,
   };
+  // Il backend accetta l'owner esplicito solo dal superuser; per gli altri
+  // il conto è sempre il proprio.
+  if (sonoSuperuser.value && !contoInModifica.value) {
+    payload.owner = formContoOwner.value;
+  }
   try {
     if (contoInModifica.value) {
       await api.patch(`/api/v1/bank-accounts/${contoInModifica.value.id}/`, payload);

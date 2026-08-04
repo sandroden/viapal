@@ -965,3 +965,50 @@ class TestOwnerBankAccountCrud:
             format="json",
         )
         assert resp.status_code == 404
+
+    # --- superuser: gestione dei conti a nome dei membri --------------------
+
+    @pytest.fixture
+    def client_super(self, immobile):
+        u = User.objects.create_superuser("crud_super", password="pwd123!")
+        c = _client(u)
+        # Il superuser accede a tutti gli immobili: l'header fissa quello attivo.
+        c.credentials(HTTP_X_PROPERTY_ID=str(immobile.id))
+        return c
+
+    def test_superuser_crea_conto_per_membro(self, client_super, owner_profile):
+        resp = client_super.post(
+            "/api/v1/bank-accounts/",
+            {**self.PAYLOAD, "owner": owner_profile.id},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        conto = OwnerBankAccount.objects.get(pk=resp.json()["id"])
+        assert conto.owner_id == owner_profile.id
+
+    def test_superuser_owner_non_membro_400(self, client_super, mondo_b):
+        # Owner B esiste ma non è membro dell'immobile attivo.
+        resp = client_super.post(
+            "/api/v1/bank-accounts/",
+            {**self.PAYLOAD, "owner": mondo_b.owner.id},
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert "owner" in resp.json()
+
+    def test_superuser_senza_owner_messaggio_guida(self, client_super):
+        # Superuser senza profilo proprietario e senza owner nel payload:
+        # l'errore spiega di scegliere l'intestatario.
+        resp = client_super.post(
+            "/api/v1/bank-accounts/", self.PAYLOAD, format="json"
+        )
+        assert resp.status_code == 403
+        assert "intestatario" in resp.json()["detail"]
+
+    def test_superuser_modifica_conto_altrui(self, client_super, conto):
+        resp = client_super.patch(
+            f"/api/v1/bank-accounts/{conto.id}/", {"attivo": False}, format="json"
+        )
+        assert resp.status_code == 200, resp.content
+        conto.refresh_from_db()
+        assert conto.attivo is False

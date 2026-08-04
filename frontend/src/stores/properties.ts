@@ -17,6 +17,8 @@ export interface Membro {
   username: string;
   email: string;
   nominativo: string;
+  /** Id dell'OwnerProfile del membro, se ne ha uno. */
+  owner_profile: number | null;
   ruolo: RuoloProperty;
   invitato_da: number | null;
 }
