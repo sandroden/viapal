@@ -70,6 +70,46 @@ IREN MERCATO S.p.A. – Sede Legale e Direzione Piazza Giambattista Raggi 6, 161
      Totale da pagare                                                                      84,20 €
 """
 
+# Magis Energia gas — estratto reale (bolletta 18/05–30/06/2026).
+MAGIS_GAS = """
+               Bolletta per la fornitura di gas
+               naturale
+               Mercato libero
+
+         Codice Cliente: 0600000000                            MARIO ROSSI
+         MARIO ROSSI                                           VIA DEI TEST 1
+         Codice Fiscale: RSSMRA80A01F205X                      20865 USMATE VELATE MB
+
+Fattura n° 82602703805 del 24/07/2026                    Le bollette precedenti ci risultano pagate.
+
+(Numero fattura elettronica valida ai fini fiscali: 82602703805)
+
+        Periodo oggetto di fatturazione                  Modalità di pagamento:
+
+        Dal 18/05/2026 al 30/06/2026
+                                                         Consumo annuo aggiornato (Smc): 36,000
+                                                         Dal 30/06/2025 al 30/06/2026
+
+        Totale da pagare:                                800.55.22.77 Numero verde (RETIPIU SRL)
+
+        162,94 €                                         24 ore su 24 tutti i giorni dell'anno
+
+        Consumi 35,969 Smc                               Numero verde 800.552.866
+        di cui stimati 0 Smc                             Sito ufficiale magisenergia.it
+
+Magis Energia S.p.A. - Sede legale e amministrativa      Lungadige Galtarossa, 8 37133 Verona
+                                                                                Pagina 1 di 6
+                SCONTRINO                               BOX DELL'OFFERTA
+                DELL'ENERGIA                            Spesa per la vendita di gas naturale
+
+         PDR: 15330000000000
+
+Quota per consumi                     Prezzo medio          Importo
+35,969 Smc                            0,723939 €/Smc         26,04 €
+
+Totale da pagare                          162,94 €
+"""
+
 # Edison gas: la prosa sui bonus sociali cita l'energia elettrica; prima del
 # riconoscimento via PDR queste bollette venivano classificate "luce".
 EDISON_GAS = """
@@ -101,6 +141,20 @@ def test_iren_gas():
     assert dati["data_emissione"] == datetime.date(2026, 7, 7)
     assert dati["consumo"] == Decimal("46")
     assert dati["fornitore"] == "Iren"
+    assert dati["prodotto"] == "gas"
+
+
+def test_magis_gas():
+    dati = estrai_da_testo(MAGIS_GAS)
+    assert dati["importo"] == Decimal("162.94")
+    assert dati["periodo_da"] == datetime.date(2026, 5, 18)
+    assert dati["periodo_a"] == datetime.date(2026, 6, 30)
+    assert dati["data_emissione"] == datetime.date(2026, 7, 24)
+    assert dati["numero_fattura_reale"] == "82602703805"
+    # "Consumi 35,969 Smc", non il consumo annuo (36,000) né i decimali
+    # spezzati dal fallback posizionale.
+    assert dati["consumo"] == Decimal("35.969")
+    assert dati["fornitore"] == "Magis Energia"
     assert dati["prodotto"] == "gas"
 
 

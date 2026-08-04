@@ -35,8 +35,14 @@ quelli già inviati. Comando `pin_bollette_storiche` per il pinning storico.
 data emissione, consumo, fornitore e prodotto dal testo di `pdftotext -layout`
 (`estrai_da_testo`, testabile senza PDF). Template riconosciuti: Acea/Wind3
 (date numeriche), Enel (mesi abbreviati), **Iren** (mesi estesi, "Fattura n.",
-"Consumo totale fatturato nel periodo"). Stessa funzione dietro l'upload UI
-(`UtilityBillViewSet.create`) e il command `carica_bollette_scanner`.
+"Consumo totale fatturato nel periodo"), **Magis Energia** ("Periodo oggetto di
+fatturazione / Dal … al …", "Fattura n° … del …", "Consumi … Smc"). Stessa
+funzione dietro l'upload UI (`UtilityBillViewSet.create`) e il command
+`carica_bollette_scanner`.
+
+L'ordine dei pattern conta: i fallback **posizionali** (il consumo Enel, cercato
+dopo "Totale da pagare") vanno provati per ultimi, perché su altri layout
+pescano numeri plausibili ma sbagliati.
 
 Due regole imparate sul campo:
 

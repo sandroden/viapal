@@ -7,8 +7,9 @@ ha già il PDF allegato). Da `pdftotext -layout` estraiamo:
 - data di emissione
 - numero fattura reale (se presente)
 
-Funziona oggi sui template "tipo Acea/Wind3" (italiani standard), Enel e
-Iren; per template differenti il command logga "non riconosciuto" e salta.
+Funziona oggi sui template "tipo Acea/Wind3" (italiani standard), Enel,
+Iren e Magis Energia; per template differenti il command logga "non
+riconosciuto" e salta.
 """
 import datetime
 import re
@@ -66,6 +67,8 @@ RX_FORNITORI = [
     (re.compile(r"IREN\s+MERCATO", re.IGNORECASE), "Iren"),
     (re.compile(r"Iren\s+Luce\s+Gas\s+e\s+Servizi", re.IGNORECASE), "Iren"),
     (re.compile(r"\birenlucegas\.it\b", re.IGNORECASE), "Iren"),
+    (re.compile(r"Magis\s+Energia", re.IGNORECASE), "Magis Energia"),
+    (re.compile(r"\bmagisenergia\.it\b", re.IGNORECASE), "Magis Energia"),
 ]
 
 # Identificazione prodotto: solo pattern contestuali specifici (la bolletta
@@ -136,6 +139,27 @@ RX_CONSUMO_IREN = re.compile(
     r"Consumo\s+totale\s+fatturato\s+nel\s+periodo.{0,300}?"
     r"([\d\.]+,?\d*)\s*(kWh|Smc|m³|mc)\b",
     re.IGNORECASE | re.DOTALL,
+)
+
+# --- Template Magis Energia ---------------------------------------------
+# "Periodo oggetto di fatturazione\n\nDal 18/05/2026 al 30/06/2026" (poco più
+# sotto c'è anche il "Dal … al …" del consumo annuo: si prende il primo).
+RX_PERIODO_MAGIS = re.compile(
+    r"Periodo\s+oggetto\s+di\s+fatturazione.{0,300}?"
+    r"Dal\s+(\d{2}/\d{2}/\d{4})\s+al\s+(\d{2}/\d{2}/\d{4})",
+    re.IGNORECASE | re.DOTALL,
+)
+# "Fattura n° 82602703805 del 24/07/2026" (frontespizio) /
+# "Fattura n° 82602703805 emessa il 24/07/2026" (pagine successive).
+RX_EMISSIONE_MAGIS = re.compile(
+    r"Fattura\s+n[°ºo\.]?\s*\d+\s+(?:del|emessa\s+il)\s+(\d{2}/\d{2}/\d{4})",
+    re.IGNORECASE,
+)
+# "Consumi 35,969 Smc" ("Consumo annuo aggiornato (Smc): 36,000" non matcha,
+# è al singolare e col numero dopo l'unità).
+RX_CONSUMO_MAGIS = re.compile(
+    r"\bConsumi\s+([\d\.]+,?\d*)\s*(kWh|Smc|m³|mc)\b",
+    re.IGNORECASE,
 )
 
 
@@ -218,6 +242,9 @@ def estrai_da_testo(out: str) -> dict:
     elif (m := RX_PERIODO_IREN.search(out)) is not None:
         risultato["periodo_da"] = _parse_data_estesa(*m.group(1, 2, 3))
         risultato["periodo_a"] = _parse_data_estesa(*m.group(4, 5, 6))
+    elif (m := RX_PERIODO_MAGIS.search(out)) is not None:
+        risultato["periodo_da"] = _parse_data(m.group(1))
+        risultato["periodo_a"] = _parse_data(m.group(2))
     else:
         m = RX_PERIODO_ENEL.search(out)
         if m:
@@ -239,6 +266,8 @@ def estrai_da_testo(out: str) -> dict:
         risultato["data_emissione"] = _parse_data(m.group(1))
     elif (m := RX_EMISSIONE_IREN.search(out)) is not None:
         risultato["data_emissione"] = _parse_data_estesa(*m.group(1, 2, 3))
+    elif (m := RX_EMISSIONE_MAGIS.search(out)) is not None:
+        risultato["data_emissione"] = _parse_data(m.group(1))
 
     m = RX_NUM_FATTURA.search(out) or RX_NUM_FATTURA_IREN.search(out)
     if m:
@@ -250,6 +279,8 @@ def estrai_da_testo(out: str) -> dict:
     if m:
         risultato["consumo"] = _parse_importo(m.group(1))
     elif (m := RX_CONSUMO_IREN.search(out)) is not None:
+        risultato["consumo"] = _parse_importo(m.group(1))
+    elif (m := RX_CONSUMO_MAGIS.search(out)) is not None:
         risultato["consumo"] = _parse_importo(m.group(1))
     else:
         m = RX_CONSUMO_ENEL.search(out)

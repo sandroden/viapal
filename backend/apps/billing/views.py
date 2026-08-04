@@ -536,8 +536,8 @@ class UtilityBillViewSet(ModelViewSet):
 
     Upload (POST) richiede solo ``file_pdf`` + ``pagata_da_owner``: tutti
     gli altri campi (prodotto, importo, periodo, data emissione, consumo,
-    fornitore) vengono estratti dal PDF (template Acea/Wind3, Enel e Iren
-    riconosciuti). Idempotente per ``numero_fattura`` (= basename del file).
+    fornitore) vengono estratti dal PDF (template Acea/Wind3, Enel, Iren e
+    Magis riconosciuti). Idempotente per ``numero_fattura`` (= basename).
 
     Per gli script CLI accetta anche autenticazione HTTP Basic in aggiunta
     alla session.
