@@ -27,6 +27,8 @@ interface State {
   ultimoSoloAttivi: boolean | null;
   tenantsPerAnno: Record<number, Tenant[]>;
   loadingAnno: Record<number, boolean>;
+  tenantsConAssignment: Tenant[];
+  loadingConAssignment: boolean;
 }
 
 function asArray<T>(data: T[] | { results: T[] } | undefined | null): T[] {
@@ -43,6 +45,8 @@ export const useTenantsStore = defineStore('tenants', {
     ultimoSoloAttivi: null,
     tenantsPerAnno: {},
     loadingAnno: {},
+    tenantsConAssignment: [],
+    loadingConAssignment: false,
   }),
   getters: {
     tenantById(state) {
@@ -85,6 +89,27 @@ export const useTenantsStore = defineStore('tenants', {
         return [];
       } finally {
         this.loadingAnno = { ...this.loadingAnno, [anno]: false };
+      }
+    },
+    /** Inquilini con almeno una assegnazione sull'immobile (passata,
+     *  presente o futura): la lista giusta per i select dove un profilo mai
+     *  assegnato non ha senso (es. quote condominio). Cache separata da
+     *  `tenants` per non interferire con gli altri usi di fetchTenants. */
+    async fetchTenantsConAssignment(force = false): Promise<Tenant[]> {
+      if (!force && this.tenantsConAssignment.length > 0) return this.tenantsConAssignment;
+      this.loadingConAssignment = true;
+      this.errore = null;
+      try {
+        const { data } = await api.get<Tenant[] | { results: Tenant[] }>('/api/v1/tenants/', {
+          params: { solo_attivi: 0, con_assignment: 1 },
+        });
+        this.tenantsConAssignment = asArray(data);
+        return this.tenantsConAssignment;
+      } catch (e: unknown) {
+        this.errore = messaggioErrore(e, 'Errore caricamento inquilini');
+        return [];
+      } finally {
+        this.loadingConAssignment = false;
       }
     },
     async fetchTenant(id: number): Promise<Tenant> {

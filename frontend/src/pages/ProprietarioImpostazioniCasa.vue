@@ -1712,10 +1712,12 @@ const quoteCondominio = ref<QuotaCondominio[]>([]);
 const loadingQuote = ref(false);
 
 /** "Tutti" (quota base dell'immobile) più i singoli inquilini, per cui la
- *  quota è un'eccezione che prevale sulla base. */
+ *  quota è un'eccezione che prevale sulla base. Solo inquilini con almeno
+ *  una assegnazione (anche futura): una quota su un profilo mai assegnato
+ *  non entrerebbe mai nel calcolo del canone. */
 const opzioniInquilino = computed(() => [
   { label: 'Tutti gli inquilini', value: null },
-  ...tenantsStore.tenants.map((t) => ({ label: t.nominativo, value: t.id })),
+  ...tenantsStore.tenantsConAssignment.map((t) => ({ label: t.nominativo, value: t.id })),
 ]);
 
 async function caricaQuote() {
@@ -1765,7 +1767,7 @@ function apriDialogQuota(q: QuotaCondominio | null) {
     valid_to: q?.valid_to ?? null,
     note: q?.note ?? '',
   };
-  void tenantsStore.fetchTenants(true);
+  void tenantsStore.fetchTenantsConAssignment(true);
   dialogQuota.value = true;
 }
 
@@ -1844,7 +1846,7 @@ onMounted(() => {
   void caricaFornitori();
   void caricaCosti();
   void caricaQuote();
-  void tenantsStore.fetchTenants(true);
+  void tenantsStore.fetchTenantsConAssignment();
 });
 </script>
 

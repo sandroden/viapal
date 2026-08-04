@@ -270,6 +270,46 @@ class TestTenantProfileViewSet:
         ids = [t["id"] for t in resp.json()]
         assert tenant_1.id in ids
 
+    def test_con_assignment_include_futuri_esclude_mai_assegnati(
+        self, client_prop, tenant_1, tenant_2, room_1
+    ):
+        # tenant_1: assegnazione a decorrenza futura → incluso;
+        # tenant_2: profilo creato e mai assegnato → escluso.
+        RoomAssignment.objects.create(
+            room=room_1,
+            tenant=tenant_1,
+            valid_from=datetime.date.today() + datetime.timedelta(days=30),
+            canone_mensile=Decimal("400"),
+        )
+        resp = client_prop.get("/api/v1/tenants/?solo_attivi=0&con_assignment=1")
+        assert resp.status_code == 200, resp.content
+        ids = [t["id"] for t in resp.json()]
+        assert tenant_1.id in ids
+        assert tenant_2.id not in ids
+
+    def test_con_assignment_storico_incluso_senza_duplicati(
+        self, client_prop, tenant_1, room_1, room_2
+    ):
+        # Due assegnazioni (una chiusa nel passato, una in corso): l'inquilino
+        # compare, e una volta sola (distinct).
+        RoomAssignment.objects.create(
+            room=room_1,
+            tenant=tenant_1,
+            valid_from=datetime.date(2023, 1, 1),
+            valid_to=datetime.date(2023, 12, 31),
+            canone_mensile=Decimal("350"),
+        )
+        RoomAssignment.objects.create(
+            room=room_2,
+            tenant=tenant_1,
+            valid_from=datetime.date(2024, 9, 1),
+            canone_mensile=Decimal("400"),
+        )
+        resp = client_prop.get("/api/v1/tenants/?solo_attivi=0&con_assignment=1")
+        assert resp.status_code == 200, resp.content
+        ids = [t["id"] for t in resp.json()]
+        assert ids.count(tenant_1.id) == 1
+
     def test_inquilino_vede_solo_se_stesso(self, client_inq_1, tenant_1, tenant_2):
         resp = client_inq_1.get("/api/v1/tenants/")
         assert resp.status_code == 200

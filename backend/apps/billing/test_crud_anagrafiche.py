@@ -18,7 +18,13 @@ from django.contrib.auth.models import Group, User
 from rest_framework.test import APIClient
 
 from billing.models import AnnualUtilityCost, Expense, ExpenseCategory, Supplier
-from properties.models import OwnerProfile, PropertyMembership, TenantProfile
+from properties.models import (
+    OwnerProfile,
+    PropertyMembership,
+    Room,
+    RoomAssignment,
+    TenantProfile,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -374,6 +380,17 @@ def _tenant(property, nominativo):
     )
 
 
+def _assegna(tenant, valid_from):
+    """RoomAssignment minimo per il tenant, su una stanza del suo immobile."""
+    room = Room.objects.create(
+        property=tenant.property, nome=f"Stanza {tenant.nominativo}"
+    )
+    return RoomAssignment.objects.create(
+        room=room, tenant=tenant,
+        valid_from=valid_from, canone_mensile=Decimal("400.00"),
+    )
+
+
 @pytest.fixture
 def quota_base(immobile):
     from billing.models import TenantCondominioRate
@@ -405,7 +422,9 @@ class TestQuotaCondominioCrud:
         assert creata.tenant_id is None
 
     def test_create_eccezione_per_inquilino(self, client_operativo, immobile):
+        """Basta un'assegnazione qualsiasi, anche a decorrenza futura."""
         inq = _tenant(immobile, "Eccezione")
+        _assegna(inq, datetime.date.today() + datetime.timedelta(days=30))
         resp = client_operativo.post(
             self.URL,
             {
@@ -417,6 +436,24 @@ class TestQuotaCondominioCrud:
         )
         assert resp.status_code == 201, resp.content
         assert resp.json()["tenant_nominativo"] == "Eccezione"
+
+    def test_create_inquilino_senza_assegnazione_400(
+        self, client_operativo, immobile
+    ):
+        """Profilo mai assegnato (es. duplicato "fantasma"): la quota non
+        entrerebbe mai nel calcolo del canone, quindi va rifiutata."""
+        fantasma = _tenant(immobile, "Fantasma")
+        resp = client_operativo.post(
+            self.URL,
+            {
+                "tenant": fantasma.id,
+                "valid_from": "2026-08-01",
+                "importo_mensile": "70.00",
+            },
+            format="json",
+        )
+        assert resp.status_code == 400, resp.content
+        assert "assegnazione" in str(resp.json()["tenant"])
 
     def test_create_inquilino_di_altro_immobile_400(
         self, client_operativo, immobile2

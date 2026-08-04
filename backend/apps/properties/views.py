@@ -122,7 +122,10 @@ class TenantProfileViewSet(
       (con assignment in corso oggi); query param ``?solo_attivi=0`` per
       includere anche gli storici. In alternativa, ``?anno=YYYY`` filtra gli
       inquilini con almeno un assignment che si sovrappone all'anno indicato
-      (ha la precedenza su ``solo_attivi``).
+      (ha la precedenza su ``solo_attivi``). ``?con_assignment=1`` (componibile
+      con gli altri filtri) tiene solo gli inquilini con almeno una
+      assegnazione — passata, presente o futura — escludendo i profili
+      creati e mai assegnati.
     - Inquilini: vedono solo il proprio.
     - Scrittura (create/update) riservata ai membri operativi dell'immobile
       attivo: la creazione genera anche lo User collegato (vedi
@@ -172,6 +175,12 @@ class TenantProfileViewSet(
         # creati (senza assignment) e quelli storici.
         if self.action != "list":
             return qs
+
+        # ``con_assignment=1``: solo inquilini con almeno una assegnazione
+        # (anche futura o già chiusa). Esclude i profili "fantasma" creati e
+        # mai assegnati; tipicamente usato con ``solo_attivi=0``.
+        if self.request.query_params.get("con_assignment") in ("1", "true", "True"):
+            qs = qs.filter(assignments__isnull=False).distinct()
 
         anno_param = self.request.query_params.get("anno")
         if anno_param:

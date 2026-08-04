@@ -187,16 +187,25 @@ class TenantCondominioRateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_tenant(self, tenant):
-        """L'eccezione vale per un inquilino dell'immobile attivo."""
+        """L'eccezione vale per un inquilino dell'immobile attivo, e solo se
+        ha almeno una assegnazione (anche futura o passata): una quota su un
+        profilo mai assegnato non entrerebbe mai nel calcolo del canone."""
         request = self.context.get("request")
         if tenant is not None and request is not None:
             from properties.context import get_request_property
 
             prop = get_request_property(request)
-            if prop is not None and tenant.property_id != prop.pk:
-                raise serializers.ValidationError(
-                    "L'inquilino appartiene a un altro immobile."
-                )
+            if prop is not None:
+                if tenant.property_id != prop.pk:
+                    raise serializers.ValidationError(
+                        "L'inquilino appartiene a un altro immobile."
+                    )
+                if not tenant.assignments.filter(room__property=prop).exists():
+                    raise serializers.ValidationError(
+                        "L'inquilino non ha nessuna assegnazione su questo "
+                        "immobile: assegnalo prima di definire una quota "
+                        "specifica."
+                    )
         return tenant
 
     def validate(self, attrs):
