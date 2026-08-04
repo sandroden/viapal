@@ -747,17 +747,31 @@
                       </q-item-label>
                     </q-item-section>
                     <q-item-section v-if="puoModificare && a.valid_to === null" side>
-                      <q-btn
-                        flat
-                        dense
-                        no-caps
-                        size="sm"
-                        color="primary"
-                        icon="swap_horiz"
-                        label="Cessione…"
-                        data-testid="apri-cessione"
-                        @click="apriDialogCessione(a)"
-                      />
+                      <div class="row items-center no-wrap q-gutter-xs">
+                        <q-btn
+                          flat
+                          dense
+                          round
+                          size="sm"
+                          color="primary"
+                          icon="edit"
+                          data-testid="apri-correggi-assignment"
+                          @click="apriDialogCorreggi(a)"
+                        >
+                          <q-tooltip>Correggi assegnazione</q-tooltip>
+                        </q-btn>
+                        <q-btn
+                          flat
+                          dense
+                          no-caps
+                          size="sm"
+                          color="primary"
+                          icon="swap_horiz"
+                          label="Cessione…"
+                          data-testid="apri-cessione"
+                          @click="apriDialogCessione(a)"
+                        />
+                      </div>
                     </q-item-section>
                   </q-item>
                 </q-list>
@@ -885,6 +899,56 @@
             :loading="salvandoCessione"
             data-testid="cessione-esegui"
             @click="eseguiCessione"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Dialog correggi assegnazione -->
+    <q-dialog v-model="dialogCorreggi">
+      <q-card style="min-width: 440px">
+        <q-card-section>
+          <div class="vp-p-id__dialog-titolo">
+            Correggi {{ assignmentCorreggi?.room_nome ?? 'assegnazione' }}
+          </div>
+          <div class="vp-p-id__popup-nota">
+            Corregge l'assegnazione corrente e rigenera gli addebiti d'affitto
+            non ancora incassati. Gli addebiti con incassi già imputati non
+            vengono toccati.
+          </div>
+        </q-card-section>
+        <q-card-section class="q-gutter-md">
+          <q-input
+            v-model="formCorreggi.canone_mensile"
+            label="Canone mensile"
+            type="number"
+            min="0"
+            step="0.01"
+            suffix="€"
+            outlined
+            dense
+            data-testid="correggi-canone"
+          />
+          <q-input
+            v-model="formCorreggi.valid_from"
+            label="Data inizio"
+            type="date"
+            outlined
+            dense
+            data-testid="correggi-valid-from"
+          />
+          <q-banner v-if="erroreCorreggi" class="vp-p-id__banner-errore" rounded dense>
+            {{ erroreCorreggi }}
+          </q-banner>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn v-close-popup flat label="Annulla" />
+          <q-btn
+            color="primary"
+            label="Salva"
+            :loading="salvandoCorreggi"
+            data-testid="correggi-salva"
+            @click="salvaCorrezione"
           />
         </q-card-actions>
       </q-card>
@@ -1590,6 +1654,100 @@ async function eseguiCessione(): Promise<void> {
     erroreCessione.value = messaggioErrore(e, 'Cessione non riuscita.');
   } finally {
     salvandoCessione.value = false;
+  }
+}
+
+// --- Correggi assegnazione (canone/data inizio + rigenerazione addebiti) ----
+
+interface EsitoRigenera {
+  creati: number;
+  aggiornati: number;
+  skippati_per_allocation: number;
+  eliminati: number;
+  non_eliminati_ambigui: number;
+  receivable_ids: number[];
+}
+
+const dialogCorreggi = ref(false);
+const assignmentCorreggi = ref<AssignmentRiga | null>(null);
+const salvandoCorreggi = ref(false);
+const erroreCorreggi = ref('');
+const formCorreggi = ref({
+  canone_mensile: '',
+  valid_from: '',
+});
+
+function apriDialogCorreggi(a: AssignmentRiga): void {
+  assignmentCorreggi.value = a;
+  erroreCorreggi.value = '';
+  formCorreggi.value = {
+    canone_mensile: String(a.canone_mensile),
+    valid_from: a.valid_from,
+  };
+  dialogCorreggi.value = true;
+}
+
+function sintesiRigenera(esito: EsitoRigenera): string {
+  const n = esito.creati + esito.aggiornati;
+  const parti = [`${n} addebit${n === 1 ? 'o' : 'i'} aggiornat${n === 1 ? 'o' : 'i'}`];
+  if (esito.skippati_per_allocation > 0) {
+    const s = esito.skippati_per_allocation;
+    parti.push(
+      `${s} non toccat${s === 1 ? 'o' : 'i'} perché già incassat${s === 1 ? 'o' : 'i'}`,
+    );
+  }
+  if (esito.eliminati > 0) {
+    parti.push(`${esito.eliminati} eliminat${esito.eliminati === 1 ? 'o' : 'i'}`);
+  }
+  return `Assegnazione corretta: ${parti.join(', ')}.`;
+}
+
+async function salvaCorrezione(): Promise<void> {
+  erroreCorreggi.value = '';
+  const a = assignmentCorreggi.value;
+  if (!a) return;
+  const f = formCorreggi.value;
+  if (f.canone_mensile === '' || Number(f.canone_mensile) < 0) {
+    erroreCorreggi.value = 'Indicare il canone mensile.';
+    return;
+  }
+  if (!f.valid_from) {
+    erroreCorreggi.value = 'Indicare la data di inizio.';
+    return;
+  }
+  salvandoCorreggi.value = true;
+  try {
+    // PATCH con i soli campi cambiati (idempotente: un nuovo click dopo un
+    // fallimento della rigenerazione lo ripete senza danni).
+    const payload: Record<string, string> = {};
+    if (Number(f.canone_mensile) !== Number(a.canone_mensile)) {
+      payload.canone_mensile = f.canone_mensile;
+    }
+    if (f.valid_from !== a.valid_from) {
+      payload.valid_from = f.valid_from;
+    }
+    if (Object.keys(payload).length > 0) {
+      await api.patch(`/api/v1/room-assignments/${a.id}/`, payload);
+    }
+  } catch (e: unknown) {
+    erroreCorreggi.value = messaggioErrore(e, 'Correzione non riuscita.');
+    salvandoCorreggi.value = false;
+    return;
+  }
+  try {
+    const { data } = await api.post<EsitoRigenera>(
+      `/api/v1/room-assignments/${a.id}/rigenera-receivable/`,
+    );
+    dialogCorreggi.value = false;
+    $q.notify({ type: 'positive', message: sintesiRigenera(data) });
+    await store.loadSituazione(tenantId.value, annoSelezionato.value, true);
+  } catch (e: unknown) {
+    erroreCorreggi.value =
+      'Correzione salvata, ma la rigenerazione degli addebiti non è riuscita: ' +
+      messaggioErrore(e, 'errore imprevisto.') +
+      ' Riprova cliccando di nuovo Salva.';
+  } finally {
+    salvandoCorreggi.value = false;
   }
 }
 

@@ -1022,6 +1022,123 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=True, methods=["post"], url_path="rigenera-receivable")
+    def rigenera_receivable(self, request, pk=None):
+        """Rigenera gli addebiti d'affitto dell'assegnazione dopo una
+        correzione (canone e/o data di inizio sbagliati all'inserimento).
+
+        Per ogni mese interessato — l'unione dei mesi dei Receivable AFFITTO
+        già esistenti e dei mesi da ``valid_from`` a oggi (o a ``valid_to``
+        se precedente) — richiama ``genera_pagamenti_mese`` con ``force``:
+        la guardia allocations è applicata lì (un Receivable con incassi
+        imputati non viene mai sovrascritto), così come il rilink dei
+        Receivable rimasti su un altro assignment dello stesso inquilino.
+
+        Dopo il loop elimina gli orfani: Receivable AFFITTO di questo
+        assignment senza allocations la cui chiave non è più stata generata
+        (es. il mese pieno sostituito dal pro-rata dopo lo spostamento di
+        ``valid_from``). Gli orfani CON allocations restano intatti e sono
+        conteggiati in ``skippati_per_allocation``; gli orfani pro-rata
+        (``is_aggiustamento``) ancora dentro il periodo dell'assegnazione
+        potrebbero essere rettifiche manuali legittime: per prudenza non si
+        eliminano e finiscono in ``non_eliminati_ambigui``.
+        """
+        from django.db import transaction
+
+        from billing.calc.rent import genera_pagamenti_mese
+        from billing.models import Receivable
+
+        assignment = self.get_object()
+        prop = get_request_property(request)
+
+        def _mese_succ(d: datetime.date) -> datetime.date:
+            if d.month == 12:
+                return d.replace(year=d.year + 1, month=1)
+            return d.replace(month=d.month + 1)
+
+        # Mesi da rigenerare: quelli dei Receivable esistenti (coprono anche
+        # le generazioni anticipate) più il range valid_from → oggi/valid_to
+        # (copre i mesi nuovi se la data di inizio è stata anticipata).
+        mesi: set[tuple[int, int]] = set(
+            Receivable.objects.filter(
+                assignment=assignment, causale=Receivable.Causale.AFFITTO
+            )
+            .values_list("competenza_da__year", "competenza_da__month")
+            .distinct()
+        )
+        cursore = assignment.valid_from.replace(day=1)
+        fine = datetime.date.today().replace(day=1)
+        if assignment.valid_to is not None:
+            fine = min(fine, assignment.valid_to.replace(day=1))
+        fine = max(fine, cursore)  # ingresso futuro: almeno il primo mese
+        while cursore <= fine:
+            mesi.add((cursore.year, cursore.month))
+            cursore = _mese_succ(cursore)
+
+        creati = 0
+        aggiornati = 0
+        eliminati = 0
+        ambigui = 0
+        skip_alloc_ids: set[int] = set()
+        receivable_ids: set[int] = set()
+
+        with transaction.atomic():
+            for anno, mese in sorted(mesi):
+                esito = genera_pagamenti_mese(
+                    anno,
+                    mese,
+                    force=True,
+                    tenant_id=assignment.tenant_id,
+                    property=prop,
+                )
+                creati += esito["creati"]
+                aggiornati += esito["aggiornati"]
+                skip_alloc_ids.update(
+                    d["receivable_id"] for d in esito["skippati_per_allocation"]
+                )
+                receivable_ids.update(esito["payments"])
+
+            # Pulizia orfani: chiavi (competenza_da, competenza_a) non più
+            # prodotte dalla rigenerazione.
+            orfani = Receivable.objects.filter(
+                assignment=assignment, causale=Receivable.Causale.AFFITTO
+            ).exclude(pk__in=receivable_ids)
+            for rec in orfani:
+                if rec.allocations.exists():
+                    # Guardia allocations: il dato riconciliato è intoccabile.
+                    skip_alloc_ids.add(rec.pk)
+                    receivable_ids.add(rec.pk)
+                    continue
+                fuori_periodo = rec.competenza_da < assignment.valid_from or (
+                    assignment.valid_to is not None
+                    and (
+                        rec.competenza_da > assignment.valid_to
+                        or (
+                            rec.competenza_a is not None
+                            and rec.competenza_a > assignment.valid_to
+                        )
+                    )
+                )
+                if fuori_periodo or not rec.is_aggiustamento:
+                    rec.delete()
+                    eliminati += 1
+                else:
+                    # Pro-rata dentro il periodo ma con chiave non rigenerata:
+                    # potrebbe essere una rettifica manuale. Non si elimina.
+                    ambigui += 1
+                    receivable_ids.add(rec.pk)
+
+        return Response(
+            {
+                "creati": creati,
+                "aggiornati": aggiornati,
+                "skippati_per_allocation": len(skip_alloc_ids),
+                "eliminati": eliminati,
+                "non_eliminati_ambigui": ambigui,
+                "receivable_ids": sorted(receivable_ids),
+            }
+        )
+
 
 class ContractViewSet(ProtectedDestroyMixin, ModelViewSet):
     """Contratti di locazione dell'immobile attivo (CRUD per i membri

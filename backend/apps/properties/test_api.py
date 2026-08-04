@@ -1080,3 +1080,202 @@ class TestPrimaAssegnazioneAPI:
         payload = self._payload(tenant_2.id, room_2.id)
         resp = client_inq_1.post(self.URL, payload, format="json")
         assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Test action RoomAssignmentViewSet.rigenera_receivable
+# ---------------------------------------------------------------------------
+
+
+def _primo_mese_fa(delta_mesi: int) -> datetime.date:
+    """Primo giorno del mese, ``delta_mesi`` mesi prima di oggi."""
+    oggi = datetime.date.today()
+    anno, mese = oggi.year, oggi.month - delta_mesi
+    while mese <= 0:
+        mese += 12
+        anno -= 1
+    return datetime.date(anno, mese, 1)
+
+
+class TestRigeneraReceivableAPI:
+    """Correzione assignment (canone/valid_from sbagliati) + rigenerazione
+    degli addebiti AFFITTO non incassati."""
+
+    def _url(self, assignment_id):
+        return f"/api/v1/room-assignments/{assignment_id}/rigenera-receivable/"
+
+    @pytest.fixture
+    def assignment_corr(self, db, room_1, tenant_1):
+        """Assegnazione dal 1° del mese, due mesi fa: la finestra di
+        rigenerazione resta piccola e deterministica (3 mesi)."""
+        return RoomAssignment.objects.create(
+            room=room_1,
+            tenant=tenant_1,
+            valid_from=_primo_mese_fa(2),
+            canone_mensile=Decimal("600.00"),
+        )
+
+    def _genera_mesi(self, assignment) -> list[int]:
+        """Genera gli addebiti AFFITTO da valid_from al mese corrente
+        (come farebbe la prima assegnazione)."""
+        from billing.calc.rent import genera_pagamenti_mese
+
+        ids: list[int] = []
+        cursore = assignment.valid_from.replace(day=1)
+        fine = datetime.date.today().replace(day=1)
+        while cursore <= fine:
+            esito = genera_pagamenti_mese(
+                cursore.year,
+                cursore.month,
+                tenant_id=assignment.tenant_id,
+                property=assignment.room.property,
+            )
+            ids.extend(esito["payments"])
+            cursore = (
+                cursore.replace(year=cursore.year + 1, month=1)
+                if cursore.month == 12
+                else cursore.replace(month=cursore.month + 1)
+            )
+        return ids
+
+    def _affitti(self, assignment):
+        from billing.models import Receivable
+
+        return Receivable.objects.filter(
+            assignment=assignment, causale=Receivable.Causale.AFFITTO
+        ).order_by("competenza_da")
+
+    def test_cambio_canone_aggiorna_receivable_esistenti(
+        self, client_prop, assignment_corr
+    ):
+        """Il caso reale: canone inserito a 600 invece di 700. PATCH del
+        canone + rigenera → tutti gli addebiti liberi passano a 700."""
+        assert len(self._genera_mesi(assignment_corr)) == 3
+
+        resp = client_prop.patch(
+            f"/api/v1/room-assignments/{assignment_corr.id}/",
+            {"canone_mensile": "700.00"},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+
+        resp = client_prop.post(self._url(assignment_corr.id))
+        assert resp.status_code == 200, resp.content
+        data = resp.json()
+        assert data["aggiornati"] == 3
+        assert data["creati"] == 0
+        assert data["eliminati"] == 0
+        assert data["skippati_per_allocation"] == 0
+
+        importi = [r.importo_dovuto for r in self._affitti(assignment_corr)]
+        assert len(importi) == 3
+        assert all(i == Decimal("700.00") for i in importi)
+
+    def test_receivable_con_allocation_non_toccato(
+        self, client_prop, assignment_corr, bank_account
+    ):
+        """Guardia allocations: l'addebito già incassato resta al vecchio
+        importo e viene contato in skippati_per_allocation."""
+        from billing.models import BankTransaction, BankTransactionAllocation
+
+        self._genera_mesi(assignment_corr)
+        primo = self._affitti(assignment_corr).first()
+        bt = BankTransaction.objects.create(
+            data=primo.competenza_da,
+            descrizione="Bonifico affitto",
+            importo=Decimal("600.00"),
+            owner_account=bank_account,
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=primo, importo=Decimal("600.00")
+        )
+
+        resp = client_prop.patch(
+            f"/api/v1/room-assignments/{assignment_corr.id}/",
+            {"canone_mensile": "700.00"},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+
+        resp = client_prop.post(self._url(assignment_corr.id))
+        assert resp.status_code == 200, resp.content
+        data = resp.json()
+        assert data["skippati_per_allocation"] == 1
+        assert data["aggiornati"] == 2
+        assert data["eliminati"] == 0
+
+        primo.refresh_from_db()
+        assert primo.importo_dovuto == Decimal("600.00")
+        altri = self._affitti(assignment_corr).exclude(pk=primo.pk)
+        assert all(r.importo_dovuto == Decimal("700.00") for r in altri)
+
+    def test_valid_from_spostato_avanti_pro_rata_senza_orfani(
+        self, client_prop, assignment_corr
+    ):
+        """Spostando l'inizio dal 1 al 15, il mese d'ingresso diventa un
+        pro-rata e il vecchio addebito a mese pieno viene eliminato."""
+        import calendar
+        from decimal import ROUND_HALF_UP
+
+        self._genera_mesi(assignment_corr)
+        nuovo_inizio = assignment_corr.valid_from.replace(day=15)
+
+        resp = client_prop.patch(
+            f"/api/v1/room-assignments/{assignment_corr.id}/",
+            {"valid_from": nuovo_inizio.isoformat()},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+
+        resp = client_prop.post(self._url(assignment_corr.id))
+        assert resp.status_code == 200, resp.content
+        data = resp.json()
+        assert data["creati"] == 1  # il nuovo pro-rata del mese d'ingresso
+        assert data["aggiornati"] == 2  # i mesi pieni successivi
+        assert data["eliminati"] == 1  # il vecchio mese d'ingresso intero
+        assert data["skippati_per_allocation"] == 0
+
+        qs = self._affitti(assignment_corr)
+        assert qs.count() == 3
+        # Nessun orfano prima del nuovo inizio.
+        assert not qs.filter(competenza_da__lt=nuovo_inizio).exists()
+
+        rec = qs.first()
+        assert rec.competenza_da == nuovo_inizio
+        assert rec.is_aggiustamento is True
+        n_giorni = calendar.monthrange(nuovo_inizio.year, nuovo_inizio.month)[1]
+        giorni = n_giorni - nuovo_inizio.day + 1
+        atteso = (Decimal("600.00") * giorni / n_giorni).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        assert rec.importo_dovuto == atteso
+
+    def test_quota_condominio_inclusa(
+        self, client_prop, assignment_corr, immobile
+    ):
+        """Con una TenantCondominioRate valida sull'immobile, l'importo
+        rigenerato è canone + quota (il caso reale 600 → 700)."""
+        from billing.models import TenantCondominioRate
+
+        self._genera_mesi(assignment_corr)
+        importi = [r.importo_dovuto for r in self._affitti(assignment_corr)]
+        assert all(i == Decimal("600.00") for i in importi)
+
+        TenantCondominioRate.objects.create(
+            property=immobile,
+            valid_from=datetime.date(2024, 1, 1),
+            importo_mensile=Decimal("100.00"),
+        )
+
+        resp = client_prop.post(self._url(assignment_corr.id))
+        assert resp.status_code == 200, resp.content
+        assert resp.json()["aggiornati"] == 3
+
+        importi = [r.importo_dovuto for r in self._affitti(assignment_corr)]
+        assert all(i == Decimal("700.00") for i in importi)
+
+    def test_inquilino_non_autorizzato(self, client_inq_1, assignment_corr):
+        resp = client_inq_1.post(self._url(assignment_corr.id))
+        assert resp.status_code in (403, 404)
+        importi = [r.importo_dovuto for r in self._affitti(assignment_corr)]
+        assert importi == []  # nessuna generazione avvenuta
