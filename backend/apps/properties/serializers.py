@@ -104,6 +104,7 @@ class TenantProfileSerializer(serializers.ModelSerializer):
     )
     saldo = serializers.SerializerMethodField()
     saldo_totale = serializers.SerializerMethodField()
+    ha_assignment = serializers.SerializerMethodField()
 
     class Meta:
         model = TenantProfile
@@ -112,6 +113,7 @@ class TenantProfileSerializer(serializers.ModelSerializer):
             "username",
             "email",
             "nominativo",
+            "ha_assignment",
             "codice_fiscale",
             "telefono",
             "email_alt",
@@ -142,6 +144,15 @@ class TenantProfileSerializer(serializers.ModelSerializer):
         if saldi is None:
             return None
         return saldi.get(obj.id, 0.0)
+
+    def get_ha_assignment(self, obj) -> bool:
+        """True se il tenant ha almeno una assegnazione (passata, presente o
+        futura). Nella viewset arriva annotato (Exists, niente N+1); il
+        fallback copre gli usi del serializer fuori da quel queryset."""
+        annotato = getattr(obj, "ha_assignment", None)
+        if annotato is not None:
+            return bool(annotato)
+        return obj.assignments.exists()
 
 
 class TenantProfileWriteSerializer(serializers.ModelSerializer):
@@ -181,6 +192,39 @@ class TenantProfileWriteSerializer(serializers.ModelSerializer):
             *CAMPI_ANAGRAFICA,
             *CAMPI_DOCUMENTO_IDENTITA,
         ]
+
+    def validate_nominativo(self, value):
+        """Anti-duplicato: blocca la creazione di un secondo profilo con lo
+        stesso nominativo (confronto strip+casefold, non fuzzy) sulla stessa
+        property. Caso reale: prima-assegnazione fallita → profilo "fantasma"
+        invisibile in lista → ri-creazione → doppione. Sull'update il profilo
+        stesso è escluso dal confronto (rinominare sé stessi è consentito)."""
+        from properties.context import get_request_property
+
+        normalizzato = (value or "").strip().casefold()
+        request = self.context.get("request")
+        if not normalizzato or request is None:
+            return value
+
+        if self.instance is not None:
+            prop = self.instance.property
+        else:
+            prop = get_request_property(request)
+
+        qs = TenantProfile.objects.filter(property=prop)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        for esistente in qs.only("id", "nominativo"):
+            if esistente.nominativo.strip().casefold() != normalizzato:
+                continue
+            senza = "" if esistente.assignments.exists() else ", senza assegnazione"
+            raise serializers.ValidationError(
+                f'Esiste già un inquilino "{esistente.nominativo}" su questo '
+                f"immobile{senza}: riprendilo dalla lista inquilini invece di "
+                "crearne un doppione. Se è davvero una persona diversa, usa "
+                "un nome leggermente diverso."
+            )
+        return value
 
     def create(self, validated_data):
         from django.conf import settings

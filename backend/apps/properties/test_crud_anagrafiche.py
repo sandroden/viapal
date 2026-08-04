@@ -674,10 +674,14 @@ class TestTenantCrud:
         assert not user.has_usable_password()
         assert user.groups.filter(name="inquilini").exists()
 
-    def test_create_username_con_suffisso_se_occupato(self, client_operativo):
+    def test_create_username_con_suffisso_se_occupato(self, client_operativo, mondo_b):
+        # Omonimi su immobili diversi sono consentiti (sulla stessa property
+        # l'anti-duplicato risponde 400): lo username, globale, prende il
+        # suffisso numerico.
         r1 = client_operativo.post("/api/v1/tenants/", self.PAYLOAD, format="json")
         payload2 = {**self.PAYLOAD, "email": "altro@example.com"}
-        r2 = client_operativo.post("/api/v1/tenants/", payload2, format="json")
+        client_b = _client(mondo_b.user_owner)
+        r2 = client_b.post("/api/v1/tenants/", payload2, format="json")
         assert r1.status_code == 201 and r2.status_code == 201, r2.content
         assert TenantProfile.objects.get(pk=r1.json()["id"]).user.username == "mario-rossi"
         assert TenantProfile.objects.get(pk=r2.json()["id"]).user.username == "mario-rossi2"
@@ -702,6 +706,63 @@ class TestTenantCrud:
         aggiornato = TenantProfile.objects.get(pk=tenant_id)
         assert aggiornato.telefono == "3400000000"
         assert aggiornato.user.email == "nuova@example.com"
+
+    def test_create_nominativo_duplicato_400(self, client_operativo, tenant):
+        # "Inquilino Crud" esiste già (senza assignment): la ri-creazione con
+        # case/spazi diversi va bloccata — è il caso del doppione nato da una
+        # prima-assegnazione fallita.
+        payload = {**self.PAYLOAD, "nominativo": "  inquilino crud "}
+        resp = client_operativo.post("/api/v1/tenants/", payload, format="json")
+        assert resp.status_code == 400, resp.content
+        errori = resp.json()
+        assert "nominativo" in errori
+        msg = errori["nominativo"][0]
+        assert 'Esiste già un inquilino "Inquilino Crud"' in msg
+        assert "senza assegnazione" in msg
+        assert TenantProfile.objects.filter(nominativo__icontains="crud").count() == 1
+
+    def test_create_nominativo_duplicato_con_assignment_400(
+        self, client_operativo, tenant, assignment
+    ):
+        # Con un assignment esistente il messaggio non parla di "senza
+        # assegnazione".
+        payload = {**self.PAYLOAD, "nominativo": "INQUILINO CRUD"}
+        resp = client_operativo.post("/api/v1/tenants/", payload, format="json")
+        assert resp.status_code == 400, resp.content
+        msg = resp.json()["nominativo"][0]
+        assert 'Esiste già un inquilino "Inquilino Crud"' in msg
+        assert "senza assegnazione" not in msg
+
+    def test_create_nominativo_diverso_201(self, client_operativo, tenant):
+        payload = {**self.PAYLOAD, "nominativo": "Inquilino Crud Junior"}
+        resp = client_operativo.post("/api/v1/tenants/", payload, format="json")
+        assert resp.status_code == 201, resp.content
+
+    def test_update_stesso_nominativo_200(self, client_operativo, tenant):
+        # L'update di sé stesso non deve inciampare nell'anti-duplicato.
+        resp = client_operativo.patch(
+            f"/api/v1/tenants/{tenant.id}/",
+            {"nominativo": tenant.nominativo, "telefono": "3481122334"},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+
+    def test_update_rinomina_su_altro_400(self, client_operativo, tenant, tenant2):
+        # Rinominare un tenant col nominativo di un altro resta bloccato.
+        resp = client_operativo.patch(
+            f"/api/v1/tenants/{tenant2.id}/",
+            {"nominativo": "inquilino crud"},
+            format="json",
+        )
+        assert resp.status_code == 400, resp.content
+        assert "nominativo" in resp.json()
+
+    def test_create_duplicato_altra_property_201(self, client_operativo, mondo_b):
+        # "Inquilino B" esiste su immobile2: sull'immobile attivo il nome è
+        # libero (l'anti-duplicato è property-scoped).
+        payload = {**self.PAYLOAD, "nominativo": "inquilino b", "email": ""}
+        resp = client_operativo.post("/api/v1/tenants/", payload, format="json")
+        assert resp.status_code == 201, resp.content
 
     def test_sola_lettura_non_crea(self, client_sola_lettura):
         resp = client_sola_lettura.post("/api/v1/tenants/", self.PAYLOAD, format="json")

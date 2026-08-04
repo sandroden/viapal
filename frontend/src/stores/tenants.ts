@@ -7,6 +7,8 @@ export interface Tenant {
   nominativo: string;
   email?: string | null;
   telefono?: string | null;
+  /** False per i profili creati e mai assegnati a una stanza. */
+  ha_assignment?: boolean;
   user?: number | null;
   data_nascita?: string | null;
   documento_tipo?: string | null;

@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Max, Q, Sum
+from django.db.models import Exists, Max, OuterRef, Q, Sum
 from django.db.models.functions import Coalesce
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -165,7 +165,17 @@ class TenantProfileViewSet(
 
     def get_queryset(self):
         user = self.request.user
-        qs = TenantProfile.objects.select_related("user").order_by("nominativo")
+        # ``ha_assignment``: il frontend distingue i profili mai assegnati
+        # (badge + azione "assegna" in lista). Exists → nessuna N+1.
+        qs = (
+            TenantProfile.objects.select_related("user")
+            .annotate(
+                ha_assignment=Exists(
+                    RoomAssignment.objects.filter(tenant=OuterRef("pk"))
+                )
+            )
+            .order_by("nominativo")
+        )
         if not _is_gestione(user):
             return qs.filter(user=user)
         qs = qs.filter(property=get_request_property(self.request))
@@ -192,11 +202,19 @@ class TenantProfileViewSet(
                 self._anno_filtro = anno
                 inizio = datetime.date(anno, 1, 1)
                 fine = datetime.date(anno, 12, 31)
+                # Include anche i profili senza alcuna assegnazione: un
+                # inquilino appena creato (es. prima-assegnazione fallita)
+                # deve restare visibile nella lista di default, non solo
+                # con "Mostra anche storici".
                 return qs.filter(
-                    assignments__valid_from__lte=fine,
-                ).filter(
-                    Q(assignments__valid_to__isnull=True)
-                    | Q(assignments__valid_to__gt=inizio)
+                    Q(assignments__isnull=True)
+                    | (
+                        Q(assignments__valid_from__lte=fine)
+                        & (
+                            Q(assignments__valid_to__isnull=True)
+                            | Q(assignments__valid_to__gt=inizio)
+                        )
+                    )
                 ).distinct()
 
         solo_attivi = self.request.query_params.get("solo_attivi", "1")

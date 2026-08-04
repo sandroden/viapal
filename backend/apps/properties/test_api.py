@@ -261,6 +261,33 @@ class TestTenantProfileViewSet:
         assert tenant_1.id not in ids_2025
         assert tenant_2.id in ids_2025
 
+    def test_anno_include_senza_assignment(
+        self, client_prop, tenant_1, tenant_2, room_1
+    ):
+        # tenant_1: assignment che copre il 2025; tenant_2: profilo creato e
+        # mai assegnato (es. prima-assegnazione fallita) → deve comparire
+        # comunque nella lista per anno, col flag ha_assignment=False.
+        RoomAssignment.objects.create(
+            room=room_1,
+            tenant=tenant_1,
+            valid_from=datetime.date(2025, 2, 1),
+            canone_mensile=Decimal("400"),
+        )
+        resp = client_prop.get("/api/v1/tenants/?anno=2025")
+        assert resp.status_code == 200, resp.content
+        per_id = {t["id"]: t for t in resp.json()}
+        assert tenant_1.id in per_id
+        assert per_id[tenant_1.id]["ha_assignment"] is True
+        assert tenant_2.id in per_id
+        assert per_id[tenant_2.id]["ha_assignment"] is False
+
+        # Il mai-assegnato compare in qualunque anno; tenant_1 solo dove
+        # l'assignment si sovrappone.
+        resp_2020 = client_prop.get("/api/v1/tenants/?anno=2020")
+        ids_2020 = [t["id"] for t in resp_2020.json()]
+        assert tenant_2.id in ids_2020
+        assert tenant_1.id not in ids_2020
+
     def test_proprietario_anno_invalido_fallback_a_solo_attivi(
         self, client_prop, tenant_1, assignment_1
     ):

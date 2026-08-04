@@ -75,6 +75,16 @@
       class="vp-p-inq__table"
       @row-click="(_, riga: Tenant) => apri(riga)"
     >
+      <template #body-cell-nominativo="props">
+        <q-td :props="props">
+          {{ props.row.nominativo }}
+          <q-badge
+            v-if="props.row.ha_assignment === false"
+            class="vp-p-inq__badge-senza"
+            label="senza assegnazione"
+          />
+        </q-td>
+      </template>
       <template #body-cell-saldo="props">
         <q-td :props="props" class="vp-mono vp-p-inq__saldo" :class="classeSaldo(props.row.saldo)">
           {{ props.row.saldo === null || props.row.saldo === undefined ? '—' : formattaEuro(props.row.saldo) }}
@@ -95,6 +105,18 @@
       </template>
       <template #body-cell-azioni="props">
         <q-td :props="props" auto-width class="vp-p-inq__azioni">
+          <q-btn
+            v-if="puoModificare && props.row.ha_assignment === false"
+            flat
+            round
+            dense
+            icon="meeting_room"
+            color="primary"
+            aria-label="Assegna una stanza"
+            @click.stop="vaiAssegnaStanza(props.row)"
+          >
+            <q-tooltip>Assegna una stanza a {{ props.row.nominativo }}</q-tooltip>
+          </q-btn>
           <q-btn
             flat
             round
@@ -486,6 +508,12 @@ async function impersona(t: Tenant) {
 }
 .vp-p-inq__azioni {
   white-space: nowrap;
+}
+.vp-p-inq__badge-senza {
+  margin-left: 8px;
+  background: var(--vp-clay-soft, #fbeae5);
+  color: var(--vp-clay-deep, #8c3b21);
+  font-weight: 600;
 }
 .vp-mono {
   font-variant-numeric: tabular-nums;
