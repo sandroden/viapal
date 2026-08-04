@@ -45,6 +45,25 @@ La rigenerazione **non sovrascrive** i Receivable che hanno già allocazioni viv
 — [guardia allocations](/decisions/guardia-allocations.md). `--force` rispetta
 comunque questa invariante.
 
+# Correzione da frontend
+
+Dal 2026-08 un inserimento sbagliato (canone o data di inizio) si corregge
+senza admin/CLI: PATCH su `/api/v1/room-assignments/{id}/` più l'action
+`POST /api/v1/room-assignments/{id}/rigenera-receivable/` (dialog "Correggi
+assegnazione" nel dettaglio inquilino). L'action rigenera con force l'unione
+dei mesi con Receivable AFFITTO esistenti e dei mesi `valid_from`→oggi, poi
+elimina gli orfani **senza** allocazioni la cui chiave non è più prodotta
+(es. mese pieno sostituito dal pro-rata dopo lo spostamento di `valid_from`);
+gli orfani con allocazioni restano (guardia), i pro-rata manuali dentro il
+periodo pure (`non_eliminati_ambigui` nella risposta).
+
+Contorno anti-"profilo fantasma" (caso reale del doppione con la quota
+condominio agganciata al tenant sbagliato): la creazione di un omonimo
+sulla stessa property è un 400; i profili mai assegnati restano visibili
+nella lista di default con badge e azione "assegna"; il select delle quote
+propone solo inquilini con almeno un'assegnazione (`?con_assignment=1`) e
+il serializer delle quote rifiuta i tenant mai assegnati.
+
 # Vedi anche
 
 - [Receivable](/domain/receivable.md), [Conguaglio](/domain/conguaglio.md).
