@@ -141,6 +141,7 @@ import SemaforoBadge from 'src/components/SemaforoBadge.vue';
 import type { SemaforoLivello } from 'src/types/semaforo';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
+import { messaggioErrore } from 'src/utils/apiErrors';
 
 interface RigaTabella extends ProprietarioRiga {
   rowKey: string;
@@ -294,10 +295,7 @@ async function conferma(row: RigaTabella) {
     Notify.create({ type: 'positive', message: 'Pagamento confermato', icon: 'check_circle' });
     await store.loadProprietario(annoCorrente, meseCorrente, true);
   } catch (e: unknown) {
-    const msg =
-      (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-      'Conferma non riuscita';
-    Notify.create({ type: 'negative', message: msg });
+    Notify.create({ type: 'negative', message: messaggioErrore(e, 'Conferma non riuscita') });
   } finally {
     processing[row.rowKey] = false;
   }
@@ -314,10 +312,7 @@ async function rifiuta(row: RigaTabella) {
     });
     await store.loadProprietario(annoCorrente, meseCorrente, true);
   } catch (e: unknown) {
-    const msg =
-      (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-      'Rifiuto non riuscito';
-    Notify.create({ type: 'negative', message: msg });
+    Notify.create({ type: 'negative', message: messaggioErrore(e, 'Rifiuto non riuscito') });
   } finally {
     processing[row.rowKey] = false;
   }

@@ -209,6 +209,7 @@ import { useDashboardStore } from 'stores/dashboard';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 import { usePush } from 'src/composables/usePush';
+import { messaggioErrore } from 'src/utils/apiErrors';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -285,8 +286,11 @@ async function inviaProva() {
         ? `Notifica di prova inviata (${esito.inviate} dispositivi).`
         : 'Nessun dispositivo raggiunto: riattiva le notifiche.',
     });
-  } catch {
-    $q.notify({ type: 'negative', message: 'Invio della prova non riuscito.' });
+  } catch (e: unknown) {
+    $q.notify({
+      type: 'negative',
+      message: messaggioErrore(e, 'Invio della prova non riuscito.'),
+    });
   } finally {
     provaLoading.value = false;
   }

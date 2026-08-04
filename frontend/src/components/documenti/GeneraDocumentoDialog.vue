@@ -79,6 +79,7 @@ import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 import { useFascicoloStore, type AnteprimaDocumento, type DatoMancante } from 'stores/fascicolo';
 import { useFormatoData } from 'src/composables/useFormatoData';
+import { messaggioErrore } from 'src/utils/apiErrors';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -154,8 +155,7 @@ async function carica() {
   try {
     anteprima.value = await fascicoloStore.anteprima(props.tenantId, props.documento);
   } catch (e: unknown) {
-    const err = e as { response?: { data?: { detail?: string } } };
-    errore.value = err?.response?.data?.detail ?? 'Impossibile preparare il documento.';
+    errore.value = messaggioErrore(e, 'Impossibile preparare il documento.');
   } finally {
     caricamento.value = false;
   }
@@ -181,10 +181,9 @@ async function genera() {
     aperto.value = false;
     emit('generato');
   } catch (e: unknown) {
-    const err = e as { response?: { data?: { detail?: string } } };
     $q.notify({
       type: 'negative',
-      message: err?.response?.data?.detail ?? 'Errore nella generazione.',
+      message: messaggioErrore(e, 'Errore nella generazione.'),
     });
   } finally {
     generazione.value = false;

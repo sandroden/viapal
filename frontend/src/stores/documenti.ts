@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
 import { fetchAllPaginated } from 'src/utils/paginate';
+import { messaggioErrore } from 'src/utils/apiErrors';
 
 // --- Tipi -----------------------------------------------------------------
 
@@ -42,20 +43,6 @@ interface State {
   loading: boolean;
   uploading: boolean;
   errore: string | null;
-}
-
-function messaggioErrore(e: unknown, fallback: string): string {
-  const err = e as {
-    response?: { data?: { detail?: string; file?: string[]; tipo?: string[] } };
-    message?: string;
-  };
-  const data = err?.response?.data;
-  if (data) {
-    if (data.detail) return data.detail;
-    if (Array.isArray(data.file) && data.file.length) return String(data.file[0]);
-    if (Array.isArray(data.tipo) && data.tipo.length) return String(data.tipo[0]);
-  }
-  return err?.message ?? fallback;
 }
 
 /** Factory di store documenti su un endpoint DRF multipart.

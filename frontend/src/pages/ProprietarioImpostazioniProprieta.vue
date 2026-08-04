@@ -431,10 +431,10 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue';
-import { isAxiosError } from 'axios';
 import { useQuasar, type QInput } from 'quasar';
 import { useRoute } from 'vue-router';
 import { api } from 'boot/axios';
+import { messaggioErrore } from 'src/utils/apiErrors';
 import { useAuthStore, type RuoloProperty } from 'stores/auth';
 import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
 import {
@@ -555,13 +555,6 @@ function etichettaRuolo(ruolo: RuoloProperty | null): string {
 
 function percentuale(quota: string): string {
   return `${(Number(quota) * 100).toFixed(2).replace(/\.00$/, '')}%`;
-}
-
-function messaggioErrore(e: unknown, fallback: string): string {
-  if (isAxiosError(e)) {
-    return (e.response?.data as { detail?: string })?.detail ?? fallback;
-  }
-  return fallback;
 }
 
 async function carica() {

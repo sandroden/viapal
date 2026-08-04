@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
+import { messaggioErrore } from 'src/utils/apiErrors';
 
 // Vista utenze inquilino (sola lettura, solo periodi inviati).
 
@@ -45,11 +46,6 @@ interface State {
   dettaglio: DettaglioInquilinoFE | null;
   loading: boolean;
   errore: string | null;
-}
-
-function messaggioErrore(e: unknown, fallback: string): string {
-  const err = e as { response?: { data?: { detail?: string } }; message?: string };
-  return err?.response?.data?.detail ?? err?.message ?? fallback;
 }
 
 export const useUtenzeInquilinoStore = defineStore('utenzeInquilino', {

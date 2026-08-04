@@ -130,6 +130,7 @@ import {
   type Segnaposto,
 } from 'stores/modelliDocumento';
 import { useFormatoData } from 'src/composables/useFormatoData';
+import { messaggioErrore } from 'src/utils/apiErrors';
 
 defineProps<{ puoModificare?: boolean }>();
 
@@ -181,8 +182,11 @@ function scarica(nome: string, contenuto: string) {
 async function scaricaEsempio(codice: string) {
   try {
     scarica(`${codice}-esempio.html`, await store.esempio(codice));
-  } catch {
-    $q.notify({ type: 'negative', message: "Impossibile scaricare l'esempio." });
+  } catch (e: unknown) {
+    $q.notify({
+      type: 'negative',
+      message: messaggioErrore(e, "Impossibile scaricare l'esempio."),
+    });
   }
 }
 
@@ -197,8 +201,11 @@ async function apriSegnaposto(codice: string) {
     segnaposto.value = dati.segnaposto;
     titoloSegnaposto.value = dati.titolo;
     dialogSegnaposto.value = true;
-  } catch {
-    $q.notify({ type: 'negative', message: "Impossibile leggere l'elenco." });
+  } catch (e: unknown) {
+    $q.notify({
+      type: 'negative',
+      message: messaggioErrore(e, "Impossibile leggere l'elenco."),
+    });
   }
 }
 

@@ -104,6 +104,7 @@ import { Notify } from 'quasar';
 import ThDonut from './ThDonut.vue';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
+import { messaggioErrore } from 'src/utils/apiErrors';
 import { usePaymentsStore } from 'src/stores/payments';
 import type { CommentoAddebito, DaPagareItem, TipoPagamento } from 'src/stores/dashboard';
 
@@ -133,8 +134,11 @@ async function inviaNota() {
       message: 'Nota inviata: i proprietari la ricevono via email.',
       icon: 'mark_email_read',
     });
-  } catch {
-    Notify.create({ type: 'negative', message: 'Invio della nota non riuscito' });
+  } catch (e: unknown) {
+    Notify.create({
+      type: 'negative',
+      message: messaggioErrore(e, 'Invio della nota non riuscito'),
+    });
   } finally {
     inviandoNota.value = false;
   }

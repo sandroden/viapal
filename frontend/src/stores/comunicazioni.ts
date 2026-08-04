@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
 import { paramsClean } from 'src/utils/paginate';
+import { messaggioErrore } from 'src/utils/apiErrors';
 
 // --- Tipi -----------------------------------------------------------------
 
@@ -43,11 +44,6 @@ interface State {
   totale: number;
   loading: boolean;
   errore: string | null;
-}
-
-function messaggioErrore(e: unknown, fallback: string): string {
-  const err = e as { response?: { data?: { detail?: string } }; message?: string };
-  return err?.response?.data?.detail ?? err?.message ?? fallback;
 }
 
 export const useComunicazioniStore = defineStore('comunicazioni', {

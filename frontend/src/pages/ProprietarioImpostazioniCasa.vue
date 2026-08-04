@@ -943,10 +943,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { isAxiosError } from 'axios';
 import { useQuasar, type QTableProps } from 'quasar';
 import { useRoute } from 'vue-router';
 import { api } from 'boot/axios';
+import { messaggioErrore } from 'src/utils/apiErrors';
 import { usePropertiesStore } from 'stores/properties';
 import { useTenantsStore } from 'stores/tenants';
 import DocumentiPannello from 'components/DocumentiPannello.vue';
@@ -1061,20 +1061,6 @@ function asArray<T>(data: T[] | { results: T[] } | undefined | null): T[] {
   if (!data) return [];
   if (Array.isArray(data)) return data;
   return data.results ?? [];
-}
-
-function messaggioErrore(e: unknown, fallback: string): string {
-  if (isAxiosError(e)) {
-    const data = e.response?.data as Record<string, unknown> | undefined;
-    if (data && typeof data === 'object') {
-      if (typeof data.detail === 'string') return data.detail;
-      for (const valore of Object.values(data)) {
-        if (typeof valore === 'string') return valore;
-        if (Array.isArray(valore) && typeof valore[0] === 'string') return valore[0];
-      }
-    }
-  }
-  return fallback;
 }
 
 function formattaImporto(v: string | number): string {

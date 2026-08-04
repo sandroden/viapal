@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
+import { messaggioErrore } from 'src/utils/apiErrors';
 
 /** Modello di un documento generabile: il testo sta in tabella, uno per
  *  immobile, perché cambia da proprietà a proprietà e a cambiarlo è il
@@ -37,15 +38,6 @@ interface State {
   loading: boolean;
   salvataggio: boolean;
   errore: string | null;
-}
-
-function messaggioErrore(e: unknown, fallback: string): string {
-  const err = e as { response?: { data?: Record<string, string[] | string> } };
-  const dati = err?.response?.data;
-  if (!dati) return fallback;
-  const primo = Object.values(dati)[0];
-  if (Array.isArray(primo)) return primo[0] ?? fallback;
-  return typeof primo === 'string' ? primo : fallback;
 }
 
 export const useModelliDocumentoStore = defineStore('modelliDocumento', {

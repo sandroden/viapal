@@ -583,6 +583,7 @@ import { useRiconciliazioneStore, type BankTransactionFE, type ReceivableFE } fr
 import { useTenantsStore, type Tenant } from 'stores/tenants';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
+import { messaggioErrore } from 'src/utils/apiErrors';
 import BankTransactionLedgerDialog from 'src/components/BankTransactionLedgerDialog.vue';
 
 interface Allocazione {
@@ -1201,10 +1202,10 @@ async function salva() {
     annulla();
     await ricarica();
   } catch (e: unknown) {
-    const msg =
-      (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      || 'Salvataggio non riuscito';
-    Notify.create({ type: 'negative', message: msg });
+    Notify.create({
+      type: 'negative',
+      message: messaggioErrore(e, 'Salvataggio non riuscito'),
+    });
   }
 }
 

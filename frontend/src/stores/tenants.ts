@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
+import { messaggioErrore } from 'src/utils/apiErrors';
 
 export interface Tenant {
   id: number;
@@ -63,7 +64,7 @@ export const useTenantsStore = defineStore('tenants', {
         this.tenants = asArray(data);
         this.ultimoSoloAttivi = soloAttivi;
       } catch (e: unknown) {
-        this.errore = (e as Error)?.message ?? 'Errore';
+        this.errore = messaggioErrore(e, 'Errore caricamento inquilini');
       } finally {
         this.loading = false;
       }
@@ -80,7 +81,7 @@ export const useTenantsStore = defineStore('tenants', {
         this.tenantsPerAnno = { ...this.tenantsPerAnno, [anno]: lista };
         return lista;
       } catch (e: unknown) {
-        this.errore = (e as Error)?.message ?? 'Errore';
+        this.errore = messaggioErrore(e, 'Errore caricamento inquilini');
         return [];
       } finally {
         this.loadingAnno = { ...this.loadingAnno, [anno]: false };

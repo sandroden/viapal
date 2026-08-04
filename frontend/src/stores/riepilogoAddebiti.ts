@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
+import { messaggioErrore } from 'src/utils/apiErrors';
 
 // --- Tipi -----------------------------------------------------------------
 
@@ -81,11 +82,6 @@ interface State {
   anteprima: InvioRiepiloghiResponse | null;
   loading: boolean;
   errore: string | null;
-}
-
-function messaggioErrore(e: unknown, fallback: string): string {
-  const err = e as { response?: { data?: { detail?: string } }; message?: string };
-  return err?.response?.data?.detail ?? err?.message ?? fallback;
 }
 
 export const useRiepilogoAddebitiStore = defineStore('riepilogoAddebiti', {

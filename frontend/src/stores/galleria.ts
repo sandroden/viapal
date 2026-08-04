@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
+import { messaggioErrore } from 'src/utils/apiErrors';
 
 // --- Tipi -----------------------------------------------------------------
 
@@ -78,20 +79,6 @@ interface State {
   loading: boolean;
   uploading: boolean;
   errore: string | null;
-}
-
-function messaggioErrore(e: unknown, fallback: string): string {
-  const err = e as {
-    response?: { data?: { detail?: string; image?: string[]; slug?: string[] } };
-    message?: string;
-  };
-  const data = err?.response?.data;
-  if (data) {
-    if (data.detail) return data.detail;
-    if (Array.isArray(data.image) && data.image.length) return String(data.image[0]);
-    if (Array.isArray(data.slug) && data.slug.length) return String(data.slug[0]);
-  }
-  return err?.message ?? fallback;
 }
 
 export const useGalleriaStore = defineStore('galleria', {

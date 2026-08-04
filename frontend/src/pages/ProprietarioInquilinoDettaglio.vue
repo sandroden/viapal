@@ -1546,11 +1546,11 @@ async function caricaCandidatiCessione(): Promise<void> {
     candidatiCessione.value = [...lista].sort((a, b) =>
       a.nominativo.localeCompare(b.nominativo),
     );
-  } catch {
+  } catch (e: unknown) {
     candidatiCessione.value = [];
     $q.notify({
       type: 'negative',
-      message: 'Caricamento inquilini non riuscito.',
+      message: messaggioErrore(e, 'Caricamento inquilini non riuscito.'),
     });
   } finally {
     loadingCandidati.value = false;
