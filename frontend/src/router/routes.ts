@@ -106,11 +106,6 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/ProprietarioSpese.vue'),
       },
       {
-        path: 'quick-add',
-        name: 'p-quick-add',
-        component: () => import('pages/ProprietarioQuickAdd.vue'),
-      },
-      {
         path: 'bilancio/:ownerId',
         name: 'p-bilancio-dettaglio',
         component: () => import('pages/ProprietarioBilancioDettaglio.vue'),
