@@ -33,7 +33,7 @@ stima man mano.
 # Frontend
 
 - Inquilino: `/i/conguaglio` (`InquilinoConguaglio.vue`).
-- Proprietario: vista integrata nel conto economico + deep-link ai saldi fratelli.
+- Proprietario: vista integrata nel conto economico + deep-link ai saldi proprietari.
 
 # Vedi anche
 

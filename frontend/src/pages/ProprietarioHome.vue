@@ -228,7 +228,7 @@
             <p class="vp-p-home__sezione-nota">
               Quanto è transitato dalle tasche di ciascuno (incassato −
               anticipato), non il dare/avere: per quello vedi
-              <router-link to="/p/saldi-fratelli">Saldi fratelli</router-link>.
+              <router-link to="/p/saldi-proprietari">Saldi proprietari</router-link>.
             </p>
           </div>
         </div>

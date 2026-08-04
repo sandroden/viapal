@@ -8,7 +8,7 @@ Conoscenza non ricostruibile dai soli `models.py`: algoritmi, regole, flussi.
 * [Calcolo utenze](calcolo-utenze.md) - bolletta→periodo, pro-rata giorni, pinning, avvisi.
 * [Conguaglio](conguaglio.md) - conguaglio periodico e previsionale.
 * [Deposito](deposito.md) - versamento e restituzione cauzionale.
-* [Saldi fratelli](saldi-fratelli.md) - contabilità inter-proprietario e settlement.
+* [Saldi proprietari](saldi-proprietari.md) - contabilità inter-proprietario e settlement.
 * [Conto economico](conto-economico.md) - cassa vs competenza e il ponte tra i due.
 * [Solleciti e registro comunicazioni](solleciti.md) - riepilogo addebiti agli inquilini e archivio di cosa è stato inviato.
 * [Fascicolo documenti](fascicolo-documenti.md) - checklist documenti inquilino, stati derivati, visore interno.

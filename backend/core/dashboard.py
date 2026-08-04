@@ -166,7 +166,7 @@ class ViapalIndexDashboard(Dashboard):
             "billing.models.expenses.TenantCondominioRate",
         )
 
-        # Group tabs: pagamenti+bollette (default) | contabilita' fratelli | configurazione.
+        # Group tabs: pagamenti+bollette (default) | contabilita' proprietari | configurazione.
         # Ordine = primo tab visibile by default.
         self.children.append(
             modules.Group(
@@ -179,7 +179,7 @@ class ViapalIndexDashboard(Dashboard):
                         exclude=CONFIG_MODELS,
                     ),
                     modules.AppList(
-                        title="Contabilità fratelli",
+                        title="Contabilità proprietari",
                         models=("accounting.*",),
                     ),
                     modules.AppList(
@@ -219,11 +219,11 @@ class ViapalIndexDashboard(Dashboard):
                     _link(
                         "Genera settlement annuale",
                         reverse("admin:accounting_ownersettlement_genera"),
-                        "Chiusura conti tra fratelli per anno (cassa virtuale)",
+                        "Chiusura conti tra proprietari per anno (cassa virtuale)",
                     ),
                     _link(
-                        "Saldi fratelli (frontend)",
-                        "/p/saldi-fratelli/",
+                        "Saldi proprietari (frontend)",
+                        "/p/saldi-proprietari/",
                         "Saldi live + storico settlement",
                     ),
                     _link(

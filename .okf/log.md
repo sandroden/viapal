@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-08-04
+* **Maintain**: `domain/saldi-fratelli.md` → `domain/saldi-proprietari.md` (+ link in `index.md`, `domain/index.md`, `domain/conto-economico.md`, `domain/conguaglio.md`, `models/accounting.md`) — con la multiproprietà "fratelli" era specifico del solo immobile originale: pagina rinominata "Saldi proprietari", route `/p/saldi-proprietari` con redirect dal vecchio path.
+
 ## 2026-08-03
 * **Maintain**: `domain/generazione-affitti.md`, `models/billing.md` — la quota condominio (`TenantCondominioRate`) pende dall'immobile (`property` obbligatoria, backfill dal contratto) e non più dal contratto, ora riferimento facoltativo con `SET_NULL`: su una casa appena creata la prima assegnazione con quota falliva con "Nessun contratto attivo". Le quote si gestiscono da `/api/v1/quote-condominio/` (tab Spese della casa).
 * **Maintain**: `domain/receivable.md` — sezione "Conto di destinazione": `conto_per_receivable` è la fonte del conto **proposto** quando si registra un incasso (`conto_suggerito`), mai il conto di chi guarda; le spese restano sul conto di chi anticipa.

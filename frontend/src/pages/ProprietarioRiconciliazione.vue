@@ -743,7 +743,7 @@ const filtroImportoBt = ref<'tutti' | 'alti' | 'bassi'>('tutti');
 const sogliaMicroResidui = ref<0 | 1 | 5>(1);
 
 // Filtro client-side: nasconde le BT marcate come transazioni inter-owner
-// (giroconti tra fratelli). Default attivo: nella riconciliazione le BT
+// (giroconti tra proprietari). Default attivo: nella riconciliazione le BT
 // inter-owner sono rumore — non sono pagamenti inquilino.
 const nascondiInterOwner = ref(true);
 

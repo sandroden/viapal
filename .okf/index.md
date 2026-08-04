@@ -26,7 +26,7 @@ Partire da qui, poi seguire solo i link rilevanti (progressive disclosure).
 * [Calcolo utenze](domain/calcolo-utenze.md) - bolletta→periodo, pro-rata giorni, pinning, invio avvisi.
 * [Conguaglio](domain/conguaglio.md) - conguaglio periodico e previsionale.
 * [Deposito](domain/deposito.md) - versamento e restituzione cauzionale.
-* [Saldi fratelli](domain/saldi-fratelli.md) - contabilità inter-proprietario e settlement.
+* [Saldi proprietari](domain/saldi-proprietari.md) - contabilità inter-proprietario e settlement.
 * [Conto economico](domain/conto-economico.md) - cassa vs competenza e il ponte tra i due.
 * [Solleciti e registro comunicazioni](domain/solleciti.md) - riepilogo addebiti (canone del mese + pendenti a 15 giorni), niente totali né QR, registro degli invii.
 * [Galleria pubblica](domain/galleria-pubblica.md) - annuncio affitto /g/slug, editing in-place, endpoint AllowAny.

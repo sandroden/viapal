@@ -24,9 +24,9 @@ Per i fratelli serve riconciliare le due viste. Relazione chiave individuata:
 conguaglio_cassa = − saldi_live.totale
 ```
 
-Cioè il conguaglio di cassa è l'opposto del totale dei [saldi live](/domain/saldi-fratelli.md).
+Cioè il conguaglio di cassa è l'opposto del totale dei [saldi live](/domain/saldi-proprietari.md).
 La scelta di design è stata **non** creare una terza pagina dedicata, ma un box
-dentro `ContoEconomico` con deep-link a `SaldiFratelli`.
+dentro `ContoEconomico` con deep-link a `SaldiProprietari`.
 
 # Nota aperta
 
@@ -35,4 +35,4 @@ possono divergere; da tenere presente quando i numeri non tornano.
 
 # Vedi anche
 
-- [Saldi fratelli](/domain/saldi-fratelli.md), [Conguaglio](/domain/conguaglio.md).
+- [Saldi proprietari](/domain/saldi-proprietari.md), [Conguaglio](/domain/conguaglio.md).

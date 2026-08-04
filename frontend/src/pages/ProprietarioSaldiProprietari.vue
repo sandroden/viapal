@@ -2,8 +2,8 @@
   <q-page padding class="vp-saldi">
     <header class="vp-saldi__head">
       <div>
-        <div class="vp-eyebrow">Contabilità tra fratelli</div>
-        <h1 class="vp-display vp-saldi__titolo">Saldi fratelli</h1>
+        <div class="vp-eyebrow">Contabilità tra proprietari</div>
+        <h1 class="vp-display vp-saldi__titolo">Saldi proprietari</h1>
       </div>
       <div class="vp-saldi__head-azioni">
         <q-input
@@ -445,16 +445,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import {
-  useSaldiFratelliStore,
+  useSaldiProprietariStore,
   type GeneraSettlementEsito,
   type OwnerLedgerEntryFE,
   type OwnerSettlementFE,
-} from 'stores/saldiFratelli';
+} from 'stores/saldiProprietari';
 import { useOwnersStore } from 'stores/owners';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
-const store = useSaldiFratelliStore();
+const store = useSaldiProprietariStore();
 const ownersStore = useOwnersStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();

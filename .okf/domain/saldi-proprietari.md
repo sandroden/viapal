@@ -1,7 +1,7 @@
 ---
 type: Domain Logic
-title: Saldi fratelli (contabilità inter-proprietario)
-description: Chi ha anticipato cosa fra i tre proprietari, saldi live e settlement.
+title: Saldi proprietari (contabilità inter-proprietario)
+description: Chi ha anticipato cosa fra i proprietari, saldi live e settlement.
 resource: backend/apps/accounting/services/
 tags: [domain, accounting, settlement, saldi]
 timestamp: 2026-07-08T00:00:00Z
@@ -9,9 +9,10 @@ timestamp: 2026-07-08T00:00:00Z
 
 # Overview
 
-I tre fratelli proprietari anticipano spese e incassano affitti in modo non
-uniforme; questa area tiene i conti tra loro. Servizi in
-`backend/apps/accounting/services/`.
+I proprietari (nel caso storico, i tre fratelli) anticipano spese e incassano
+affitti in modo non uniforme; questa area tiene i conti tra loro. Servizi in
+`backend/apps/accounting/services/`. Fino al 2026-08 l'area si chiamava
+"Saldi fratelli"; con la multiproprietà il nome è neutro.
 
 # Saldi live
 
@@ -37,7 +38,8 @@ trattare un movimento bancario come regolamento fra proprietari (idempotente e r
 
 # Frontend
 
-- `/p/saldi-fratelli` (`ProprietarioSaldiFratelli.vue`) — saldi, quadratura, settlement.
+- `/p/saldi-proprietari` (`ProprietarioSaldiProprietari.vue`) — saldi, quadratura,
+  settlement; `/p/saldi-fratelli` resta come redirect per i segnalibri.
 - Dashboard "Flusso di cassa".
 
 # Vedi anche

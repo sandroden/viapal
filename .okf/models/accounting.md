@@ -10,7 +10,7 @@ timestamp: 2026-07-08T00:00:00Z
 # Overview
 
 Contabilità **fra i proprietari** (i tre fratelli): chi ha anticipato cosa, quanto
-è dovuto a chi, e i conguagli periodici. Logica in [saldi fratelli](/domain/saldi-fratelli.md).
+è dovuto a chi, e i conguagli periodici. Logica in [saldi proprietari](/domain/saldi-proprietari.md).
 
 # Modelli
 
@@ -24,5 +24,5 @@ Contabilità **fra i proprietari** (i tre fratelli): chi ha anticipato cosa, qua
 
 # Vedi anche
 
-- [Saldi fratelli](/domain/saldi-fratelli.md) — `saldi_live`, `genera_settlement`.
+- [Saldi proprietari](/domain/saldi-proprietari.md) — `saldi_live`, `genera_settlement`.
 - [Conto economico](/domain/conto-economico.md) — ponte cassa↔competenza.

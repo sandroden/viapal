@@ -149,7 +149,7 @@ import {
   type TipoInterOwner,
 } from 'stores/riconciliazione';
 import { useOwnersStore } from 'stores/owners';
-import { useSaldiFratelliStore } from 'stores/saldiFratelli';
+import { useSaldiProprietariStore } from 'stores/saldiProprietari';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
@@ -170,7 +170,7 @@ const aperto = computed({
 
 const ownersStore = useOwnersStore();
 const ricStore = useRiconciliazioneStore();
-const saldiStore = useSaldiFratelliStore();
+const saldiStore = useSaldiProprietariStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
 
@@ -196,7 +196,7 @@ const tipiOpzioni: { value: TipoInterOwner; label: string; help: string }[] = [
   {
     value: 'incasso_conguaglio',
     label: 'Conguaglio settlement',
-    help: 'Liquidazione della chiusura annuale tra i fratelli.',
+    help: 'Liquidazione della chiusura annuale tra i proprietari.',
   },
   {
     value: 'distribuzione',
@@ -219,7 +219,7 @@ const richiedeControparte = computed(
   () => form.tipo !== 'aggiustamento',
 );
 
-// Esclude il proprietario del conto della BT: la controparte è un altro fratello.
+// Esclude il proprietario del conto della BT: la controparte è un altro proprietario.
 const opzioniControparte = computed(() =>
   ownersStore.owners.filter((o) => o.id !== ownerDelConto.value),
 );
@@ -227,8 +227,8 @@ const opzioniControparte = computed(() =>
 const etichettaControparte = computed(() => {
   const owner = props.bt.owner_nominativo;
   return owner
-    ? `Controparte (l'altro fratello, oltre a ${owner})`
-    : "Controparte (l'altro fratello)";
+    ? `Controparte (l'altro proprietario, oltre a ${owner})`
+    : "Controparte (l'altro proprietario)";
 });
 
 const opzioniSettlement = computed(() =>

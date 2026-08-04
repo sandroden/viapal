@@ -132,7 +132,7 @@ const vociMenu = computed(() => {
     { to: '/p/spese', label: 'Spese', icon: 'shopping_cart' },
     { to: '/p/utenze', label: 'Utenze', icon: 'bolt' },
     { to: '/p/riconciliazione', label: 'Riconciliazione', icon: 'compare_arrows' },
-    { to: '/p/saldi-fratelli', label: 'Saldi fratelli', icon: 'account_balance' },
+    { to: '/p/saldi-proprietari', label: 'Saldi proprietari', icon: 'account_balance' },
     { to: '/p/conto-economico', label: 'Conto economico', icon: 'assessment' },
     { to: '/p/impostazioni/proprieta', label: 'Immobile e membri', icon: 'home_work' },
     { to: '/p/impostazioni/casa', label: 'La casa', icon: 'meeting_room' },

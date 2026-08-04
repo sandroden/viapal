@@ -2,7 +2,7 @@
 Saldi pro-quota fra proprietari calcolati al volo, mai persistiti.
 
 Filosofia: durante l'anno non scriviamo voci ledger automatiche (eviterebbe
-rumore — 30 spese × 3 fratelli = 90 voci inutili). La pagina "Saldi fratelli"
+rumore — 30 spese × 3 fratelli = 90 voci inutili). La pagina "Saldi proprietari"
 mostra invece la situazione live a una data, pescando da Receivable pagati,
 Expense, voci ledger di BT marcate inter-owner e baseline dell'ultimo
 OwnerSettlement chiuso.

@@ -143,10 +143,10 @@
           <q-card-section>
             <div class="vp-eyebrow">Utile pro-quota</div>
             <p class="vp-ce__nota">
-              Quanto ha <em>guadagnato</em> ciascun fratello, in base alla
+              Quanto ha <em>guadagnato</em> ciascun proprietario, in base alla
               quota di proprietà. È diverso da quanto ha incassato: il
               dare/avere è in
-              <router-link to="/p/saldi-fratelli">Saldi fratelli</router-link>.
+              <router-link to="/p/saldi-proprietari">Saldi proprietari</router-link>.
             </p>
             <q-list dense separator>
               <q-item v-for="pq in data.utile_pro_quota" :key="pq.owner_id" dense>

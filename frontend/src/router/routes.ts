@@ -111,10 +111,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/ProprietarioRiconciliazione.vue'),
       },
       {
-        path: 'saldi-fratelli',
-        name: 'p-saldi-fratelli',
-        component: () => import('pages/ProprietarioSaldiFratelli.vue'),
+        path: 'saldi-proprietari',
+        name: 'p-saldi-proprietari',
+        component: () => import('pages/ProprietarioSaldiProprietari.vue'),
       },
+      // Nome storico della pagina (quando i proprietari erano solo i tre
+      // fratelli): i segnalibri devono continuare ad aprirla.
+      { path: 'saldi-fratelli', redirect: { name: 'p-saldi-proprietari' } },
       {
         path: 'conto-economico',
         name: 'p-conto-economico',

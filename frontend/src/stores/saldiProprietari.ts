@@ -129,7 +129,7 @@ function asArray<T>(data: T[] | { results: T[] } | undefined | null): T[] {
   return data.results ?? [];
 }
 
-export const useSaldiFratelliStore = defineStore('saldiFratelli', {
+export const useSaldiProprietariStore = defineStore('saldiProprietari', {
   state: (): State => ({
     saldi: [],
     quadratura: null,
