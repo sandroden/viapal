@@ -40,6 +40,8 @@
       :ingresso-nota="ingressoNota"
       :needs-emetti="needsEmetti"
       :gia-inviato-at="store.period?.avvisi_inviati_at ?? null"
+      :forzato="forzato"
+      @forza="onForza"
       @cambia-periodo="onCambiaPeriodo"
       @update:criterio="(c) => (criterio = c)"
       @update:step="onStep"
@@ -156,6 +158,9 @@ async function onTabAndamento(): Promise<void> {
 const criterio = ref<Criterio>('giorni');
 const step = ref(1);
 const escludi = ref<number[]>([]);
+// Sblocco esplicito della ripartizione parziale (manca luce o gas). Vale per
+// il periodo corrente e decade cambiando periodo.
+const forzato = ref(false);
 
 const ownerId = ref<number | null>(null);
 const filePdf = ref<File[]>([]);
@@ -341,9 +346,13 @@ const ingressoNota = computed(() =>
 async function caricaDatiPeriodo(): Promise<void> {
   if (!store.period) return;
   escludi.value = [];
+  if (store.period.stato === 'inviato' && !store.completezza?.completo) {
+    // Periodo già emesso in forma parziale: il blocco non ha più senso.
+    forzato.value = true;
+  }
   await store.fetchBollettePeriodo(store.period.periodo_da, store.period.periodo_a);
-  if (store.completezza?.completo) {
-    await store.calcolaAnteprima();
+  if (store.completezza?.completo || forzato.value) {
+    await store.calcolaAnteprima(forzato.value);
   }
   if (store.period.stato === 'inviato') {
     await store.inviaAvvisi(true);
@@ -352,18 +361,43 @@ async function caricaDatiPeriodo(): Promise<void> {
 
 async function onCambiaPeriodo(v: { anno: number; mese: number }): Promise<void> {
   step.value = 1;
+  forzato.value = false;
   await store.perMese(v.anno, v.mese);
   await caricaDatiPeriodo();
 }
 
 async function onStep(n: number): Promise<void> {
   step.value = n;
-  if (n === 2 && store.completezza?.completo && !store.anteprima) {
-    await store.calcolaAnteprima();
+  if (n === 2 && (store.completezza?.completo || forzato.value) && !store.anteprima) {
+    await store.calcolaAnteprima(forzato.value);
   }
   if (n === 3 && store.period?.stato === 'inviato' && !store.invio) {
     await store.inviaAvvisi(true);
   }
+}
+
+// "Procedi comunque": conferma esplicita, poi la ripartizione parziale
+// (solo le voci presenti) si calcola e il wizard si sblocca.
+function onForza(): void {
+  const voci = mancantiTipi.value.filter((t) => t !== 'TARI');
+  const senza = `${voci.length > 1 ? 'mancano' : 'manca'} ${voci.join(' e ')}`;
+  $q.dialog({
+    title: 'Ripartizione parziale',
+    message:
+      `Per questo periodo ${senza}. Puoi procedere comunque ripartendo ` +
+      'solo quello che c’è: utile se un fornitore ha cadenza diversa ' +
+      '(es. bimestrale), se una bolletta non è disponibile o se l’utenza ' +
+      'è intestata direttamente all’inquilino.',
+    ok: { label: 'Procedi comunque', color: 'primary' },
+    cancel: { label: 'Annulla', flat: true },
+    persistent: true,
+  }).onOk(() => {
+    void (async () => {
+      forzato.value = true;
+      await store.calcolaAnteprima(true);
+      step.value = 2;
+    })();
+  });
 }
 
 function onToggleInvio(receivableId: number): void {
@@ -443,7 +477,7 @@ async function onUpload(): Promise<void> {
 
 // ── Crea addebiti (esplicito) → poi invio ─────────────────────────────
 async function onEmetti(): Promise<void> {
-  const ok = await store.emetti();
+  const ok = await store.emetti(forzato.value);
   if (ok) {
     $q.notify({ type: 'positive', message: 'Addebiti utenze creati' });
     await store.fetchPeriodi();

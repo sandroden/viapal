@@ -3,7 +3,7 @@
 import VpIcon from './VpIcon.vue';
 
 withDefaults(defineProps<{ mancanti?: number }>(), { mancanti: 0 });
-defineEmits<{ torna: [] }>();
+defineEmits<{ torna: []; forza: [] }>();
 </script>
 
 <template>
@@ -12,11 +12,14 @@ defineEmits<{ torna: [] }>();
     <div class="vp-display" style="font-size: 22px">Prima completa le bollette</div>
     <div class="txt">
       Mancano <b>{{ mancanti }} bollette</b> di questo periodo. La ripartizione e l'invio si
-      sbloccano quando il totale è completo.
+      sbloccano quando il totale è completo — oppure puoi procedere comunque con una
+      ripartizione parziale (fornitore con cadenza diversa, bolletta non disponibile,
+      utenza intestata all'inquilino).
     </div>
     <button class="vp-btn vp-btn--primary" style="margin-top: 4px" @click="$emit('torna')">
       <VpIcon name="upload" :size="16" color="#fff" /> Torna a "Bolletta"
     </button>
+    <button class="vp-btn vp-btn--ghost" @click="$emit('forza')">Procedi comunque</button>
   </div>
 </template>
 

@@ -221,6 +221,81 @@ class TestAnteprimaEmetti:
         assert resp.status_code == 400
         assert resp.json()["completezza"]["completo"] is False
 
+    def test_emetti_forza_con_sola_luce(self, immobile):
+        """``forza`` sblocca l'emissione parziale con una sola delle due voci."""
+        from billing.models import Receivable
+
+        _assignment_attivo(immobile)
+        _bolletta(immobile, "luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        c = _client(immobile)
+        pid = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
+        ).json()["period"]["id"]
+
+        # senza forza resta il blocco
+        assert c.post(f"/api/v1/utility-periods/{pid}/emetti/").status_code == 400
+
+        resp = c.post(
+            f"/api/v1/utility-periods/{pid}/emetti/", {"forza": True}, format="json"
+        )
+        assert resp.status_code == 200, resp.content
+        assert resp.json()["period"]["stato"] == "inviato"
+        rec = Receivable.objects.get(
+            causale=Receivable.Causale.UTENZE, utility_period_id=pid
+        )
+        assert rec.importo_dovuto == Decimal("100.00")
+
+    def test_emetti_forza_solo_tari(self, immobile):
+        """Con ``forza`` si ripartisce anche la sola TARI (luce/gas assenti)."""
+        from billing.models import AnnualUtilityCost, Receivable
+
+        _assignment_attivo(immobile)
+        AnnualUtilityCost.objects.create(
+            property=immobile,
+            voce=AnnualUtilityCost.VoceAnnuale.TARI,
+            anno=2025,
+            importo_annuale=Decimal("120.00"),
+            valid_from=datetime.date(2025, 1, 1),
+        )
+        c = _client(immobile)
+        pid = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
+        ).json()["period"]["id"]
+
+        # anteprima: senza forza il periodo viene saltato, con forza calcola
+        assert c.get(f"/api/v1/utility-periods/{pid}/anteprima/").json()[
+            "skipped"
+        ] == "no_bollette_luce_gas"
+        ant = c.get(f"/api/v1/utility-periods/{pid}/anteprima/", {"forza": 1}).json()
+        assert "skipped" not in ant
+        assert Decimal(str(ant["totali_per_voce"]["tari"])) == Decimal("10.00")
+
+        resp = c.post(
+            f"/api/v1/utility-periods/{pid}/emetti/", {"forza": True}, format="json"
+        )
+        assert resp.status_code == 200, resp.content
+        rec = Receivable.objects.get(
+            causale=Receivable.Causale.UTENZE, utility_period_id=pid
+        )
+        assert rec.importo_dovuto == Decimal("10.00")  # 120 / 12 * 1 mese
+
+    def test_emetti_forza_periodo_vuoto(self, immobile):
+        """``forza`` su un periodo senza nulla da ripartire: 400, resta bozza."""
+        from billing.models import UtilityChargePeriod
+
+        _assignment_attivo(immobile)
+        c = _client(immobile)
+        pid = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 9}
+        ).json()["period"]["id"]
+        resp = c.post(
+            f"/api/v1/utility-periods/{pid}/emetti/", {"forza": True}, format="json"
+        )
+        assert resp.status_code == 400
+        assert resp.json()["skipped"] == "nessun_importo"
+        period = UtilityChargePeriod.objects.get(pk=pid)
+        assert period.stato == UtilityChargePeriod.StatoPeriodo.BOZZA
+
 
 def _setup_emesso(c, immobile, email="mario@example.com", mese=6):
     """Crea inquilino+bollette, trova il periodo del mese e lo emette."""

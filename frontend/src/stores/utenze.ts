@@ -274,13 +274,14 @@ export const useUtenzeStore = defineStore('utenze', {
       }
     },
 
-    async calcolaAnteprima(): Promise<void> {
+    async calcolaAnteprima(forza = false): Promise<void> {
       if (!this.period) return;
       this.loading = true;
       this.errore = null;
       try {
         const { data } = await api.get<AnteprimaResponse>(
           `/api/v1/utility-periods/${this.period.id}/anteprima/`,
+          { params: forza ? { forza: 1 } : {} },
         );
         this.anteprima = data;
         this.completezza = data.completezza;
@@ -291,13 +292,14 @@ export const useUtenzeStore = defineStore('utenze', {
       }
     },
 
-    async emetti(): Promise<boolean> {
+    async emetti(forza = false): Promise<boolean> {
       if (!this.period) return false;
       this.loading = true;
       this.errore = null;
       try {
         const { data } = await api.post<AnteprimaResponse>(
           `/api/v1/utility-periods/${this.period.id}/emetti/`,
+          { forza },
         );
         this.anteprima = data;
         if (data.period) this.period = data.period;

@@ -200,6 +200,7 @@ def calcola_conguaglio_periodo(
     period_id: int,
     persist: bool = False,
     tenant_id: int | None = None,
+    forza_senza_bollette: bool = False,
 ) -> dict:
     """
     Calcola la ripartizione di un UtilityChargePeriod fra i RoomAssignment
@@ -221,6 +222,11 @@ def calcola_conguaglio_periodo(
     Se persist=True: popola i totali per voce + giorni_totali sul Period e
     crea/aggiorna i Receivable utenze (uno per assignment) con giorni_presenza.
     Idempotente: update_or_create sulla coppia (period, assignment).
+
+    ``forza_senza_bollette``: di norma un periodo senza bollette luce/gas
+    viene saltato (``skipped="no_bollette_luce_gas"``). Con il flag a True
+    (richiesta esplicita del proprietario, es. TARI a carico dell'inquilino
+    con luce/gas intestate a lui) si ripartiscono comunque i costi annuali.
 
     Nota: i giorni di presenza si calcolano sempre come pro-rata sui giorni
     effettivi di occupazione (``RoomAssignment.valid_from``/``valid_to``),
@@ -253,10 +259,8 @@ def calcola_conguaglio_periodo(
 
     # --- Passo 1: attribuzione bollette al periodo (contributi già netti) ---
     contributi, bollette_usate, esclusioni = _attribuisci_bollette(period)
-    # Regola Sandro 2026-05-02: non emettere conguagli "solo TARI". I conguagli
-    # vanno emessi solo quando c'e' almeno una bolletta luce/gas. Se manca,
-    # il periodo viene saltato del tutto.
-    if not contributi:
+
+    def _skip(motivo: str) -> dict:
         if persist and period.receivables.exists():
             period.receivables.all().delete()
         if persist:
@@ -272,13 +276,25 @@ def calcola_conguaglio_periodo(
             "diff_arrotondamento": Decimal("0.00"),
             "totale_escluso": Decimal("0.00"),
             "esclusioni": [],
-            "skipped": "no_bollette_luce_gas",
+            "skipped": motivo,
         }
+
+    # Regola Sandro 2026-05-02: non emettere conguagli "solo TARI". I conguagli
+    # vanno emessi solo quando c'e' almeno una bolletta luce/gas. Se manca,
+    # il periodo viene saltato del tutto. Eccezione (2026-08-06): con
+    # ``forza_senza_bollette`` — scelta esplicita del proprietario — si
+    # ripartisce quello che c'è, inclusi i soli costi annuali (es. TARI quando
+    # luce/gas sono intestate direttamente all'inquilino).
+    if not contributi and not forza_senza_bollette:
+        return _skip("no_bollette_luce_gas")
     totali_per_voce: dict[str, Decimal] = dict(contributi)
     # TARI e altri costi annuali (aggiunti solo se ci sono bollette)
     totali_annual = _raccoglie_voci_annual(period.property_id, periodo_da, periodo_a)
     for voce, importo in totali_annual.items():
         totali_per_voce[voce] = totali_per_voce.get(voce, Decimal("0.00")) + importo
+    if not totali_per_voce:
+        # Forzatura su un periodo davvero vuoto: niente da ripartire.
+        return _skip("nessun_importo")
 
     totale_periodo = sum(totali_per_voce.values(), Decimal("0.00"))
 

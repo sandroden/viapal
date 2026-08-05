@@ -36,6 +36,7 @@ const props = defineProps<{
   ingressoNota?: string;
   needsEmetti: boolean;
   giaInviatoAt?: string | null;
+  forzato?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -48,13 +49,22 @@ const emit = defineEmits<{
   'toggle-invio': [receivableId: number];
   'view-pdf': [v: { url: string; title: string }];
   edit: [id: number];
+  forza: [];
 }>();
 
 const STEPS = ['Bolletta', 'Ripartizione', 'Invio'];
 
 const per = computed<PeriodoView>(() => props.periodo);
 const incompleto = computed(() => per.value?.stato === 'incompleto');
+// Il lucchetto vale solo finché il proprietario non forza la ripartizione
+// parziale ("Procedi comunque"): da lì in poi il wizard è sbloccato, ma il
+// banner sotto lo stepper ricorda che mancano delle voci.
+const bloccato = computed(() => incompleto.value && !props.forzato);
 const mancanti = computed(() => props.mancantiTipi.length);
+// Solo luce/gas bloccano davvero (la TARI non concorre alla completezza).
+const senzaVoci = computed(() =>
+  props.mancantiTipi.filter((t) => t !== 'TARI').join(' e '),
+);
 // Avvisi che verranno effettivamente inviati: non usciti e non esclusi a mano.
 const daInviare = computed(() =>
   props.quote.filter(
@@ -69,7 +79,7 @@ watch(
 );
 
 function goStep(n: number): void {
-  if (incompleto.value && n > 1) return;
+  if (bloccato.value && n > 1) return;
   emit('update:step', n);
 }
 function setStep(n: number): void {
@@ -115,14 +125,14 @@ function setStep(n: number): void {
           v-for="(label, i) in STEPS"
           :key="label"
           class="chip"
-          :class="{ active: step === i + 1, done: i + 1 < step, locked: incompleto && i + 1 > 1 }"
-          :disabled="incompleto && i + 1 > 1"
+          :class="{ active: step === i + 1, done: i + 1 < step, locked: bloccato && i + 1 > 1 }"
+          :disabled="bloccato && i + 1 > 1"
           @click="goStep(i + 1)"
         >
           <span class="num">
             <VpIcon v-if="i + 1 < step" name="check" :size="13" :stroke="3" color="#fff" />
             <VpIcon
-              v-else-if="incompleto && i + 1 > 1"
+              v-else-if="bloccato && i + 1 > 1"
               name="lock"
               :size="12"
               color="var(--vp-ink-3)"
@@ -134,6 +144,12 @@ function setStep(n: number): void {
             <span class="chip-label">{{ label }}</span>
           </span>
         </button>
+      </div>
+
+      <!-- Ripartizione parziale forzata: promemoria di cosa manca -->
+      <div v-if="incompleto && forzato" class="parziale">
+        <VpIcon name="alert" :size="15" color="var(--vp-clay)" />
+        Ripartizione parziale: si procede senza {{ senzaVoci }}.
       </div>
     </div>
 
@@ -152,7 +168,12 @@ function setStep(n: number): void {
         @edit="(id) => emit('edit', id)"
       />
       <template v-else-if="step === 2">
-        <BloccatoState v-if="incompleto" :mancanti="mancanti" @torna="setStep(1)" />
+        <BloccatoState
+          v-if="bloccato"
+          :mancanti="mancanti"
+          @torna="setStep(1)"
+          @forza="emit('forza')"
+        />
         <RipartizioneStep
           v-else
           :criterio="criterio"
@@ -165,7 +186,12 @@ function setStep(n: number): void {
         />
       </template>
       <template v-else-if="per">
-        <BloccatoState v-if="incompleto" :mancanti="mancanti" @torna="setStep(1)" />
+        <BloccatoState
+          v-if="bloccato"
+          :mancanti="mancanti"
+          @torna="setStep(1)"
+          @forza="emit('forza')"
+        />
         <InvioStep
           v-else
           :periodo="per"
@@ -193,7 +219,7 @@ function setStep(n: number): void {
       </button>
 
       <div class="foot-status">
-        <template v-if="incompleto"
+        <template v-if="bloccato"
           >Mancano {{ mancanti }} bollette per chiudere {{ per?.label }}</template
         >
         <template v-else-if="step === 1"
@@ -216,10 +242,15 @@ function setStep(n: number): void {
         >
       </div>
 
-      <!-- Step 1 incompleto: carica le mancanti -->
-      <button v-if="incompleto" class="vp-btn vp-btn--primary" @click="emit('upload')">
-        <VpIcon name="upload" :size="16" color="#fff" /> Carica le {{ mancanti }} mancanti
-      </button>
+      <!-- Step 1 bloccato: carica le mancanti, oppure forza la parziale -->
+      <div v-if="bloccato" class="foot-actions">
+        <button class="vp-btn vp-btn--ghost" @click="emit('forza')">
+          Procedi comunque
+        </button>
+        <button class="vp-btn vp-btn--primary" @click="emit('upload')">
+          <VpIcon name="upload" :size="16" color="#fff" /> Carica le {{ mancanti }} mancanti
+        </button>
+      </div>
       <!-- Step 1: avanti alla ripartizione -->
       <button v-else-if="step === 1" class="vp-btn vp-btn--primary" @click="setStep(2)">
         Vai alla ripartizione <VpIcon name="arrow" :size="16" color="#fff" />
@@ -405,6 +436,23 @@ function setStep(n: number): void {
 .foot-status {
   font-size: 13px;
   color: var(--vp-ink-3);
+}
+.foot-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.parziale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--vp-clay-soft);
+  color: var(--vp-clay);
+  font-size: 13px;
 }
 
 @media (max-width: 720px) {

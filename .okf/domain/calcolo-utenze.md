@@ -75,6 +75,24 @@ Due regole imparate sul campo:
 generano gli avvisi per inquilino (email HTML + testo) con QR EPC (GiroCode) per
 il bonifico. Flusso frontend in `/p/utenze`; anteprima per-mese prima dell'emissione.
 
+## Completezza e ripartizione parziale forzata
+
+L'emissione richiede di norma **almeno una bolletta luce E una gas** nel periodo
+(`_completezza` nel viewset: la TARI non concorre). Due gate distinti:
+
+- viewset `emetti` → 400 se incompleto (gate hard);
+- `calcola_conguaglio_periodo` → `skipped="no_bollette_luce_gas"` se non c'è
+  **nessuna** bolletta luce/gas (regola 2026-05-02: niente conguagli solo-TARI).
+
+Eccezione (2026-08-06): il proprietario può **forzare la ripartizione parziale**
+— fornitori con cadenza diversa (mensile vs bimestrale), bolletta non
+disponibile, utenze intestate all'inquilino. `POST emetti {"forza": true}` e
+`GET anteprima?forza=1` passano `forza_senza_bollette=True` al calcolo, che
+allora ripartisce ciò che c'è (anche la sola TARI); un periodo davvero vuoto
+risponde comunque 400 (`skipped="nessun_importo"`) e resta bozza. Nel FE il
+bottone "Procedi comunque" (dialog di conferma) sblocca il wizard; un periodo
+già emesso in forma parziale viene riconosciuto e non ripropone il lucchetto.
+
 # Vedi anche
 
 - [Conguaglio](/domain/conguaglio.md) — le utenze reali confluiscono nel conguaglio.

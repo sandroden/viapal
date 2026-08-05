@@ -477,22 +477,36 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="anteprima")
     def anteprima(self, request, pk=None):
-        """Dry-run della ripartizione: conto per inquilino, nessuna scrittura."""
+        """Dry-run della ripartizione: conto per inquilino, nessuna scrittura.
+
+        ``?forza=1``: calcola anche un periodo senza bollette luce/gas
+        (ripartizione parziale, es. sola TARI).
+        """
         from billing.calc.utility import calcola_conguaglio_periodo
 
         period = self.get_object()
-        risultato = calcola_conguaglio_periodo(period.id, persist=False)
+        forza = request.query_params.get("forza") in ("1", "true")
+        risultato = calcola_conguaglio_periodo(
+            period.id, persist=False, forza_senza_bollette=forza
+        )
         risultato["completezza"] = self._completezza(period)
         return Response(risultato)
 
     @action(detail=True, methods=["post"], url_path="emetti")
     def emetti(self, request, pk=None):
-        """Persiste i Receivable utenze e porta il periodo a 'inviato'."""
+        """Persiste i Receivable utenze e porta il periodo a 'inviato'.
+
+        Body JSON: ``{"forza": true}`` per emettere anche un periodo
+        incompleto (manca luce o gas: fornitori con cadenza diversa, bolletta
+        non disponibile, utenze intestate all'inquilino). La ripartizione è
+        parziale: copre solo le voci presenti.
+        """
         from billing.calc.utility import calcola_conguaglio_periodo
 
         period = self.get_object()
+        forza = bool(request.data.get("forza", False))
         comp = self._completezza(period)
-        if not comp["completo"]:
+        if not comp["completo"] and not forza:
             return Response(
                 {
                     "detail": "Periodo incompleto: servono almeno una bolletta "
@@ -502,7 +516,19 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        risultato = calcola_conguaglio_periodo(period.id, persist=True)
+        risultato = calcola_conguaglio_periodo(
+            period.id, persist=True, forza_senza_bollette=forza
+        )
+        if risultato.get("skipped"):
+            return Response(
+                {
+                    "detail": "Niente da ripartire nel periodo: nessuna "
+                    "bolletta né costo annuale attribuibile.",
+                    "completezza": comp,
+                    "skipped": risultato["skipped"],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         period.refresh_from_db()
         if period.stato != UtilityChargePeriod.StatoPeriodo.INVIATO:
