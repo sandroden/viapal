@@ -58,13 +58,19 @@ per il firmatario della cessione.
 | `contract` | Immobile → Contratti, col dialog del contratto aperto | no |
 | `assignment` | assegnazione stanza (admin) | **sì** |
 | `deposito` | scheda inquilino (admin): nasce da `deposito_versato` o dalle rate della prima assegnazione, non dal form anagrafica | **sì** |
-| `owner` | profilo proprietario (admin) | **sì** |
+| `owner` | Immobile → Membri, dialog anagrafica sul campo indicato (`?tab=membri&modifica=anagrafica&owner=<pk>&campo=<campo>`) | no |
 | `modello` | Immobile → Modelli documenti | no |
 
 Tutti i punti di compilazione della PWA stanno su un'unica pagina a tab
 (`/p/impostazioni`, «Immobile»); le vecchie route `/p/impostazioni/proprieta`
 e `/p/impostazioni/casa` sopravvivono come redirect che preservano
 `campo`/`contratto`.
+
+L'anagrafica owner si scrive con `PATCH /owners/<pk>/`: il titolare la
+propria (qualunque ruolo, anche sola_lettura), i proprietari dell'immobile
+quella di tutti i membri; il gestore no, coerente con membri e quote.
+L'anagrafica è del profilo, non della membership: vale per tutti gli
+immobili in cui la persona compare.
 
 `esterno: true` è l'unica eccezione consapevole alla regola «mai una nuova
 scheda» del fascicolo: l'admin Django è fuori dalla PWA.

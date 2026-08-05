@@ -319,8 +319,11 @@ class TestMancanti:
         mancanti = anteprima(scenario["tenant"], ATTO, oggi=OGGI)["mancanti"]
         voce = next(m for m in mancanti if "Dentella Fabio" in m["etichetta"])
         assert voce["etichetta"] == "Data di nascita — Dentella Fabio"
-        assert voce["link"] == f"/admin/properties/ownerprofile/{fabio.pk}/change/"
-        assert voce["esterno"] is True
+        assert voce["link"] == (
+            f"/p/impostazioni?tab=membri&modifica=anagrafica&owner={fabio.pk}"
+            "&campo=data_nascita"
+        )
+        assert voce["esterno"] is False
 
     def test_firmatario_assente_e_un_solo_mancante(self, scenario):
         """Il modulo art. 12 vuole un dichiarante solo: finché non è scelto,

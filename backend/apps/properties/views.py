@@ -99,8 +99,15 @@ def _valida_owner_membro(owner_profile, prop, campo):
         )
 
 
-class OwnerProfileViewSet(ReadOnlyModelViewSet):
-    """Profili proprietario dei membri dell'immobile attivo."""
+class OwnerProfileViewSet(mixins.UpdateModelMixin, ReadOnlyModelViewSet):
+    """Profili proprietario dei membri dell'immobile attivo.
+
+    Scrittura (PATCH): il titolare aggiorna la propria anagrafica; i
+    proprietari dell'immobile possono completare quella degli altri membri
+    (i documenti generati chiedono i dati di tutti i comproprietari). Il
+    gestore no, coerente con membri e quote. L'anagrafica è globale: vale
+    per tutti gli immobili in cui il profilo compare.
+    """
 
     serializer_class = OwnerProfileSerializer
     permission_classes = [IsPropertyMember]
@@ -111,6 +118,45 @@ class OwnerProfileViewSet(ReadOnlyModelViewSet):
         return super().get_queryset().filter(
             user__property_memberships__property=prop
         ).distinct()
+
+    def get_permissions(self):
+        from rest_framework.permissions import IsAuthenticated
+
+        if self.action in ("update", "partial_update"):
+            # Il gate vero è object-level in ``perform_update``: qui non
+            # applichiamo il blocco sola_lettura di ``IsPropertyMember``,
+            # altrimenti un membro in sola lettura non potrebbe aggiornare
+            # nemmeno la propria anagrafica.
+            return [IsAuthenticated()]
+        return [IsPropertyMember()]
+
+    def get_serializer_class(self):
+        if self.action in ("update", "partial_update"):
+            from properties.serializers import OwnerProfileUpdateSerializer
+
+            return OwnerProfileUpdateSerializer
+        return OwnerProfileSerializer
+
+    def _richiedi_titolare_o_proprietario(self, profilo):
+        from rest_framework.exceptions import PermissionDenied
+
+        from properties.context import ruolo_su_property
+        from properties.models import PropertyMembership
+
+        user = self.request.user
+        if user.is_superuser or profilo.user_id == user.pk:
+            return
+        prop = get_request_property(self.request)
+        if ruolo_su_property(user, prop) == PropertyMembership.Ruolo.PROPRIETARIO:
+            return
+        raise PermissionDenied(
+            "Puoi modificare solo la tua anagrafica; quella degli altri "
+            "membri è riservata ai proprietari dell'immobile."
+        )
+
+    def perform_update(self, serializer):
+        self._richiedi_titolare_o_proprietario(serializer.instance)
+        serializer.save()
 
 
 class TenantProfileViewSet(

@@ -686,3 +686,75 @@ class TestAuthUser:
         assert dati["properties"] == []
         assert dati["default_property_id"] is None
         assert dati["role"] == "inquilino"
+
+
+class TestOwnerAnagrafica:
+    """PATCH /owners/<pk>/: titolare o proprietario dell'immobile."""
+
+    def _patch(self, client, pk, dati=None):
+        return client.patch(
+            f"/api/v1/owners/{pk}/",
+            dati or {"comune_nascita": "Monza", "data_nascita": "1960-01-01"},
+            format="json",
+        )
+
+    def test_titolare_modifica_la_propria(self, api_client, user_gestore):
+        profilo = OwnerProfile.objects.create(user=user_gestore, nominativo="Gest")
+        api_client.force_login(user_gestore)
+        resp = self._patch(api_client, profilo.pk)
+        assert resp.status_code == 200
+        profilo.refresh_from_db()
+        assert profilo.comune_nascita == "Monza"
+        assert profilo.data_nascita == datetime.date(1960, 1, 1)
+
+    def test_titolare_sola_lettura_modifica_la_propria(
+        self, api_client, immobile, gruppo_proprietari
+    ):
+        lettore = User.objects.create_user("lettrice", password="x")
+        lettore.groups.add(gruppo_proprietari)
+        PropertyMembership.objects.create(
+            property=immobile, user=lettore,
+            ruolo=PropertyMembership.Ruolo.SOLA_LETTURA,
+        )
+        profilo = OwnerProfile.objects.create(user=lettore, nominativo="Lettrice")
+        api_client.force_login(lettore)
+        resp = self._patch(api_client, profilo.pk)
+        assert resp.status_code == 200
+        profilo.refresh_from_db()
+        assert profilo.comune_nascita == "Monza"
+
+    def test_proprietario_modifica_altro_membro(self, client_prop, owner_profile2):
+        resp = self._patch(client_prop, owner_profile2.pk)
+        assert resp.status_code == 200
+        owner_profile2.refresh_from_db()
+        assert owner_profile2.comune_nascita == "Monza"
+
+    def test_gestore_non_modifica_altro_membro(self, client_gestore, owner_profile):
+        resp = self._patch(client_gestore, owner_profile.pk)
+        assert resp.status_code == 403
+        owner_profile.refresh_from_db()
+        assert owner_profile.comune_nascita == ""
+
+    def test_non_membro_404(self, client_altro, owner_profile):
+        resp = self._patch(client_altro, owner_profile.pk)
+        assert resp.status_code == 404
+
+    def test_superuser_modifica(self, api_client, owner_profile):
+        superuser = User.objects.create_superuser("root", password="x")
+        api_client.force_login(superuser)
+        resp = self._patch(api_client, owner_profile.pk)
+        assert resp.status_code == 200
+        owner_profile.refresh_from_db()
+        assert owner_profile.comune_nascita == "Monza"
+
+    def test_note_e_user_non_scrivibili(self, client_prop, owner_profile):
+        resp = self._patch(
+            client_prop,
+            owner_profile.pk,
+            {"nominativo": "Prop A2", "note": "hack", "user": 999},
+        )
+        assert resp.status_code == 200
+        owner_profile.refresh_from_db()
+        assert owner_profile.nominativo == "Prop A2"
+        assert owner_profile.note == ""
+        assert owner_profile.user_id != 999

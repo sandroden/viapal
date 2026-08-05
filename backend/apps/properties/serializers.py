@@ -93,6 +93,25 @@ class OwnerProfileSerializer(serializers.ModelSerializer):
         ]
 
 
+class OwnerProfileUpdateSerializer(serializers.ModelSerializer):
+    """Serializer con cui si aggiorna l'anagrafica di un OwnerProfile dal
+    frontend (tab Membri). Esclude ``note`` (campo di lavoro admin) e lo
+    user collegato; chi può scrivere lo decide la view."""
+
+    username = serializers.CharField(source="user.username", read_only=True)
+
+    class Meta:
+        model = OwnerProfile
+        fields = [
+            "id",
+            "username",
+            "nominativo",
+            "codice_fiscale",
+            "telefono",
+            *CAMPI_ANAGRAFICA,
+        ]
+
+
 class TenantProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     email = serializers.CharField(source="user.email", read_only=True)

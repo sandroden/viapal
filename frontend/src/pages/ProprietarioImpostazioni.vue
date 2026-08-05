@@ -463,6 +463,7 @@
         </div>
         <MembriPannello
           v-else-if="propertyId"
+          ref="membriPannello"
           :property-id="propertyId"
           :membri="membri"
           :sono-proprietario="sonoProprietario"
@@ -1176,6 +1177,7 @@ const membri = ref<Membro[]>([]);
 const quote = ref<Quota[]>([]);
 const loadingGovernance = ref(true);
 const datiPannello = ref<InstanceType<typeof DatiImmobilePannello> | null>(null);
+const membriPannello = ref<InstanceType<typeof MembriPannello> | null>(null);
 
 const quoteCorrenti = computed(() => quote.value.filter((q) => q.valid_to === null));
 
@@ -1987,10 +1989,24 @@ function focusCampoDati(campo: string | null) {
   void nextTick().then(() => datiPannello.value?.focusCampo(campo));
 }
 
+/** Deep link `?tab=membri&modifica=anagrafica&owner=<id>&campo=<nome>`:
+ *  apre il dialog anagrafica del membro indicato (dati mancanti dei
+ *  documenti generati). */
+function apriAnagraficaMembro(
+  modifica: string | null,
+  ownerId: number | null,
+  campo: string | null,
+) {
+  if (tabAttivo.value !== 'membri' || modifica !== 'anagrafica' || !ownerId) return;
+  void nextTick().then(() => membriPannello.value?.apriAnagrafica(ownerId, campo));
+}
+
 onMounted(() => {
   // Catturati prima di aggiornaQuery(), che riscrive la query e li consuma.
   const campo = primo(route.query.campo);
   const contrattoId = Number(primo(route.query.contratto)) || null;
+  const modifica = primo(route.query.modifica);
+  const ownerId = Number(primo(route.query.owner)) || null;
 
   void caricaStanze();
   void caricaContratti().then(() => apriContrattoDaId(contrattoId));
@@ -2001,6 +2017,7 @@ onMounted(() => {
   void tenantsStore.fetchTenantsConAssignment();
   void caricaGovernance().then(() => {
     if (tabAttivo.value === 'dati') focusCampoDati(campo);
+    apriAnagraficaMembro(modifica, ownerId, campo);
   });
   aggiornaQuery();
 });
@@ -2017,6 +2034,7 @@ watch(
     if (tab !== tabAttivo.value) tabAttivo.value = tab;
     apriContrattoDaId(Number(primo(q.contratto)) || null);
     if (tab === 'dati') focusCampoDati(primo(q.campo));
+    apriAnagraficaMembro(primo(q.modifica), Number(primo(q.owner)) || null, primo(q.campo));
   },
 );
 </script>

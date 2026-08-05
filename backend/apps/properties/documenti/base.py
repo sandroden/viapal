@@ -212,12 +212,12 @@ DOVE = {
     "contract": "Immobile → Contratti",
     "assignment": "Assegnazione stanza (admin)",
     "deposito": "Deposito dell'inquilino (admin)",
-    "owner": "Profilo proprietario (admin)",
+    "owner": "Immobile → Membri → anagrafica",
     "modello": "Immobile → Modelli documenti",
 }
 
 #: Fonti che si compilano solo dall'admin Django, fuori dalla PWA.
-FONTI_ESTERNE = {"assignment", "deposito", "owner"}
+FONTI_ESTERNE = {"assignment", "deposito"}
 
 
 @dataclass(frozen=True)
@@ -271,8 +271,8 @@ def link_per(campo: Campo, fonti: Fonti) -> str:
         return f"/p/impostazioni?tab=contratti{contratto}{ancora}"
     if campo.fonte == "owner":
         if oggetto is None:
-            return "/admin/properties/ownerprofile/"
-        return f"/admin/properties/ownerprofile/{oggetto.pk}/change/"
+            return "/p/impostazioni?tab=membri"
+        return f"/p/impostazioni?tab=membri&modifica=anagrafica&owner={oggetto.pk}{ancora}"
     if campo.fonte == "assignment":
         return f"/admin/properties/roomassignment/{fonti.assignment.pk}/change/"
     if campo.fonte == "deposito":

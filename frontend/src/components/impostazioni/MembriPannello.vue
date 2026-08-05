@@ -23,6 +23,18 @@
           </q-item-section>
           <q-item-section side>
             <div class="row items-center q-gutter-sm">
+              <q-btn
+                v-if="puoAnagrafica(m)"
+                flat
+                dense
+                round
+                icon="edit"
+                :aria-label="`Anagrafica di ${m.nominativo}`"
+                data-testid="modifica-anagrafica-membro"
+                @click="apriAnagrafica(m.owner_profile!)"
+              >
+                <q-tooltip>Anagrafica</q-tooltip>
+              </q-btn>
               <q-select
                 v-if="sonoProprietario"
                 :model-value="m.ruolo"
@@ -100,19 +112,29 @@
       </q-card-actions>
     </q-card>
   </q-dialog>
+
+  <!-- Dialog anagrafica del membro (deep-link dai "dati mancanti") -->
+  <AnagraficaOwnerDialog
+    v-model="dialogAnagrafica"
+    :owner-id="anagraficaOwnerId"
+    :campo="anagraficaCampo"
+    @salvato="anagraficaSalvata"
+  />
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { messaggioErrore } from 'src/utils/apiErrors';
-import { type RuoloProperty } from 'stores/auth';
+import { useAuthStore, type RuoloProperty } from 'stores/auth';
 import {
   OPZIONI_RUOLO,
   etichettaRuolo,
   usePropertiesStore,
   type Membro,
 } from 'stores/properties';
+import { useOwnersStore } from 'stores/owners';
+import AnagraficaOwnerDialog from 'components/impostazioni/AnagraficaOwnerDialog.vue';
 
 const props = defineProps<{
   propertyId: number;
@@ -126,6 +148,35 @@ const emit = defineEmits<{
 
 const $q = useQuasar();
 const propStore = usePropertiesStore();
+const authStore = useAuthStore();
+const ownersStore = useOwnersStore();
+
+const dialogAnagrafica = ref(false);
+const anagraficaOwnerId = ref<number | null>(null);
+const anagraficaCampo = ref<string | null>(null);
+
+/** Stesso gate del backend: il titolare modifica la propria anagrafica,
+ *  i proprietari (e i superuser) quella di tutti i membri. */
+function puoAnagrafica(m: Membro): boolean {
+  if (!m.owner_profile) return false;
+  if (props.sonoProprietario || authStore.isSuperuser) return true;
+  return m.user === authStore.user?.id;
+}
+
+function apriAnagrafica(ownerId: number, campo: string | null = null) {
+  anagraficaOwnerId.value = ownerId;
+  anagraficaCampo.value = campo;
+  dialogAnagrafica.value = true;
+}
+
+async function anagraficaSalvata() {
+  // Il nominativo compare nella lista membri e nelle select intestatario:
+  // ricarichiamo entrambe le fonti.
+  await ownersStore.fetchOwners(true);
+  emit('aggiornati', await propStore.caricaMembri(props.propertyId));
+}
+
+defineExpose({ apriAnagrafica });
 
 const dialogInvito = ref(false);
 const invitoEmail = ref('');
