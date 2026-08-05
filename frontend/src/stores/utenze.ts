@@ -154,6 +154,7 @@ interface State {
   invio: InvioAvvisiResponse | null;
   caricati: BollettaFE[];
   bollettePeriodo: BollettaFE[];
+  tutteBollette: BollettaFE[];
   statistiche: StatisticaMensile[];
   loading: boolean;
   errore: string | null;
@@ -169,6 +170,7 @@ export const useUtenzeStore = defineStore('utenze', {
     invio: null,
     caricati: [],
     bollettePeriodo: [],
+    tutteBollette: [],
     statistiche: [],
     loading: false,
     errore: null,
@@ -249,6 +251,18 @@ export const useUtenzeStore = defineStore('utenze', {
       } catch (e: unknown) {
         this.errore = messaggioErrore(e, 'Errore caricamento bollette');
         this.bollettePeriodo = [];
+      }
+    },
+
+    async fetchTutteBollette(): Promise<void> {
+      // Tutte le bollette caricate (per il riepilogo per anno).
+      this.loading = true;
+      try {
+        this.tutteBollette = await fetchAllPaginated<BollettaFE>('/api/v1/utility-bills/');
+      } catch (e: unknown) {
+        this.errore = messaggioErrore(e, 'Errore caricamento bollette');
+      } finally {
+        this.loading = false;
       }
     },
 

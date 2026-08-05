@@ -5,11 +5,15 @@
       {{ store.errore }}
     </q-banner>
 
-    <!-- Tab selector: Conguaglio / Andamento -->
+    <!-- Tab selector: Conguaglio / Bollette / Andamento -->
     <div class="vp-screen-tabs">
       <button :class="['vp-screen-tab', { active: tab === 'conguaglio' }]" @click="tab = 'conguaglio'">
         <q-icon name="receipt_long" size="16px" />
         Conguaglio
+      </button>
+      <button :class="['vp-screen-tab', { active: tab === 'bollette' }]" @click="onTabBollette">
+        <q-icon name="table_chart" size="16px" />
+        Bollette
       </button>
       <button :class="['vp-screen-tab', { active: tab === 'andamento' }]" @click="onTabAndamento">
         <q-icon name="bar_chart" size="16px" />
@@ -18,6 +22,13 @@
     </div>
 
     <UtenzeAndamento v-if="tab === 'andamento'" />
+
+    <BolletteRiepilogo
+      v-else-if="tab === 'bollette'"
+      :bollette="store.tutteBollette"
+      :loading="store.loading"
+      @view-pdf="apriPdf"
+    />
 
     <ConguaglioBollette
       v-else-if="periodoCorrenteView"
@@ -123,6 +134,7 @@ import { useQuasar } from 'quasar';
 import { useUtenzeStore, type BollettaFE } from 'stores/utenze';
 import ConguaglioBollette from 'src/components/utenze/ConguaglioBollette.vue';
 import UtenzeAndamento from 'src/components/utenze/UtenzeAndamento.vue';
+import BolletteRiepilogo from 'src/components/utenze/BolletteRiepilogo.vue';
 import BollettaEditDialog from 'src/components/utenze/BollettaEditDialog.vue';
 import PdfDialog from 'src/components/PdfDialog.vue';
 import {
@@ -146,12 +158,19 @@ import type { MeseStato } from 'src/components/utenze/PeriodSelector.vue';
 const store = useUtenzeStore();
 const $q = useQuasar();
 
-const tab = ref<'conguaglio' | 'andamento'>('conguaglio');
+const tab = ref<'conguaglio' | 'bollette' | 'andamento'>('conguaglio');
 
 async function onTabAndamento(): Promise<void> {
   tab.value = 'andamento';
   if (!store.statistiche.length) {
     await store.fetchStatistiche();
+  }
+}
+
+async function onTabBollette(): Promise<void> {
+  tab.value = 'bollette';
+  if (!store.tutteBollette.length) {
+    await store.fetchTutteBollette();
   }
 }
 
