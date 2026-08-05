@@ -516,6 +516,14 @@ class DashboardProprietarioView(APIView):
                 )
             )
 
+        # Chi occupa una stanza *ora*: gli scoperti di chi se n'è andato sono
+        # storia da ricostruire, non solleciti da mandare, e il frontend li
+        # tiene fuori di default. Stessa regola del badge "ex inquilino"
+        # (``assegnazione_in_corso_q``), così le due schermate concordano.
+        tenant_attivi_ids = set(
+            TenantProfile.objects.attivi(oggi, property=prop).values_list("id", flat=True)
+        )
+
         def _fmt(r: Receivable) -> dict:
             giorni = _giorni_ritardo(r.scadenza, oggi)
             dovuto = r.importo_dovuto
@@ -524,6 +532,8 @@ class DashboardProprietarioView(APIView):
                 "tipo": TIPO_PER_CAUSALE[r.causale],
                 "id": r.id,
                 "tenant": r.assignment.tenant.nominativo,
+                "tenant_id": r.assignment.tenant_id,
+                "tenant_attivo": r.assignment.tenant_id in tenant_attivi_ids,
                 "descrizione": _descrizione_receivable(r),
                 # `importo` resta il dovuto pieno per retrocompatibilità.
                 "importo": float(dovuto),

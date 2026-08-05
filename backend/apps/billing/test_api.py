@@ -970,6 +970,40 @@ class TestDashboardProprietario:
         ritardi = client_prop.get("/api/v1/dashboard/proprietario/").json()["ritardi"]
         assert r.id not in [x["id"] for x in ritardi]
 
+    def test_ritardi_marcano_gli_ex_inquilini(
+        self, client_prop, assignment_1, assignment_2
+    ):
+        """`tenant_attivo` distingue chi è in casa da chi se n'è andato: è il
+        campo su cui il frontend nasconde di default gli scoperti storici,
+        che sono dati da ricostruire e non solleciti da mandare."""
+        ieri = datetime.date.today() - datetime.timedelta(days=1)
+        assignment_2.valid_to = ieri
+        assignment_2.save(update_fields=["valid_to"])
+
+        attesi = {}
+        for assignment in (assignment_1, assignment_2):
+            r = Receivable.objects.create(
+                assignment=assignment,
+                causale=Receivable.Causale.AFFITTO,
+                competenza_da=ieri,
+                importo_dovuto=Decimal("400"),
+                scadenza=ieri,
+                stato=StatoPagamento.ATTESO,
+            )
+            attesi[r.id] = assignment
+
+        ritardi = client_prop.get("/api/v1/dashboard/proprietario/").json()["ritardi"]
+        righe = {x["id"]: x for x in ritardi if x["id"] in attesi}
+        assert len(righe) == 2
+
+        riga_attivo = righe[next(i for i, a in attesi.items() if a == assignment_1)]
+        riga_uscito = righe[next(i for i, a in attesi.items() if a == assignment_2)]
+        assert riga_attivo["tenant_attivo"] is True
+        assert riga_attivo["tenant_id"] == assignment_1.tenant_id
+        # Uscito ieri: `assegnazione_in_corso_q` chiude a valid_to escluso.
+        assert riga_uscito["tenant_attivo"] is False
+        assert riga_uscito["tenant_id"] == assignment_2.tenant_id
+
     def test_ritardi_espongono_il_residuo_dei_parziali(
         self, client_prop, assignment_1
     ):

@@ -17,6 +17,23 @@
     </header>
 
     <div class="vp-p-rit__filtri">
+      <!-- Due toggle con entrambi una voce "Tutti": senza etichetta si
+           leggerebbero come un unico gruppo contraddittorio. -->
+      <span class="vp-p-rit__filtro-label">Inquilini</span>
+      <q-btn-toggle
+        v-model="filtroPresenza"
+        :options="filtroPresenzaOptions"
+        no-caps
+        unelevated
+        toggle-color="primary"
+        data-testid="filtro-presenza"
+      >
+        <q-tooltip>
+          Gli ex inquilini portano gli scoperti storici, spesso ancora da
+          ricostruire: di default restano fuori.
+        </q-tooltip>
+      </q-btn-toggle>
+      <span class="vp-p-rit__filtro-label">Stato</span>
       <q-btn-toggle
         v-model="filtroStato"
         :options="filtroStatoOptions"
@@ -60,6 +77,15 @@
           >
             {{ props.row.tenant }}
           </a>
+          <q-chip
+            v-if="!props.row.tenant_attivo"
+            dense
+            outline
+            color="blue-grey-6"
+            class="vp-p-rit__chip-uscito"
+          >
+            uscito
+          </q-chip>
         </q-td>
       </template>
       <template #body-cell-importo="props">
@@ -132,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import type { QTableProps } from 'quasar';
 import { Notify } from 'quasar';
 import { useDashboardStore, type ProprietarioRiga } from 'stores/dashboard';
@@ -155,12 +181,21 @@ const processing = reactive<Record<string, boolean>>({});
 
 const filtroStato = ref<string>('tutti');
 const filtroInquilino = ref<string>('tutti');
+// Default: solo chi è in casa adesso. Gli scoperti degli usciti sono in
+// buona parte dati storici ancora da ricostruire e non sono azionabili.
+const filtroPresenza = ref<'attivi' | 'usciti' | 'tutti'>('attivi');
 
 const filtroStatoOptions = [
   { label: 'Tutti', value: 'tutti' },
   { label: 'Atteso', value: 'atteso' },
   { label: 'Dichiarato', value: 'dichiarato' },
   { label: 'In ritardo', value: 'in_ritardo' },
+];
+
+const filtroPresenzaOptions = [
+  { label: 'Attivi', value: 'attivi' },
+  { label: 'Usciti', value: 'usciti' },
+  { label: 'Tutti', value: 'tutti' },
 ];
 
 const ritardi = computed<RigaTabella[]>(() =>
@@ -170,16 +205,35 @@ const ritardi = computed<RigaTabella[]>(() =>
   })),
 );
 
+// Il filtro presenza viene prima di tutto: nomi nel select e totali
+// devono parlare della popolazione che si sta guardando.
+const ritardiPresenza = computed<RigaTabella[]>(() => {
+  if (filtroPresenza.value === 'attivi') return ritardi.value.filter((r) => r.tenant_attivo);
+  if (filtroPresenza.value === 'usciti') return ritardi.value.filter((r) => !r.tenant_attivo);
+  return ritardi.value;
+});
+
 const filtroInquilinoOptions = computed(() => {
-  const nomi = Array.from(new Set(ritardi.value.map((r) => r.tenant))).sort();
+  const nomi = Array.from(new Set(ritardiPresenza.value.map((r) => r.tenant))).sort();
   return [
     { label: 'Tutti', value: 'tutti' },
     ...nomi.map((n) => ({ label: n, value: n })),
   ];
 });
 
+// Cambiando popolazione l'inquilino selezionato può sparire: senza questo
+// la tabella resterebbe vuota senza spiegazione.
+watch(filtroInquilinoOptions, (opzioni) => {
+  if (
+    filtroInquilino.value !== 'tutti' &&
+    !opzioni.some((o) => o.value === filtroInquilino.value)
+  ) {
+    filtroInquilino.value = 'tutti';
+  }
+});
+
 const ritardiFiltrati = computed<RigaTabella[]>(() => {
-  let righe = ritardi.value;
+  let righe = ritardiPresenza.value;
   if (filtroStato.value !== 'tutti') {
     righe = righe.filter((r) => r.stato === filtroStato.value);
   }
@@ -338,6 +392,12 @@ async function rifiuta(row: RigaTabella) {
   margin-bottom: var(--vp-gap-3);
   flex-wrap: wrap;
 }
+.vp-p-rit__filtro-label {
+  color: var(--vp-ink-3);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 .vp-p-rit__filtro-inq {
   min-width: 220px;
 }
@@ -353,6 +413,11 @@ async function rifiuta(row: RigaTabella) {
 .vp-p-rit__table {
   background: var(--vp-cream);
   border-color: var(--vp-paper-3) !important;
+}
+.vp-p-rit__chip-uscito {
+  font-size: 10px;
+  margin-left: var(--vp-gap-2);
+  vertical-align: middle;
 }
 .vp-p-rit__tenant-link {
   color: var(--vp-terra-deep);

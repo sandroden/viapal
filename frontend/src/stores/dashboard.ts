@@ -103,6 +103,9 @@ export interface ProprietarioRiga {
   tipo: TipoPagamento;
   id: number;
   tenant: string;
+  tenant_id: number;
+  /** L'inquilino occupa una stanza oggi (vs ex inquilino: scoperti storici). */
+  tenant_attivo: boolean;
   descrizione: string;
   /** Dovuto pieno (retrocompatibilità). */
   importo: number;
