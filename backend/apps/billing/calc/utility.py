@@ -33,7 +33,7 @@ def _arrotonda(valore: Decimal) -> Decimal:
     return valore.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list]:
+def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list, list[dict]]:
     """Decide quali UtilityBill contribuiscono a `period` e con quale importo.
 
     Regola **semplice e locale**: un periodo prende solo le bollette il cui
@@ -42,22 +42,31 @@ def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list]:
     finisce mai su un mese che non copre: niente "ribaltamento" di bollette in
     ritardo su mesi futuri, e il calcolo di un periodo NON dipende da quali
     altri periodi esistono o sono chiusi. Una bolletta che copre N mesi viene
-    ripartita su quei mesi: la somma delle quote = importo della bolletta.
+    ripartita su quei mesi: la somma delle quote = importo ripartibile della
+    bolletta.
 
-    Restituisce ``(contributi_per_voce, bollette_utilizzate)``:
-      - ``contributi_per_voce``: ``{"luce": Decimal, "gas": Decimal}`` per il periodo.
+    I contributi sono al **netto** della ``quota_esclusa`` (voci a carico
+    proprietà: canone RAI, aumento potenza, allacci...): la base è sempre
+    ``bill.importo_ripartibile``, mai ``importo_totale``.
+
+    Restituisce ``(contributi_per_voce, bollette_utilizzate, esclusioni)``:
+      - ``contributi_per_voce``: ``{"luce": Decimal, "gas": Decimal}`` per il periodo (netti).
       - ``bollette_utilizzate``: bollette da agganciare alla M2M ``utility_bills``.
+      - ``esclusioni``: ``[{"bill_id", "prodotto", "motivo", "quota_esclusa"}]``
+        con la quota già pro-rata sul periodo.
 
     Override manuale (pinning): se ``period.utility_bills`` è già popolata, quelle
-    bollette valgono per l'importo intero (verità manuale, no pro-rata). Le
-    bollette già pinnate da un altro periodo ``inviato`` sono escluse, per non
-    riconteggiare una bolletta già attribuita altrove.
+    bollette valgono per l'importo ripartibile intero (verità manuale, no
+    pro-rata). Le bollette già pinnate da un altro periodo ``inviato`` sono
+    escluse, per non riconteggiare una bolletta già attribuita altrove.
     """
     from billing.models import UtilityBill, UtilityChargePeriod
 
     P_da: date = period.periodo_da
     P_a: date = period.periodo_a
     INVIATO = UtilityChargePeriod.StatoPeriodo.INVIATO
+
+    esclusioni: list[dict] = []
 
     # Modalità pinning: la M2M è "verità manuale". Se popolata, ogni bolletta
     # agganciata cade intera sul periodo (no pro-rata).
@@ -66,9 +75,18 @@ def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list]:
         contributi: dict[str, Decimal] = {}
         for b in pinned:
             contributi[b.prodotto] = (
-                contributi.get(b.prodotto, Decimal("0.00")) + b.importo_totale
+                contributi.get(b.prodotto, Decimal("0.00")) + b.importo_ripartibile
             )
-        return contributi, pinned
+            if b.quota_esclusa:
+                esclusioni.append(
+                    {
+                        "bill_id": b.pk,
+                        "prodotto": b.prodotto,
+                        "motivo": b.motivo_esclusione,
+                        "quota_esclusa": b.quota_esclusa,
+                    }
+                )
+        return contributi, pinned, esclusioni
 
     # Bollette già consumate (M2M) da un altro periodo inviato: escluse, per non
     # riconteggiare una bolletta che un altro periodo ha già pinnato.
@@ -99,17 +117,28 @@ def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list]:
         if giorni_in_P <= 0 or giorni_bolletta <= 0:
             continue
         if giorni_in_P >= giorni_bolletta:
-            quota = bill.importo_totale  # bolletta interamente dentro il periodo
+            # bolletta interamente dentro il periodo
+            quota = bill.importo_ripartibile
+            esclusa_in_P = bill.quota_esclusa or Decimal("0")
         else:
-            quota = (
-                bill.importo_totale * Decimal(giorni_in_P) / Decimal(giorni_bolletta)
-            )
+            frazione = Decimal(giorni_in_P) / Decimal(giorni_bolletta)
+            quota = bill.importo_ripartibile * frazione
+            esclusa_in_P = (bill.quota_esclusa or Decimal("0")) * frazione
         contributi[bill.prodotto] = (
             contributi.get(bill.prodotto, Decimal("0.00")) + quota
         )
+        if esclusa_in_P:
+            esclusioni.append(
+                {
+                    "bill_id": bill.pk,
+                    "prodotto": bill.prodotto,
+                    "motivo": bill.motivo_esclusione,
+                    "quota_esclusa": esclusa_in_P,
+                }
+            )
         bollette_usate.append(bill)
 
-    return contributi, bollette_usate
+    return contributi, bollette_usate, esclusioni
 
 
 def _mesi_coperti(da: date, a: date) -> int:
@@ -206,8 +235,14 @@ def calcola_conguaglio_periodo(
         "totali_per_voce": {"luce": ..., "gas": ..., "tari": ...},
         "sum_giorni_presenza": int,
         "quote": [QuotaInquilino, ...],
-        "diff_arrotondamento": Decimal       # totale_periodo - somma(quote)
+        "diff_arrotondamento": Decimal,      # totale_periodo - somma(quote)
+        "totale_escluso": Decimal,           # quote escluse (a carico proprietà) nel periodo
+        "esclusioni": [{"bill_id", "prodotto", "motivo", "quota_esclusa"}, ...]
     }
+
+    I totali per voce sono al netto delle quote escluse (importo_ripartibile
+    delle bollette): la parte esclusa resta a carico della proprietà e non
+    entra mai nelle quote inquilino.
     """
     from billing.models import UtilityChargePeriod
     from properties.models import RoomAssignment
@@ -216,8 +251,8 @@ def calcola_conguaglio_periodo(
     periodo_da: date = period.periodo_da
     periodo_a: date = period.periodo_a
 
-    # --- Passo 1: attribuzione bollette al periodo ---
-    contributi, bollette_usate = _attribuisci_bollette(period)
+    # --- Passo 1: attribuzione bollette al periodo (contributi già netti) ---
+    contributi, bollette_usate, esclusioni = _attribuisci_bollette(period)
     # Regola Sandro 2026-05-02: non emettere conguagli "solo TARI". I conguagli
     # vanno emessi solo quando c'e' almeno una bolletta luce/gas. Se manca,
     # il periodo viene saltato del tutto.
@@ -235,6 +270,8 @@ def calcola_conguaglio_periodo(
             "sum_giorni_presenza": 0,
             "quote": [],
             "diff_arrotondamento": Decimal("0.00"),
+            "totale_escluso": Decimal("0.00"),
+            "esclusioni": [],
             "skipped": "no_bollette_luce_gas",
         }
     totali_per_voce: dict[str, Decimal] = dict(contributi)
@@ -354,6 +391,12 @@ def calcola_conguaglio_periodo(
         "sum_giorni_presenza": sum_giorni,
         "quote": quote,
         "diff_arrotondamento": diff_arrotondamento,
+        "totale_escluso": _arrotonda(
+            sum((e["quota_esclusa"] for e in esclusioni), Decimal("0.00"))
+        ),
+        "esclusioni": [
+            {**e, "quota_esclusa": _arrotonda(e["quota_esclusa"])} for e in esclusioni
+        ],
         "skippati_per_allocation": skippati_per_allocation,
         **persist_stats,
     }

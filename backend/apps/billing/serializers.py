@@ -271,6 +271,8 @@ class UtilityBillSerializer(serializers.ModelSerializer):
             "periodo_da",
             "periodo_a",
             "importo_totale",
+            "quota_esclusa",
+            "motivo_esclusione",
             "file_pdf",
             "pagata_da_owner",
             "pagata_da_nominativo",
@@ -291,6 +293,20 @@ class UtilityBillSerializer(serializers.ModelSerializer):
     }
 
     def validate(self, attrs):
+        # Quota esclusa: 0 <= quota <= importo totale. Robusto al PATCH
+        # parziale (i valori mancanti vengono presi dall'istanza) e PRIMA
+        # della logica supplier, che ha early-return.
+        importo = attrs.get(
+            "importo_totale", getattr(self.instance, "importo_totale", None)
+        )
+        quota = attrs.get(
+            "quota_esclusa", getattr(self.instance, "quota_esclusa", 0)
+        ) or 0
+        if quota < 0 or (importo is not None and quota > importo):
+            raise serializers.ValidationError(
+                {"quota_esclusa": "Deve essere tra 0 e l'importo totale."}
+            )
+
         supplier = attrs.get("supplier")
         nome = attrs.pop("supplier_nome", "") or ""
         nome = nome.strip()

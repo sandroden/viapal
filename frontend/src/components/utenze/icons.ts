@@ -19,4 +19,5 @@ export const VP_ICONS: Record<string, string> = {
   flame: 'M12 22c4 0 7-3 7-7 0-3-2-5-3-7 0 2-2 3-3 3 1-3-1-7-3-9 0 4-5 5-5 11 0 5 3 9 7 9z',
   trash: 'M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v6M14 11v6',
   refresh: 'M4 9a8 8 0 0 1 14-3l2 2M20 15a8 8 0 0 1-14 3l-2-2M18 4v4h-4M6 20v-4h4',
+  edit: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z',
 };

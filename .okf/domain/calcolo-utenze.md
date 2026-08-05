@@ -4,7 +4,7 @@ title: Calcolo utenze
 description: Da bolletta a periodo di addebito con pro-rata giorni, pinning e invio avvisi.
 resource: backend/apps/billing/calc/utility.py
 tags: [domain, utenze, utility, billing]
-timestamp: 2026-08-04T00:00:00Z
+timestamp: 2026-08-06T00:00:00Z
 ---
 
 # Overview
@@ -21,6 +21,23 @@ causale UTENZE. Codice: `billing/calc/utility.py`; avvisi: `billing/calc/avvisi.
 2. Ripartizione **pro-rata sui giorni** di intersezione tra il periodo di
    competenza della bolletta e la presenza dell'inquilino (`_giorni_intersezione`).
 3. Arrotondamento (`_arrotonda`) con ribaltamento dei resti.
+
+# Quota esclusa (voci a carico proprietà)
+
+`UtilityBill.quota_esclusa` + `motivo_esclusione`: la parte della bolletta che
+NON va addebitata agli inquilini (canone RAI, aumento potenza, allacci). Il
+calcolo usa sempre `importo_ripartibile = importo_totale − quota_esclusa`, in
+entrambi i rami di `_attribuisci_bollette` (pinned: quota intera; pro-rata:
+stessa frazione giorni per netto ed escluso). Il risultato espone
+`totale_escluso` + `esclusioni` e i `tot_*` persistiti sono netti.
+
+Scelte deliberate: l'**Expense mirror resta al lordo** (il proprietario ha
+pagato tutto → la differenza resta a suo carico senza scritture extra); le
+**statistiche €/kWh usano il netto**; l'inquilino **vede l'esclusione** (riga
+"Escluso, a carico proprietà" in card e nota nell'email, placeholder
+`{{esclusioni}}`/`{{esclusioni_html}}`). Edit dal FE: matita sulla card in
+`/p/utenze` (dialog `BollettaEditDialog`, PATCH `utility-bills/`); modificare
+una bolletta di un periodo già `inviato` NON ricalcola i Receivable (warning UI).
 
 # Pinning: "una volta inviato non si tocca più"
 

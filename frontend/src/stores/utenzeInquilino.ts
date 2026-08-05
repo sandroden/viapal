@@ -13,6 +13,7 @@ export interface PeriodoInquilinoFE {
 }
 
 export interface BollettaInquilinoFE {
+  id: number;
   prodotto: string;
   supplier_nome: string;
   consumo: string | null;
@@ -20,7 +21,17 @@ export interface BollettaInquilinoFE {
   periodo_da: string;
   periodo_a: string;
   importo_totale: string;
+  quota_esclusa: string;
+  motivo_esclusione: string;
+  importo_ripartibile: string;
   file_pdf: string | null;
+}
+
+export interface EsclusioneInquilinoFE {
+  bill_id: number;
+  prodotto: string;
+  motivo: string;
+  quota_esclusa: number | string;
 }
 
 export interface QuotaInquilinoFE {
@@ -37,6 +48,8 @@ export interface DettaglioInquilinoFE {
   bollette: BollettaInquilinoFE[];
   totali_per_voce: Record<string, number | string>;
   totale_periodo: number | string;
+  totale_escluso: number | string;
+  esclusioni: EsclusioneInquilinoFE[];
   quote: QuotaInquilinoFE[];
   tenant_id: number;
 }

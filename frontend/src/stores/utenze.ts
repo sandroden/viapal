@@ -44,6 +44,13 @@ export interface QuotaInquilino {
   importo_esistente: number | string | null;
 }
 
+export interface EsclusioneFE {
+  bill_id: number;
+  prodotto: string;
+  motivo: string;
+  quota_esclusa: number | string;
+}
+
 export interface AnteprimaResponse {
   period_id: number;
   periodo_da: string;
@@ -53,6 +60,8 @@ export interface AnteprimaResponse {
   sum_giorni_presenza: number;
   quote: QuotaInquilino[];
   diff_arrotondamento: number | string;
+  totale_escluso?: number | string;
+  esclusioni?: EsclusioneFE[];
   completezza: Completezza;
   skipped?: string;
   // presenti dopo emetti
@@ -129,6 +138,8 @@ export interface BollettaFE {
   periodo_da: string;
   periodo_a: string;
   importo_totale: string;
+  quota_esclusa: string;
+  motivo_esclusione: string;
   supplier_nome?: string;
   pagata_da_nominativo?: string;
   file_pdf?: string | null;
@@ -187,6 +198,32 @@ export const useUtenzeStore = defineStore('utenze', {
         return data;
       } catch (e: unknown) {
         this.errore = messaggioErrore(e, 'Errore caricamento bolletta');
+        return null;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async aggiornaBolletta(
+      id: number,
+      patch: {
+        importo_totale?: string | number;
+        quota_esclusa?: string | number;
+        motivo_esclusione?: string;
+      },
+    ): Promise<BollettaFE | null> {
+      this.loading = true;
+      this.errore = null;
+      try {
+        const { data } = await api.patch<BollettaFE>(
+          `/api/v1/utility-bills/${id}/`,
+          patch,
+        );
+        const idx = this.bollettePeriodo.findIndex((b) => b.id === id);
+        if (idx >= 0) this.bollettePeriodo[idx] = data;
+        return data;
+      } catch (e: unknown) {
+        this.errore = messaggioErrore(e, 'Errore salvataggio bolletta');
         return null;
       } finally {
         this.loading = false;

@@ -26,6 +26,7 @@ const props = defineProps<{
   bollette: BollettaView[];
   voci: VoceView[];
   totale: number;
+  totaleEscluso?: number;
   quote: QuotaView[];
   mancantiTipi: string[];
   escludi: number[];
@@ -46,6 +47,7 @@ const emit = defineEmits<{
   emetti: [];
   'toggle-invio': [receivableId: number];
   'view-pdf': [v: { url: string; title: string }];
+  edit: [id: number];
 }>();
 
 const STEPS = ['Bolletta', 'Ripartizione', 'Invio'];
@@ -143,9 +145,11 @@ function setStep(n: number): void {
         :bollette="bollette"
         :voci="voci"
         :totale="totale"
+        :totale-escluso="totaleEscluso ?? 0"
         :mancanti-tipi="mancantiTipi"
         @upload="(t) => emit('upload', t)"
         @view-pdf="(v) => emit('view-pdf', v)"
+        @edit="(id) => emit('edit', id)"
       />
       <template v-else-if="step === 2">
         <BloccatoState v-if="incompleto" :mancanti="mancanti" @torna="setStep(1)" />

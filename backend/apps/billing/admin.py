@@ -740,7 +740,8 @@ class UtilityBillAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboMod
             "fields": ("immobile", "supplier", "prodotto", "numero_fattura", "data_emissione"),
         }),
         ("Periodo, consumo e importo", {
-            "fields": ("periodo_da", "periodo_a", "consumo", "importo_totale"),
+            "fields": ("periodo_da", "periodo_a", "consumo", "importo_totale",
+                       "quota_esclusa", "motivo_esclusione"),
         }),
         ("Pagamento", {
             "fields": ("pagata_da_owner", "expense", "file_pdf"),

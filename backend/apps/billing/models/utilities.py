@@ -2,7 +2,9 @@
 Modelli per bollette, TARI, periodi e addebiti utenze inquilini.
 """
 import builtins
+from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.text import slugify
 
@@ -79,6 +81,22 @@ class UtilityBill(TimestampedModel):
         decimal_places=2,
         verbose_name="importo totale",
     )
+    quota_esclusa = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        verbose_name="quota esclusa",
+        help_text=(
+            "Parte dell'importo NON ripartita sugli inquilini, a carico della "
+            "proprietà (es. canone RAI, aumento potenza, allaccio)."
+        ),
+    )
+    motivo_esclusione = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="motivo esclusione",
+        help_text="Es. 'Canone RAI', 'Costi di allaccio'.",
+    )
     consumo = models.DecimalField(
         max_digits=10,
         decimal_places=3,
@@ -124,6 +142,23 @@ class UtilityBill(TimestampedModel):
 
     def __str__(self):
         return f"{self.supplier} — {self.periodo_da} / {self.periodo_a} ({self.importo_totale}€)"
+
+    def clean(self):
+        super().clean()
+        if self.quota_esclusa and self.importo_totale is not None:
+            if self.quota_esclusa < 0:
+                raise ValidationError(
+                    {"quota_esclusa": "La quota esclusa non può essere negativa."}
+                )
+            if self.quota_esclusa > self.importo_totale:
+                raise ValidationError(
+                    {"quota_esclusa": "La quota esclusa non può superare l'importo totale."}
+                )
+
+    @property
+    def importo_ripartibile(self) -> Decimal:
+        """Importo da ripartire sugli inquilini: totale meno la quota a carico proprietà."""
+        return self.importo_totale - (self.quota_esclusa or Decimal("0"))
 
     @property
     def unita_misura(self) -> str:

@@ -1476,3 +1476,173 @@ class TestOrderingQuotePerNominativo:
         ris = calcola_conguaglio_periodo(periodo_maggio.pk, persist=False)
         nominativi = [q["tenant_nominativo"] for q in ris["quote"]]
         assert nominativi == ["Alpha", "Mike", "Zorro"]
+
+
+# ---------------------------------------------------------------------------
+# Quota esclusa: voci a carico proprietà (canone RAI, aumento potenza, allacci)
+# ---------------------------------------------------------------------------
+
+
+class TestQuotaEsclusa:
+    """La ripartizione usa importo_totale − quota_esclusa (importo_ripartibile);
+    la parte esclusa resta a carico proprietà ed emerge in totale_escluso."""
+
+    def test_prorata_bolletta_interna_al_periodo(
+        self, db, make_assignment, periodo_maggio, supplier_luce, owner, immobile
+    ):
+        """Bolletta 250€ con 30€ esclusi (canone RAI): si ripartiscono 220€."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        make_assignment(valid_from=datetime.date(2026, 5, 1))
+        UtilityBill.objects.create(
+            immobile=immobile,
+            supplier=supplier_luce,
+            numero_fattura="ENEL-RAI",
+            data_emissione=datetime.date(2026, 5, 15),
+            periodo_da=datetime.date(2026, 5, 1),
+            periodo_a=datetime.date(2026, 5, 31),
+            importo_totale=Decimal("250.00"),
+            quota_esclusa=Decimal("30.00"),
+            motivo_esclusione="Canone RAI",
+            pagata_da_owner=owner,
+        )
+
+        ris = calcola_conguaglio_periodo(periodo_maggio.pk)
+        assert ris["totali_per_voce"]["luce"] == Decimal("220.00")
+        assert ris["totale_periodo"] == Decimal("220.00")
+        assert ris["totale_escluso"] == Decimal("30.00")
+        assert ris["esclusioni"] == [
+            {
+                "bill_id": UtilityBill.objects.get().pk,
+                "prodotto": "luce",
+                "motivo": "Canone RAI",
+                "quota_esclusa": Decimal("30.00"),
+            }
+        ]
+        # Unico inquilino: quota = tutto il netto
+        assert ris["quote"][0]["quota"] == Decimal("220.00")
+
+    def test_prorata_multi_mese_stessa_frazione(
+        self, db, make_assignment, supplier_luce, owner, immobile
+    ):
+        """Bolletta gen-apr 2025 (120gg, 120€ di cui 12€ esclusi): il periodo
+        mar-apr (61gg) prende 61/120 sia del netto sia dell'escluso."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        mar_apr = UtilityChargePeriod.objects.create(
+            property=immobile,
+            periodo_da=datetime.date(2025, 3, 1),
+            periodo_a=datetime.date(2025, 4, 30),
+        )
+        UtilityBill.objects.create(
+            immobile=immobile,
+            supplier=supplier_luce,
+            prodotto="luce",
+            numero_fattura="ENEL-POTENZA",
+            data_emissione=datetime.date(2025, 4, 15),
+            periodo_da=datetime.date(2025, 1, 1),
+            periodo_a=datetime.date(2025, 4, 30),
+            importo_totale=Decimal("120.00"),
+            quota_esclusa=Decimal("12.00"),
+            motivo_esclusione="Aumento potenza",
+            pagata_da_owner=owner,
+        )
+        make_assignment(valid_from=datetime.date(2025, 1, 1))
+
+        ris = calcola_conguaglio_periodo(mar_apr.pk)
+        # netto 108 × 61/120 = 54.90; escluso 12 × 61/120 = 6.10
+        assert ris["totali_per_voce"]["luce"] == Decimal("54.90")
+        assert ris["totale_escluso"] == Decimal("6.10")
+
+    def test_ramo_pinned_netto_intero(
+        self, db, make_assignment, periodo_maggio, supplier_luce, owner, immobile
+    ):
+        """Bolletta pinnata sulla M2M: vale l'importo ripartibile intero e
+        l'esclusione a quota intera (verità manuale, no pro-rata)."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        make_assignment(valid_from=datetime.date(2026, 5, 1))
+        bill = UtilityBill.objects.create(
+            immobile=immobile,
+            supplier=supplier_luce,
+            numero_fattura="ENEL-PIN",
+            data_emissione=datetime.date(2026, 4, 15),
+            # Periodo bolletta fuori da maggio: conta solo perché pinnata.
+            periodo_da=datetime.date(2026, 4, 1),
+            periodo_a=datetime.date(2026, 4, 30),
+            importo_totale=Decimal("100.00"),
+            quota_esclusa=Decimal("40.00"),
+            motivo_esclusione="Allaccio",
+            pagata_da_owner=owner,
+        )
+        periodo_maggio.utility_bills.add(bill)
+
+        ris = calcola_conguaglio_periodo(periodo_maggio.pk)
+        assert ris["totali_per_voce"]["luce"] == Decimal("60.00")
+        assert ris["totale_escluso"] == Decimal("40.00")
+        assert ris["esclusioni"][0]["motivo"] == "Allaccio"
+
+    def test_persist_totali_netti(
+        self, db, make_assignment, periodo_maggio, supplier_luce, owner, immobile
+    ):
+        """persist=True: tot_luce sul periodo e importo_dovuto del Receivable
+        sono al netto della quota esclusa."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        make_assignment(valid_from=datetime.date(2026, 5, 1))
+        UtilityBill.objects.create(
+            immobile=immobile,
+            supplier=supplier_luce,
+            numero_fattura="ENEL-PERSIST",
+            data_emissione=datetime.date(2026, 5, 15),
+            periodo_da=datetime.date(2026, 5, 1),
+            periodo_a=datetime.date(2026, 5, 31),
+            importo_totale=Decimal("250.00"),
+            quota_esclusa=Decimal("30.00"),
+            motivo_esclusione="Canone RAI",
+            pagata_da_owner=owner,
+        )
+
+        calcola_conguaglio_periodo(periodo_maggio.pk, persist=True)
+        periodo_maggio.refresh_from_db()
+        assert periodo_maggio.tot_luce == Decimal("220.00")
+        r = Receivable.objects.get(utility_period=periodo_maggio)
+        assert r.importo_dovuto == Decimal("220.00")
+
+    def test_esclusione_totale_non_skippa_il_periodo(
+        self, db, make_assignment, periodo_maggio, supplier_luce, supplier_gas, owner, immobile
+    ):
+        """Bolletta esclusa al 100%: contribuisce 0 alla sua voce ma il periodo
+        NON viene saltato come 'no_bollette_luce_gas'."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        make_assignment(valid_from=datetime.date(2026, 5, 1))
+        UtilityBill.objects.create(
+            immobile=immobile,
+            supplier=supplier_luce,
+            numero_fattura="ENEL-FULL-EXCL",
+            data_emissione=datetime.date(2026, 5, 15),
+            periodo_da=datetime.date(2026, 5, 1),
+            periodo_a=datetime.date(2026, 5, 31),
+            importo_totale=Decimal("50.00"),
+            quota_esclusa=Decimal("50.00"),
+            motivo_esclusione="Allaccio",
+            pagata_da_owner=owner,
+        )
+        UtilityBill.objects.create(
+            immobile=immobile,
+            supplier=supplier_gas,
+            prodotto="gas",
+            numero_fattura="ENI-NORMALE",
+            data_emissione=datetime.date(2026, 5, 15),
+            periodo_da=datetime.date(2026, 5, 1),
+            periodo_a=datetime.date(2026, 5, 31),
+            importo_totale=Decimal("80.00"),
+            pagata_da_owner=owner,
+        )
+
+        ris = calcola_conguaglio_periodo(periodo_maggio.pk)
+        assert "skipped" not in ris
+        assert ris["totali_per_voce"]["luce"] == Decimal("0.00")
+        assert ris["totali_per_voce"]["gas"] == Decimal("80.00")
+        assert ris["totale_escluso"] == Decimal("50.00")

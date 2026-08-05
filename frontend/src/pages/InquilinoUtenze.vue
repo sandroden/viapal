@@ -66,6 +66,7 @@
           :bollette="bolletteView"
           :voci="vociView"
           :totale="totaleView"
+          :totale-escluso="totaleEscluso"
           :mancanti-tipi="[]"
           :mia-quota="miaQuotaView"
           readonly
@@ -173,9 +174,13 @@ const bolletteView = computed<BollettaView[]>(() => {
   const d = dettaglio.value;
   if (!d) return [];
   const cards: BollettaView[] = d.bollette.map((b) => ({
+    id: b.id,
     tipo: String(prodottoToTipo(b.prodotto)),
     fornitore: b.supplier_nome || '—',
     importo: num(b.importo_totale),
+    esclusa: num(b.quota_esclusa),
+    motivoEsclusione: b.motivo_esclusione || '',
+    netto: num(b.importo_ripartibile),
     periodo: rangePeriodo(b.periodo_da, b.periodo_a),
     consumo: b.consumo || '—',
     riferimento: b.numero_fattura || '—',
@@ -185,6 +190,7 @@ const bolletteView = computed<BollettaView[]>(() => {
   const tari = num(d.totali_per_voce?.tari);
   if (tari > 0 && !cards.some((c) => c.tipo === 'TARI')) {
     cards.push({
+      id: null,
       tipo: 'TARI',
       fornitore: 'Comune (TARI)',
       importo: tari,
@@ -208,6 +214,7 @@ const vociView = computed<VoceView[]>(() => {
 });
 
 const totaleView = computed(() => num(dettaglio.value?.totale_periodo));
+const totaleEscluso = computed(() => num(dettaglio.value?.totale_escluso));
 
 const quoteView = computed<QuotaView[]>(() => {
   const quote = dettaglio.value?.quote ?? [];

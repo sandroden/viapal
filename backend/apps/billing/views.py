@@ -683,8 +683,9 @@ class UtilityBillViewSet(ModelViewSet):
                 consumo__gt=0,
                 prodotto__in=[UtilityBill.Prodotto.LUCE, UtilityBill.Prodotto.GAS],
             )
+            .annotate(importo_netto=F("importo_totale") - F("quota_esclusa"))
             .order_by("periodo_da")
-            .values("periodo_da", "prodotto", "consumo", "importo_totale")
+            .values("periodo_da", "prodotto", "consumo", "importo_netto")
         )
 
         # Accumula per (anno, mese, prodotto)
@@ -697,7 +698,9 @@ class UtilityBillViewSet(ModelViewSet):
             if data[key][slot] is None:
                 data[key][slot] = {"consumo": Decimal("0"), "importo": Decimal("0")}
             data[key][slot]["consumo"] += bill["consumo"]
-            data[key][slot]["importo"] += bill["importo_totale"]
+            # Netto della quota esclusa: il €/kWh misura l'energia, non gli
+            # extra una-tantum (canone RAI, allacci...).
+            data[key][slot]["importo"] += bill["importo_netto"]
 
         # RoomAssignment: serve solo valid_from e valid_to per calcolare i
         # giorni-persona del singolo mese (intersezione assegnazione ∩ mese).
@@ -1737,6 +1740,7 @@ class UtenzeInquilinoView(APIView):
         for b in bills:
             out.append(
                 {
+                    "id": b.id,
                     "prodotto": b.prodotto,
                     "supplier_nome": b.supplier.nome if b.supplier_id else "",
                     "consumo": b.consumo,
@@ -1744,6 +1748,9 @@ class UtenzeInquilinoView(APIView):
                     "periodo_da": b.periodo_da,
                     "periodo_a": b.periodo_a,
                     "importo_totale": b.importo_totale,
+                    "quota_esclusa": b.quota_esclusa,
+                    "motivo_esclusione": b.motivo_esclusione,
+                    "importo_ripartibile": b.importo_ripartibile,
                     # Path relativo (/media/…): l'app lo serve via proxy stessa
                     # origin, così l'iframe del PDF non incappa in X-Frame-Options.
                     "file_pdf": b.file_pdf.url if b.file_pdf else None,
@@ -1793,6 +1800,8 @@ class UtenzeInquilinoView(APIView):
                 "bollette": self._bollette(request, period),
                 "totali_per_voce": ris.get("totali_per_voce", {}),
                 "totale_periodo": ris.get("totale_periodo", 0),
+                "totale_escluso": ris.get("totale_escluso", 0),
+                "esclusioni": ris.get("esclusioni", []),
                 "quote": quote,
                 "tenant_id": tenant.id,
             }

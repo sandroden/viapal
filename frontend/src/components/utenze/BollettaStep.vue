@@ -18,16 +18,19 @@ const props = withDefaults(
     totale: number;
     mancantiTipi: string[]; // tipi ancora da caricare
     readonly?: boolean; // vista inquilino: niente upload
+    // Totale delle quote escluse dalla ripartizione (a carico proprietà).
+    totaleEscluso?: number;
     // Vista inquilino: la SUA quota del mese. Mostrata in cima allo step come
     // sintesi sticky ("quanto pago"); su mobile rimpiazza lo strip terracotta.
     miaQuota?: { importo: number; giorni: number } | null;
   }>(),
-  { readonly: false, miaQuota: null },
+  { readonly: false, totaleEscluso: 0, miaQuota: null },
 );
 const meseCap = computed(() => meseCapitalize(props.periodo.mese));
 const emit = defineEmits<{
   upload: [tipo?: string];
   'view-pdf': [v: { url: string; title: string }];
+  edit: [id: number];
 }>();
 
 const incompleto = computed(() => props.periodo.stato === 'incompleto');
@@ -51,7 +54,7 @@ const mancanti = computed(() => props.mancantiTipi.length);
       <div class="thumbs">
         <div
           v-for="(b, i) in bollette"
-          :key="b.tipo"
+          :key="b.id ?? b.tipo"
           :style="{ marginLeft: i ? '-16px' : 0, marginTop: i * 3 + 'px', zIndex: i }"
         >
           <VpScontrino :bolletta="b" :tilt="-6 + i * 7" :w="52" mini />
@@ -96,7 +99,7 @@ const mancanti = computed(() => props.mancantiTipi.length);
 
     <!-- Card di dettaglio + slot mancanti -->
     <div class="grid3">
-      <div v-for="b in bollette" :key="b.tipo" class="vp-card card">
+      <div v-for="b in bollette" :key="b.id ?? b.tipo" class="vp-card card">
         <div
           class="card-head"
           :style="{ background: utility(b.tipo).soft, color: utility(b.tipo).fg }"
@@ -122,6 +125,19 @@ const mancanti = computed(() => props.mancantiTipi.length);
               eur(b.importo)
             }}</span>
           </div>
+          <template v-if="(b.esclusa ?? 0) > 0">
+            <div class="kv escl">
+              <span>
+                Escluso, a carico proprietà
+                <span v-if="b.motivoEsclusione" class="escl-motivo">· {{ b.motivoEsclusione }}</span>
+              </span>
+              <span class="vp-mono">−{{ eur(b.esclusa ?? 0) }}</span>
+            </div>
+            <div class="kv netto">
+              <span>Da ripartire</span>
+              <span class="vp-mono">{{ eur(b.netto ?? b.importo) }}</span>
+            </div>
+          </template>
         </div>
         <div class="card-foot">
           <span v-if="b.letto !== false" class="card-foot-ok">
@@ -129,6 +145,14 @@ const mancanti = computed(() => props.mancantiTipi.length);
             correttamente
           </span>
           <span v-else class="card-foot-info">Costo annuale, senza bolletta PDF</span>
+          <button
+            v-if="!readonly && b.id != null"
+            class="edit-btn"
+            title="Modifica importo e quota esclusa"
+            @click="emit('edit', b.id)"
+          >
+            <VpIcon name="edit" :size="14" color="var(--vp-ink-3)" />
+          </button>
           <PdfIconButton
             v-if="b.pdfUrl"
             title="Apri / scarica la bolletta"
@@ -193,6 +217,10 @@ const mancanti = computed(() => props.mancantiTipi.length);
           <div class="vp-eyebrow">Totale periodo</div>
           <div class="vp-mono total-val">{{ eur(totale) }}</div>
         </div>
+      </div>
+      <div v-if="(totaleEscluso ?? 0) > 0" class="comp-escl">
+        Già esclusi, a carico proprietà: <span class="vp-mono">−{{ eur(totaleEscluso ?? 0) }}</span>
+        — le voci sopra sono al netto.
       </div>
     </div>
   </div>
@@ -363,6 +391,36 @@ const mancanti = computed(() => props.mancantiTipi.length);
   gap: 6px;
 }
 .card-foot-info {
+  color: var(--vp-ink-3);
+}
+.edit-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+.edit-btn:hover {
+  background: var(--vp-paper-2);
+}
+.kv.escl {
+  color: var(--vp-clay, #a3564a);
+}
+.kv.escl .escl-motivo {
+  color: var(--vp-ink-3);
+  font-size: 11px;
+}
+.kv.netto {
+  font-weight: 600;
+}
+.comp-escl {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--vp-paper-3);
+  font-size: 13px;
   color: var(--vp-ink-3);
 }
 

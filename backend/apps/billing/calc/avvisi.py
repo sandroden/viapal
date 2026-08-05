@@ -48,7 +48,8 @@ DEFAULT_CORPO = (
     "è disponibile il conteggio delle utenze per il periodo {{periodo}}.\n"
     "Il tuo importo è di {{importo}} € (luce, gas e TARI ripartiti sui giorni "
     "di effettiva presenza).\n\n"
-    "Dettaglio:\n{{conteggio}}\n\n"
+    "Dettaglio:\n{{conteggio}}\n"
+    "{{esclusioni}}\n"
     "{{bonifico}}\n\n"
     "Vedi il dettaglio nell'app Viapal: {{link}}\n\n"
     "Grazie,\ni proprietari"
@@ -64,6 +65,7 @@ DEFAULT_CORPO_HTML = (
     "effettiva presenza).</p>"
     "<p>Il tuo importo è di <strong>{{importo}} €</strong>.</p>"
     "{{conteggio_html}}"
+    "{{esclusioni_html}}"
     "{{bonifico_html}}"
     '<p style="margin-top:20px">'
     '<a href="{{link}}" style="display:inline-block;background:#9b5a3a;'
@@ -116,6 +118,31 @@ def _conteggio_html(voci: list[tuple[str, str]]) -> str:
         '<table style="border-collapse:collapse;margin:8px 0 16px">'
         f"<tbody>{righe}</tbody></table>"
     )
+
+
+def _frase_esclusioni(totale_escluso, motivi: list[str]) -> str:
+    """Frase (senza markup) sulle quote escluse, vuota se non ce ne sono."""
+    if not totale_escluso:
+        return ""
+    frase = (
+        f"Dal totale delle bollette sono già stati esclusi {_eur(totale_escluso)} € "
+        "a carico della proprietà"
+    )
+    if motivi:
+        frase += f" ({', '.join(motivi)})"
+    return frase + "."
+
+
+def _nota_esclusioni_testo(totale_escluso, motivi: list[str]) -> str:
+    frase = _frase_esclusioni(totale_escluso, motivi)
+    return f"\n{frase}" if frase else ""
+
+
+def _nota_esclusioni_html(totale_escluso, motivi: list[str]) -> str:
+    frase = _frase_esclusioni(totale_escluso, motivi)
+    if not frase:
+        return ""
+    return f'<p style="color:#666;font-size:13px">{escape(frase)}</p>'
 
 
 # ── Bonifico: QR EPC (GiroCode) + IBAN/causale, come la pagina inquilino ──
@@ -221,7 +248,7 @@ def _bonifico_html(b: dict, cid: str) -> str:
     )
 
 
-def _contesto(receivable, dettaglio: dict | None) -> dict:
+def _contesto(receivable, dettaglio: dict | None, esclusioni: tuple = None) -> dict:
     period = receivable.utility_period
     if period:
         periodo_str = f"{period.periodo_da:%d/%m/%Y} – {period.periodo_a:%d/%m/%Y}"
@@ -230,6 +257,7 @@ def _contesto(receivable, dettaglio: dict | None) -> dict:
     tenant = receivable.assignment.tenant
     voci = _voci_conteggio(receivable, dettaglio)
     bonifico = _dati_bonifico(receivable)
+    totale_escluso, motivi = esclusioni or (None, [])
     return {
         "nome": tenant.nominativo,
         "periodo": periodo_str,
@@ -237,6 +265,8 @@ def _contesto(receivable, dettaglio: dict | None) -> dict:
         "scadenza": receivable.scadenza.strftime("%d/%m/%Y") if receivable.scadenza else "",
         "conteggio": _conteggio_testo(voci),
         "conteggio_html": _conteggio_html(voci),
+        "esclusioni": _nota_esclusioni_testo(totale_escluso, motivi),
+        "esclusioni_html": _nota_esclusioni_html(totale_escluso, motivi),
         "bonifico": _bonifico_testo(bonifico) if bonifico else "",
         "bonifico_html": _bonifico_html(bonifico, _cid_bonifico(receivable)) if bonifico else "",
         "link": _link_inquilino(receivable),
@@ -270,8 +300,8 @@ def _receivables_periodo(period):
     )
 
 
-def _dettagli_per_assignment(period) -> dict:
-    """Mappa ``assignment_id -> dettaglio`` (luce/gas/TARI) ricalcolata.
+def _risultato_calcolo(period) -> dict:
+    """Risultato completo di ``calcola_conguaglio_periodo`` (o ``{}``).
 
     Il dettaglio per-voce non è persistito sul ``Receivable``: lo ricaviamo da
     una simulazione (``persist=False``) per arricchire l'avviso. È solo
@@ -280,13 +310,9 @@ def _dettagli_per_assignment(period) -> dict:
     from billing.calc.utility import calcola_conguaglio_periodo
 
     try:
-        risultato = calcola_conguaglio_periodo(period.id, persist=False)
+        return calcola_conguaglio_periodo(period.id, persist=False)
     except Exception:  # noqa: BLE001 — il dettaglio è opzionale
         return {}
-    return {
-        q["assignment_id"]: q.get("dettaglio", {})
-        for q in risultato.get("quote", [])
-    }
 
 
 def costruisci_avvisi_utenze(period) -> list[dict]:
@@ -294,14 +320,25 @@ def costruisci_avvisi_utenze(period) -> list[dict]:
 
     Usata sia per l'anteprima (dry-run) sia come base dell'invio.
     """
-    dettagli = _dettagli_per_assignment(period)
+    risultato = _risultato_calcolo(period)
+    dettagli = {
+        q["assignment_id"]: q.get("dettaglio", {})
+        for q in risultato.get("quote", [])
+    }
+    # Quote escluse dalla ripartizione (a carico proprietà): nota unica a
+    # livello periodo, uguale per tutti gli avvisi.
+    esclusioni = (
+        risultato.get("totale_escluso"),
+        sorted({e["motivo"] for e in risultato.get("esclusioni", []) if e["motivo"]}),
+    )
     oggi = _oggi()
     avvisi = []
     for r in _receivables_periodo(period):
         if not r.importo_dovuto:
             continue
         oggetto, corpo, corpo_html = _render(
-            _contesto(r, dettagli.get(r.assignment_id)), property=period.property
+            _contesto(r, dettagli.get(r.assignment_id), esclusioni),
+            property=period.property,
         )
         tenant = r.assignment.tenant
         # Inquilino già uscito: l'occupazione è terminata prima di oggi.

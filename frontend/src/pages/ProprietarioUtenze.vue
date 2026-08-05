@@ -30,6 +30,7 @@
       :bollette="bolletteView"
       :voci="vociView"
       :totale="totaleView"
+      :totale-escluso="totaleEscluso"
       :quote="quoteView"
       :mancanti-tipi="mancantiTipi"
       :escludi="escludi"
@@ -47,6 +48,7 @@
       @invia="confermaInvio"
       @toggle-invio="onToggleInvio"
       @view-pdf="apriPdf"
+      @edit="onEditBolletta"
     />
 
     <div v-else-if="tab === 'conguaglio'" class="vp-vuoto">
@@ -58,6 +60,13 @@
       v-model="mostraPdf"
       :url="pdfCorrente?.url ?? null"
       :title="pdfCorrente?.title ?? null"
+    />
+
+    <BollettaEditDialog
+      v-model="mostraEditBolletta"
+      :bolletta="bollettaInEdit"
+      :salvando="store.loading"
+      @salva="onSalvaBolletta"
     />
 
     <!-- Dialog: carica bollette -->
@@ -109,9 +118,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
-import { useUtenzeStore } from 'stores/utenze';
+import { useUtenzeStore, type BollettaFE } from 'stores/utenze';
 import ConguaglioBollette from 'src/components/utenze/ConguaglioBollette.vue';
 import UtenzeAndamento from 'src/components/utenze/UtenzeAndamento.vue';
+import BollettaEditDialog from 'src/components/utenze/BollettaEditDialog.vue';
 import PdfDialog from 'src/components/PdfDialog.vue';
 import {
   prodottoToTipo,
@@ -220,9 +230,13 @@ const periodoCorrenteView = computed<PeriodoView | null>(() => {
 // ── Bollette del periodo (card di dettaglio) ──────────────────────────
 const bolletteView = computed<BollettaView[]>(() => {
   const cards: BollettaView[] = store.bollettePeriodo.map((b) => ({
+    id: b.id,
     tipo: String(prodottoToTipo(b.prodotto)),
     fornitore: b.supplier_nome || b.pagata_da_nominativo || '—',
     importo: num(b.importo_totale),
+    esclusa: num(b.quota_esclusa),
+    motivoEsclusione: b.motivo_esclusione || '',
+    netto: num(b.importo_totale) - num(b.quota_esclusa),
     periodo: rangePeriodo(b.periodo_da, b.periodo_a),
     consumo: fmtConsumo(b.consumo),
     riferimento: b.numero_fattura || '—',
@@ -233,6 +247,7 @@ const bolletteView = computed<BollettaView[]>(() => {
   const haTariCard = cards.some((c) => c.tipo === 'TARI');
   if (tari > 0 && !haTariCard && store.period) {
     cards.push({
+      id: null,
       tipo: 'TARI',
       fornitore: 'Comune (TARI)',
       importo: tari,
@@ -244,6 +259,13 @@ const bolletteView = computed<BollettaView[]>(() => {
     });
   }
   return cards;
+});
+
+// Totale escluso dalla ripartizione (a carico proprietà). Dall'anteprima se
+// disponibile (pro-rata corretto sul periodo), altrimenti dalle bollette.
+const totaleEscluso = computed(() => {
+  if (store.anteprima) return num(store.anteprima.totale_escluso);
+  return store.bollettePeriodo.reduce((s, b) => s + num(b.quota_esclusa), 0);
 });
 
 // ── Composizione (totali per voce del periodo) ────────────────────────
@@ -348,6 +370,46 @@ function onToggleInvio(receivableId: number): void {
   const i = escludi.value.indexOf(receivableId);
   if (i >= 0) escludi.value.splice(i, 1);
   else escludi.value.push(receivableId);
+}
+
+// ── Edit bolletta (importo / quota esclusa) ───────────────────────────
+const mostraEditBolletta = ref(false);
+const bollettaInEdit = ref<BollettaFE | null>(null);
+
+function onEditBolletta(id: number): void {
+  bollettaInEdit.value = store.bollettePeriodo.find((b) => b.id === id) ?? null;
+  if (!bollettaInEdit.value) return;
+  mostraEditBolletta.value = true;
+}
+
+async function onSalvaBolletta(v: {
+  id: number;
+  importo_totale: string;
+  quota_esclusa: string;
+  motivo_esclusione: string;
+}): Promise<void> {
+  const res = await store.aggiornaBolletta(v.id, {
+    importo_totale: v.importo_totale,
+    quota_esclusa: v.quota_esclusa,
+    motivo_esclusione: v.motivo_esclusione,
+  });
+  if (!res) {
+    $q.notify({ type: 'negative', message: store.errore ?? 'Errore salvataggio' });
+    return;
+  }
+  mostraEditBolletta.value = false;
+  $q.notify({ type: 'positive', message: 'Bolletta aggiornata' });
+  if (store.period?.stato === 'inviato') {
+    $q.notify({
+      type: 'warning',
+      message:
+        'Periodo già emesso: gli addebiti esistenti non si aggiornano da soli.',
+      timeout: 6000,
+    });
+  }
+  // Ricarica bollette e anteprima con i nuovi importi.
+  await store.perMese(anno.value, mese.value);
+  await caricaDatiPeriodo();
 }
 
 // ── Upload ────────────────────────────────────────────────────────────
