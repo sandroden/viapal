@@ -51,6 +51,7 @@ design/**/node_modules/
 
 # Claude Code workspace
 .claude/
+CLAUDE.local.md
 
 # Dati reali (CF, IBAN, importi personali) — mai su GitHub
 dati/*
