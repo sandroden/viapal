@@ -255,7 +255,7 @@ class TestMancanti:
         DocumentTemplate.objects.filter(codice=ATTO).delete()
         esito = anteprima(scenario["tenant"], ATTO, oggi=OGGI)
         assert esito["mancanti"][0]["campo"] == "modello"
-        assert esito["mancanti"][0]["link"].startswith("/p/impostazioni/casa?tab=modelli")
+        assert esito["mancanti"][0]["link"].startswith("/p/impostazioni?tab=modelli")
         assert esito["completo"] is False
 
     def test_anagrafica_inquilino_vuota(self, scenario):
@@ -331,7 +331,7 @@ class TestMancanti:
         mancanti = anteprima(scenario["tenant"], CESSIONE, oggi=OGGI)["mancanti"]
         da_owner = [m for m in mancanti if m["fonte"] in ("owner", "property")]
         assert [m["campo"] for m in da_owner] == [""]
-        assert da_owner[0]["link"].startswith("/p/impostazioni/proprieta")
+        assert da_owner[0]["link"].startswith("/p/impostazioni?tab=dati")
 
     def test_dati_documento_identita(self, scenario):
         tenant = scenario["tenant"]

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
 import type { BankAccountInfo } from 'stores/auth';
 
-interface BankAccountFull {
+export interface BankAccountFull {
   id: number;
   owner: number;
   owner_nominativo: string;

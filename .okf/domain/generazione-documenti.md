@@ -54,12 +54,17 @@ per il firmatario della cessione.
 | Fonte | Dove | Esterno |
 |---|---|---|
 | `tenant` / `uscente` | scheda inquilino → Profilo, dialog anagrafica sul campo indicato | no |
-| `property` | Impostazioni → Proprietà, sul campo indicato | no |
-| `contract` | Impostazioni → Casa → Contratti, col dialog del contratto aperto | no |
+| `property` | Immobile → Dati, sul campo indicato | no |
+| `contract` | Immobile → Contratti, col dialog del contratto aperto | no |
 | `assignment` | assegnazione stanza (admin) | **sì** |
 | `deposito` | scheda inquilino (admin): nasce da `deposito_versato` o dalle rate della prima assegnazione, non dal form anagrafica | **sì** |
 | `owner` | profilo proprietario (admin) | **sì** |
-| `modello` | Impostazioni → Casa → Modelli documenti | no |
+| `modello` | Immobile → Modelli documenti | no |
+
+Tutti i punti di compilazione della PWA stanno su un'unica pagina a tab
+(`/p/impostazioni`, «Immobile»); le vecchie route `/p/impostazioni/proprieta`
+e `/p/impostazioni/casa` sopravvivono come redirect che preservano
+`campo`/`contratto`.
 
 `esterno: true` è l'unica eccezione consapevole alla regola «mai una nuova
 scheda» del fascicolo: l'admin Django è fuori dalla PWA.

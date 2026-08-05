@@ -83,8 +83,8 @@ def _modello_mancante(documento) -> dict:
         "campo": "modello",
         "etichetta": f"Modello del documento «{documento.titolo}»",
         "fonte": "modello",
-        "dove": "Impostazioni → Casa → Modelli documenti",
-        "link": f"/p/impostazioni/casa?tab=modelli&codice={documento.chiave}",
+        "dove": "Immobile → Modelli documenti",
+        "link": f"/p/impostazioni?tab=modelli&codice={documento.chiave}",
         "esterno": False,
     }
 

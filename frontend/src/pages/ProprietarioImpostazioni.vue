@@ -1,7 +1,20 @@
 <template>
   <q-page padding class="vp-page">
     <div class="vp-page-head row items-center q-gutter-sm">
-      <h1 class="vp-h1">La casa</h1>
+      <h1 class="vp-h1">Immobile</h1>
+      <q-chip v-if="propStore.mioRuolo" dense outline data-testid="chip-ruolo">
+        {{ etichettaRuolo(propStore.mioRuolo) }}
+      </q-chip>
+      <q-space />
+      <q-btn
+        dense
+        flat
+        color="primary"
+        icon="add_home"
+        label="Nuova proprietà"
+        to="/p/proprieta/nuova"
+        data-testid="nuova-proprieta"
+      />
     </div>
 
     <q-tabs
@@ -9,22 +22,43 @@
       dense
       no-caps
       align="left"
-      class="vp-casa__tabs"
+      outside-arrows
+      mobile-arrows
+      class="vp-immobile__tabs"
       active-color="primary"
       indicator-color="primary"
-      data-testid="tabs-casa"
+      data-testid="tabs-immobile"
     >
+      <q-tab name="dati" label="Dati" />
       <q-tab name="stanze" :label="labels.unita" />
       <q-tab name="contratti" label="Contratti" />
       <q-tab name="spese" label="Spese" />
       <q-tab name="tari" label="TARI" />
       <q-tab name="documenti" label="Documenti" />
       <q-tab name="modelli" label="Modelli documenti" />
+      <q-tab name="membri" label="Membri" />
+      <q-tab name="conti" label="Conti bancari" />
+      <q-tab name="quote" label="Quote" />
     </q-tabs>
 
-    <q-tab-panels v-model="tabAttivo" animated class="vp-casa__panels">
+    <q-tab-panels v-model="tabAttivo" animated class="vp-immobile__panels">
+      <!-- DATI IMMOBILE -->
+      <q-tab-panel name="dati" class="vp-immobile__panel">
+        <div v-if="!dettaglio" class="q-pa-lg flex flex-center">
+          <q-spinner size="32px" />
+        </div>
+        <DatiImmobilePannello
+          v-else
+          ref="datiPannello"
+          :dettaglio="dettaglio"
+          :quote-correnti="quoteCorrenti"
+          :puo-modificare="puoModificare"
+          @aggiornato="dettaglio = $event"
+        />
+      </q-tab-panel>
+
       <!-- STANZE -->
-      <q-tab-panel name="stanze" class="vp-casa__panel">
+      <q-tab-panel name="stanze" class="vp-immobile__panel">
         <q-card flat bordered class="vp-card" style="max-width: 720px">
           <q-card-section>
             <div class="row items-center">
@@ -80,7 +114,7 @@
       </q-tab-panel>
 
       <!-- CONTRATTI -->
-      <q-tab-panel name="contratti" class="vp-casa__panel">
+      <q-tab-panel name="contratti" class="vp-immobile__panel">
         <q-card flat bordered class="vp-card" style="max-width: 720px">
           <q-card-section>
             <div class="row items-center">
@@ -146,7 +180,7 @@
       </q-tab-panel>
 
       <!-- SPESE -->
-      <q-tab-panel name="spese" class="vp-casa__panel">
+      <q-tab-panel name="spese" class="vp-immobile__panel">
         <q-card flat bordered class="vp-card q-mb-md" style="max-width: 720px">
           <q-card-section>
             <div class="row items-center">
@@ -334,7 +368,7 @@
       </q-tab-panel>
 
       <!-- TARI / COSTI ANNUALI -->
-      <q-tab-panel name="tari" class="vp-casa__panel">
+      <q-tab-panel name="tari" class="vp-immobile__panel">
         <q-card flat bordered class="vp-card" style="max-width: 720px">
           <q-card-section>
             <div class="row items-center">
@@ -401,7 +435,7 @@
       </q-tab-panel>
 
       <!-- DOCUMENTI -->
-      <q-tab-panel name="documenti" class="vp-casa__panel">
+      <q-tab-panel name="documenti" class="vp-immobile__panel">
         <div style="max-width: 640px">
           <div class="vp-hint q-mb-sm">
             Documenti dell'immobile: contratto di locazione, side letter,
@@ -418,8 +452,49 @@
       </q-tab-panel>
 
       <!-- MODELLI DOCUMENTO -->
-      <q-tab-panel name="modelli" class="vp-casa__panel">
+      <q-tab-panel name="modelli" class="vp-immobile__panel">
         <ModelliDocumentoPannello :puo-modificare="puoModificare" />
+      </q-tab-panel>
+
+      <!-- MEMBRI -->
+      <q-tab-panel name="membri" class="vp-immobile__panel">
+        <div v-if="loadingGovernance" class="q-pa-lg flex flex-center">
+          <q-spinner size="32px" />
+        </div>
+        <MembriPannello
+          v-else-if="propertyId"
+          :property-id="propertyId"
+          :membri="membri"
+          :sono-proprietario="sonoProprietario"
+          @aggiornati="membri = $event"
+        />
+      </q-tab-panel>
+
+      <!-- CONTI BANCARI -->
+      <q-tab-panel name="conti" class="vp-immobile__panel">
+        <div v-if="loadingGovernance" class="q-pa-lg flex flex-center">
+          <q-spinner size="32px" />
+        </div>
+        <ContiBancariPannello
+          v-else
+          :conto-utenze-id="dettaglio?.bank_account_utenze ?? null"
+          :membri="membri"
+        />
+      </q-tab-panel>
+
+      <!-- QUOTE DI PROPRIETÀ -->
+      <q-tab-panel name="quote" class="vp-immobile__panel">
+        <div v-if="loadingGovernance" class="q-pa-lg flex flex-center">
+          <q-spinner size="32px" />
+        </div>
+        <QuoteProprietaPannello
+          v-else-if="propertyId"
+          :property-id="propertyId"
+          :membri="membri"
+          :quote="quote"
+          :sono-proprietario="sonoProprietario"
+          @aggiornate="quote = $event"
+        />
       </q-tab-panel>
     </q-tab-panels>
 
@@ -479,7 +554,10 @@
     </q-dialog>
 
     <!-- Dialog contratto -->
-    <q-dialog v-model="dialogContratto">
+    <!-- no-route-dismiss: aggiornaQuery() riscrive la rotta consumando
+         ?contratto=, e senza questo il dialog appena aperto dal deep link
+         verrebbe chiuso dal cambio rotta. -->
+    <q-dialog v-model="dialogContratto" no-route-dismiss>
       <q-card style="min-width: 460px">
         <q-card-section>
           <div class="vp-section-title">
@@ -942,15 +1020,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useQuasar, type QTableProps } from 'quasar';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { api } from 'boot/axios';
 import { messaggioErrore } from 'src/utils/apiErrors';
-import { usePropertiesStore } from 'stores/properties';
+import {
+  etichettaRuolo,
+  usePropertiesStore,
+  type Membro,
+  type PropertyDettaglio,
+  type Quota,
+} from 'stores/properties';
 import { useTenantsStore } from 'stores/tenants';
+import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
 import DocumentiPannello from 'components/DocumentiPannello.vue';
 import ModelliDocumentoPannello from 'components/documenti/ModelliDocumentoPannello.vue';
+import DatiImmobilePannello from 'components/impostazioni/DatiImmobilePannello.vue';
+import MembriPannello from 'components/impostazioni/MembriPannello.vue';
+import ContiBancariPannello from 'components/impostazioni/ContiBancariPannello.vue';
+import QuoteProprietaPannello from 'components/impostazioni/QuoteProprietaPannello.vue';
 import { useDocumentiProprietaStore, TIPI_DOCUMENTO_PROPRIETA } from 'stores/documenti';
 
 // ---------------------------------------------------------------------------
@@ -1034,18 +1123,35 @@ interface QuotaCondominio {
 
 const $q = useQuasar();
 const route = useRoute();
+const router = useRouter();
 const propStore = usePropertiesStore();
 const tenantsStore = useTenantsStore();
+const contiStore = useOwnerBankAccountsStore();
 
-const TABS = ['stanze', 'contratti', 'spese', 'tari', 'documenti', 'modelli'] as const;
+const TABS = [
+  'dati',
+  'stanze',
+  'contratti',
+  'spese',
+  'tari',
+  'documenti',
+  'modelli',
+  'membri',
+  'conti',
+  'quote',
+] as const;
 type Tab = (typeof TABS)[number];
+
+function primo(v: unknown): string | null {
+  const s = Array.isArray(v) ? v[0] : v;
+  return typeof s === 'string' && s ? s : null;
+}
 
 /** Il tab arriva dalla query string: i "dati mancanti" della generazione
  *  documenti linkano direttamente al punto in cui si compilano. */
 function tabDaRotta(): Tab {
-  const q = route.query.tab;
-  const nome = Array.isArray(q) ? q[0] : q;
-  return TABS.includes(nome as Tab) ? (nome as Tab) : 'stanze';
+  const nome = primo(route.query.tab);
+  return TABS.includes(nome as Tab) ? (nome as Tab) : 'dati';
 }
 
 const tabAttivo = ref<Tab>(tabDaRotta());
@@ -1055,7 +1161,40 @@ const documentiStore = useDocumentiProprietaStore();
 const puoModificare = computed(
   () => propStore.mioRuolo === 'proprietario' || propStore.mioRuolo === 'gestore',
 );
+const sonoProprietario = computed(() => propStore.isProprietarioAttivo);
 const labels = computed(() => propStore.labels);
+
+// ---------------------------------------------------------------------------
+// Dati immobile, membri, quote di proprietà: lo stato vive nella pagina
+// perché serve a più pannelli (i membri anche ai conti bancari, le quote
+// anche al firmatario nel tab Dati).
+// ---------------------------------------------------------------------------
+
+const propertyId = computed(() => propStore.activePropertyId);
+const dettaglio = ref<PropertyDettaglio | null>(null);
+const membri = ref<Membro[]>([]);
+const quote = ref<Quota[]>([]);
+const loadingGovernance = ref(true);
+const datiPannello = ref<InstanceType<typeof DatiImmobilePannello> | null>(null);
+
+const quoteCorrenti = computed(() => quote.value.filter((q) => q.valid_to === null));
+
+async function caricaGovernance() {
+  const id = propertyId.value;
+  if (!id) {
+    loadingGovernance.value = false;
+    return;
+  }
+  loadingGovernance.value = true;
+  try {
+    dettaglio.value = await propStore.caricaDettaglio(id);
+    await contiStore.ensureLoaded(true);
+    membri.value = await propStore.caricaMembri(id);
+    quote.value = await propStore.caricaQuote(id);
+  } finally {
+    loadingGovernance.value = false;
+  }
+}
 
 function asArray<T>(data: T[] | { results: T[] } | undefined | null): T[] {
   if (!data) return [];
@@ -1827,27 +1966,59 @@ function eliminaQuota(q: QuotaCondominio) {
 
 // ---------------------------------------------------------------------------
 
+/** Riscrive la query con il solo tab attivo: i param one-shot dei deep
+ *  link (`contratto`, `campo`) vengono consumati. */
+function aggiornaQuery(): void {
+  void router.replace({ query: { tab: tabAttivo.value } });
+}
+
 /** Deep link `?tab=contratti&contratto=<id>`: apre direttamente il dialog
  *  del contratto da completare, altrimenti il link dei dati mancanti
  *  atterrerebbe sulla lista lasciando all'utente il compito di ritrovarlo. */
-async function apriDaRotta() {
-  await caricaContratti();
-  const q = route.query.contratto;
-  const id = Number(Array.isArray(q) ? q[0] : q);
+function apriContrattoDaId(id: number | null) {
   if (!id) return;
   const contratto = contratti.value.find((c) => c.id === id);
   if (contratto) apriDialogContratto(contratto);
 }
 
+/** Deep link `?tab=dati&campo=<nome>`: fuoco sul campo da compilare. */
+function focusCampoDati(campo: string | null) {
+  if (!campo) return;
+  void nextTick().then(() => datiPannello.value?.focusCampo(campo));
+}
+
 onMounted(() => {
+  // Catturati prima di aggiornaQuery(), che riscrive la query e li consuma.
+  const campo = primo(route.query.campo);
+  const contrattoId = Number(primo(route.query.contratto)) || null;
+
   void caricaStanze();
-  void apriDaRotta();
+  void caricaContratti().then(() => apriContrattoDaId(contrattoId));
   void caricaCategorie();
   void caricaFornitori();
   void caricaCosti();
   void caricaQuote();
   void tenantsStore.fetchTenantsConAssignment();
+  void caricaGovernance().then(() => {
+    if (tabAttivo.value === 'dati') focusCampoDati(campo);
+  });
+  aggiornaQuery();
 });
+
+watch(tabAttivo, aggiornaQuery);
+
+// I link dei "dati mancanti" possono puntare a questa stessa pagina: la
+// rotta non cambia, il componente non si rimonta, e senza questo watch la
+// query cambierebbe senza che succeda nulla.
+watch(
+  () => route.query,
+  (q) => {
+    const tab = tabDaRotta();
+    if (tab !== tabAttivo.value) tabAttivo.value = tab;
+    apriContrattoDaId(Number(primo(q.contratto)) || null);
+    if (tab === 'dati') focusCampoDati(primo(q.campo));
+  },
+);
 </script>
 
 <style scoped>
@@ -1872,14 +2043,14 @@ onMounted(() => {
   background: var(--vp-clay-soft, #fbeae5);
   color: var(--vp-clay-deep, #8c3b21);
 }
-.vp-casa__tabs {
+.vp-immobile__tabs {
   border-bottom: 1px solid var(--vp-paper-3);
   margin-bottom: var(--vp-gap-3);
 }
-.vp-casa__panels {
+.vp-immobile__panels {
   background: transparent;
 }
-.vp-casa__panel {
+.vp-immobile__panel {
   padding: 0;
 }
 </style>

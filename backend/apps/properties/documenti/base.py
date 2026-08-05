@@ -208,12 +208,12 @@ def _quota_condominio(assignment, alla_data):
 DOVE = {
     "tenant": "Scheda inquilino → Profilo",
     "uscente": "Scheda dell'inquilino uscente → Profilo",
-    "property": "Impostazioni → Proprietà",
-    "contract": "Impostazioni → Casa → Contratti",
+    "property": "Immobile → Dati",
+    "contract": "Immobile → Contratti",
     "assignment": "Assegnazione stanza (admin)",
     "deposito": "Deposito dell'inquilino (admin)",
     "owner": "Profilo proprietario (admin)",
-    "modello": "Impostazioni → Casa → Modelli documenti",
+    "modello": "Immobile → Modelli documenti",
 }
 
 #: Fonti che si compilano solo dall'admin Django, fuori dalla PWA.
@@ -265,10 +265,10 @@ def link_per(campo: Campo, fonti: Fonti) -> str:
     if campo.fonte == "uscente":
         return f"/p/inquilini/{fonti.uscente.pk}?tab=profilo&modifica=anagrafica{ancora}"
     if campo.fonte == "property":
-        return f"/p/impostazioni/proprieta?{ancora.lstrip('&')}"
+        return f"/p/impostazioni?tab=dati{ancora}"
     if campo.fonte == "contract":
         contratto = f"&contratto={fonti.contract.pk}" if fonti.contract else ""
-        return f"/p/impostazioni/casa?tab=contratti{contratto}{ancora}"
+        return f"/p/impostazioni?tab=contratti{contratto}{ancora}"
     if campo.fonte == "owner":
         if oggetto is None:
             return "/admin/properties/ownerprofile/"
@@ -280,7 +280,7 @@ def link_per(campo: Campo, fonti: Fonti) -> str:
         # ``deposito_versato`` o dalle rate della prima assegnazione, e si
         # sistema dalla scheda admin dell'inquilino.
         return f"/admin/properties/tenantprofile/{fonti.tenant.pk}/change/"
-    return "/p/impostazioni/casa?tab=modelli"
+    return "/p/impostazioni?tab=modelli"
 
 
 # ---------------------------------------------------------------------------

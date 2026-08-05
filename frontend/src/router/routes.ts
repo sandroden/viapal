@@ -142,14 +142,22 @@ const routes: RouteRecordRaw[] = [
         component: () => import('pages/ProprietarioPropertyNuova.vue'),
       },
       {
+        path: 'impostazioni',
+        name: 'p-impostazioni',
+        component: () => import('pages/ProprietarioImpostazioni.vue'),
+      },
+      // Le due vecchie pagine ("Immobile e membri" e "La casa") sono fuse
+      // nella pagina a tab qui sopra: segnalibri e link nei documenti già
+      // generati devono continuare ad aprirla. Il tab di default va iniettato
+      // preservando i param dei deep link (campo, contratto); lo spread dopo
+      // il default fa vincere un eventuale ?tab= esplicito.
+      {
         path: 'impostazioni/proprieta',
-        name: 'p-impostazioni-proprieta',
-        component: () => import('pages/ProprietarioImpostazioniProprieta.vue'),
+        redirect: (to) => ({ name: 'p-impostazioni', query: { tab: 'dati', ...to.query } }),
       },
       {
         path: 'impostazioni/casa',
-        name: 'p-impostazioni-casa',
-        component: () => import('pages/ProprietarioImpostazioniCasa.vue'),
+        redirect: (to) => ({ name: 'p-impostazioni', query: { tab: 'stanze', ...to.query } }),
       },
       {
         path: ':catchAll(.*)*',

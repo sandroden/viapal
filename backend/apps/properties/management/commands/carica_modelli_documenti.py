@@ -3,8 +3,8 @@
 Il testo dei documenti è un dato (``DocumentTemplate``, uno per immobile) e
 nel repository restano solo gli **esempi** (``properties/documenti/esempi/``).
 Finché il modello non è caricato il documento non si genera e la cosa compare
-fra i dati mancanti. Da interfaccia si fa con Impostazioni → Casa → Modelli
-documenti → "Scarica l'esempio"; questo comando è la stessa cosa in un passo
+fra i dati mancanti. Da interfaccia si fa con Immobile → Modelli documenti
+→ "Scarica l'esempio"; questo comando è la stessa cosa in un passo
 solo, per la prima configurazione di un immobile.
 
 Idempotente: un modello già presente non viene toccato, perché la copia in
@@ -74,5 +74,5 @@ class Command(BaseCommand):
 
         self.stdout.write(
             f"{prefisso}Immobile: {immobile} (id {immobile.pk}). "
-            "Il testo va poi adattato da Impostazioni → Casa → Modelli documenti."
+            "Il testo va poi adattato da Immobile → Modelli documenti."
         )

@@ -79,7 +79,10 @@
       </div>
 
       <q-list padding>
-        <template v-for="sezione in sezioniMenu" :key="sezione.label ?? 'top'">
+        <template v-for="(sezione, i) in sezioniMenu" :key="sezione.label ?? i">
+          <!-- Le sezioni senza header (es. Immobile in coda) vanno comunque
+               staccate visivamente da quella precedente. -->
+          <q-separator v-if="!sezione.label && i > 0" spaced />
           <q-item-label v-if="sezione.label" header class="vp-drawer__header">
             {{ sezione.label }}
           </q-item-label>
@@ -130,21 +133,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAuthStore, type RuoloProperty } from 'stores/auth';
-import { usePropertiesStore } from 'stores/properties';
+import { useAuthStore } from 'stores/auth';
+import { etichettaRuolo, usePropertiesStore } from 'stores/properties';
 
 const auth = useAuthStore();
 const propStore = usePropertiesStore();
 const router = useRouter();
 const drawerOpen = ref(true);
 const galleriaSlug = ref<string | null>(null);
-
-function etichettaRuolo(ruolo: RuoloProperty | null): string {
-  if (ruolo === 'proprietario') return 'Proprietario';
-  if (ruolo === 'gestore') return 'Gestore';
-  if (ruolo === 'sola_lettura') return 'Sola lettura';
-  return '';
-}
 
 interface VoceMenu {
   to: string;
@@ -160,9 +156,10 @@ interface SezioneMenu {
 // Sezioni per ambito contabile: lato inquilini (incassi) e lato
 // proprietari (uscite e conti tra loro), più l'immobile.
 const sezioniMenu = computed<SezioneMenu[]>(() => {
+  // Un'unica pagina a tab per tutto l'immobile: la voce si chiama come la
+  // pagina, quindi la sezione non ripete l'header "Immobile".
   const immobile: VoceMenu[] = [
-    { to: '/p/impostazioni/proprieta', label: 'Immobile e membri', icon: 'home_work' },
-    { to: '/p/impostazioni/casa', label: 'La casa', icon: 'meeting_room' },
+    { to: '/p/impostazioni', label: 'Immobile', icon: 'home_work' },
   ];
   if (galleriaSlug.value) {
     immobile.push({
@@ -194,7 +191,7 @@ const sezioniMenu = computed<SezioneMenu[]>(() => {
         { to: '/p/conto-economico', label: 'Conto economico', icon: 'assessment' },
       ],
     },
-    { label: 'Immobile', voci: immobile },
+    { label: null, voci: immobile },
   ];
 });
 

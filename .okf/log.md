@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-08-05
+* **Maintain**: `domain/generazione-documenti.md`, `domain/generazione-affitti.md` — "Immobile e membri" e "La casa" fuse nell'unica pagina a tab "Immobile" (`/p/impostazioni`, 10 tab, governance in coda); tabella "Dove si compila" con le nuove etichette "Immobile → …"; le vecchie route `/p/impostazioni/proprieta` e `/p/impostazioni/casa` restano come redirect che preservano `campo`/`contratto`.
+
 ## 2026-08-04
 * **Maintain**: `domain/saldi-fratelli.md` → `domain/saldi-proprietari.md` (+ link in `index.md`, `domain/index.md`, `domain/conto-economico.md`, `domain/conguaglio.md`, `models/accounting.md`) — con la multiproprietà "fratelli" era specifico del solo immobile originale: pagina rinominata "Saldi proprietari", route `/p/saldi-proprietari` con redirect dal vecchio path.
 

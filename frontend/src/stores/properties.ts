@@ -49,6 +49,16 @@ export interface IndirizzoStrutturato {
   ingressi: string;
 }
 
+export const OPZIONI_RUOLO: Array<{ label: string; value: RuoloProperty }> = [
+  { label: 'Proprietario', value: 'proprietario' },
+  { label: 'Gestore', value: 'gestore' },
+  { label: 'Sola lettura', value: 'sola_lettura' },
+];
+
+export function etichettaRuolo(ruolo: RuoloProperty | null): string {
+  return OPZIONI_RUOLO.find((o) => o.value === ruolo)?.label ?? '';
+}
+
 export const CAMPI_INDIRIZZO: Array<{ campo: keyof IndirizzoStrutturato; label: string }> = [
   { campo: 'via', label: 'Via/piazza' },
   { campo: 'civico', label: 'Numero civico' },

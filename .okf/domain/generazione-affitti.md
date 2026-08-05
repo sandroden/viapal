@@ -33,8 +33,8 @@ AFFITTO per una `RoomAssignment` in un dato mese. Funzione principale:
   casa appena creata (contratto assente o con decorrenza futura) la prima
   assegnazione con quota falliva con "Nessun contratto attivo". Il
   contratto resta come riferimento facoltativo. Le quote si gestiscono da
-  `/api/v1/quote-condominio/` (tab Spese della casa), oltre che in prima
-  assegnazione.
+  `/api/v1/quote-condominio/` (tab Spese della pagina Immobile), oltre che
+  in prima assegnazione.
 - **Anniversary / periodo**: `_anniversary_periodo` gestisce cicli non solari.
 - **Uscita anticipata**: `aggiustamento_uscita` crea un Receivable di rettifica
   (`is_aggiustamento=True`).

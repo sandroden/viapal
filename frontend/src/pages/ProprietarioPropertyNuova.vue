@@ -115,7 +115,7 @@ async function crea() {
     // Attiva subito il nuovo immobile e riparti puliti (hard reload, come
     // per ogni cambio di immobile).
     localStorage.setItem(STORAGE_KEY, String(creato.id));
-    window.location.assign('/p/impostazioni/proprieta');
+    window.location.assign('/p/impostazioni');
   } catch (e: unknown) {
     if (isAxiosError(e)) {
       errore.value =
