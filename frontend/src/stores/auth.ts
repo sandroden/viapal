@@ -57,6 +57,7 @@ export const useAuthStore = defineStore('auth', {
     isAuthenticated: (state): boolean => state.user !== null,
     role: (state): Role => state.user?.role ?? null,
     isImpersonating: (state): boolean => state.user?.is_impersonated ?? false,
+    isSuperuser: (state): boolean => state.user?.is_superuser ?? false,
     homePath(): string {
       if (this.role === 'proprietario') return '/p/';
       if (this.role === 'inquilino') return '/i/';

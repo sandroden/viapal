@@ -93,6 +93,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                # Link admin → app PWA (vedi core/templates/admin/base_site.html)
+                'core.context_processors.app_frontend',
             ],
             'loaders': [
                 # Risolve 'filters:...' e 'admin:...' usati da jmb.jadmin/jmb.filters

@@ -1,0 +1,31 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+{% comment %}
+Override di admin/base_site.html: aggiunge il link admin → app PWA.
+
+Estende `admin/base.html` invece di `admin/base_site.html` (che sarebbe
+ricorsivo, e con i loader custom di jmb/admin_tools davanti allo skip
+dell'origine non c'è da fidarsi): i tre blocchi del base_site di Django
+sono replicati qui sotto tali e quali.
+
+Il link è riservato ai superuser — chi ha accesso all'admin ma non è
+superuser resta con la vista di prima.
+{% endcomment %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+<div id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></div>
+{% if user.is_anonymous %}
+  {% include "admin/color_theme_toggle.html" %}
+{% endif %}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}
+
+{% block userlinks %}
+    {% if user.is_superuser %}
+        <a href="{{ app_frontend_url }}" title="Apri l'app Viapal">&#8594; App Viapal</a> /
+    {% endif %}
+    {{ block.super }}
+{% endblock %}

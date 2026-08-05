@@ -99,6 +99,25 @@
             <q-item-section>{{ voce.label }}</q-item-section>
           </q-item>
         </template>
+
+        <!-- Scorciatoia amministrativa: solo superuser, e fuori dal menu di
+             dominio perché porta altrove (Django, non la SPA). -->
+        <template v-if="auth.isSuperuser">
+          <q-separator class="vp-drawer__sep" />
+          <q-item
+            v-ripple
+            clickable
+            type="a"
+            href="/admin/"
+            class="vp-drawer__item"
+            data-testid="link-admin"
+          >
+            <q-item-section avatar>
+              <q-icon name="admin_panel_settings" />
+            </q-item-section>
+            <q-item-section>Admin Django</q-item-section>
+          </q-item>
+        </template>
       </q-list>
     </q-drawer>
 
@@ -238,6 +257,10 @@ async function logout() {
   max-width: 180px;
   height: auto;
   display: block;
+}
+.vp-drawer__sep {
+  margin: var(--vp-gap-2) var(--vp-gap-3);
+  background: var(--vp-paper-3);
 }
 .vp-drawer__header {
   color: var(--vp-ink-3);
