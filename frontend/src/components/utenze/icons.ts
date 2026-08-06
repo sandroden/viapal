@@ -26,7 +26,9 @@ export const VP_ICONS: Record<string, string> = {
   contract: 'M6 3h9l5 5v10a3 3 0 0 1-3 3H6zM9 13h6M9 17h4M14 3v5h5',
   receipt: 'M5 3h14v18l-3-2-3 2-3-2-3 2-2-2zM8 8h8M8 12h8M8 16h5',
   wallet: 'M3 7a2 2 0 0 1 2-2h13v3M3 7v11a2 2 0 0 0 2 2h15V11h-4a2 2 0 0 0 0 4h4',
-  euro: 'M18 6a6 6 0 1 0 0 12M3 10h10M3 14h10',
+  // Le due barre devono attraversare la C, non affiancarla: con l'arco
+  // staccato l'icona si legge "=C" invece di "€".
+  euro: 'M4 10h12M4 14h9M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2',
   download: 'M12 4v12M7 11l5 5 5-5M4 20h16',
   up: 'M12 19V5M6 11l6-6 6 6',
   down: 'M12 5v14M6 13l6 6 6-6',
