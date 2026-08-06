@@ -227,3 +227,120 @@ class TestCompletezzaDinamica:
         assert comp2["acqua"] is True
         assert comp2["completo"] is True
 
+def _assignment_attivo(immobile):
+    from properties.models import Room, RoomAssignment, TenantProfile
+
+    room = Room.objects.create(property=immobile, nome="Camera Cfg", ordinamento=50)
+    tenant_user = User.objects.create_user(
+        username="tenant_cfg", password="x", email="cfg@example.com"
+    )
+    tenant = TenantProfile.objects.create(
+        property=immobile,
+        user=tenant_user,
+        nominativo="Carla Blu",
+        giorno_pagamento_affitto=1,
+    )
+    return RoomAssignment.objects.create(
+        tenant=tenant,
+        room=room,
+        valid_from=datetime.date(2024, 1, 1),
+        canone_mensile=Decimal("400.00"),
+    )
+
+
+class TestCalcoloConfigDriven:
+    """Fase 2: le voci fatturabili si leggono dalla config per immobile."""
+
+    def _config(self, immobile, **voci):
+        from billing.models import PropertyUtilityService
+
+        for voce, gestione in voci.items():
+            PropertyUtilityService.objects.create(
+                property=immobile, voce=voce, gestione=gestione
+            )
+
+    def test_acqua_gestita_entra_nella_ripartizione(self, immobile):
+        self._config(immobile, luce="proprieta", gas="proprieta", acqua="proprieta")
+        _assignment_attivo(immobile)
+        _bolletta(immobile, "luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        _bolletta(immobile, "gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        _bolletta(immobile, "acqua", "30.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        c = _client(_proprietario(immobile))
+        pid = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
+        ).json()["period"]["id"]
+
+        ant = c.get(f"/api/v1/utility-periods/{pid}/anteprima/").json()
+        assert Decimal(str(ant["totali_per_voce"]["acqua"])) == Decimal("30.00")
+        assert Decimal(str(ant["totale_periodo"])) == Decimal("190.00")
+        assert Decimal(str(ant["quote"][0]["dettaglio"]["acqua"])) == Decimal("30.00")
+
+    def test_acqua_ignorata_senza_config(self, immobile):
+        """Fallback storico: senza config la bolletta acqua non entra."""
+        _assignment_attivo(immobile)
+        _bolletta(immobile, "luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        _bolletta(immobile, "gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        _bolletta(immobile, "acqua", "30.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        c = _client(_proprietario(immobile))
+        pid = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
+        ).json()["period"]["id"]
+
+        ant = c.get(f"/api/v1/utility-periods/{pid}/anteprima/").json()
+        assert "acqua" not in ant["totali_per_voce"]
+        assert Decimal(str(ant["totale_periodo"])) == Decimal("160.00")
+
+    def test_solo_tari_gestita_niente_forzatura(self, immobile):
+        """Config esplicita senza voci a bolletta: la sola TARI si ripartisce
+        senza bisogno di 'procedi comunque'."""
+        from billing.models import AnnualUtilityCost
+
+        self._config(immobile, luce="inquilino", gas="inquilino", tari="proprieta")
+        AnnualUtilityCost.objects.create(
+            property=immobile,
+            voce=AnnualUtilityCost.VoceAnnuale.TARI,
+            anno=2025,
+            importo_annuale=Decimal("120.00"),
+            valid_from=datetime.date(2025, 1, 1),
+        )
+        _assignment_attivo(immobile)
+        c = _client(_proprietario(immobile))
+        per_mese = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
+        ).json()
+        assert per_mese["completezza"]["completo"] is True
+        assert per_mese["completezza"]["attese"] == ["tari"]
+        pid = per_mese["period"]["id"]
+
+        ant = c.get(f"/api/v1/utility-periods/{pid}/anteprima/").json()
+        assert "skipped" not in ant
+        assert Decimal(str(ant["totali_per_voce"]["tari"])) == Decimal("10.00")
+
+        # e l'emissione passa senza forza (completo=True)
+        resp = c.post(f"/api/v1/utility-periods/{pid}/emetti/")
+        assert resp.status_code == 200, resp.content
+
+    def test_tari_inquilino_non_ripartita(self, immobile):
+        """TARI configurata a carico inquilino: fuori dal conteggio anche se
+        il costo annuale esiste a sistema."""
+        from billing.models import AnnualUtilityCost
+
+        self._config(immobile, luce="proprieta", gas="proprieta", tari="inquilino")
+        AnnualUtilityCost.objects.create(
+            property=immobile,
+            voce=AnnualUtilityCost.VoceAnnuale.TARI,
+            anno=2025,
+            importo_annuale=Decimal("120.00"),
+            valid_from=datetime.date(2025, 1, 1),
+        )
+        _assignment_attivo(immobile)
+        _bolletta(immobile, "luce", "100.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        _bolletta(immobile, "gas", "60.00", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+        c = _client(_proprietario(immobile))
+        pid = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
+        ).json()["period"]["id"]
+
+        ant = c.get(f"/api/v1/utility-periods/{pid}/anteprima/").json()
+        assert "tari" not in ant["totali_per_voce"]
+        assert Decimal(str(ant["totale_periodo"])) == Decimal("160.00")

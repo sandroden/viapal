@@ -22,6 +22,40 @@ causale UTENZE. Codice: `billing/calc/utility.py`; avvisi: `billing/calc/avvisi.
    competenza della bolletta e la presenza dell'inquilino (`_giorni_intersezione`).
 3. Arrotondamento (`_arrotonda`) con ribaltamento dei resti.
 
+# Configurazione utenze per immobile (2026-08-06)
+
+`PropertyUtilityService` (billing) dichiara per ogni casa quali voci esistono
+e chi le gestisce: `voce` (luce/gas/acqua/tari) × `gestione`
+(proprieta/inquilino); riga assente = la voce non esiste. Nessuna voce è
+obbligatoria (un appartamento può avere tutto intestato all'inquilino).
+Effetti:
+
+- **completezza** del periodo (`_completezza` nel viewset): le attese sono le
+  voci `gestione=proprieta`; `completo` = tutte le attese a bolletta presenti
+  (la TARI annuale non blocca). La response espone `attese` per il wizard
+  data-driven. Fallback per immobili senza righe: luce+gas+tari (storico).
+- **voci fatturabili** del calcolo (`_voci_fatturabili`): sostituiscono la
+  costante globale `VOCI_FATTURABILI` (che resta come fallback); da qui
+  l'acqua entra nella ripartizione dove configurata (totali in `tot_altro`).
+- una voce annuale configurata `inquilino` (TARI intestata a lui) non si
+  ripartisce anche se l'`AnnualUtilityCost` esiste; un immobile configurato
+  senza voci a bolletta ripartisce i soli costi annuali senza forzature.
+- Config editabile da proprietari E **gestori** (`/api/v1/utenze-config/`,
+  pannello "Utenze della casa" nel tab spese di /p/impostazioni).
+
+# Attribuzione v3 day-based e conguagli retroattivi (2026-08-06)
+
+`_attribuisci_bollette` non esclude più in blocco le bollette pinnate da un
+altro periodo `inviato` (una bolletta a cavallo non perde la coda se i mesi si
+emettono in ordine sparso): i giorni nei periodi inviati restano congelati lì,
+gli altri contano dove cadono. In più la **quota retroattiva** (caso Edison):
+i giorni che cadono in periodi inviati che NON hanno pinnato la bolletta — e
+nati prima della bolletta (guardia `bill.created_at > periodo.created_at`, che
+esclude gli import storici) — si ribaltano tutti sul periodo **target** (il
+primo che copre il giorno dopo la fine dell'ultimo inviato). Il risultato
+espone `arretrati` (bolletta, giorni, importo) mostrato come banner nel wizard.
+Dettagli e casi limite: docs/piano-utenze-configurabili.md §8.
+
 # Quota esclusa (voci a carico proprietà)
 
 `UtilityBill.quota_esclusa` + `motivo_esclusione`: la parte della bolletta che

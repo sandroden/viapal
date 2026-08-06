@@ -10,6 +10,46 @@ from typing import TypedDict
 
 VOCI_FATTURABILI = ("luce", "gas")
 
+# Voci "a bolletta" che la config di casa può attivare (la TARI è un costo
+# annuale, non una bolletta).
+VOCI_CONFIGURABILI_BOLLETTA = ("luce", "gas", "acqua")
+
+
+def _voci_fatturabili(property_id) -> tuple[str, ...]:
+    """Voci "a bolletta" gestite dalla proprietà per questo immobile.
+
+    Da ``PropertyUtilityService`` (``gestione=proprieta``). Fallback storico
+    per immobili senza alcuna riga di configurazione: luce+gas. Può essere
+    vuota: appartamento con tutte le utenze intestate all'inquilino.
+    """
+    from billing.models import PropertyUtilityService
+
+    rows = list(PropertyUtilityService.objects.filter(property_id=property_id))
+    if not rows:
+        return VOCI_FATTURABILI
+    proprieta = {
+        r.voce
+        for r in rows
+        if r.gestione == PropertyUtilityService.Gestione.PROPRIETA
+    }
+    return tuple(v for v in VOCI_CONFIGURABILI_BOLLETTA if v in proprieta)
+
+
+def _voci_annuali_escluse(property_id) -> set[str]:
+    """Voci annuali da NON ripartire: quelle configurate esplicitamente come
+    NON gestite dalla proprietà (es. TARI intestata all'inquilino).
+
+    Un ``AnnualUtilityCost`` senza riga di configurazione resta ripartibile:
+    il costo caricato a sistema è già una dichiarazione esplicita.
+    """
+    from billing.models import PropertyUtilityService
+
+    return {
+        r.voce
+        for r in PropertyUtilityService.objects.filter(property_id=property_id)
+        if r.gestione != PropertyUtilityService.Gestione.PROPRIETA
+    }
+
 
 class QuotaInquilino(TypedDict, total=False):
     assignment_id: int
@@ -81,10 +121,11 @@ def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list, list[dict],
     INVIATO = UtilityChargePeriod.StatoPeriodo.INVIATO
 
     esclusioni: list[dict] = []
+    voci = _voci_fatturabili(period.property_id)
 
     # Modalità pinning: la M2M è "verità manuale". Se popolata, ogni bolletta
     # agganciata cade intera sul periodo (no pro-rata).
-    pinned = list(period.utility_bills.filter(prodotto__in=VOCI_FATTURABILI))
+    pinned = list(period.utility_bills.filter(prodotto__in=voci))
     if pinned:
         contributi: dict[str, Decimal] = {}
         for b in pinned:
@@ -138,7 +179,7 @@ def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list, list[dict],
     # ordine sparso).
     bills = UtilityBill.objects.filter(
         immobile_id=period.property_id,
-        prodotto__in=VOCI_FATTURABILI,
+        prodotto__in=voci,
         periodo_da__lte=P_a,
         periodo_a__gte=P_da,
     )
@@ -166,7 +207,7 @@ def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list, list[dict],
             )
             candidate = UtilityBill.objects.filter(
                 immobile_id=period.property_id,
-                prodotto__in=VOCI_FATTURABILI,
+                prodotto__in=voci,
                 periodo_da__lte=ultimo_a,
             ).exclude(pk__in=pinnate_da_inviati)
             for bill in candidate:
@@ -347,12 +388,24 @@ def calcola_conguaglio_periodo(
     # ``forza_senza_bollette`` — scelta esplicita del proprietario — si
     # ripartisce quello che c'è, inclusi i soli costi annuali (es. TARI quando
     # luce/gas sono intestate direttamente all'inquilino).
-    if not contributi and not forza_senza_bollette:
+    # Un immobile configurato SENZA utenze a bolletta gestite dalla proprietà
+    # (es. appartamento: luce/gas intestate all'inquilino, resta la TARI)
+    # procede coi soli costi annuali senza bisogno di forzature.
+    if (
+        not contributi
+        and not forza_senza_bollette
+        and _voci_fatturabili(period.property_id)
+    ):
         return _skip("no_bollette_luce_gas")
     totali_per_voce: dict[str, Decimal] = dict(contributi)
-    # TARI e altri costi annuali (aggiunti solo se ci sono bollette)
+    # TARI e altri costi annuali (aggiunti solo se ci sono bollette).
+    # Le voci configurate come NON gestite dalla proprietà (es. TARI
+    # intestata all'inquilino) restano fuori anche se il costo esiste.
+    escluse_config = _voci_annuali_escluse(period.property_id)
     totali_annual = _raccoglie_voci_annual(period.property_id, periodo_da, periodo_a)
     for voce, importo in totali_annual.items():
+        if voce in escluse_config:
+            continue
         totali_per_voce[voce] = totali_per_voce.get(voce, Decimal("0.00")) + importo
     if not totali_per_voce:
         # Forzatura su un periodo davvero vuoto: niente da ripartire.

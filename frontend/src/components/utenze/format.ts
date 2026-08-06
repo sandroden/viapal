@@ -11,7 +11,7 @@ export function eur(n: number | string | null | undefined): string {
   return formattaEuro(n);
 }
 
-export type TipoUtenza = 'Luce' | 'Gas' | 'TARI';
+export type TipoUtenza = 'Luce' | 'Gas' | 'Acqua' | 'TARI';
 
 export interface UtilityStyle {
   icon: string;
@@ -25,6 +25,7 @@ export interface UtilityStyle {
 export const UTILITY: Record<TipoUtenza, UtilityStyle> = {
   Luce: { icon: 'bolt', fg: 'oklch(0.50 0.10 78)', soft: 'oklch(0.93 0.05 82)', bar: 'oklch(0.72 0.105 78)' },
   Gas: { icon: 'flame', fg: 'oklch(0.46 0.07 250)', soft: 'oklch(0.93 0.035 250)', bar: 'oklch(0.62 0.08 250)' },
+  Acqua: { icon: 'drop', fg: 'oklch(0.48 0.09 210)', soft: 'oklch(0.93 0.04 210)', bar: 'oklch(0.66 0.09 210)' },
   TARI: { icon: 'trash', fg: 'oklch(0.42 0.055 150)', soft: 'oklch(0.90 0.03 150)', bar: 'oklch(0.58 0.055 150)' },
 };
 
@@ -46,6 +47,7 @@ export function prodottoToTipo(prodotto: string): string {
   const p = (prodotto || '').toLowerCase();
   if (p === 'luce') return 'Luce';
   if (p === 'gas') return 'Gas';
+  if (p === 'acqua') return 'Acqua';
   if (p === 'tari') return 'TARI';
   return prodotto;
 }

@@ -204,7 +204,16 @@ const bolletteView = computed<BollettaView[]>(() => {
   return cards;
 });
 
-const ORDINE_VOCI = ['luce', 'gas', 'tari', 'altro'];
+const ORDINE_VOCI = ['luce', 'gas', 'acqua', 'tari', 'altro'];
+
+// Mappa {Tipo: importo} del dettaglio quota, nell'ordine canonico delle voci.
+function perVoce(dettaglio: Record<string, number | string> | undefined) {
+  const out: Record<string, number> = {};
+  for (const k of ORDINE_VOCI) {
+    if (dettaglio && k in dettaglio) out[String(voceToTipo(k))] = num(dettaglio[k]);
+  }
+  return out;
+}
 const vociView = computed<VoceView[]>(() => {
   const tpv = dettaglio.value?.totali_per_voce ?? {};
   return ORDINE_VOCI.filter((k) => k in tpv && num(tpv[k]) > 0).map((k) => ({
@@ -226,11 +235,7 @@ const quoteView = computed<QuotaView[]>(() => {
     mq: 0,
     giorni: q.giorni_presenza,
     avatarHue: avatarHue(q.tenant_nominativo),
-    per: {
-      Luce: num(q.dettaglio?.luce),
-      Gas: num(q.dettaglio?.gas),
-      TARI: num(q.dettaglio?.tari),
-    },
+    per: perVoce(q.dettaglio),
     quota: num(q.quota),
     mine: q.is_me,
   }));

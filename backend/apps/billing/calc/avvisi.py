@@ -46,7 +46,7 @@ DEFAULT_OGGETTO = "Viapal — conguaglio utenze {{periodo}}"
 DEFAULT_CORPO = (
     "Ciao {{nome}},\n\n"
     "è disponibile il conteggio delle utenze per il periodo {{periodo}}.\n"
-    "Il tuo importo è di {{importo}} € (luce, gas e TARI ripartiti sui giorni "
+    "Il tuo importo è di {{importo}} € (utenze ripartite sui giorni "
     "di effettiva presenza).\n\n"
     "Dettaglio:\n{{conteggio}}\n"
     "{{esclusioni}}\n"
@@ -61,7 +61,7 @@ DEFAULT_CORPO_HTML = (
     'color:#333;line-height:1.5">'
     "<p>Ciao {{nome}},</p>"
     "<p>è disponibile il conteggio delle utenze per il periodo "
-    "<strong>{{periodo}}</strong> (luce, gas e TARI ripartiti sui giorni di "
+    "<strong>{{periodo}}</strong> (utenze ripartite sui giorni di "
     "effettiva presenza).</p>"
     "<p>Il tuo importo è di <strong>{{importo}} €</strong>.</p>"
     "{{conteggio_html}}"
@@ -77,8 +77,14 @@ DEFAULT_CORPO_HTML = (
     "</div>"
 )
 
-VOCI_LABEL = {"luce": "Luce", "gas": "Gas", "tari": "TARI", "altro": "Altro"}
-VOCI_ORDINE = ["luce", "gas", "tari", "altro"]
+VOCI_LABEL = {
+    "luce": "Luce",
+    "gas": "Gas",
+    "acqua": "Acqua",
+    "tari": "TARI",
+    "altro": "Altro",
+}
+VOCI_ORDINE = ["luce", "gas", "acqua", "tari", "altro"]
 
 
 def _link_inquilino(receivable) -> str:

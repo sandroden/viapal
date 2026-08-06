@@ -24,6 +24,12 @@ const emit = defineEmits<{ invia: []; emetti: []; toggle: [receivableId: number]
 const openIdx = ref(0);
 const critFrase = computed(() => criterioFrase(props.criterio));
 
+// Voci del dettaglio quota con importo > 0, nell'ordine della mappa `per`
+// (già ordinata a monte): niente righe a zero per voci non gestite.
+function vociQuota(q: QuotaView): [string, number][] {
+  return Object.entries(q.per).filter(([, imp]) => imp > 0);
+}
+
 function uscito(q: QuotaView): boolean {
   return q.notificare === false;
 }
@@ -143,14 +149,14 @@ function onFlag(q: QuotaView): void {
                 {{ periodo.range }}).
               </div>
               <div style="margin-top: 4px">
-                Il tuo importo è di <b class="ink">{{ eur(q.quota) }}</b> (luce, gas e TARI
-                ripartiti {{ critFrase }}).
+                Il tuo importo è di <b class="ink">{{ eur(q.quota) }}</b> (utenze
+                ripartite {{ critFrase }}).
               </div>
               <div style="margin-top: 10px">Dettaglio:</div>
               <ul class="msg-ul">
-                <li>Luce: {{ eur(q.per.Luce) }}</li>
-                <li>Gas: {{ eur(q.per.Gas) }}</li>
-                <li>TARI: {{ eur(q.per.TARI) }}</li>
+                <li v-for="[tipo, imp] in vociQuota(q)" :key="tipo">
+                  {{ tipo }}: {{ eur(imp) }}
+                </li>
                 <li>Giorni di presenza nel periodo: {{ q.giorni }}</li>
               </ul>
             </div>
