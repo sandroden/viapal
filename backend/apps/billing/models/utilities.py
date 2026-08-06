@@ -214,6 +214,67 @@ class AnnualUtilityCost(TimestampedModel):
         return f"{self.get_voce_display()} {self.anno} — {self.importo_annuale}€"
 
 
+class PropertyUtilityService(TimestampedModel):
+    """Configurazione per immobile: quali utenze esistono e chi le gestisce.
+
+    Una riga per ``(property, voce)``: **l'assenza** della riga significa
+    che quella voce non esiste per questa casa (es. un appartamento senza
+    TARI a carico proprietà, o una casa a stanze senza acqua separata dal
+    contatore condominiale). ``gestione=proprieta`` = la voce concorre alla
+    completezza del periodo e (in prospettiva) alla ripartizione;
+    ``gestione=inquilino`` = intestata/pagata direttamente dall'inquilino,
+    documentata qui ma fuori dal flusso di ripartizione. Nessuna voce è
+    obbligatoria: in un appartamento (unità intera) è normale che anche
+    luce e gas siano a carico dell'inquilino.
+    """
+
+    class Voce(models.TextChoices):
+        LUCE = "luce", "Luce"
+        GAS = "gas", "Gas"
+        ACQUA = "acqua", "Acqua"
+        TARI = "tari", "TARI"
+
+    class Gestione(models.TextChoices):
+        PROPRIETA = "proprieta", "Gestita dalla proprietà"
+        INQUILINO = "inquilino", "A carico dell'inquilino"
+
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.CASCADE,
+        related_name="utility_services",
+        verbose_name="immobile",
+    )
+    voce = models.CharField(
+        max_length=20,
+        choices=Voce.choices,
+        verbose_name="voce",
+    )
+    gestione = models.CharField(
+        max_length=20,
+        choices=Gestione.choices,
+        default=Gestione.PROPRIETA,
+        verbose_name="gestione",
+    )
+    note = models.TextField(
+        blank=True,
+        verbose_name="note",
+    )
+
+    class Meta:
+        verbose_name = "utenza della casa"
+        verbose_name_plural = "utenze della casa"
+        ordering = ["property", "voce"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["property", "voce"],
+                name="property_utility_service_unique_per_voce",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.property} — {self.get_voce_display()} ({self.get_gestione_display()})"
+
+
 class UtilityChargePeriod(TimestampedModel):
     """Periodo utenze (mensile o bimestrale) di un immobile."""
 

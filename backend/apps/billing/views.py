@@ -34,6 +34,7 @@ from billing.models import (
     BankTransactionAllocation,
     Expense,
     ExpenseCategory,
+    PropertyUtilityService,
     Receivable,
     ReceivableComment,
     StatoPagamento,
@@ -49,6 +50,7 @@ from billing.serializers import (
     ExpenseCategorySerializer,
     ExpenseSerializer,
     ExtraChargeSerializer,
+    PropertyUtilityServiceSerializer,
     ReceivableForReconcileSerializer,
     RegistraPagamentoInputSerializer,
     RentPaymentSerializer,
@@ -330,7 +332,7 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
     Oltre a lista/dettaglio espone il flusso di **emissione utenze**:
 
     - ``GET  per-mese?anno=&mese=`` : trova-o-crea il periodo del mese e ne
-      riporta la completezza (luce/gas/tari presenti).
+      riporta la completezza (voci attese presenti/mancanti).
     - ``GET  {id}/anteprima``       : dry-run della ripartizione (conto per
       inquilino), nessuna scrittura.
     - ``POST {id}/emetti``          : persiste i Receivable utenze e porta il
@@ -341,42 +343,81 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
     permission_classes = [IsPropertyMember]
     queryset = UtilityChargePeriod.objects.all().order_by("-periodo_da")
 
+    # Ordine fisso di presentazione delle voci (indipendente dall'ordine
+    # con cui sono state configurate in PropertyUtilityService).
+    _ORDINE_VOCI = ["luce", "gas", "acqua", "tari"]
+
     def get_queryset(self):
         return super().get_queryset().filter(
             property=get_request_property(self.request)
         )
 
     def _completezza(self, period) -> dict:
-        """Quali voci sono presenti per il periodo (hint rapido pre-calcolo).
+        """Quali voci sono attese per il periodo e quali sono presenti.
 
-        ``completo`` = c'è almeno una bolletta luce e una gas che si
-        sovrappongono al periodo: solo allora il conteggio ha senso (la TARI è
-        un costo fisso che si ribalta da sé).
+        Le voci attese si leggono da ``PropertyUtilityService``: quelle con
+        ``gestione=proprieta``, nell'ordine luce/gas/acqua/tari. L'assenza di
+        una riga per una voce significa che quella voce non esiste per
+        questa casa (es. TARI a carico dell'inquilino) e quindi non è
+        richiesta per la completezza. Se l'immobile non ha ancora nessuna
+        riga di configurazione (fallback storico) le attese restano
+        luce+gas+tari come nel comportamento precedente.
+
+        ``completo`` = tutte le voci attese **a bolletta** (luce/gas/acqua,
+        non la TARI: costo annuale spalmato, non bloccante) sono presenti;
+        se non ci sono attese a bolletta, è vero per definizione.
+
+        Le chiavi legacy ``luce``/``gas``/``tari`` restano sempre presenti
+        nel risultato (retrocompatibilità); ``acqua`` compare solo se tra
+        le voci attese. ``attese`` è la lista ordinata delle voci attese,
+        per rendere il frontend data-driven.
         """
         from billing.models import AnnualUtilityCost
+
+        rows = PropertyUtilityService.objects.filter(property_id=period.property_id)
+        gestite_da_proprieta = {
+            row.voce
+            for row in rows
+            if row.gestione == PropertyUtilityService.Gestione.PROPRIETA
+        }
+        if rows:
+            attese = [v for v in self._ORDINE_VOCI if v in gestite_da_proprieta]
+        else:
+            attese = ["luce", "gas", "tari"]
 
         bills = UtilityBill.objects.filter(
             immobile_id=period.property_id,
             periodo_da__lte=period.periodo_a,
             periodo_a__gte=period.periodo_da,
         )
-        has_luce = bills.filter(prodotto=UtilityBill.Prodotto.LUCE).exists()
-        has_gas = bills.filter(prodotto=UtilityBill.Prodotto.GAS).exists()
-        has_tari = (
-            AnnualUtilityCost.objects.filter(
-                property_id=period.property_id,
-                voce=AnnualUtilityCost.VoceAnnuale.TARI,
-                valid_from__lte=period.periodo_a,
-            )
-            .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=period.periodo_da))
-            .exists()
-        )
-        return {
-            "luce": has_luce,
-            "gas": has_gas,
-            "tari": has_tari,
-            "completo": has_luce and has_gas,
+        presenza = {
+            "luce": bills.filter(prodotto=UtilityBill.Prodotto.LUCE).exists(),
+            "gas": bills.filter(prodotto=UtilityBill.Prodotto.GAS).exists(),
+            "acqua": bills.filter(prodotto=UtilityBill.Prodotto.ACQUA).exists(),
+            "tari": (
+                AnnualUtilityCost.objects.filter(
+                    property_id=period.property_id,
+                    voce=AnnualUtilityCost.VoceAnnuale.TARI,
+                    valid_from__lte=period.periodo_a,
+                )
+                .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=period.periodo_da))
+                .exists()
+            ),
         }
+
+        attese_bolletta = [v for v in attese if v != "tari"]
+        completo = all(presenza[v] for v in attese_bolletta) if attese_bolletta else True
+
+        risultato = {
+            "luce": presenza["luce"],
+            "gas": presenza["gas"],
+            "tari": presenza["tari"],
+            "completo": completo,
+            "attese": attese,
+        }
+        if "acqua" in attese:
+            risultato["acqua"] = presenza["acqua"]
+        return risultato
 
     def _mese_default(self) -> tuple[int, int]:
         """Mese di partenza proposto, ragionando sugli **avvisi**.
@@ -507,10 +548,16 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
         forza = bool(request.data.get("forza", False))
         comp = self._completezza(period)
         if not comp["completo"] and not forza:
+            mancanti = [
+                v
+                for v in comp.get("attese", ["luce", "gas"])
+                if v != "tari" and not comp.get(v)
+            ]
             return Response(
                 {
-                    "detail": "Periodo incompleto: servono almeno una bolletta "
-                    "luce e una gas prima di emettere.",
+                    "detail": "Periodo incompleto: mancano bollette per "
+                    f"{', '.join(mancanti)}. Con 'forza' si emette comunque "
+                    "la ripartizione parziale.",
                     "completezza": comp,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -889,6 +936,51 @@ class AnnualUtilityCostViewSet(ProtectedDestroyMixin, ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(property=get_request_property(self.request))
+
+
+class PropertyUtilityServiceViewSet(ModelViewSet):
+    """Configurazione utenze dell'immobile attivo: quali voci (luce, gas,
+    acqua, TARI) esistono per questa casa e chi le gestisce. Una riga per
+    voce (unique property+voce); l'assenza di una riga significa che la
+    voce non esiste per questa casa.
+
+    CRUD aperto a tutti i membri operativi dell'immobile, **anche i
+    gestori** (non solo i proprietari): decisione esplicita, la
+    configurazione utenze non è materia riservata alla proprietà come le
+    quote o le rimozioni di membri.
+    """
+
+    serializer_class = PropertyUtilityServiceSerializer
+    permission_classes = [IsPropertyMember]
+    queryset = PropertyUtilityService.objects.all().order_by("property", "voce")
+    pagination_class = None
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            property=get_request_property(self.request)
+        )
+
+    def _valida_doppione(self, voce, escludi_pk=None):
+        prop = get_request_property(self.request)
+        qs = PropertyUtilityService.objects.filter(property=prop, voce=voce)
+        if escludi_pk is not None:
+            qs = qs.exclude(pk=escludi_pk)
+        if qs.exists():
+            raise ValidationError(
+                {
+                    "voce": "Esiste già una configurazione per questa voce "
+                    "in questo immobile."
+                }
+            )
+
+    def perform_create(self, serializer):
+        self._valida_doppione(serializer.validated_data.get("voce"))
+        serializer.save(property=get_request_property(self.request))
+
+    def perform_update(self, serializer):
+        voce = serializer.validated_data.get("voce", serializer.instance.voce)
+        self._valida_doppione(voce, escludi_pk=serializer.instance.pk)
+        serializer.save()
 
 
 class ExpenseViewSet(ModelViewSet):

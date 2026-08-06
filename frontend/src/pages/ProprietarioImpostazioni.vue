@@ -183,6 +183,61 @@
       <q-tab-panel name="spese" class="vp-immobile__panel">
         <q-card flat bordered class="vp-card q-mb-md" style="max-width: 720px">
           <q-card-section>
+            <div class="vp-section-title">Utenze della casa</div>
+            <div class="vp-hint q-mt-xs">
+              Quali utenze esistono in questa casa e chi le gestisce. Le voci
+              gestite dalla proprietà sono attese nel conguaglio mensile e
+              vengono ripartite tra gli inquilini; "a carico dell'inquilino"
+              vuol dire intestata a lui e fuori dal conguaglio; "non presente"
+              che la voce non esiste per questa casa.
+            </div>
+            <div v-if="loadingUtenze" class="q-pa-lg flex flex-center">
+              <q-spinner size="32px" />
+            </div>
+            <q-list v-else separator class="q-mt-sm">
+              <q-item
+                v-for="r in righeUtenze"
+                :key="r.voce"
+                :data-testid="`utenza-${r.voce}`"
+              >
+                <q-item-section>
+                  <q-item-label>{{ r.label }}</q-item-label>
+                  <q-input
+                    v-if="r.config"
+                    v-model="noteUtenza[r.voce]"
+                    dense
+                    outlined
+                    class="vp-utenza-nota q-mt-xs"
+                    placeholder="Nota (es. intestata all'inquilino, la paga al Comune)"
+                    :disable="!puoModificare"
+                    :aria-label="`Nota ${r.label}`"
+                    :data-testid="`utenza-nota-${r.voce}`"
+                    @blur="salvaNotaUtenza(r.voce)"
+                  />
+                </q-item-section>
+                <q-item-section side>
+                  <q-select
+                    :model-value="r.stato"
+                    :options="opzioniGestioneUtenza"
+                    :disable="!puoModificare || salvandoUtenza === r.voce"
+                    :loading="salvandoUtenza === r.voce"
+                    dense
+                    outlined
+                    emit-value
+                    map-options
+                    class="vp-utenza-select"
+                    :aria-label="`Gestione ${r.label}`"
+                    :data-testid="`utenza-gestione-${r.voce}`"
+                    @update:model-value="(v: StatoUtenza) => cambiaGestioneUtenza(r.voce, v)"
+                  />
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-card-section>
+        </q-card>
+
+        <q-card flat bordered class="vp-card q-mb-md" style="max-width: 720px">
+          <q-card-section>
             <div class="row items-center">
               <div class="vp-section-title">Spese condominiali degli inquilini</div>
               <q-space />
@@ -1112,6 +1167,21 @@ interface CostoAnnuale {
   note: string;
 }
 
+type VoceUtenza = 'luce' | 'gas' | 'acqua' | 'tari';
+type GestioneUtenza = 'proprieta' | 'inquilino';
+/** Stato mostrato dalla select: il terzo valore non è una gestione ma
+ *  l'assenza della riga a DB. */
+type StatoUtenza = GestioneUtenza | 'assente';
+
+interface UtenzaConfig {
+  id: number;
+  voce: VoceUtenza;
+  voce_display?: string;
+  gestione: GestioneUtenza;
+  gestione_display?: string;
+  note: string;
+}
+
 interface QuotaCondominio {
   id: number;
   tenant: number | null;
@@ -1967,6 +2037,162 @@ function eliminaQuota(q: QuotaCondominio) {
 }
 
 // ---------------------------------------------------------------------------
+// Utenze della casa: quali voci esistono e chi le gestisce
+// ---------------------------------------------------------------------------
+
+/** L'elenco è fisso: le quattro voci sono sempre in pagina anche senza riga a
+ *  DB, perché la loro assenza è essa stessa la configurazione "non presente". */
+const VOCI_UTENZA: { voce: VoceUtenza; label: string }[] = [
+  { voce: 'luce', label: 'Luce' },
+  { voce: 'gas', label: 'Gas' },
+  { voce: 'acqua', label: 'Acqua' },
+  { voce: 'tari', label: 'TARI' },
+];
+
+const opzioniGestioneUtenza: { label: string; value: StatoUtenza }[] = [
+  { label: 'Gestita dalla proprietà', value: 'proprieta' },
+  { label: "A carico dell'inquilino", value: 'inquilino' },
+  { label: 'Non presente', value: 'assente' },
+];
+
+const utenzeConfig = ref<UtenzaConfig[]>([]);
+// Parte a true: prima della GET tutte le voci risulterebbero "non presente",
+// che è un'informazione sbagliata, non uno stato vuoto.
+const loadingUtenze = ref(true);
+const salvandoUtenza = ref<VoceUtenza | null>(null);
+const noteUtenza = ref<Record<VoceUtenza, string>>({
+  luce: '',
+  gas: '',
+  acqua: '',
+  tari: '',
+});
+
+function configUtenza(voce: VoceUtenza): UtenzaConfig | null {
+  return utenzeConfig.value.find((u) => u.voce === voce) ?? null;
+}
+
+function etichettaVoceUtenza(voce: VoceUtenza): string {
+  return VOCI_UTENZA.find((v) => v.voce === voce)?.label ?? voce;
+}
+
+function etichettaGestioneUtenza(stato: StatoUtenza): string {
+  return opzioniGestioneUtenza.find((o) => o.value === stato)?.label ?? stato;
+}
+
+const righeUtenze = computed(() =>
+  VOCI_UTENZA.map((v) => {
+    const config = configUtenza(v.voce);
+    return { ...v, config, stato: config?.gestione ?? 'assente' };
+  }),
+);
+
+function sincronizzaNoteUtenze() {
+  for (const v of VOCI_UTENZA) noteUtenza.value[v.voce] = configUtenza(v.voce)?.note ?? '';
+}
+
+async function caricaUtenzeConfig() {
+  loadingUtenze.value = true;
+  try {
+    const { data } = await api.get<UtenzaConfig[] | { results: UtenzaConfig[] }>(
+      '/api/v1/utenze-config/',
+    );
+    utenzeConfig.value = asArray(data);
+    sincronizzaNoteUtenze();
+  } catch (e: unknown) {
+    $q.notify({
+      type: 'negative',
+      message: messaggioErrore(e, 'Caricamento utenze della casa non riuscito.'),
+    });
+  } finally {
+    loadingUtenze.value = false;
+  }
+}
+
+/** Rimpiazza la singola riga con quella restituita dal backend invece di
+ *  ricaricare la lista: una GET riallineerebbe anche le note che l'utente sta
+ *  scrivendo sulle altre voci. */
+function aggiornaConfigUtenza(config: UtenzaConfig) {
+  utenzeConfig.value = utenzeConfig.value.map((u) => (u.id === config.id ? config : u));
+  noteUtenza.value[config.voce] = config.note ?? '';
+}
+
+async function cambiaGestioneUtenza(voce: VoceUtenza, stato: StatoUtenza) {
+  const config = configUtenza(voce);
+  if (stato === (config?.gestione ?? 'assente')) return;
+  const etichetta = etichettaVoceUtenza(voce);
+  salvandoUtenza.value = voce;
+  try {
+    if (stato === 'assente') {
+      if (config) {
+        await api.delete(`/api/v1/utenze-config/${config.id}/`);
+        utenzeConfig.value = utenzeConfig.value.filter((u) => u.id !== config.id);
+        noteUtenza.value[voce] = '';
+      }
+      $q.notify({
+        type: 'positive',
+        message: `${etichetta}: voce non presente in questa casa.`,
+      });
+      return;
+    }
+    if (config) {
+      const { data } = await api.patch<UtenzaConfig>(`/api/v1/utenze-config/${config.id}/`, {
+        gestione: stato,
+      });
+      aggiornaConfigUtenza(data);
+    } else {
+      const { data } = await api.post<UtenzaConfig>('/api/v1/utenze-config/', {
+        voce,
+        gestione: stato,
+        note: '',
+      });
+      utenzeConfig.value = [...utenzeConfig.value, data];
+      noteUtenza.value[voce] = data.note ?? '';
+    }
+    $q.notify({
+      type: 'positive',
+      message: `${etichetta}: ${etichettaGestioneUtenza(stato).toLowerCase()}.`,
+    });
+  } catch (e: unknown) {
+    $q.notify({
+      type: 'negative',
+      message: messaggioErrore(e, 'Aggiornamento della voce non riuscito.'),
+    });
+    // La select rilegge lo stato dai dati: rileggerli dal server la riallinea.
+    await caricaUtenzeConfig();
+  } finally {
+    salvandoUtenza.value = null;
+  }
+}
+
+/** La nota si salva quando il campo perde il fuoco: è un dettaglio
+ *  descrittivo, non vale un bottone per riga. */
+async function salvaNotaUtenza(voce: VoceUtenza) {
+  const config = configUtenza(voce);
+  if (!config || salvandoUtenza.value === voce) return;
+  const nota = noteUtenza.value[voce].trim();
+  if (nota === (config.note ?? '').trim()) return;
+  salvandoUtenza.value = voce;
+  try {
+    const { data } = await api.patch<UtenzaConfig>(`/api/v1/utenze-config/${config.id}/`, {
+      note: nota,
+    });
+    aggiornaConfigUtenza(data);
+    $q.notify({
+      type: 'positive',
+      message: `Nota di ${etichettaVoceUtenza(voce)} aggiornata.`,
+    });
+  } catch (e: unknown) {
+    noteUtenza.value[voce] = config.note ?? '';
+    $q.notify({
+      type: 'negative',
+      message: messaggioErrore(e, 'Salvataggio della nota non riuscito.'),
+    });
+  } finally {
+    salvandoUtenza.value = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 /** Riscrive la query con il solo tab attivo: i param one-shot dei deep
  *  link (`contratto`, `campo`) vengono consumati. */
@@ -2014,6 +2240,7 @@ onMounted(() => {
   void caricaFornitori();
   void caricaCosti();
   void caricaQuote();
+  void caricaUtenzeConfig();
   void tenantsStore.fetchTenantsConAssignment();
   void caricaGovernance().then(() => {
     if (tabAttivo.value === 'dati') focusCampoDati(campo);
@@ -2070,5 +2297,11 @@ watch(
 }
 .vp-immobile__panel {
   padding: 0;
+}
+.vp-utenza-select {
+  min-width: 200px;
+}
+.vp-utenza-nota {
+  max-width: 360px;
 }
 </style>

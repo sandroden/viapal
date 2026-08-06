@@ -243,6 +243,31 @@ class AnnualUtilityCostSerializer(serializers.ModelSerializer):
         ]
 
 
+class PropertyUtilityServiceSerializer(serializers.ModelSerializer):
+    """Configurazione utenze della casa: quale voce esiste e chi la gestisce.
+
+    La property è assegnata dal contesto della request (immobile attivo),
+    non è un campo scrivibile qui."""
+
+    voce_display = serializers.CharField(source="get_voce_display", read_only=True)
+    gestione_display = serializers.CharField(
+        source="get_gestione_display", read_only=True
+    )
+
+    class Meta:
+        from billing.models import PropertyUtilityService
+
+        model = PropertyUtilityService
+        fields = [
+            "id",
+            "voce",
+            "voce_display",
+            "gestione",
+            "gestione_display",
+            "note",
+        ]
+
+
 class UtilityBillSerializer(serializers.ModelSerializer):
     """Serializer di lettura/scrittura per UtilityBill.
 

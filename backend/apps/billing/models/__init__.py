@@ -3,6 +3,7 @@ from .payments import BankTransaction, StatoPagamento
 from .receivables import BankTransactionAllocation, Receivable, ReceivableComment
 from .utilities import (
     AnnualUtilityCost,
+    PropertyUtilityService,
     UtilityBill,
     UtilityChargePeriod,
 )
@@ -19,5 +20,6 @@ __all__ = [
     "TenantCondominioRate",
     "UtilityBill",
     "AnnualUtilityCost",
+    "PropertyUtilityService",
     "UtilityChargePeriod",
 ]

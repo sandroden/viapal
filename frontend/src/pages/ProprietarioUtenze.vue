@@ -225,22 +225,30 @@ const statiPeriodi = computed<MeseStato[]>(() =>
   })),
 );
 
+// Voci attese per l'immobile (config "Utenze della casa"); fallback storico
+// per backend che non espongono ancora `attese`.
+const vociAttese = computed<string[]>(
+  () => store.completezza?.attese ?? ['luce', 'gas', 'tari'],
+);
+
+function vocePresente(voce: string): boolean {
+  const c = store.completezza as unknown as Record<string, unknown> | null;
+  return Boolean(c?.[voce]);
+}
+
 const mancantiTipi = computed<string[]>(() => {
-  const c = store.completezza;
-  if (!c) return [];
-  const out: string[] = [];
-  if (!c.luce) out.push('Luce');
-  if (!c.gas) out.push('Gas');
-  if (!c.tari) out.push('TARI');
-  return out;
+  if (!store.completezza) return [];
+  return vociAttese.value
+    .filter((v) => !vocePresente(v))
+    .map((v) => String(voceToTipo(v)));
 });
 
 const periodoCorrenteView = computed<PeriodoView | null>(() => {
   const p = store.period;
   if (!p) return null;
   const presentiCount = store.completezza
-    ? [store.completezza.luce, store.completezza.gas, store.completezza.tari].filter(Boolean).length
-    : 3;
+    ? vociAttese.value.filter((v) => vocePresente(v)).length
+    : vociAttese.value.length;
   return {
     id: String(p.id),
     mese: meseDa(p.periodo_da),
@@ -248,7 +256,7 @@ const periodoCorrenteView = computed<PeriodoView | null>(() => {
     range: rangePeriodo(p.periodo_da, p.periodo_a),
     stato: incompletoCorrente.value ? 'incompleto' : p.avvisi_inviati_at ? 'inviato' : 'da-inviare',
     presenti: presentiCount,
-    attese: 3,
+    attese: vociAttese.value.length,
   };
 });
 

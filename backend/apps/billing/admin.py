@@ -23,6 +23,7 @@ from .models import (
     BankTransactionAllocation,
     Expense,
     ExpenseCategory,
+    PropertyUtilityService,
     Receivable,
     ReceivableComment,
     Supplier,
@@ -1345,6 +1346,33 @@ class UtilityChargePeriodAdmin(ModalEditMixin, JumboModelAdmin):
         ("Charges per inquilino", {"items": [ReceivableUtilityInline]}),
         ("Bollette agganciate", {"items": ["Bollette agganciate"]}),
         ("Note interne", {"items": ["Note interne"]}),
+    )
+
+
+# ---------------------------------------------------------------------------
+# PropertyUtilityService
+# ---------------------------------------------------------------------------
+
+
+@admin.register(PropertyUtilityService)
+class PropertyUtilityServiceAdmin(ModalEditMixin, JumboModelAdmin):
+    modal_edit_width = 600
+    list_display = (
+        "property", "voce", "gestione",
+        "get_modal_edit_icon", "get_modal_delete_icon",
+    )
+    list_filter = ("property", "voce", "gestione")
+    list_select_related = ("property",)
+    ordering = ("property", "voce")
+    fieldsets = (
+        ("Utenza della casa", {
+            "fields": ("property", "voce", "gestione", "note"),
+            "description": (
+                "Una riga per voce: l'assenza significa che la voce non "
+                "esiste per questa casa. 'A carico dell'inquilino' la "
+                "documenta ma la tiene fuori dal flusso di ripartizione."
+            ),
+        }),
     )
 
 

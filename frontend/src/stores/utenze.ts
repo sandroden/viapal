@@ -23,8 +23,12 @@ export interface PeriodFE {
 export interface Completezza {
   luce: boolean;
   gas: boolean;
+  acqua?: boolean;
   tari: boolean;
   completo: boolean;
+  /** Voci attese per l'immobile (config "Utenze della casa"); assente su
+   *  backend vecchi → fallback luce/gas/tari lato pagina. */
+  attese?: string[];
 }
 
 export interface PerMeseResponse {

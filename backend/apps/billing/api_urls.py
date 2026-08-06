@@ -12,6 +12,7 @@ from billing.views import (
     ExpenseCategoryViewSet,
     ExpenseViewSet,
     ExtraChargeViewSet,
+    PropertyUtilityServiceViewSet,
     ReceivableViewSet,
     ReconciliationBulkView,
     ReceivableCommentiView,
@@ -38,6 +39,9 @@ router.register(
 )
 router.register(
     r"annual-utility-costs", AnnualUtilityCostViewSet, basename="annual-utility-cost"
+)
+router.register(
+    r"utenze-config", PropertyUtilityServiceViewSet, basename="utenze-config"
 )
 router.register(r"expenses", ExpenseViewSet, basename="expense")
 router.register(r"extra-charges", ExtraChargeViewSet, basename="extra-charge")
