@@ -1,10 +1,10 @@
 ---
 type: Domain Logic
 title: Fascicolo documenti
-description: "Elenco dei documenti dell'inquilino con stati derivati (valido/in scadenza/scaduto), servito a inquilino e proprietario dallo stesso servizio. Nessun documento è obbligatorio e nessuna voce è vuota: compare solo ciò che esiste."
+description: "Elenco dei documenti dell'inquilino con stati derivati (valido/in scadenza/scaduto), servito a inquilino e proprietario dallo stesso servizio. Nessun documento è obbligatorio e nessuna voce è vuota: compare solo ciò che esiste. Include chi vede le carte della casa, che dal 2026-08-06 dipendono dal contratto."
 resource: backend/apps/properties/fascicolo.py
 tags: [domain, documenti, inquilini, frontend]
-timestamp: 2026-08-03T00:00:00Z
+timestamp: 2026-08-06T00:00:00Z
 ---
 
 # Overview
@@ -136,6 +136,41 @@ Scartata l'idea di infilare "Genera" dentro il flusso *Carica documento*:
 - **Notifica di scadenza**: non c'è alcun job che avvisa prima della
   scadenza; il preavviso di 60 giorni è solo lo stato `scadenza` mostrato nel
   fascicolo. I testi dell'interfaccia dicono esattamente questo.
+
+# Documenti della casa: chi li vede (2026-08-06)
+
+I `PropertyDocument` sono le carte dell'immobile. `visibile_inquilini` da solo
+non basta più a dire chi li vede: dal 2026-08-06 un documento può essere
+**collegato a un contratto** (`PropertyDocument.contract`), e le occupazioni
+sanno sotto quale contratto stanno (`RoomAssignment.contract`, facoltativo).
+
+| Documento | Assegnazione dell'inquilino | Lo vede? |
+|-----------|-----------------------------|----------|
+| senza contratto, `visibile_inquilini` | qualsiasi | sì (regolamento, regole di convivenza) |
+| con contratto, `visibile_inquilini` | stesso contratto | sì |
+| con contratto, `visibile_inquilini` | altro contratto o nessuno | **no** |
+| `visibile_inquilini` falso | qualsiasi | no (solo la proprietà) |
+
+Il gate è in **due punti** e vanno tenuti allineati: il queryset di
+`PropertyDocumentViewSet` (cosa compare in elenco) e
+`_autorizza_documento_proprieta` in `core/media_private.py` (chi scarica il
+file). Filtrare solo l'elenco lascerebbe il file accessibile a chi ha l'URL —
+gli allegati sono su storage privato servito da quella vista.
+
+Conseguenze da ricordare:
+
+- `RoomAssignment.contract` è **facoltativo per scelta** (Sandro, 2026-08-06):
+  senza, l'inquilino non vede le carte di nessun contratto. Le assegnazioni
+  esistenti prima della migrazione `0034` ce l'hanno vuoto: finché non lo si
+  compila, nessun inquilino vede documenti di contratto.
+- Alla prima assegnazione il contratto in vigore alla data d'ingresso è
+  **proposto**, non imposto: un `contract: null` esplicito nel payload
+  significa "nessun contratto" e viene rispettato.
+- Nella cessione il subentrante **eredita** il contratto del cedente (è quello
+  che dice l'atto di subentro).
+- Entrambe le FK sono `SET_NULL`: eliminare un contratto non porta via file né
+  occupazioni, ma un documento che era visibile torna a essere una carta della
+  casa — e da quel momento **lo vedono tutti** gli inquilini.
 
 # Vedi anche
 

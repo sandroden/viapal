@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-08-06
+* **Maintain**: `domain/fascicolo-documenti.md` — sezione "Documenti della casa: chi li vede": `PropertyDocument.contract` lega le carte al contratto e `RoomAssignment.contract` (facoltativo) dice sotto quale contratto sta un'occupazione; un documento di contratto visibile lo vedono solo gli inquilini di quel contratto, senza contratto sull'assegnazione nessuno. Il gate sta in due punti (queryset del viewset e `core/media_private.py`) e vanno tenuti allineati. Le assegnazioni precedenti alla migrazione `0034` hanno il campo vuoto.
+
 ## 2026-08-05
 * **Maintain**: `domain/generazione-documenti.md`, `domain/generazione-affitti.md` — "Immobile e membri" e "La casa" fuse nell'unica pagina a tab "Immobile" (`/p/impostazioni`, 10 tab, governance in coda); tabella "Dove si compila" con le nuove etichette "Immobile → …"; le vecchie route `/p/impostazioni/proprieta` e `/p/impostazioni/casa` restano come redirect che preservano `campo`/`contratto`.
 
