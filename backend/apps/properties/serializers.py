@@ -436,10 +436,8 @@ class PublicGalleryRoomSerializer(serializers.ModelSerializer):
         ]
 
     def get_foto(self, obj):
-        # 'Non disponibile' (toggle spento) nasconde l'interno, a prescindere
-        # da eventuali date: il toggle è il comando principale.
-        if not obj.disponibile:
-            return []
+        # Le foto restano visibili anche a stanza occupata: il frontend le
+        # vela e mostra una nota, così il visitatore capisce com'è la casa.
         request = self.context.get("request")
         return [
             {

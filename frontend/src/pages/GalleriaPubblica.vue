@@ -107,9 +107,9 @@
             v-for="r in roomsPubbliche"
             :key="'pill' + r.id"
             class="pill"
-            :class="{ 'is-unavail': !mostraFoto(r) }"
+            :class="{ 'is-unavail': !stanzaDisponibile(r) }"
             :href="`#room-${r.id}`"
-          >{{ r.nome }}<template v-if="!mostraFoto(r)"> · occupata</template></a>
+          >{{ r.nome }}<template v-if="!stanzaDisponibile(r)"> · occupata</template></a>
           <a
             v-for="a in aree"
             :key="'pilla' + a.id"
@@ -150,12 +150,12 @@
                 v-for="(r, i) in roomsPubbliche"
                 :key="'leg' + r.id"
                 class="legend-item"
-                :class="{ 'is-unavail': !mostraFoto(r) }"
+                :class="{ 'is-unavail': !stanzaDisponibile(r) }"
                 :href="`#room-${r.id}`"
               >
                 <span class="legend-num" :style="{ background: r.colore || 'var(--vp-ink-3)' }">{{ i + 1 }}</span>
                 <span class="legend-name">{{ r.nome }}</span>
-                <span v-if="!mostraFoto(r)" class="legend-tag">Occupata</span>
+                <span v-if="!stanzaDisponibile(r)" class="legend-tag">Occupata</span>
                 <span class="legend-mq">{{ r.superficie_mq ? `${fmtMq(r.superficie_mq)} mq` : '' }}</span>
               </a>
               <a
@@ -176,7 +176,7 @@
           v-for="(r, i) in roomsPubbliche"
           :key="r.id"
           class="room"
-          :class="{ 'is-unavail': !mostraFoto(r) }"
+          :class="{ 'is-unavail': !stanzaDisponibile(r) }"
           :id="`room-${r.id}`"
         >
           <div class="room-head">
@@ -228,10 +228,10 @@
             </EditableText>
           </div>
 
-          <div v-if="!mostraFoto(r) && !editMode" class="room-unavail-note">
-            Foto non disponibili — stanza attualmente occupata
+          <div v-if="!stanzaDisponibile(r) && !editMode" class="room-occupied-note">
+            Attualmente occupata — le foto restano visibili per farti capire com'è la casa
           </div>
-          <div v-else class="pgrid">
+          <div class="pgrid" :class="{ 'is-occupied': !stanzaDisponibile(r) && !editMode }">
             <div v-for="(foto, fi) in r.foto" :key="foto.id" class="ph" :class="`ph--${foto.formato}`">
               <ImageSlot :url="foto.url" :editable="editMode" :expandable="true" @expand="openLB(r.foto, fi)" @remove="removeImage(foto.id)" />
               <button v-if="editMode && fi > 0" type="button" class="ph-move prev" title="Sposta prima" @click.stop="moveFoto(r.foto, fi, -1)">‹</button>
@@ -536,8 +536,9 @@ function fmtData(v: string): string {
 
 // --- Disponibilità stanza --------------------------------------------------
 // Il toggle "disponibile" è il comando principale: se spento ("Non
-// disponibile") la stanza è nascosta, a prescindere da eventuali date.
-// Se acceso e con una data futura, mostra "Libera dal <data>".
+// disponibile") le foto restano visibili ma velate, con una nota che spiega
+// che la stanza è occupata. Se acceso e con una data futura, mostra
+// "Libera dal <data>".
 function oggiISO(): string {
   return new Date().toLocaleDateString('sv'); // YYYY-MM-DD locale
 }
@@ -546,8 +547,8 @@ function liberaDalFutura(r: StanzaPubblica): boolean {
   if (isUnitaIntera.value) return false;
   return r.disponibile && !!r.libera_dal && r.libera_dal >= oggiISO();
 }
-function mostraFoto(r: StanzaPubblica): boolean {
-  // Unità intera: l'unica "stanza" è l'appartamento, sempre mostrato.
+function stanzaDisponibile(r: StanzaPubblica): boolean {
+  // Unità intera: l'unica "stanza" è l'appartamento, sempre disponibile.
   if (isUnitaIntera.value) return true;
   return r.disponibile;
 }
@@ -750,7 +751,9 @@ watch(() => route.params.slug, load);
 .room-desc { color: var(--vp-ink-2); font-size: 14.5px; max-width: 640px; margin: 8px 0 20px; }
 .room-edit-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 13px; color: var(--vp-ink-3); }
 .room-edit-lbl { font-size: 12px; }
-.room-unavail-note { padding: 28px; border-radius: 14px; background: var(--vp-paper-2); color: var(--vp-ink-3); font-size: 13.5px; text-align: center; border: 1px dashed var(--vp-paper-3); }
+.room-occupied-note { color: var(--vp-ink-3); font-size: 12.5px; font-style: italic; margin: -8px 0 14px; }
+.pgrid.is-occupied .ph { opacity: .45; filter: saturate(.7); transition: opacity .25s ease, filter .25s ease; }
+.pgrid.is-occupied .ph:hover { opacity: 1; filter: none; }
 .area-add-row { padding: 24px 0 8px; border-top: 1px solid var(--vp-paper-3); }
 
 .pgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; grid-auto-flow: dense; align-items: start; }
