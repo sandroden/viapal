@@ -53,6 +53,20 @@ inquilini. Serve due tipi di utente: **proprietari** (`/p/`) e **inquilini** (`/
   `manage.py migra_media_private`.
 - Adempimenti GDPR e documenti da far firmare: `docs/privacy/PIANO-GDPR.md`.
 
+## Media di produzione visibili in dev (proxy S3)
+
+- In prod il servizio `s3` (`andrewgaul/s3proxy`, `docker-compose.yml`) espone
+  `data/media` e `data/media-private` come bucket S3 **read-only** su
+  `s3.viapal.e-den.it` (chiavi `S3_*` nel `.env` del server).
+- In dev `local.py` monta `jmb.core.files.storage.FallbackStorage` su
+  `STORAGES["default"]` e `["private"]`: primario = filesystem locale,
+  fallback = S3 di prod. Le scritture restano locali; le `delete` creano
+  whiteout `.wh.*`. Nei test il blocco è disattivato (guardia su `pytest`).
+- **Trappola**: il provider filesystem di jclouds deriva l'ACL *anonima* dai
+  bit POSIX — un file/directory leggibile da "others" è servito SENZA firma.
+  Perciò: `chmod -R o-rwx` sui dati montati e `FILE_UPLOAD_PERMISSIONS =
+  0o640` / `FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o750` in `base.py`.
+
 # Convenzioni
 
 - Lingua: tutto l'UI/copy/log/commit in **italiano**.

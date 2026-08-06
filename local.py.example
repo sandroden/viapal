@@ -33,3 +33,46 @@ DATABASES = {
 # Senza chiavi il canale push resta disattivato (email ok comunque).
 # VAPID_PRIVATE_KEY = "..."
 # VAPID_PUBLIC_KEY = "..."
+
+# --- SOLO DEV: media di produzione visibili in locale ------------------------
+# In produzione NON va attivato (lo storage resta il filesystem locale).
+# In dev il DB è una copia di produzione (jmb-sync) ma i media non vengono
+# copiati: jmb.core FallbackStorage legge prima dal filesystem locale e, se il
+# file manca, dal proxy S3 read-only di produzione (servizio `s3` nel
+# docker-compose.yml, chiavi nel .env del server). Le scritture restano locali.
+# Vedi jmb-core docs/storage.md.
+#
+# MEDIA_FALLBACK_S3_ENDPOINT = "https://s3.viapal.e-den.it"
+# MEDIA_FALLBACK_S3_ACCESS_KEY = "..."   # S3_ACCESS_KEY nel .env di prod
+# MEDIA_FALLBACK_S3_SECRET_KEY = "..."   # S3_SECRET_KEY nel .env di prod
+# MEDIA_FALLBACK_S3_REGION = "local"
+#
+# # Nei test il fallback remoto va escluso: le delete/exists farebbero
+# # richieste di rete (e i test devono restare deterministici).
+# import sys as _sys
+# if MEDIA_FALLBACK_S3_ENDPOINT and "pytest" not in _sys.modules:
+#     def _con_fallback_s3(primary_backend, bucket):
+#         return {
+#             "BACKEND": "jmb.core.files.storage.FallbackStorage",
+#             "OPTIONS": {
+#                 "primary": {"BACKEND": primary_backend},
+#                 "fallback": {
+#                     "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+#                     "OPTIONS": {
+#                         "bucket_name": bucket,
+#                         "endpoint_url": MEDIA_FALLBACK_S3_ENDPOINT,
+#                         "access_key": MEDIA_FALLBACK_S3_ACCESS_KEY,
+#                         "secret_key": MEDIA_FALLBACK_S3_SECRET_KEY,
+#                         "region_name": MEDIA_FALLBACK_S3_REGION,
+#                     },
+#                 },
+#             },
+#         }
+#
+#     STORAGES = {
+#         **STORAGES,
+#         "default": _con_fallback_s3(
+#             "django.core.files.storage.FileSystemStorage", "media"),
+#         "private": _con_fallback_s3(
+#             "core.storages.MediaPrivateStorage", "media-private"),
+#     }

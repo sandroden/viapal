@@ -152,6 +152,30 @@ MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 MEDIA_PRIVATE_URL = '/media-private/'
 MEDIA_PRIVATE_ROOT = os.path.join(BASE_DIR, "media-private")
 
+# Upload mai leggibili da "others": il proxy S3 di prod (servizio `s3` nel
+# docker-compose) deriva l'ACL anonima dai bit POSIX (jclouds filesystem):
+# un file 0644 sarebbe scaricabile SENZA credenziali conoscendone il path.
+# Default Django: 0o644 / umask — qui 0o640 / 0o750.
+FILE_UPLOAD_PERMISSIONS = 0o640
+FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o750
+
+# Storage backend (API STORAGES di Django 4.2+). Default espliciti così gli
+# ambienti possono sovrascrivere "default"/"private" con `**STORAGES`: in dev
+# local.py può montarci jmb.core FallbackStorage, che legge dal proxy S3 di
+# produzione i media assenti in locale (vedi local.py.example).
+# "private" è l'alias usato da core.storages.media_private_storage.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+    "private": {
+        "BACKEND": "core.storages.MediaPrivateStorage",
+    },
+}
+
 # Riferimenti del gestore della piattaforma (responsabile ex art. 28)
 # mostrati nell'informativa privacy degli inquilini; sovrascrivibili in
 # local.py. La data va aggiornata a ogni revisione del testo (frontend

@@ -8,7 +8,7 @@ statici.
 import os
 
 from django.conf import settings
-from django.core.files.storage import FileSystemStorage
+from django.core.files.storage import FileSystemStorage, storages
 
 
 class MediaPrivateStorage(FileSystemStorage):
@@ -32,10 +32,11 @@ class MediaPrivateStorage(FileSystemStorage):
         return settings.MEDIA_PRIVATE_URL
 
 
-_storage = MediaPrivateStorage()
-
-
 def media_private_storage():
     """Callable per ``FileField(storage=...)``: nelle migrazioni viene
-    serializzato per riferimento, senza congelare location/URL."""
-    return _storage
+    serializzato per riferimento, senza congelare location/URL.
+
+    Risolve l'alias ``STORAGES["private"]`` (default: MediaPrivateStorage),
+    che in dev può essere un ``jmb.core`` FallbackStorage con i media di
+    produzione come fallback read-only (vedi local.py.example)."""
+    return storages["private"]

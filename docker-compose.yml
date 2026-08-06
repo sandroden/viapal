@@ -49,6 +49,37 @@ services:
       - "traefik.http.routers.viapal-django.service=viapal-django"
       - "traefik.http.services.viapal-django.loadbalancer.server.port=8000"
 
+  # Proxy S3 read-only sui media di produzione: usato dal dev locale come
+  # fallback (jmb.core FallbackStorage, vedi local.py.example sezione SOLO
+  # DEV). I bucket coincidono con le cartelle sotto /data: `media` e
+  # `media-private`. Chiavi S3_* nel .env (openssl rand -hex 20 / -hex 32).
+  s3:
+    image: andrewgaul/s3proxy
+    restart: unless-stopped
+    environment:
+      S3PROXY_AUTHORIZATION: aws-v2-or-v4
+      S3PROXY_IDENTITY: ${S3_ACCESS_KEY}
+      S3PROXY_CREDENTIAL: ${S3_SECRET_KEY}
+      S3PROXY_READ_ONLY_BLOBSTORE: "true"
+      JCLOUDS_PROVIDER: filesystem-nio2
+      JCLOUDS_FILESYSTEM_BASEDIR: /data
+      JCLOUDS_REGIONS: local
+      LOG_LEVEL: info
+    volumes:
+      - ./data/media:/data/media:ro
+      - ./data/media-private:/data/media-private:ro
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.viapal-s3.rule=Host(`${S3_HOST:-s3.viapal.e-den.it}`)"
+      - "traefik.http.routers.viapal-s3.entrypoints=web-secured"
+      - "traefik.http.routers.viapal-s3.tls=true"
+      - "traefik.http.routers.viapal-s3.tls.certresolver=leresolver"
+      - "traefik.http.routers.viapal-s3.service=viapal-s3"
+      - "traefik.http.services.viapal-s3.loadbalancer.server.port=80"
+
   quasar:
     image: ${FRONTEND_IMAGE:-viapal-frontend:local}
     build:

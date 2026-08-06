@@ -13,6 +13,7 @@ dependencies = [
     "django-environ>=0.13.0",
     "django-hijack>=3.7.8",
     "djangorestframework>=3.17.1",
+    "jmb-core>=2.1.0",
     "jmb-filters>=2.1.0",
     "jmb-jadmin>=2.1.11",
     "openpyxl>=3.1.5",
@@ -33,6 +34,9 @@ dev = [
 
 [tool.uv]
 index-strategy = "unsafe-best-match"
+# jmb-core 2.1.0 pinna Django<6 in via prudenziale ma funziona con Django 6:
+# override finché non esce una release con il pin allargato (django<7).
+override-dependencies = ["django>=6.0.4"]
 
 [[tool.uv.index]]
 name = "thux"
