@@ -67,12 +67,14 @@ export default defineConfig((/* ctx */) => {
       // viteVuePluginOptions: {},
 
       vitePlugins: [
+        // ESLint escluso dal checker dev: il worker eslint di
+        // vite-plugin-checker crasha in modo intermittente con le regole
+        // typed ("await-thenable ... parserOptions", vedi tseslint.com/
+        // typed-linting) e butta giù TUTTO il dev server. Il lint resta in
+        // CI (bun run lint) e nell'editor; riattivarlo qui quando la race
+        // upstream sarà risolta.
         ['vite-plugin-checker', {
-          vueTsc: true,
-          eslint: {
-            lintCommand: 'eslint -c ./eslint.config.js "./src*/**/*.{ts,js,mjs,cjs,vue}"',
-            useFlatConfig: true
-          }
+          vueTsc: true
         }, { server: false }]
       ]
     },
