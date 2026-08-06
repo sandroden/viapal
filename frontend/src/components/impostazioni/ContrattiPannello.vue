@@ -695,6 +695,8 @@ function elimina(c: Contratto) {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
 }
 .imm-dc {
   display: inline-flex;
@@ -709,6 +711,10 @@ function elimina(c: Contratto) {
   font-size: 12px;
   color: var(--vp-ink-2);
   cursor: pointer;
+  /* Il nome del file si accorcia con i puntini: sul telefono il chip non
+     deve mai sporgere oltre il bordo della card. */
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -730,6 +736,8 @@ function elimina(c: Contratto) {
   display: inline-flex;
   align-items: center;
   gap: 2px;
+  min-width: 0;
+  max-width: 100%;
 }
 .imm-dc--del {
   padding: 0 6px;

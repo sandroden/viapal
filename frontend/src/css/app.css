@@ -37,6 +37,14 @@ html, body, #q-app {
 .imm-pillola.q-field {
   min-width: 190px;
 }
+/* Sul telefono 190px di select lasciano fuori dalla card le icone che le
+   stanno accanto (ruolo + quota + modifica/elimina): lì la pillola si
+   stringe a quanto basta per il testo del ruolo. */
+@media (max-width: 599px) {
+  .imm-pillola.q-field {
+    min-width: 130px;
+  }
+}
 /* Doppia classe: le regole di .q-field--dense partono da specificità 2. */
 .imm-pillola.q-field .q-field__control {
   height: 30px;

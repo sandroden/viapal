@@ -96,6 +96,9 @@ withDefaults(
   .imm-riga__azioni {
     flex: 1 1 100%;
     justify-content: flex-end;
+    /* Sui telefoni più stretti anche una riga tutta per sé non basta:
+       meglio un secondo capo che un'icona tagliata fuori dalla card. */
+    flex-wrap: wrap;
   }
 }
 </style>
