@@ -942,7 +942,7 @@ class TenantSituazioneView(APIView):
 
         assignments_qs = (
             RoomAssignment.objects.filter(tenant=tenant)
-            .select_related("room")
+            .select_related("room", "contract")
             .order_by("-valid_from")
         )
         assignments_payload = [
@@ -950,6 +950,12 @@ class TenantSituazioneView(APIView):
                 "id": a.id,
                 "room_id": a.room.id,
                 "room_nome": a.room.nome,
+                "contract": a.contract_id,
+                "contract_nome": (
+                    (a.contract.nome or f"Contratto dal {a.contract.data_decorrenza}")
+                    if a.contract_id
+                    else ""
+                ),
                 "valid_from": a.valid_from.isoformat(),
                 "valid_to": a.valid_to.isoformat() if a.valid_to else None,
                 "canone_mensile": float(a.canone_mensile),

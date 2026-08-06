@@ -175,11 +175,12 @@ class PropertyDocumentAdmin(ModalEditMixin, JumboModelAdmin):
     list_select_related = ("property",)
     search_fields = ("property__nome", "descrizione")
     autocomplete_fields = ("property",)
+    raw_id_fields = ("contract",)
     fieldsets = (
         ("Documento", {
             "fields": (
-                "property", "tipo", "file", "descrizione", "data_scadenza",
-                "visibile_inquilini",
+                "property", "contract", "tipo", "file", "descrizione",
+                "data_scadenza", "visibile_inquilini",
             ),
         }),
     )
@@ -745,6 +746,7 @@ class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
     advanced_search_autocomplete_fields = ("tenant", "room")
     list_select_related = ("tenant", "room")
     autocomplete_fields = ("tenant", "room", "bank_account_affitto", "subentra_a")
+    raw_id_fields = ("contract",)
     ordering = ("-valid_from", "room__nome")
 
     def get_form(self, request, obj=None, **kwargs):

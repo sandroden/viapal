@@ -6,6 +6,10 @@ export interface AssignmentRiga {
   id: number;
   room_id: number;
   room_nome: string;
+  /** Contratto sotto cui sta l'occupazione (null = nessuno: l'inquilino non
+   *  vede i documenti collegati a un contratto). */
+  contract: number | null;
+  contract_nome: string;
   valid_from: string;
   valid_to: string | null;
   canone_mensile: number;

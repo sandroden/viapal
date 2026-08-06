@@ -70,6 +70,22 @@
           dense
           data-testid="assegna-canone"
         />
+        <!-- Sotto quale contratto entra: decide quali carte del contratto
+             l'inquilino vedrà nella sua area. Senza contratto non ne vede
+             nessuna. -->
+        <q-select
+          v-model="form.contract"
+          :options="opzioniContratti"
+          label="Contratto"
+          outlined
+          dense
+          emit-value
+          map-options
+          clearable
+          :loading="loadingContratti"
+          hint="Le carte del contratto (firmato, side letter) le vede solo chi vi è dentro."
+          data-testid="assegna-contratto"
+        />
         <q-input
           v-model="form.quotaCondominio"
           label="Quota condominio mensile"
@@ -254,6 +270,7 @@ function asArray<T>(data: T[] | { results: T[] } | undefined | null): T[] {
 
 interface Form {
   room: number | null;
+  contract: number | null;
   validFrom: string;
   ciclo: CicloFatturazione;
   canoneMensile: string;
@@ -266,6 +283,7 @@ interface Form {
 function formVuoto(): Form {
   return {
     room: null,
+    contract: null,
     validFrom: oggiISO(),
     ciclo: 'solare',
     canoneMensile: '',
@@ -284,6 +302,34 @@ const salvando = ref(false);
 const stanze = ref<Stanza[]>([]);
 const assignments = ref<AssignmentApi[]>([]);
 const loadingStanze = ref(false);
+
+interface ContrattoApi {
+  id: number;
+  nome: string;
+  data_decorrenza: string;
+  termine: string | null;
+}
+
+const contratti = ref<ContrattoApi[]>([]);
+const loadingContratti = ref(false);
+
+const opzioniContratti = computed(() =>
+  contratti.value.map((c) => ({
+    label: `${c.nome || `Contratto dal ${formattaDataIt(c.data_decorrenza)}`}${
+      c.termine ? ` (terminato il ${formattaDataIt(c.termine)})` : ''
+    }`,
+    value: c.id,
+  })),
+);
+
+/** Il contratto attivo alla data d'ingresso è quasi sempre quello giusto:
+ *  si propone da solo, e resta cambiabile o cancellabile. */
+function contrattoAllaData(data: string): number | null {
+  const candidati = contratti.value
+    .filter((c) => c.data_decorrenza <= data && (!c.termine || c.termine >= data))
+    .sort((a, b) => b.data_decorrenza.localeCompare(a.data_decorrenza));
+  return candidati[0]?.id ?? null;
+}
 
 // Stato di occupazione per stanza: si mostrano solo le stanze libere alla
 // data di inizio scelta o liberabili entro 2 mesi da oggi (fine assegnazione
@@ -379,6 +425,24 @@ async function caricaStanze(): Promise<void> {
   }
 }
 
+async function caricaContratti(): Promise<void> {
+  loadingContratti.value = true;
+  try {
+    const { data } = await api.get<ContrattoApi[] | { results: ContrattoApi[] }>(
+      '/api/v1/contracts/',
+    );
+    contratti.value = asArray(data);
+    form.value.contract = contrattoAllaData(form.value.validFrom);
+  } catch (e: unknown) {
+    $q.notify({
+      type: 'negative',
+      message: messaggioErrore(e, 'Caricamento contratti non riuscito.'),
+    });
+  } finally {
+    loadingContratti.value = false;
+  }
+}
+
 // Split di un importo in `n` rate uguali a 2 decimali, col resto (dovuto
 // all'arrotondamento) accumulato sull'ultima rata.
 function splitImporto(totale: number, n: number): string[] {
@@ -447,6 +511,20 @@ watch(
     // assegnazioni per capire se l'appartamento è già occupato (banner +
     // submit disabilitato). A stanze serve per popolare il select.
     void caricaStanze();
+    void caricaContratti();
+  },
+);
+
+// Spostando la data d'ingresso cambia il contratto in vigore: si riallinea
+// la proposta, senza scavalcare una scelta esplicita dell'utente.
+watch(
+  () => form.value.validFrom,
+  (nuova, vecchia) => {
+    if (!nuova || loadingContratti.value) return;
+    if (form.value.contract !== null && form.value.contract !== contrattoAllaData(vecchia ?? '')) {
+      return;
+    }
+    form.value.contract = contrattoAllaData(nuova);
   },
 );
 
@@ -482,6 +560,7 @@ async function salva(): Promise<void> {
   };
   // Su unità intera si omette `room`: il backend risolve l'unità implicita.
   if (!isUnitaIntera.value) payload.room = f.room;
+  payload.contract = f.contract;
   if (!props.depositoGiaRegistrato && f.depositoTotale !== '') {
     payload.deposito_totale = f.depositoTotale;
     payload.data_versamento_deposito = f.dataVersamento || f.validFrom;

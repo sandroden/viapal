@@ -612,21 +612,40 @@ class PropertyDocumentViewSet(ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = PropertyDocument.objects.select_related("property")
+        qs = PropertyDocument.objects.select_related("property", "contract")
         if not _is_gestione(user):
             tenant = getattr(user, "tenant_profile", None)
             if tenant is None:
                 return qs.none()
+            # Un documento collegato a un contratto è una carta di quel
+            # contratto: la vede solo chi ci sta dentro. Senza contratto
+            # sull'assegnazione l'inquilino non ne vede nessuna.
+            miei_contratti = RoomAssignment.objects.filter(
+                tenant=tenant, contract__isnull=False
+            ).values_list("contract_id", flat=True)
             return qs.filter(
                 property_id=tenant.property_id, visibile_inquilini=True
-            )
+            ).filter(Q(contract__isnull=True) | Q(contract_id__in=miei_contratti))
         return qs.filter(property=get_request_property(self.request))
 
+    def _valida_contratto(self, serializer, prop):
+        """Il contratto, se indicato, è di questo immobile."""
+        from rest_framework.exceptions import ValidationError
+
+        contract = serializer.validated_data.get("contract")
+        if contract is not None and contract.property_id != prop.pk:
+            raise ValidationError(
+                {"contract": "Il contratto appartiene a un altro immobile."}
+            )
+
     def perform_create(self, serializer):
-        serializer.save(
-            property=get_request_property(self.request),
-            caricato_da=self.request.user,
-        )
+        prop = get_request_property(self.request)
+        self._valida_contratto(serializer, prop)
+        serializer.save(property=prop, caricato_da=self.request.user)
+
+    def perform_update(self, serializer):
+        self._valida_contratto(serializer, get_request_property(self.request))
+        serializer.save()
 
 
 class RoomViewSet(ProtectedDestroyMixin, ModelViewSet):
@@ -790,11 +809,17 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
             raise ValidationError(
                 {"bank_account_affitto": "Conto estraneo a questo immobile."}
             )
+        contract = _val("contract")
+        if contract is not None and contract.property_id != prop.pk:
+            raise ValidationError(
+                {"contract": "Il contratto appartiene a un altro immobile."}
+            )
 
         obj = RoomAssignment(
             pk=inst.pk if inst else None,
             room=room,
             tenant=tenant,
+            contract=contract,
             valid_from=_val("valid_from"),
             valid_to=_val("valid_to"),
             canone_mensile=_val("canone_mensile"),
@@ -857,6 +882,10 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
             nuovo = RoomAssignment(
                 room=corrente.room,
                 tenant=nuovo_tenant,
+                # Subentrare vuol dire entrare nel contratto del cedente:
+                # è quello che dice l'atto di subentro. Correggibile poi
+                # dall'assegnazione, se il subentrante firma un contratto suo.
+                contract=corrente.contract,
                 valid_from=data_fine + datetime.timedelta(days=1),
                 canone_mensile=v["canone_mensile"],
                 costo_cessione=v.get("costo_cessione"),
@@ -928,6 +957,19 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
                 {"tenant": "L'inquilino ha già un'assegnazione in corso."}
             )
 
+        # Il contratto sotto cui entra. Un `contract` assente dalla richiesta
+        # significa "non me ne sono occupato": si propone quello attivo alla
+        # data. Un `contract: null` esplicito significa "nessun contratto" e
+        # va rispettato — è la scelta di chi non vuole che veda quelle carte.
+        if "contract" in v:
+            contract = v["contract"]
+        else:
+            contract = prop.contratto_attivo(valid_from)
+        if contract is not None and contract.property_id != prop.pk:
+            raise ValidationError(
+                {"contract": "Il contratto appartiene a un altro immobile."}
+            )
+
         deposito_totale = v.get("deposito_totale")
         rate_deposito = v.get("rate_deposito") or []
         if deposito_totale is not None:
@@ -978,6 +1020,7 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
             nuovo = RoomAssignment(
                 room=room,
                 tenant=tenant,
+                contract=contract,
                 valid_from=valid_from,
                 canone_mensile=v["canone_mensile"],
             )

@@ -19,6 +19,10 @@ export interface DocumentoFE {
   tenant_nominativo?: string;
   property?: number;
   visibile_inquilini?: boolean;
+  /** Documenti immobile: contratto a cui la carta appartiene (null = carta
+   *  della casa). */
+  contract?: number | null;
+  contract_nome?: string;
 }
 
 export interface TipoDocumentoOption {
@@ -143,6 +147,7 @@ function creaDocumentiStore(
       async caricaTipizzati(payload: {
         voci: { file: File; tipo: string; descrizione?: string }[];
         visibileInquilini?: boolean;
+        contract?: number | null;
         targetId?: number;
       }): Promise<{ ok: number; falliti: number }> {
         this.uploading = true;
@@ -169,6 +174,7 @@ function creaDocumentiStore(
         descrizione?: string;
         dataScadenza?: string | null;
         visibileInquilini?: boolean;
+        contract?: number | null;
         targetId?: number;
       }): Promise<DocumentoFE | null> {
         try {
@@ -179,6 +185,7 @@ function creaDocumentiStore(
           if (payload.dataScadenza) form.append('data_scadenza', payload.dataScadenza);
           if (payload.visibileInquilini !== undefined)
             form.append('visibile_inquilini', payload.visibileInquilini ? 'true' : 'false');
+          if (payload.contract) form.append('contract', String(payload.contract));
           if (payload.targetId) form.append(targetField, String(payload.targetId));
           const { data } = await api.post<DocumentoFE>(endpoint, form);
           this.documenti.unshift(data);

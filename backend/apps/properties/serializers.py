@@ -325,12 +325,15 @@ class TenantDocumentSerializer(serializers.ModelSerializer):
 class PropertyDocumentSerializer(serializers.ModelSerializer):
     tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
     scaduto = serializers.BooleanField(read_only=True)
+    contract_nome = serializers.SerializerMethodField()
 
     class Meta:
         model = PropertyDocument
         fields = [
             "id",
             "property",
+            "contract",
+            "contract_nome",
             "tipo",
             "tipo_display",
             "file",
@@ -342,6 +345,11 @@ class PropertyDocumentSerializer(serializers.ModelSerializer):
         ]
         # La property è imposta dalla view (l'immobile attivo della richiesta).
         extra_kwargs = {"property": {"required": False, "read_only": True}}
+
+    def get_contract_nome(self, obj) -> str:
+        if not obj.contract_id:
+            return ""
+        return obj.contract.nome or f"Contratto dal {obj.contract.data_decorrenza}"
 
 
 class RoomSerializer(serializers.ModelSerializer):
@@ -524,6 +532,7 @@ class PublicGallerySerializer(serializers.ModelSerializer):
 class RoomAssignmentSerializer(serializers.ModelSerializer):
     tenant_nominativo = serializers.CharField(source="tenant.nominativo", read_only=True)
     room_nome = serializers.CharField(source="room.nome", read_only=True)
+    contract_nome = serializers.SerializerMethodField()
 
     class Meta:
         model = RoomAssignment
@@ -533,6 +542,8 @@ class RoomAssignmentSerializer(serializers.ModelSerializer):
             "room_nome",
             "tenant",
             "tenant_nominativo",
+            "contract",
+            "contract_nome",
             "valid_from",
             "valid_to",
             "canone_mensile",
@@ -542,6 +553,13 @@ class RoomAssignmentSerializer(serializers.ModelSerializer):
             "subentra_a",
             "note",
         ]
+
+    def get_contract_nome(self, obj) -> str:
+        """Etichetta del contratto come la vede l'utente (il nome, o le date
+        se il contratto non ne ha uno)."""
+        if not obj.contract_id:
+            return ""
+        return obj.contract.nome or f"Contratto dal {obj.contract.data_decorrenza}"
 
 
 class CessioneAssignmentSerializer(serializers.Serializer):
@@ -584,6 +602,11 @@ class PrimaAssegnazioneSerializer(serializers.Serializer):
     # Room della property. Obbligatorio per gli immobili a stanze.
     room = serializers.PrimaryKeyRelatedField(
         queryset=Room.objects.all(), required=False, allow_null=True
+    )
+    # Facoltativo: se assente si propone il contratto attivo alla data di
+    # ingresso. Senza contratto l'inquilino non vede le carte del contratto.
+    contract = serializers.PrimaryKeyRelatedField(
+        queryset=Contract.objects.all(), required=False, allow_null=True
     )
     valid_from = serializers.DateField()
     canone_mensile = serializers.DecimalField(

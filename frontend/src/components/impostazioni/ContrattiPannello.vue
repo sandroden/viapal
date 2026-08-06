@@ -30,7 +30,49 @@
             <EtichettaStato tono="ok">{{ etichettaValidita(c) }}</EtichettaStato>
             <EtichettaStato v-if="c.asseverato" tono="line">Asseverato</EtichettaStato>
           </template>
-          <template #meta>{{ dettaglio(c) }}</template>
+          <template #meta>
+            <span class="imm-contratto__meta">
+              {{ dettaglio(c) }}
+              <!-- I file del contratto vivono sulla sua riga: partendo da
+                   qui l'associazione è implicita, non da ricordare. -->
+              <span class="imm-contratto__file">
+                <span v-for="d in fileDi(c.id)" :key="d.id" class="imm-dc-gruppo">
+                  <button
+                    type="button"
+                    class="imm-dc"
+                    :title="`${d.tipo_display} — apri`"
+                    @click="apriFile(d)"
+                  >
+                    <VpIcon name="doc" :size="13" />
+                    {{ etichettaFile(d) }}
+                    <VpIcon name="open" :size="11" />
+                  </button>
+                  <!-- Un file di contratto non compare più in "Altri
+                       documenti": senza questo non sarebbe più eliminabile. -->
+                  <button
+                    v-if="puoModificare"
+                    type="button"
+                    class="imm-dc imm-dc--del"
+                    :aria-label="`Elimina ${etichettaFile(d)}`"
+                    @click="eliminaFile(d)"
+                  >
+                    <VpIcon name="trash" :size="12" />
+                    <q-tooltip>Elimina il file</q-tooltip>
+                  </button>
+                </span>
+                <button
+                  v-if="puoModificare"
+                  type="button"
+                  class="imm-dc imm-dc--add"
+                  :data-testid="`aggiungi-file-${c.id}`"
+                  @click="apriCaricamento(c.id)"
+                >
+                  <VpIcon name="plus" :size="12" />
+                  {{ mancaIlFirmato(c) ? 'manca il firmato — aggiungi' : 'Aggiungi file' }}
+                </button>
+              </span>
+            </span>
+          </template>
           <template #azioni>
             <AzioniRiga
               :oggetto="nomeContratto(c)"
@@ -76,7 +118,25 @@
               <EtichettaStato tono="off">Terminato il {{ dataIt(c.termine) }}</EtichettaStato>
               <EtichettaStato v-if="c.asseverato" tono="line">Asseverato</EtichettaStato>
             </template>
-            <template #meta>{{ dettaglio(c) }}</template>
+            <template #meta>
+              <span class="imm-contratto__meta">
+                {{ dettaglio(c) }}
+                <span class="imm-contratto__file">
+                  <button
+                    v-for="d in fileDi(c.id)"
+                    :key="d.id"
+                    type="button"
+                    class="imm-dc"
+                    :title="d.tipo_display"
+                    @click="apriFile(d)"
+                  >
+                    <VpIcon name="doc" :size="13" />
+                    {{ etichettaFile(d) }}
+                    <VpIcon name="open" :size="11" />
+                  </button>
+                </span>
+              </span>
+            </template>
             <template #azioni>
               <AzioniRiga
                 :oggetto="nomeContratto(c)"
@@ -264,6 +324,14 @@
       </q-card-actions>
     </q-card>
   </q-dialog>
+
+  <CaricaDocumentiSheet
+    v-model="sheetAperto"
+    :store="documentiStore"
+    :tipi="TIPI_DOCUMENTO_PROPRIETA"
+    :contratti="contratti"
+    :contratto-iniziale="contrattoPerCaricamento"
+  />
 </template>
 
 <script setup lang="ts">
@@ -271,7 +339,13 @@ import { computed, onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { api } from 'boot/axios';
 import { messaggioErrore } from 'src/utils/apiErrors';
+import {
+  useDocumentiProprietaStore,
+  TIPI_DOCUMENTO_PROPRIETA,
+  type DocumentoFE,
+} from 'stores/documenti';
 import VpIcon from 'components/utenze/VpIcon.vue';
+import CaricaDocumentiSheet from './CaricaDocumentiSheet.vue';
 import CardSezione from './ui/CardSezione.vue';
 import RigaElenco from './ui/RigaElenco.vue';
 import TileIcona from './ui/TileIcona.vue';
@@ -309,6 +383,7 @@ interface Owner {
 defineProps<{ puoModificare: boolean }>();
 
 const $q = useQuasar();
+const documentiStore = useDocumentiProprietaStore();
 
 const OPZIONI_REGIME = [
   { label: 'Cedolare secca 10%', value: 'cedolare_10' },
@@ -366,6 +441,59 @@ function asArray<T>(data: T[] | { results: T[] } | undefined | null): T[] {
   return Array.isArray(data) ? data : (data.results ?? []);
 }
 
+// ---------------------------------------------------------------------------
+// I file del contratto, sulla riga del contratto
+// ---------------------------------------------------------------------------
+
+const sheetAperto = ref(false);
+const contrattoPerCaricamento = ref<number | null>(null);
+
+function fileDi(contractId: number): DocumentoFE[] {
+  return documentiStore.documenti.filter((d) => d.contract === contractId);
+}
+
+/** Il nome del file caricato, non il tipo: "contratto firmato.pdf" dice più
+ *  di "Contratto di locazione" quando i file sono tre. */
+function etichettaFile(d: DocumentoFE): string {
+  const nome = decodeURIComponent(d.file.split('/').pop() ?? '');
+  return nome || d.tipo_display;
+}
+
+function apriFile(d: DocumentoFE) {
+  window.open(d.file, '_blank', 'noopener');
+}
+
+/** Segnala il buco più comune: il contratto senza la sua copia firmata. */
+function mancaIlFirmato(c: Contratto): boolean {
+  return !fileDi(c.id).some((d) => d.tipo === 'contratto');
+}
+
+function apriCaricamento(contractId: number) {
+  contrattoPerCaricamento.value = contractId;
+  sheetAperto.value = true;
+}
+
+function eliminaFile(d: DocumentoFE) {
+  $q.dialog({
+    title: 'Eliminare il file?',
+    message: `"${etichettaFile(d)}" verrà rimosso dal contratto.`,
+    cancel: { flat: true, label: 'Annulla' },
+    ok: { color: 'negative', label: 'Elimina' },
+  }).onOk(() => {
+    void (async () => {
+      const ok = await documentiStore.elimina(d.id);
+      $q.notify(
+        ok
+          ? { type: 'positive', message: 'File eliminato.' }
+          : {
+              type: 'negative',
+              message: documentiStore.errore ?? 'Eliminazione non riuscita.',
+            },
+      );
+    })();
+  });
+}
+
 async function carica() {
   loading.value = true;
   try {
@@ -385,7 +513,12 @@ async function carica() {
   }
 }
 
-onMounted(carica);
+onMounted(() => {
+  void carica();
+  // I documenti servono ai chip sulla riga: lo store è condiviso con la card
+  // "Altri documenti", che carica gli stessi dati una volta sola.
+  if (documentiStore.documenti.length === 0) void documentiStore.fetch();
+});
 
 // ---------------------------------------------------------------------------
 // Dialog
@@ -551,6 +684,63 @@ function elimina(c: Contratto) {
   font-size: 13px;
   color: var(--vp-ink-3);
   padding: 10px 2px;
+}
+.imm-contratto__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.imm-contratto__file {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.imm-dc {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 1px solid var(--vp-paper-3);
+  background: var(--vp-cream);
+  font-family: var(--vp-font-ui);
+  font-size: 12px;
+  color: var(--vp-ink-2);
+  cursor: pointer;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    border-color 0.12s,
+    color 0.12s;
+}
+.imm-dc:hover {
+  border-color: var(--vp-terra);
+  color: var(--vp-terra-deep);
+}
+.imm-dc--add {
+  border-style: dashed;
+  background: transparent;
+  color: var(--vp-ink-3);
+}
+.imm-dc-gruppo {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.imm-dc--del {
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--vp-ink-4);
+}
+.imm-dc--del:hover {
+  border-color: transparent;
+  background: var(--vp-clay-soft);
+  color: var(--vp-clay);
 }
 .imm-arch {
   display: flex;

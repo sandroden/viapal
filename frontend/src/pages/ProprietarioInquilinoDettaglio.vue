@@ -744,6 +744,7 @@
                         <span v-if="a.data_atto_cessione">
                           · cessione {{ formattaData(a.data_atto_cessione) }}
                         </span>
+                        · {{ a.contract_nome || 'nessun contratto' }}
                       </q-item-label>
                     </q-item-section>
                     <q-item-section v-if="puoModificare && a.valid_to === null" side>
@@ -936,6 +937,20 @@
             outlined
             dense
             data-testid="correggi-valid-from"
+          />
+          <!-- Il contratto non tocca gli addebiti: dice quali carte del
+               contratto l'inquilino vede nella sua area. -->
+          <q-select
+            v-model="formCorreggi.contract"
+            :options="opzioniContratti"
+            label="Contratto"
+            outlined
+            dense
+            emit-value
+            map-options
+            clearable
+            hint="Senza contratto, l'inquilino non vede le carte di nessun contratto."
+            data-testid="correggi-contratto"
           />
           <q-banner v-if="erroreCorreggi" class="vp-p-id__banner-errore" rounded dense>
             {{ erroreCorreggi }}
@@ -1672,10 +1687,31 @@ const dialogCorreggi = ref(false);
 const assignmentCorreggi = ref<AssignmentRiga | null>(null);
 const salvandoCorreggi = ref(false);
 const erroreCorreggi = ref('');
-const formCorreggi = ref({
+const formCorreggi = ref<{
+  canone_mensile: string;
+  valid_from: string;
+  contract: number | null;
+}>({
   canone_mensile: '',
   valid_from: '',
+  contract: null,
 });
+
+interface ContrattoApi {
+  id: number;
+  nome: string;
+  data_decorrenza: string;
+  termine: string | null;
+}
+
+const contratti = ref<ContrattoApi[]>([]);
+
+const opzioniContratti = computed(() =>
+  contratti.value.map((c) => ({
+    label: c.nome || `Contratto dal ${c.data_decorrenza}`,
+    value: c.id,
+  })),
+);
 
 function apriDialogCorreggi(a: AssignmentRiga): void {
   assignmentCorreggi.value = a;
@@ -1683,8 +1719,22 @@ function apriDialogCorreggi(a: AssignmentRiga): void {
   formCorreggi.value = {
     canone_mensile: String(a.canone_mensile),
     valid_from: a.valid_from,
+    contract: a.contract ?? null,
   };
+  if (contratti.value.length === 0) void caricaContratti();
   dialogCorreggi.value = true;
+}
+
+async function caricaContratti(): Promise<void> {
+  try {
+    const { data } = await api.get<ContrattoApi[] | { results: ContrattoApi[] }>(
+      '/api/v1/contracts/',
+    );
+    contratti.value = Array.isArray(data) ? data : (data.results ?? []);
+  } catch {
+    // La correzione resta possibile anche senza l'elenco: il campo resta
+    // vuoto e il PATCH non lo tocca.
+  }
 }
 
 function sintesiRigenera(esito: EsitoRigenera): string {
@@ -1719,12 +1769,15 @@ async function salvaCorrezione(): Promise<void> {
   try {
     // PATCH con i soli campi cambiati (idempotente: un nuovo click dopo un
     // fallimento della rigenerazione lo ripete senza danni).
-    const payload: Record<string, string> = {};
+    const payload: Record<string, string | number | null> = {};
     if (Number(f.canone_mensile) !== Number(a.canone_mensile)) {
       payload.canone_mensile = f.canone_mensile;
     }
     if (f.valid_from !== a.valid_from) {
       payload.valid_from = f.valid_from;
+    }
+    if ((f.contract ?? null) !== (a.contract ?? null)) {
+      payload.contract = f.contract;
     }
     if (Object.keys(payload).length > 0) {
       await api.patch(`/api/v1/room-assignments/${a.id}/`, payload);

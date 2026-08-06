@@ -11,7 +11,9 @@ Matrice di accesso (oltre al superuser, che passa sempre via
 - ``documenti/`` (TenantDocument): l'inquilino stesso; i membri della
   proprietà dell'inquilino.
 - ``documenti-proprieta/`` (PropertyDocument): i membri della proprietà;
-  se ``visibile_inquilini``, anche gli inquilini della proprietà.
+  se ``visibile_inquilini``, anche gli inquilini della proprietà — ma se il
+  documento è collegato a un contratto, solo quelli la cui assegnazione sta
+  sotto quel contratto.
 - ``bollette/`` (UtilityBill): membri e inquilini dell'immobile (le
   bollette sono mostrate agli inquilini in /i/utenze).
 - ``ricevute/`` (Receivable.ricevuta): l'inquilino dell'assegnazione;
@@ -45,14 +47,26 @@ def _autorizza_documento_inquilino(user, path, property_ids):
 
 
 def _autorizza_documento_proprieta(user, path, property_ids):
-    from properties.models import PropertyDocument
+    from properties.models import PropertyDocument, RoomAssignment
 
     doc = PropertyDocument.objects.filter(file=path).first()
     if doc is None:
         raise Http404
     if doc.property_id in property_ids:
         return True
-    return doc.visibile_inquilini and _tenant_property_id(user) == doc.property_id
+    if not doc.visibile_inquilini:
+        return False
+    profilo = getattr(user, "tenant_profile", None)
+    if profilo is None or profilo.property_id != doc.property_id:
+        return False
+    if doc.contract_id is None:
+        return True
+    # Carta di un contratto: la vede solo chi ci sta dentro. Il filtro sta
+    # anche nella lista API, ma qui è quello che conta — con l'URL in mano
+    # si scaricherebbe comunque.
+    return RoomAssignment.objects.filter(
+        tenant=profilo, contract_id=doc.contract_id
+    ).exists()
 
 
 def _autorizza_bolletta(user, path, property_ids):

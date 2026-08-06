@@ -54,11 +54,23 @@
           </div>
         </div>
 
+        <!-- Un solo campo decide dove finiscono i file: un contratto o la
+             casa. Aperto dal «+» di un contratto, è già compilato. -->
+        <q-select
+          v-model="contract"
+          :options="opzioniDestinazione"
+          label="Collega a"
+          outlined
+          dense
+          emit-value
+          map-options
+          hint="I file di un contratto compaiono sulla sua riga. «La casa» per regolamento e documenti generali."
+          data-testid="carica-collega-a"
+        />
+
         <q-toggle v-model="visibile" dense class="imm-sheet__vis">
           <span class="imm-sheet__vis-testo">Visibile agli inquilini</span>
-          <span class="imm-sheet__vis-nota">
-            — compare nella loro pagina «I miei documenti»
-          </span>
+          <span class="imm-sheet__vis-nota">{{ notaVisibilita }}</span>
         </q-toggle>
 
         <q-banner v-if="errore" class="vp-banner-errore" rounded dense>{{ errore }}</q-banner>
@@ -81,17 +93,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import type { DocumentiStore, TipoDocumentoOption } from 'stores/documenti';
 import VpIcon from 'components/utenze/VpIcon.vue';
 import BtnIcona from './ui/BtnIcona.vue';
 import TileIcona from './ui/TileIcona.vue';
 
-const props = defineProps<{
-  store: DocumentiStore;
-  tipi: TipoDocumentoOption[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    store: DocumentiStore;
+    tipi: TipoDocumentoOption[];
+    /** Contratti dell'immobile, per il campo «Collega a». */
+    contratti?: { id: number; nome: string; data_decorrenza: string }[];
+    /** Destinazione preselezionata: il contratto da cui si è aperto il
+     *  foglio, o null per la casa. */
+    contrattoIniziale?: number | null;
+  }>(),
+  { contratti: () => [], contrattoIniziale: null },
+);
 
 const emit = defineEmits<{ (e: 'caricati'): void }>();
 
@@ -109,6 +129,21 @@ const visibile = ref(false);
 const sopra = ref(false);
 const errore = ref('');
 const inputFile = ref<HTMLInputElement | null>(null);
+const contract = ref<number | null>(props.contrattoIniziale);
+
+const opzioniDestinazione = computed(() => [
+  { label: 'La casa (documento generale)', value: null },
+  ...props.contratti.map((c) => ({
+    label: `Contratto · ${c.nome || `dal ${c.data_decorrenza}`}`,
+    value: c.id,
+  })),
+]);
+
+const notaVisibilita = computed(() =>
+  contract.value === null
+    ? '— compare nella loro pagina «I miei documenti»'
+    : '— collegato a un contratto, solo agli inquilini che vi stanno dentro',
+);
 
 /** Il tipo si indovina dal nome del file: chi carica «side letter.pdf» non
  *  deve anche dire che è una side letter. Resta correggibile riga per riga. */
@@ -118,7 +153,8 @@ function tipoDaNome(nome: string): string {
     [/side.?letter/, 'side_letter'],
     [/registrazion|ricevuta|rli/, 'registrazione_contratto'],
     [/regolament/, 'regolamento_condominiale'],
-    [/contratt|locazion/, 'contratto'],
+    // "firmato" da solo basta: la copia firmata è quasi sempre il contratto.
+    [/contratt|locazion|firmat/, 'contratto'],
   ];
   for (const [re, tipo] of indizi) {
     if (re.test(n) && props.tipi.some((t) => t.value === tipo)) return tipo;
@@ -152,13 +188,21 @@ function svuota() {
   voci.value = [];
   visibile.value = false;
   errore.value = '';
+  contract.value = props.contrattoIniziale;
 }
+
+// Riaprendo il foglio dal «+» di un altro contratto, la destinazione è
+// quella nuova: il valore rimasto dall'apertura precedente sarebbe sbagliato.
+watch(aperto, (ora) => {
+  if (ora) contract.value = props.contrattoIniziale;
+});
 
 async function carica() {
   errore.value = '';
   const { ok, falliti } = await props.store.caricaTipizzati({
     voci: voci.value.map((v) => ({ file: v.file, tipo: v.tipo })),
     visibileInquilini: visibile.value,
+    contract: contract.value,
   });
   if (falliti) {
     errore.value = props.store.errore ?? `${falliti} file non caricati.`;

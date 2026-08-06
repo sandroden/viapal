@@ -20,9 +20,9 @@
     </div>
     <div v-else class="imm-elenco">
       <RigaElenco
-        v-for="(d, i) in store.documenti"
+        v-for="(d, i) in documentiCasa"
         :key="d.id"
-        :ultima="i === store.documenti.length - 1"
+        :ultima="i === documentiCasa.length - 1"
         data-testid="riga-documento"
       >
         <template #tile><TileIcona :icona="icona(d.tipo)" /></template>
@@ -64,18 +64,24 @@
           />
         </template>
       </RigaElenco>
-      <div v-if="store.documenti.length === 0" class="imm-vuoto">
+      <div v-if="documentiCasa.length === 0" class="imm-vuoto">
         Nessun documento della casa caricato.
       </div>
     </div>
   </CardSezione>
 
-  <CaricaDocumentiSheet v-model="sheetAperto" :store="store" :tipi="tipi" />
+  <CaricaDocumentiSheet
+    v-model="sheetAperto"
+    :store="store"
+    :tipi="tipi"
+    :contratti="contratti"
+  />
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
+import { api } from 'boot/axios';
 import {
   useDocumentiProprietaStore,
   TIPI_DOCUMENTO_PROPRIETA,
@@ -98,9 +104,27 @@ const tipi = TIPI_DOCUMENTO_PROPRIETA;
 
 const sheetAperto = ref(false);
 
+/** Le carte di un contratto vivono sulla riga del contratto: qui restano
+ *  solo quelle della casa, che non appartengono a nessuno di essi. */
+const documentiCasa = computed(() => store.documenti.filter((d) => !d.contract));
+
+const contratti = ref<{ id: number; nome: string; data_decorrenza: string }[]>([]);
+
 onMounted(() => {
   void store.fetch();
+  void caricaContratti();
 });
+
+async function caricaContratti() {
+  try {
+    const { data } = await api.get<
+      { id: number; nome: string; data_decorrenza: string }[] | { results: never[] }
+    >('/api/v1/contracts/');
+    contratti.value = Array.isArray(data) ? data : (data.results ?? []);
+  } catch {
+    // Senza elenco il foglio resta usabile: si carica per la casa.
+  }
+}
 
 function icona(tipo: string): string {
   switch (tipo) {

@@ -606,6 +606,20 @@ class RoomAssignment(TimestampedModel):
         related_name="assignments",
         verbose_name="inquilino",
     )
+    contract = models.ForeignKey(
+        "properties.Contract",
+        on_delete=models.SET_NULL,
+        related_name="assignments",
+        null=True,
+        blank=True,
+        verbose_name="contratto",
+        help_text=(
+            "Facoltativo: il contratto di locazione sotto cui sta questa "
+            "occupazione. Serve a dire quali carte del contratto competono "
+            "all'inquilino: senza contratto indicato, l'inquilino non vede i "
+            "documenti collegati a un contratto."
+        ),
+    )
     valid_from = models.DateField(
         verbose_name="inizio occupazione",
     )
@@ -696,6 +710,16 @@ class RoomAssignment(TimestampedModel):
         self._valida_stessa_property()
         self._valida_no_overlap()
         self._valida_subentro()
+        self._valida_contratto()
+
+    def _valida_contratto(self):
+        """Il contratto, se indicato, è dell'immobile della stanza."""
+        if not self.contract_id or not self.room_id:
+            return
+        if self.contract.property_id != self.room.property_id:
+            raise ValidationError(
+                {"contract": "Il contratto è di un altro immobile."}
+            )
 
     def _valida_subentro(self):
         """L'assegnazione a cui si subentra deve essere un'altra, dello
@@ -796,6 +820,20 @@ class PropertyDocument(TimestampedModel):
         related_name="documenti",
         verbose_name="immobile",
     )
+    contract = models.ForeignKey(
+        "properties.Contract",
+        on_delete=models.SET_NULL,
+        related_name="documenti",
+        null=True,
+        blank=True,
+        verbose_name="contratto",
+        help_text=(
+            "Facoltativo: il contratto a cui il documento appartiene "
+            "(firmato, side letter, ricevuta di registrazione). Se "
+            "valorizzato e il documento è visibile agli inquilini, lo vedono "
+            "solo quelli la cui occupazione sta sotto questo contratto."
+        ),
+    )
     tipo = models.CharField(
         max_length=30,
         choices=Tipo.choices,
@@ -848,6 +886,14 @@ class PropertyDocument(TimestampedModel):
 
     def __str__(self):
         return f"{self.get_tipo_display()} — {self.property.nome}"
+
+    def clean(self):
+        super().clean()
+        if self.contract_id and self.property_id:
+            if self.contract.property_id != self.property_id:
+                raise ValidationError(
+                    {"contract": "Il contratto è di un altro immobile."}
+                )
 
     # builtins.property: il campo `property` oscura il builtin nel corpo classe
     @builtins.property
