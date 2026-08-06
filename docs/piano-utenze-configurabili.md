@@ -119,21 +119,72 @@ nuovo funziona subito.
   email/UI + icona. Solo a questo punto la bolletta Magis si riclassifica
   `gas → acqua` (prima no: sparirebbe dal calcolo) e serve il template parser
   per il fornitore d'acqua.
-- **Fase 3 — rifiniture.** Cadenza attesa che rende la completezza tollerante
-  (gas bimestrale: il mese "scoperto" non blocca), warning incoerenze admin,
-  nota lato inquilino, serie acqua nell'Andamento.
+- **Fase 2b — conguagli retroattivi.** Attribuzione v3 day-based con guardia
+  temporale (sezione 8).
+- **Fase 3 — rifiniture.** Warning incoerenze admin, nota lato inquilino,
+  serie acqua nell'Andamento. (La cadenza attesa è stata scartata: si legge
+  dalla bolletta, e per i mesi scoperti resta il "Procedi comunque".)
 
-## 6. Decisioni aperte
+## 6. Decisioni prese (Sandro, 2026-08-06)
 
-1. **Collocazione UI**: pannello dentro il tab `spese` (proposta) o tab
-   dedicato `utenze`?
-2. **Permessi**: la config la modificano solo i proprietari o anche il
-   gestore? (proposta: come le altre anagrafiche della casa → proprietari)
-3. **Fase 2 subito o più avanti?** La Magis registrata come gas funziona già;
-   la riclassificazione può aspettare. Se l'etichetta "Gas" sulla bolletta
-   dell'acqua dà fastidio prima, si può anticipare la sola parte cosmetica.
-4. **Cadenza attesa**: serve davvero o il "Procedi comunque" basta per i mesi
-   scoperti dei bimestrali?
+1. **Collocazione UI**: dentro il tab `spese`.
+2. **Permessi**: anche i **gestori** possono modificare la configurazione
+   (non solo i proprietari).
+3. **Fase 2 subito.** Attenzione: in un appartamento è normale che anche luce
+   e gas siano intestate all'inquilino → **nessuna voce è obbligatoria**;
+   luce/gas = proprietà è solo il default del seed, sempre modificabile.
+4. **Niente cadenza attesa** (si legge dalla bolletta); il "Procedi comunque"
+   resta per i mesi scoperti. In compenso serve la gestione dei **conguagli
+   retroattivi** (sezione 8): un conguaglio che riprende mesi già addebitati
+   non può andare perso.
+
+## 8. Conguagli retroattivi (caso Edison)
+
+Requisito (Sandro): se l'addebito di aprile è già stato emesso e a luglio
+arriva un conguaglio che copre anche aprile, quell'importo **non può andare
+perso**: va imputato tutto al primo mese dopo l'ultimo addebito creato.
+Edison lo faceva *spesso*.
+
+Stato attuale: dopo il redesign 2026-05-31 ("ogni bolletta ha il suo periodo",
+niente ribaltamento) la quota che cade su mesi già emessi semplicemente non
+viene addebitata a nessuno. C'è anche un difetto latente collegato: una
+bolletta a cavallo di due mesi viene **pinnata per intero** dal primo periodo
+che si emette (`consumed_ids` in `_attribuisci_bollette`) e quindi esclusa
+dall'altro mese, la cui quota pro-rata va persa se i periodi non si emettono
+nell'ordine giusto.
+
+### Algoritmo di attribuzione v3 (day-based)
+
+Per un periodo P in bozza, per ogni bolletta B:
+
+1. **Quota propria**: pro-rata sui giorni di `B ∩ P` (come oggi).
+2. **Giorni già coperti**: i giorni di B che cadono in periodi `inviato` non
+   si contano mai come quota propria di P (sono congelati lì).
+3. **Quota retroattiva**: i giorni di B che cadono in periodi `inviato` che
+   NON hanno pinnato B **e** la cui emissione è precedente al caricamento
+   della bolletta (`B.created > E.data_invio` — la guardia temporale) si
+   ribaltano **tutti sul periodo target** = il primo periodo non emesso dopo
+   la fine dell'ultimo periodo `inviato` della property. Se P è il target,
+   P se li prende.
+4. L'esclusione binaria `consumed_ids` viene sostituita dal conteggio per
+   giorni: una bolletta pinnata da un periodo inviato resta conteggiabile
+   negli altri mesi che copre (fix del difetto latente).
+5. La modalità pinning manuale (M2M popolata a mano su un periodo) resta
+   "verità manuale" e ha la precedenza, come oggi.
+
+La **guardia temporale** è ciò che evita di resuscitare il bug "992 €"
+(2026-05-31): le bollette storiche importate *prima* dell'emissione dei loro
+periodi non ribaltano nulla; ribalta solo ciò che è arrivato *dopo* che il suo
+mese era già stato addebitato (il conguaglio Edison).
+
+Trasparenza: l'anteprima espone le quote retroattive (`arretrati`: bolletta,
+periodo coperto, importo) e la UI le mostra nel passo Ripartizione, così il
+totale "gonfiato" del mese target è spiegato.
+
+Verifiche chiave nei test: somma delle quote sui periodi = importo ripartibile
+della bolletta in ogni ordine di emissione; conguaglio retro → tutto sul
+target; import storico → nessun ribaltamento; bolletta bimestrale emessa in
+ordine inverso → nessuna perdita.
 
 ## 7. Impatti e rischi
 
