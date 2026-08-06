@@ -1000,12 +1000,12 @@ class TestGuardiaAllocation:
 
 class TestAttribuzioneBolletta:
     """La bolletta si attribuisce in pro-rata sui giorni di intersezione col
-    periodo, dopo aver troncato le porzioni che cadono in periodi `inviato`.
+    periodo (attribuzione v3 day-based, 2026-08-06).
 
-    Caso operativo: a fine mese arriva una bolletta etichettata "gen-apr" ma
-    gen-feb era già stato fatturato con un'altra bolletta. La porzione gen-feb
-    si comprime: tutto l'importo si attribuisce su mar-apr (l'unico periodo
-    rimasto nel range bolletta).
+    I giorni che cadono in periodi `inviato` restano congelati lì; se però la
+    bolletta è nata DOPO la chiusura di quei periodi (conguaglio arrivato a
+    cose fatte, caso Edison) la loro fetta si ribalta come quota retroattiva
+    sul primo periodo dopo l'ultimo inviato. Vedi anche test_retro_conguagli.py.
     """
 
     def test_prodotto_gas_va_su_voce_gas_anche_con_supplier_energia(
@@ -1042,12 +1042,14 @@ class TestAttribuzioneBolletta:
     def test_bolletta_multi_mese_prorata_sul_periodo(
         self, db, make_assignment, supplier_luce, owner, immobile
     ):
-        """Bolletta gen-apr (120gg): il periodo mar-apr (61gg) prende solo la
-        sua fetta del range bolletta, a prescindere da altri periodi (anche se
-        gen-feb è chiuso). quota = 120 × 61 / 120 = 61.00."""
+        """Bolletta gen-apr (120gg) arrivata DOPO la chiusura di gen-feb: il
+        periodo mar-apr prende la sua fetta (61gg) PIÙ la fetta gen-feb come
+        quota retroattiva (regola Edison, v3 2026-08-06): il conguaglio dei
+        mesi già addebitati non va perso, si ribalta sul primo periodo dopo
+        l'ultimo inviato. quota = 61 + 59 = 120.00."""
         from billing.calc.utility import calcola_conguaglio_periodo
 
-        # gen-feb chiuso: NON deve influenzare il calcolo di mar-apr
+        # gen-feb chiuso PRIMA dell'arrivo della bolletta (created_at minore)
         UtilityChargePeriod.objects.create(
             property=immobile,
             periodo_da=datetime.date(2025, 1, 1),
@@ -1073,10 +1075,13 @@ class TestAttribuzioneBolletta:
         make_assignment(valid_from=datetime.date(2025, 1, 1))
 
         ris = calcola_conguaglio_periodo(mar_apr.pk)
-        # 120 × 61 / 120 = 61.00 (la fetta mar-apr della bolletta gen-apr).
-        assert ris["totali_per_voce"]["luce"] == Decimal("61.00"), (
-            f"Atteso 61.00, trovato {ris['totali_per_voce']['luce']}"
+        # 61 (mar-apr, quota propria) + 59 (gen-feb, retroattiva) = 120.00
+        assert ris["totali_per_voce"]["luce"] == Decimal("120.00"), (
+            f"Atteso 120.00, trovato {ris['totali_per_voce']['luce']}"
         )
+        assert len(ris["arretrati"]) == 1
+        assert ris["arretrati"][0]["giorni"] == 59
+        assert ris["arretrati"][0]["importo"] == Decimal("59.00")
 
     def test_bolletta_non_finisce_su_mese_che_non_copre(
         self, db, make_assignment, supplier_luce, owner, immobile

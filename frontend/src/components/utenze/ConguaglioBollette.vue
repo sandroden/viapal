@@ -37,6 +37,7 @@ const props = defineProps<{
   needsEmetti: boolean;
   giaInviatoAt?: string | null;
   forzato?: boolean;
+  arretrati?: { label: string; importo: number }[];
 }>();
 
 const emit = defineEmits<{
@@ -150,6 +151,18 @@ function setStep(n: number): void {
       <div v-if="incompleto && forzato" class="parziale">
         <VpIcon name="alert" :size="15" color="var(--vp-clay)" />
         Ripartizione parziale: si procede senza {{ senzaVoci }}.
+      </div>
+
+      <!-- Conguagli arretrati ribaltati su questo mese -->
+      <div v-if="arretrati?.length" class="arretrati">
+        <VpIcon name="refresh" :size="15" color="var(--vp-sage-deep)" />
+        <span>
+          Include conguagli arretrati su mesi già addebitati:
+          <template v-for="(a, i) in arretrati" :key="a.label"
+            ><template v-if="i > 0"> · </template><b>{{ a.label }}</b>
+            ({{ eur(a.importo) }})</template
+          >
+        </span>
       </div>
     </div>
 
@@ -452,6 +465,18 @@ function setStep(n: number): void {
   border-radius: 10px;
   background: var(--vp-clay-soft);
   color: var(--vp-clay);
+  font-size: 13px;
+}
+
+.arretrati {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--vp-sage-soft);
+  color: var(--vp-sage-deep);
   font-size: 13px;
 }
 

@@ -52,6 +52,7 @@
       :needs-emetti="needsEmetti"
       :gia-inviato-at="store.period?.avvisi_inviati_at ?? null"
       :forzato="forzato"
+      :arretrati="arretratiView"
       @forza="onForza"
       @cambia-periodo="onCambiaPeriodo"
       @update:criterio="(c) => (criterio = c)"
@@ -284,6 +285,15 @@ const bolletteView = computed<BollettaView[]>(() => {
   }
   return cards;
 });
+
+// Conguagli arretrati ribaltati su questo periodo (bollette arrivate dopo
+// l'emissione dei mesi che coprono): mostrati nel wizard per trasparenza.
+const arretratiView = computed(() =>
+  (store.anteprima?.arretrati ?? []).map((a) => ({
+    label: `${prodottoToTipo(a.prodotto)} ${rangePeriodo(a.periodo_da, a.periodo_a)}`,
+    importo: typeof a.importo === 'string' ? parseFloat(a.importo) : a.importo,
+  })),
+);
 
 // Totale escluso dalla ripartizione (a carico proprietà). Dall'anteprima se
 // disponibile (pro-rata corretto sul periodo), altrimenti dalle bollette.

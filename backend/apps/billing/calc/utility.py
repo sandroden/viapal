@@ -33,32 +33,46 @@ def _arrotonda(valore: Decimal) -> Decimal:
     return valore.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list, list[dict]]:
+def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list, list[dict], list[dict]]:
     """Decide quali UtilityBill contribuiscono a `period` e con quale importo.
 
-    Regola **semplice e locale**: un periodo prende solo le bollette il cui
-    intervallo ``[periodo_da, periodo_a]`` si sovrappone al periodo, in pro-rata
-    sui giorni di sovrapposizione fra bolletta e periodo. Una bolletta non
-    finisce mai su un mese che non copre: niente "ribaltamento" di bollette in
-    ritardo su mesi futuri, e il calcolo di un periodo NON dipende da quali
-    altri periodi esistono o sono chiusi. Una bolletta che copre N mesi viene
-    ripartita su quei mesi: la somma delle quote = importo ripartibile della
-    bolletta.
+    Attribuzione **day-based** (v3, vedi docs/piano-utenze-configurabili.md §8):
+
+    - **Quota propria**: un periodo prende le bollette il cui intervallo
+      ``[periodo_da, periodo_a]`` si sovrappone al periodo, in pro-rata sui
+      giorni di sovrapposizione. Una bolletta che copre N mesi viene ripartita
+      su quei mesi: la somma delle quote = importo ripartibile della bolletta,
+      **qualunque sia l'ordine di emissione** (i giorni che cadono in periodi
+      ``inviato`` restano congelati lì, gli altri restano attribuibili).
+    - **Quota retroattiva** (caso Edison): i giorni di una bolletta che cadono
+      in periodi ``inviato`` che NON l'hanno pinnata — e che sono nati prima
+      della bolletta (``bill.created_at > periodo.created_at``, la guardia che
+      esclude gli import storici) — si ribaltano tutti sul periodo **target**,
+      cioè il primo periodo che copre il giorno successivo alla fine
+      dell'ultimo periodo inviato. Così un conguaglio arrivato a luglio che
+      riprende aprile non va perso: finisce tutto sul mese dopo l'ultimo
+      addebito creato.
 
     I contributi sono al **netto** della ``quota_esclusa`` (voci a carico
     proprietà: canone RAI, aumento potenza, allacci...): la base è sempre
     ``bill.importo_ripartibile``, mai ``importo_totale``.
 
-    Restituisce ``(contributi_per_voce, bollette_utilizzate, esclusioni)``:
+    Restituisce ``(contributi_per_voce, bollette_utilizzate, esclusioni, arretrati)``:
       - ``contributi_per_voce``: ``{"luce": Decimal, "gas": Decimal}`` per il periodo (netti).
       - ``bollette_utilizzate``: bollette da agganciare alla M2M ``utility_bills``.
       - ``esclusioni``: ``[{"bill_id", "prodotto", "motivo", "quota_esclusa"}]``
         con la quota già pro-rata sul periodo.
+      - ``arretrati``: ``[{"bill_id", "prodotto", "periodo_da", "periodo_a",
+        "giorni", "importo"}]`` — le quote retroattive incluse nel periodo
+        target, per trasparenza in anteprima/UI.
 
-    Override manuale (pinning): se ``period.utility_bills`` è già popolata, quelle
-    bollette valgono per l'importo ripartibile intero (verità manuale, no
-    pro-rata). Le bollette già pinnate da un altro periodo ``inviato`` sono
-    escluse, per non riconteggiare una bolletta già attribuita altrove.
+    Override manuale (pinning): se ``period.utility_bills`` è già popolata,
+    quelle bollette valgono per l'importo ripartibile intero (verità manuale,
+    no pro-rata, niente retroattivi). Una bolletta pinnata da un periodo
+    ``inviato`` non genera mai quote retroattive; i suoi giorni FUORI dal
+    periodo che l'ha pinnata restano però attribuibili come quota propria dei
+    mesi che coprono — chi pinna a mano una bolletta su un periodo che non la
+    copre tutta se ne assume la doppia imputazione.
     """
     from billing.models import UtilityBill, UtilityChargePeriod
 
@@ -86,59 +100,104 @@ def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list, list[dict]]
                         "quota_esclusa": b.quota_esclusa,
                     }
                 )
-        return contributi, pinned, esclusioni
-
-    # Bollette già consumate (M2M) da un altro periodo inviato: escluse, per non
-    # riconteggiare una bolletta che un altro periodo ha già pinnato.
-    consumed_ids = set(
-        UtilityBill.objects.filter(periods__stato=INVIATO)
-        .exclude(periods__pk=period.pk)
-        .values_list("pk", flat=True)
-    )
+        return contributi, pinned, esclusioni, []
 
     contributi: dict[str, Decimal] = {}
     bollette_usate: list = []
+    arretrati: list[dict] = []
 
-    # Solo le bollette che si sovrappongono al periodo:
-    # periodo_da <= P_a AND periodo_a >= P_da.
-    bills = (
-        UtilityBill.objects.filter(
-            immobile_id=period.property_id,
-            prodotto__in=VOCI_FATTURABILI,
-            periodo_da__lte=P_a,
-            periodo_a__gte=P_da,
-        )
-        .exclude(pk__in=consumed_ids)
-    )
-
-    for bill in bills:
-        giorni_bolletta = (bill.periodo_a - bill.periodo_da).days + 1
-        giorni_in_P = _giorni_intersezione(bill.periodo_da, bill.periodo_a, P_da, P_a)
-        if giorni_in_P <= 0 or giorni_bolletta <= 0:
-            continue
-        if giorni_in_P >= giorni_bolletta:
-            # bolletta interamente dentro il periodo
+    def _aggiungi(bill, giorni: int, giorni_bolletta: int) -> Decimal:
+        """Somma a ``contributi``/``esclusioni`` la quota pro-rata di ``giorni``."""
+        if giorni >= giorni_bolletta:
             quota = bill.importo_ripartibile
-            esclusa_in_P = bill.quota_esclusa or Decimal("0")
+            esclusa = bill.quota_esclusa or Decimal("0")
         else:
-            frazione = Decimal(giorni_in_P) / Decimal(giorni_bolletta)
+            frazione = Decimal(giorni) / Decimal(giorni_bolletta)
             quota = bill.importo_ripartibile * frazione
-            esclusa_in_P = (bill.quota_esclusa or Decimal("0")) * frazione
+            esclusa = (bill.quota_esclusa or Decimal("0")) * frazione
         contributi[bill.prodotto] = (
             contributi.get(bill.prodotto, Decimal("0.00")) + quota
         )
-        if esclusa_in_P:
+        if esclusa:
             esclusioni.append(
                 {
                     "bill_id": bill.pk,
                     "prodotto": bill.prodotto,
                     "motivo": bill.motivo_esclusione,
-                    "quota_esclusa": esclusa_in_P,
+                    "quota_esclusa": esclusa,
                 }
             )
-        bollette_usate.append(bill)
+        if bill not in bollette_usate:
+            bollette_usate.append(bill)
+        return quota
 
-    return contributi, bollette_usate, esclusioni
+    # --- Quota propria: bollette in overlap col periodo, pro-rata sui giorni.
+    # Niente esclusione binaria delle bollette pinnate altrove: i giorni dentro
+    # i periodi inviati sono congelati lì, ma quelli che cadono qui contano qui
+    # (una bolletta a cavallo non perde più la coda se i mesi si emettono in
+    # ordine sparso).
+    bills = UtilityBill.objects.filter(
+        immobile_id=period.property_id,
+        prodotto__in=VOCI_FATTURABILI,
+        periodo_da__lte=P_a,
+        periodo_a__gte=P_da,
+    )
+    for bill in bills:
+        giorni_bolletta = (bill.periodo_a - bill.periodo_da).days + 1
+        giorni_in_P = _giorni_intersezione(bill.periodo_da, bill.periodo_a, P_da, P_a)
+        if giorni_in_P <= 0 or giorni_bolletta <= 0:
+            continue
+        _aggiungi(bill, giorni_in_P, giorni_bolletta)
+
+    # --- Quota retroattiva: solo se questo periodo è il "target", cioè copre
+    # il giorno successivo alla fine dell'ultimo periodo inviato.
+    inviati = list(
+        UtilityChargePeriod.objects.filter(
+            property_id=period.property_id, stato=INVIATO
+        ).exclude(pk=period.pk)
+    )
+    if inviati:
+        ultimo_a = max(e.periodo_a for e in inviati)
+        if P_da <= ultimo_a + timedelta(days=1) <= P_a:
+            pinnate_da_inviati = set(
+                UtilityBill.objects.filter(periods__stato=INVIATO)
+                .exclude(periods__pk=period.pk)
+                .values_list("pk", flat=True)
+            )
+            candidate = UtilityBill.objects.filter(
+                immobile_id=period.property_id,
+                prodotto__in=VOCI_FATTURABILI,
+                periodo_da__lte=ultimo_a,
+            ).exclude(pk__in=pinnate_da_inviati)
+            for bill in candidate:
+                giorni_bolletta = (bill.periodo_a - bill.periodo_da).days + 1
+                if giorni_bolletta <= 0:
+                    continue
+                giorni_retro = sum(
+                    _giorni_intersezione(
+                        bill.periodo_da, bill.periodo_a, e.periodo_da, e.periodo_a
+                    )
+                    for e in inviati
+                    # Guardia storico: ribalta solo ciò che è nato DOPO il
+                    # periodo (il conguaglio arrivato a cose fatte), mai le
+                    # bollette importate prima che i periodi esistessero.
+                    if bill.created_at > e.created_at
+                )
+                if giorni_retro <= 0:
+                    continue
+                quota = _aggiungi(bill, giorni_retro, giorni_bolletta)
+                arretrati.append(
+                    {
+                        "bill_id": bill.pk,
+                        "prodotto": bill.prodotto,
+                        "periodo_da": bill.periodo_da,
+                        "periodo_a": bill.periodo_a,
+                        "giorni": giorni_retro,
+                        "importo": quota,
+                    }
+                )
+
+    return contributi, bollette_usate, esclusioni, arretrati
 
 
 def _mesi_coperti(da: date, a: date) -> int:
@@ -243,7 +302,9 @@ def calcola_conguaglio_periodo(
         "quote": [QuotaInquilino, ...],
         "diff_arrotondamento": Decimal,      # totale_periodo - somma(quote)
         "totale_escluso": Decimal,           # quote escluse (a carico proprietà) nel periodo
-        "esclusioni": [{"bill_id", "prodotto", "motivo", "quota_esclusa"}, ...]
+        "esclusioni": [{"bill_id", "prodotto", "motivo", "quota_esclusa"}, ...],
+        "arretrati": [{"bill_id", "prodotto", "periodo_da", "periodo_a",
+                       "giorni", "importo"}, ...]   # quote retroattive (v3)
     }
 
     I totali per voce sono al netto delle quote escluse (importo_ripartibile
@@ -258,7 +319,7 @@ def calcola_conguaglio_periodo(
     periodo_a: date = period.periodo_a
 
     # --- Passo 1: attribuzione bollette al periodo (contributi già netti) ---
-    contributi, bollette_usate, esclusioni = _attribuisci_bollette(period)
+    contributi, bollette_usate, esclusioni, arretrati = _attribuisci_bollette(period)
 
     def _skip(motivo: str) -> dict:
         if persist and period.receivables.exists():
@@ -276,6 +337,7 @@ def calcola_conguaglio_periodo(
             "diff_arrotondamento": Decimal("0.00"),
             "totale_escluso": Decimal("0.00"),
             "esclusioni": [],
+            "arretrati": [],
             "skipped": motivo,
         }
 
@@ -412,6 +474,9 @@ def calcola_conguaglio_periodo(
         ),
         "esclusioni": [
             {**e, "quota_esclusa": _arrotonda(e["quota_esclusa"])} for e in esclusioni
+        ],
+        "arretrati": [
+            {**a, "importo": _arrotonda(a["importo"])} for a in arretrati
         ],
         "skippati_per_allocation": skippati_per_allocation,
         **persist_stats,

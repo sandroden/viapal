@@ -161,11 +161,12 @@ Per un periodo P in bozza, per ogni bolletta B:
 2. **Giorni già coperti**: i giorni di B che cadono in periodi `inviato` non
    si contano mai come quota propria di P (sono congelati lì).
 3. **Quota retroattiva**: i giorni di B che cadono in periodi `inviato` che
-   NON hanno pinnato B **e** la cui emissione è precedente al caricamento
-   della bolletta (`B.created > E.data_invio` — la guardia temporale) si
-   ribaltano **tutti sul periodo target** = il primo periodo non emesso dopo
-   la fine dell'ultimo periodo `inviato` della property. Se P è il target,
-   P se li prende.
+   NON hanno pinnato B **e** che esistevano già prima che la bolletta fosse
+   caricata (`B.created_at > E.created_at` — la guardia temporale; si usa la
+   nascita del periodo e non `data_invio` perché negli import storici la
+   data di invio è retrodatata) si ribaltano **tutti sul periodo target** =
+   il primo periodo che copre il giorno successivo alla fine dell'ultimo
+   periodo `inviato` della property. Se P è il target, P se li prende.
 4. L'esclusione binaria `consumed_ids` viene sostituita dal conteggio per
    giorni: una bolletta pinnata da un periodo inviato resta conteggiabile
    negli altri mesi che copre (fix del difetto latente).

@@ -51,6 +51,15 @@ export interface EsclusioneFE {
   quota_esclusa: number | string;
 }
 
+export interface ArretratoFE {
+  bill_id: number;
+  prodotto: string;
+  periodo_da: string;
+  periodo_a: string;
+  giorni: number;
+  importo: number | string;
+}
+
 export interface AnteprimaResponse {
   period_id: number;
   periodo_da: string;
@@ -62,6 +71,7 @@ export interface AnteprimaResponse {
   diff_arrotondamento: number | string;
   totale_escluso?: number | string;
   esclusioni?: EsclusioneFE[];
+  arretrati?: ArretratoFE[];
   completezza: Completezza;
   skipped?: string;
   // presenti dopo emetti
