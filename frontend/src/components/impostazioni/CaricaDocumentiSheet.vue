@@ -1,0 +1,262 @@
+<template>
+  <q-dialog v-model="aperto" @hide="svuota">
+    <q-card class="imm-sheet">
+      <q-card-section class="imm-sheet__head">
+        <div class="imm-sheet__titolo">Carica documenti</div>
+        <BtnIcona icona="x" etichetta="Chiudi" @click="aperto = false" />
+      </q-card-section>
+
+      <q-card-section class="imm-sheet__corpo">
+        <!-- Multi-file per davvero: contratto + side letter insieme, o
+             fronte e retro dello stesso documento. -->
+        <div
+          class="imm-drop"
+          :class="{ 'imm-drop--sopra': sopra }"
+          @dragover.prevent="sopra = true"
+          @dragleave="sopra = false"
+          @drop.prevent="rilascia"
+          @click="inputFile?.click()"
+        >
+          <VpIcon name="upload" :size="20" />
+          <div class="imm-drop__titolo">Trascina qui o scegli i file</div>
+          <div class="imm-drop__nota">
+            Anche più di uno insieme: contratto e side letter, o fronte e
+            retro dello stesso documento.
+          </div>
+          <input
+            ref="inputFile"
+            type="file"
+            multiple
+            accept=".pdf,.jpg,.jpeg,.png"
+            class="hidden"
+            @change="scegli"
+          />
+        </div>
+
+        <div v-if="voci.length" class="imm-staged">
+          <div v-for="(v, i) in voci" :key="i" class="imm-staged__riga">
+            <TileIcona icona="doc" :size="30" />
+            <span class="imm-staged__nome">{{ v.file.name }}</span>
+            <q-select
+              v-model="v.tipo"
+              :options="tipi"
+              dense
+              borderless
+              emit-value
+              map-options
+              class="imm-pillola"
+              :aria-label="`Tipo di ${v.file.name}`"
+            />
+            <BtnIcona icona="x" :etichetta="`Togli ${v.file.name}`" @click="togli(i)" />
+          </div>
+          <div class="imm-staged__nota">
+            Tipo proposto dal nome del file — correggibile per ciascun file.
+          </div>
+        </div>
+
+        <q-toggle v-model="visibile" dense class="imm-sheet__vis">
+          <span class="imm-sheet__vis-testo">Visibile agli inquilini</span>
+          <span class="imm-sheet__vis-nota">
+            — compare nella loro pagina «I miei documenti»
+          </span>
+        </q-toggle>
+
+        <q-banner v-if="errore" class="vp-banner-errore" rounded dense>{{ errore }}</q-banner>
+      </q-card-section>
+
+      <q-card-actions align="right">
+        <q-btn v-close-popup flat label="Annulla" />
+        <q-btn
+          color="primary"
+          unelevated
+          :label="voci.length > 1 ? `Carica ${voci.length} file` : 'Carica'"
+          :disable="voci.length === 0"
+          :loading="store.uploading"
+          data-testid="carica-documenti"
+          @click="carica"
+        />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue';
+import { useQuasar } from 'quasar';
+import type { DocumentiStore, TipoDocumentoOption } from 'stores/documenti';
+import VpIcon from 'components/utenze/VpIcon.vue';
+import BtnIcona from './ui/BtnIcona.vue';
+import TileIcona from './ui/TileIcona.vue';
+
+const props = defineProps<{
+  store: DocumentiStore;
+  tipi: TipoDocumentoOption[];
+}>();
+
+const emit = defineEmits<{ (e: 'caricati'): void }>();
+
+const $q = useQuasar();
+
+const aperto = defineModel<boolean>({ default: false });
+
+interface Voce {
+  file: File;
+  tipo: string;
+}
+
+const voci = ref<Voce[]>([]);
+const visibile = ref(false);
+const sopra = ref(false);
+const errore = ref('');
+const inputFile = ref<HTMLInputElement | null>(null);
+
+/** Il tipo si indovina dal nome del file: chi carica «side letter.pdf» non
+ *  deve anche dire che è una side letter. Resta correggibile riga per riga. */
+function tipoDaNome(nome: string): string {
+  const n = nome.toLowerCase();
+  const indizi: [RegExp, string][] = [
+    [/side.?letter/, 'side_letter'],
+    [/registrazion|ricevuta|rli/, 'registrazione_contratto'],
+    [/regolament/, 'regolamento_condominiale'],
+    [/contratt|locazion/, 'contratto'],
+  ];
+  for (const [re, tipo] of indizi) {
+    if (re.test(n) && props.tipi.some((t) => t.value === tipo)) return tipo;
+  }
+  return props.tipi[props.tipi.length - 1]?.value ?? 'altro';
+}
+
+function aggiungi(files: FileList | File[] | null) {
+  if (!files) return;
+  for (const file of Array.from(files)) {
+    voci.value.push({ file, tipo: tipoDaNome(file.name) });
+  }
+  errore.value = '';
+}
+
+function scegli(ev: Event) {
+  aggiungi((ev.target as HTMLInputElement).files);
+  if (inputFile.value) inputFile.value.value = '';
+}
+
+function rilascia(ev: DragEvent) {
+  sopra.value = false;
+  aggiungi(ev.dataTransfer?.files ?? null);
+}
+
+function togli(i: number) {
+  voci.value.splice(i, 1);
+}
+
+function svuota() {
+  voci.value = [];
+  visibile.value = false;
+  errore.value = '';
+}
+
+async function carica() {
+  errore.value = '';
+  const { ok, falliti } = await props.store.caricaTipizzati({
+    voci: voci.value.map((v) => ({ file: v.file, tipo: v.tipo })),
+    visibileInquilini: visibile.value,
+  });
+  if (falliti) {
+    errore.value = props.store.errore ?? `${falliti} file non caricati.`;
+    // I riusciti sono già nello store: restano solo i falliti in coda.
+    voci.value = voci.value.slice(ok);
+    return;
+  }
+  $q.notify({
+    type: 'positive',
+    message: ok > 1 ? `${ok} documenti caricati.` : 'Documento caricato.',
+  });
+  aperto.value = false;
+  emit('caricati');
+}
+</script>
+
+<style scoped>
+.imm-sheet {
+  width: 580px;
+  max-width: 92vw;
+}
+.imm-sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
+}
+.imm-sheet__titolo {
+  font-family: var(--vp-font-display);
+  font-size: 20px;
+  font-weight: 500;
+}
+.imm-sheet__corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.imm-drop {
+  border: 1.5px dashed var(--vp-paper-3);
+  border-radius: 12px;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--vp-ink-3);
+  background: var(--vp-paper);
+  cursor: pointer;
+  text-align: center;
+}
+.imm-drop--sopra {
+  border-color: var(--vp-terra);
+  background: var(--vp-terra-soft);
+}
+.imm-drop__titolo {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--vp-ink-2);
+}
+.imm-drop__nota {
+  font-size: 12px;
+  max-width: 380px;
+  line-height: 1.45;
+}
+.imm-staged__riga {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--vp-paper-3);
+}
+.imm-staged__riga:last-of-type {
+  border-bottom: none;
+}
+.imm-staged__nome {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.imm-staged__nota {
+  font-size: 11.5px;
+  color: var(--vp-ink-3);
+  margin-top: 6px;
+}
+.imm-sheet__vis-testo {
+  font-weight: 500;
+  font-size: 13.5px;
+}
+.imm-sheet__vis-nota {
+  font-size: 12px;
+  color: var(--vp-ink-3);
+}
+.vp-banner-errore {
+  background: var(--vp-clay-soft, #fbeae5);
+  color: var(--vp-clay-deep, #8c3b21);
+}
+</style>

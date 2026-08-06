@@ -1,5 +1,5 @@
 // Path delle icone (viewBox 24×24, stroke). Usate da VpIcon.vue.
-// Solo le icone usate dalla feature bollette.
+// Nate per la feature bollette, servono anche alla scheda Immobile.
 
 export const VP_ICONS: Record<string, string> = {
   check: 'M5 13l4 4L19 7',
@@ -21,4 +21,19 @@ export const VP_ICONS: Record<string, string> = {
   trash: 'M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v6M14 11v6',
   refresh: 'M4 9a8 8 0 0 1 14-3l2 2M20 15a8 8 0 0 1-14 3l-2-2M18 4v4h-4M6 20v-4h4',
   edit: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z',
+  plus: 'M12 5v14M5 12h14',
+  doc: 'M6 3h9l5 5v13H6zM15 3v5h5',
+  contract: 'M6 3h9l5 5v10a3 3 0 0 1-3 3H6zM9 13h6M9 17h4M14 3v5h5',
+  receipt: 'M5 3h14v18l-3-2-3 2-3-2-3 2-2-2zM8 8h8M8 12h8M8 16h5',
+  wallet: 'M3 7a2 2 0 0 1 2-2h13v3M3 7v11a2 2 0 0 0 2 2h15V11h-4a2 2 0 0 0 0 4h4',
+  euro: 'M18 6a6 6 0 1 0 0 12M3 10h10M3 14h10',
+  download: 'M12 4v12M7 11l5 5 5-5M4 20h16',
+  up: 'M12 19V5M6 11l6-6 6 6',
+  down: 'M12 5v14M6 13l6 6 6-6',
+  // Specifiche della scheda Immobile
+  pencil: 'M4 20l1-4L16 5l3 3L8 19zM13 8l3 3',
+  eye: 'M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+  grip: 'M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01',
+  open: 'M14 5h5v5M19 5l-8 8M10 5H5v14h14v-5',
+  list: 'M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01',
 };

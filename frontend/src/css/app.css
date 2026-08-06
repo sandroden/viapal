@@ -19,6 +19,55 @@ html, body, #q-app {
   padding: var(--vp-gap-5);
 }
 
+/* Titolo di sezione e riga di aiuto: erano ridefiniti scoped in ogni
+   componente che li usa, e mancavano nei pochi che non lo facevano. */
+.vp-section-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--vp-ink);
+}
+.vp-hint {
+  color: var(--vp-ink-3);
+  font-size: 13px;
+}
+
+/* Select "a pillola" della scheda Immobile: una select con bordo squadrato
+   pesa più del dato che mostra (gestione utenza, ruolo del membro).
+   Qui e non nel componente perché la usano più pannelli. */
+.imm-pillola.q-field {
+  min-width: 190px;
+}
+/* Doppia classe: le regole di .q-field--dense partono da specificità 2. */
+.imm-pillola.q-field .q-field__control {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: var(--vp-r-pill);
+  border: 1px solid var(--vp-paper-3);
+  background: var(--vp-cream);
+}
+.imm-pillola.q-field .q-field__control::before,
+.imm-pillola.q-field .q-field__control::after {
+  display: none;
+}
+.imm-pillola.q-field .q-field__native {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--vp-ink-2);
+  min-height: 28px;
+  padding: 0;
+}
+.imm-pillola.imm-pillola--tenue.q-field .q-field__control {
+  background: transparent;
+}
+.imm-pillola.imm-pillola--tenue.q-field .q-field__native {
+  color: var(--vp-ink-3);
+}
+.imm-pillola.q-field .q-field__append {
+  height: 28px;
+  padding-left: 4px;
+}
+
 /* Stampa rendiconto: nasconde la chrome dell'app (menu, header, drawer).
    Attivata dalla classe body.vp-print-doc impostata dalla pagina. */
 @media print {

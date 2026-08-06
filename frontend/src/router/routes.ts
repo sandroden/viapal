@@ -157,7 +157,7 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: 'impostazioni/casa',
-        redirect: (to) => ({ name: 'p-impostazioni', query: { tab: 'stanze', ...to.query } }),
+        redirect: (to) => ({ name: 'p-impostazioni', query: { tab: 'dati', ...to.query } }),
       },
       {
         path: ':catchAll(.*)*',

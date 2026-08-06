@@ -1,8 +1,7 @@
 <template>
-  <q-card flat bordered class="vp-card q-mb-md" style="max-width: 720px">
-    <q-card-section>
-      <div class="vp-section-title">Dati</div>
-      <q-form class="q-gutter-md q-mt-sm" @submit.prevent="salvaDati">
+  <q-form class="imm-dati" @submit.prevent="salvaDati">
+    <CardSezione titolo="La casa">
+      <div class="imm-dati__campi">
         <q-input
           v-model="formNome"
           label="Nome"
@@ -19,32 +18,51 @@
           :readonly="!puoModificare"
           hint="Come compare nelle email e nella galleria pubblica"
         />
+      </div>
 
-        <!-- Le caselle del quadro "FABBRICATO" della comunicazione di
-             cessione: separate dall'indirizzo qui sopra, che resta
-             testo libero e non viene ricavato da queste. -->
-        <div class="vp-section-title q-mt-md">Indirizzo strutturato</div>
-        <div class="vp-hint">
+      <!-- Le caselle del quadro "FABBRICATO" della comunicazione di
+           cessione: separate dall'indirizzo qui sopra, che resta
+           testo libero e non viene ricavato da queste. -->
+      <div class="imm-sub">
+        <div class="vp-eyebrow">Indirizzo strutturato</div>
+        <div class="imm-sub__desc">
           Serve ai documenti generati (comunicazione di cessione di
           fabbricato), che hanno una casella per ciascun dato.
         </div>
-        <div class="row q-col-gutter-sm">
-          <div v-for="c in CAMPI_INDIRIZZO" :key="c.campo" class="col-6 col-md-4">
-            <q-input
-              :ref="(el) => registraCampo(c.campo, el)"
-              v-model="formIndirizzoStrutturato[c.campo]"
-              :label="c.label"
-              outlined
-              dense
-              :readonly="!puoModificare"
-              :data-testid="`immobile-${c.campo}`"
-            />
-          </div>
+      </div>
+      <div class="row q-col-gutter-sm q-mt-xs">
+        <div v-for="c in CAMPI_INDIRIZZO" :key="c.campo" class="col-6 col-md-4">
+          <q-input
+            :ref="(el) => registraCampo(c.campo, el)"
+            v-model="formIndirizzoStrutturato[c.campo]"
+            :label="c.label"
+            outlined
+            dense
+            :readonly="!puoModificare"
+            :data-testid="`immobile-${c.campo}`"
+          />
         </div>
+      </div>
 
-        <!-- Conto su cui gli inquilini versano: è il conto che finisce
-             nel QR di pagamento e che l'app propone quando si registra
-             un incasso. Le opzioni sono i conti dei membri. -->
+      <div v-if="puoModificare" class="imm-dati__salva">
+        <q-btn
+          type="submit"
+          color="primary"
+          unelevated
+          label="Salva"
+          :loading="savingDati"
+          data-testid="salva-dati"
+        />
+      </div>
+    </CardSezione>
+
+    <!-- Non sono dati dell'indirizzo: sono decisioni operative su chi
+         incassa e chi firma, e stavano in coda al form solo per inerzia. -->
+    <CardSezione
+      titolo="Ruoli operativi"
+      descrizione="Chi incassa e chi firma per questa casa. Le persone e i conti si gestiscono nella scheda Proprietà."
+    >
+      <div class="imm-dati__ruoli">
         <q-select
           v-model="formContoUtenze"
           :options="opzioniConto"
@@ -72,19 +90,9 @@
           hint="Il modulo di cessione prevede un dichiarante solo"
           data-testid="immobile-owner_firmatario"
         />
-
-        <q-btn
-          v-if="puoModificare"
-          type="submit"
-          color="primary"
-          dense
-          label="Salva"
-          :loading="savingDati"
-          data-testid="salva-dati"
-        />
-      </q-form>
-    </q-card-section>
-  </q-card>
+      </div>
+    </CardSezione>
+  </q-form>
 </template>
 
 <script setup lang="ts">
@@ -99,6 +107,7 @@ import {
   type PropertyDettaglio,
   type Quota,
 } from 'stores/properties';
+import CardSezione from './ui/CardSezione.vue';
 
 const props = defineProps<{
   dettaglio: PropertyDettaglio;
@@ -204,13 +213,41 @@ async function salvaDati() {
 </script>
 
 <style scoped>
-.vp-section-title {
-  font-weight: 600;
-  font-size: 16px;
-  color: var(--vp-ink-1);
+.imm-dati {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-gap-3);
 }
-.vp-hint {
+.imm-dati__campi {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+.imm-dati__ruoli {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 10px;
+}
+.imm-dati__salva {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+.imm-sub {
+  margin: 20px 0 2px;
+}
+.imm-sub__desc {
+  font-size: 12.5px;
   color: var(--vp-ink-3);
-  font-size: 13px;
+  margin-top: 3px;
+  line-height: 1.5;
+  max-width: 620px;
+}
+@media (max-width: 767px) {
+  .imm-dati__ruoli {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

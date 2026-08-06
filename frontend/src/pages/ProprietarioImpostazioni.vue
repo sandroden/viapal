@@ -1,1086 +1,127 @@
 <template>
-  <q-page padding class="vp-page">
-    <div class="vp-page-head row items-center q-gutter-sm">
-      <h1 class="vp-h1">Immobile</h1>
-      <q-chip v-if="propStore.mioRuolo" dense outline data-testid="chip-ruolo">
-        {{ etichettaRuolo(propStore.mioRuolo) }}
-      </q-chip>
-      <q-space />
-      <q-btn
-        dense
-        flat
-        color="primary"
-        icon="add_home"
-        label="Nuova proprietà"
-        to="/p/proprieta/nuova"
-        data-testid="nuova-proprieta"
-      />
-    </div>
+  <q-page padding class="vp-page vp-immobile">
+    <!-- La testata dice il nome della casa, non «Immobile»: quello lo dice
+         già il menu, e in multiproprietà sapere quale casa si sta guardando
+         conta più del nome della sezione. -->
+    <header class="vp-immobile__head">
+      <div class="vp-immobile__intesta">
+        <div class="vp-eyebrow">Immobile</div>
+        <div class="vp-immobile__titolo">
+          <h1 class="vp-immobile__nome">{{ dettaglio?.nome || 'Immobile' }}</h1>
+          <span v-if="dettaglio?.indirizzo" class="vp-immobile__indirizzo">
+            {{ dettaglio.indirizzo }}
+          </span>
+        </div>
+      </div>
+      <div class="vp-immobile__head-azioni">
+        <EtichettaStato v-if="propStore.mioRuolo" tono="off" data-testid="chip-ruolo">
+          {{ etichettaRuolo(propStore.mioRuolo) }}
+        </EtichettaStato>
+        <q-btn
+          dense
+          flat
+          no-caps
+          color="primary"
+          icon="add_home"
+          label="Nuova proprietà"
+          to="/p/proprieta/nuova"
+          data-testid="nuova-proprieta"
+        />
+      </div>
+    </header>
 
-    <q-tabs
-      v-model="tabAttivo"
-      dense
-      no-caps
-      align="left"
-      outside-arrows
-      mobile-arrows
-      class="vp-immobile__tabs"
-      active-color="primary"
-      indicator-color="primary"
-      data-testid="tabs-immobile"
-    >
-      <q-tab name="dati" label="Dati" />
-      <q-tab name="stanze" :label="labels.unita" />
-      <q-tab name="contratti" label="Contratti" />
-      <q-tab name="spese" label="Spese" />
-      <q-tab name="tari" label="TARI" />
-      <q-tab name="documenti" label="Documenti" />
-      <q-tab name="modelli" label="Modelli documenti" />
-      <q-tab name="membri" label="Membri" />
-      <q-tab name="conti" label="Conti bancari" />
-      <q-tab name="quote" label="Quote" />
-    </q-tabs>
+    <!-- Quattro schede raggruppate per «di cosa parla»: la casa, le sue
+         carte, i suoi soldi, le sue persone. -->
+    <nav class="vp-immobile__tabs" data-testid="tabs-immobile">
+      <button
+        v-for="t in TABS"
+        :key="t.id"
+        type="button"
+        class="imm-tab"
+        :data-on="t.id === tabAttivo ? '' : null"
+        :data-testid="`tab-${t.id}`"
+        :aria-current="t.id === tabAttivo ? 'page' : undefined"
+        @click="tabAttivo = t.id"
+      >
+        <VpIcon :name="t.icona" :size="16" />{{ t.label }}
+      </button>
+    </nav>
 
-    <q-tab-panels v-model="tabAttivo" animated class="vp-immobile__panels">
-      <!-- DATI IMMOBILE -->
+    <q-tab-panels v-model="tabAttivo" animated keep-alive class="vp-immobile__panels">
+      <!-- DATI: anagrafica, indirizzo strutturato, stanze, ruoli operativi -->
       <q-tab-panel name="dati" class="vp-immobile__panel">
         <div v-if="!dettaglio" class="q-pa-lg flex flex-center">
           <q-spinner size="32px" />
         </div>
-        <DatiImmobilePannello
-          v-else
-          ref="datiPannello"
-          :dettaglio="dettaglio"
-          :quote-correnti="quoteCorrenti"
-          :puo-modificare="puoModificare"
-          @aggiornato="dettaglio = $event"
-        />
-      </q-tab-panel>
-
-      <!-- STANZE -->
-      <q-tab-panel name="stanze" class="vp-immobile__panel">
-        <q-card flat bordered class="vp-card" style="max-width: 720px">
-          <q-card-section>
-            <div class="row items-center">
-              <div class="vp-section-title">{{ labels.unita }}</div>
-              <q-space />
-              <q-btn
-                v-if="puoModificare && !nascondiNuovaStanza"
-                dense
-                color="primary"
-                icon="add"
-                label="Nuova stanza"
-                data-testid="nuova-stanza"
-                @click="apriDialogStanza(null)"
-              />
-            </div>
-            <q-table
-              flat
-              :rows="stanze"
-              :columns="colonneStanze"
-              row-key="id"
-              :loading="loadingStanze"
-              :pagination="{ rowsPerPage: 0, sortBy: 'ordinamento' }"
-              hide-pagination
-              no-data-label="Nessuna stanza configurata."
-              class="q-mt-sm"
-            >
-              <template #body-cell-azioni="props">
-                <q-td :props="props" auto-width>
-                  <q-btn
-                    v-if="puoModificare"
-                    flat
-                    dense
-                    round
-                    icon="edit"
-                    :aria-label="`Modifica ${props.row.nome}`"
-                    @click="apriDialogStanza(props.row)"
-                  />
-                  <q-btn
-                    v-if="puoModificare && !nascondiEliminaStanza"
-                    flat
-                    dense
-                    round
-                    icon="delete_outline"
-                    color="negative"
-                    :aria-label="`Elimina ${props.row.nome}`"
-                    @click="eliminaStanza(props.row)"
-                  />
-                </q-td>
-              </template>
-            </q-table>
-          </q-card-section>
-        </q-card>
-      </q-tab-panel>
-
-      <!-- CONTRATTI -->
-      <q-tab-panel name="contratti" class="vp-immobile__panel">
-        <q-card flat bordered class="vp-card" style="max-width: 720px">
-          <q-card-section>
-            <div class="row items-center">
-              <div class="vp-section-title">Contratti</div>
-              <q-space />
-              <q-btn
-                v-if="puoModificare"
-                dense
-                color="primary"
-                icon="add"
-                label="Nuovo contratto"
-                data-testid="nuovo-contratto"
-                @click="apriDialogContratto(null)"
-              />
-            </div>
-            <q-list separator class="q-mt-sm">
-              <q-item v-for="c in contratti" :key="c.id" data-testid="riga-contratto">
-                <q-item-section>
-                  <q-item-label>{{ nomeContratto(c) }}</q-item-label>
-                  <q-item-label caption>
-                    decorrenza {{ c.data_decorrenza }} · {{ c.durata_anni }}
-                    {{ c.durata_anni === 1 ? 'anno' : 'anni' }}
-                    · {{ c.regime_fiscale_display || c.regime_fiscale }}
-                    <template v-if="c.termine"> · terminato il {{ c.termine }}</template>
-                    <template v-if="c.default_pagatore_bollette">
-                      · bollette: {{ nominativoOwner(c.default_pagatore_bollette) }}
-                    </template>
-                  </q-item-label>
-                </q-item-section>
-                <q-item-section side>
-                  <div class="row items-center q-gutter-xs">
-                    <q-chip v-if="c.asseverato" dense outline>Asseverato</q-chip>
-                    <q-btn
-                      v-if="puoModificare"
-                      flat
-                      dense
-                      round
-                      icon="edit"
-                      :aria-label="`Modifica ${nomeContratto(c)}`"
-                      @click="apriDialogContratto(c)"
-                    />
-                    <q-btn
-                      v-if="puoModificare"
-                      flat
-                      dense
-                      round
-                      icon="delete_outline"
-                      color="negative"
-                      :aria-label="`Elimina ${nomeContratto(c)}`"
-                      @click="eliminaContratto(c)"
-                    />
-                  </div>
-                </q-item-section>
-              </q-item>
-              <q-item v-if="!loadingContratti && contratti.length === 0">
-                <q-item-section class="text-grey">
-                  Nessun contratto registrato.
-                </q-item-section>
-              </q-item>
-            </q-list>
-          </q-card-section>
-        </q-card>
-      </q-tab-panel>
-
-      <!-- SPESE -->
-      <q-tab-panel name="spese" class="vp-immobile__panel">
-        <q-card flat bordered class="vp-card q-mb-md" style="max-width: 720px">
-          <q-card-section>
-            <div class="vp-section-title">Utenze della casa</div>
-            <div class="vp-hint q-mt-xs">
-              Quali utenze esistono in questa casa e chi le gestisce. Le voci
-              gestite dalla proprietà sono attese nel conguaglio mensile e
-              vengono ripartite tra gli inquilini; "a carico dell'inquilino"
-              vuol dire intestata a lui e fuori dal conguaglio; "non presente"
-              che la voce non esiste per questa casa.
-            </div>
-            <div v-if="loadingUtenze" class="q-pa-lg flex flex-center">
-              <q-spinner size="32px" />
-            </div>
-            <q-list v-else separator class="q-mt-sm">
-              <q-item
-                v-for="r in righeUtenze"
-                :key="r.voce"
-                :data-testid="`utenza-${r.voce}`"
-              >
-                <q-item-section>
-                  <q-item-label>{{ r.label }}</q-item-label>
-                  <q-input
-                    v-if="r.config"
-                    v-model="noteUtenza[r.voce]"
-                    dense
-                    outlined
-                    class="vp-utenza-nota q-mt-xs"
-                    placeholder="Nota (es. intestata all'inquilino, la paga al Comune)"
-                    :disable="!puoModificare"
-                    :aria-label="`Nota ${r.label}`"
-                    :data-testid="`utenza-nota-${r.voce}`"
-                    @blur="salvaNotaUtenza(r.voce)"
-                  />
-                </q-item-section>
-                <q-item-section side>
-                  <q-select
-                    :model-value="r.stato"
-                    :options="opzioniGestioneUtenza"
-                    :disable="!puoModificare || salvandoUtenza === r.voce"
-                    :loading="salvandoUtenza === r.voce"
-                    dense
-                    outlined
-                    emit-value
-                    map-options
-                    class="vp-utenza-select"
-                    :aria-label="`Gestione ${r.label}`"
-                    :data-testid="`utenza-gestione-${r.voce}`"
-                    @update:model-value="(v: StatoUtenza) => cambiaGestioneUtenza(r.voce, v)"
-                  />
-                </q-item-section>
-              </q-item>
-            </q-list>
-          </q-card-section>
-        </q-card>
-
-        <q-card flat bordered class="vp-card q-mb-md" style="max-width: 720px">
-          <q-card-section>
-            <div class="row items-center">
-              <div class="vp-section-title">Spese condominiali degli inquilini</div>
-              <q-space />
-              <q-btn
-                v-if="puoModificare"
-                dense
-                color="primary"
-                icon="add"
-                label="Nuova quota"
-                data-testid="nuova-quota-condominio"
-                @click="apriDialogQuota(null)"
-              />
-            </div>
-            <div class="vp-hint q-mt-xs">
-              Quota mensile che si somma al canone. Senza inquilino vale per
-              tutti; con un inquilino indicato vale solo per lui e prevale
-              sulla quota di tutti.
-            </div>
-            <q-list separator class="q-mt-sm">
-              <q-item v-for="q in quoteCondominio" :key="q.id" data-testid="riga-quota">
-                <q-item-section>
-                  <q-item-label>
-                    {{ formattaImporto(q.importo_mensile) }}/mese
-                    <q-chip v-if="q.tenant" dense outline class="q-ml-xs">
-                      {{ q.tenant_nominativo }}
-                    </q-chip>
-                    <q-chip v-else dense outline class="q-ml-xs">Tutti</q-chip>
-                  </q-item-label>
-                  <q-item-label caption>
-                    dal {{ q.valid_from }}
-                    <template v-if="q.valid_to"> al {{ q.valid_to }}</template>
-                    <template v-else> · tuttora in vigore</template>
-                    <template v-if="q.note"> · {{ q.note }}</template>
-                  </q-item-label>
-                </q-item-section>
-                <q-item-section side>
-                  <div class="row items-center q-gutter-xs">
-                    <q-btn
-                      v-if="puoModificare"
-                      flat
-                      dense
-                      round
-                      icon="edit"
-                      :aria-label="`Modifica quota dal ${q.valid_from}`"
-                      @click="apriDialogQuota(q)"
-                    />
-                    <q-btn
-                      v-if="puoModificare"
-                      flat
-                      dense
-                      round
-                      icon="delete_outline"
-                      color="negative"
-                      :aria-label="`Elimina quota dal ${q.valid_from}`"
-                      @click="eliminaQuota(q)"
-                    />
-                  </div>
-                </q-item-section>
-              </q-item>
-              <q-item v-if="!loadingQuote && quoteCondominio.length === 0">
-                <q-item-section class="text-grey">
-                  Nessuna quota condominiale a carico degli inquilini.
-                </q-item-section>
-              </q-item>
-            </q-list>
-          </q-card-section>
-        </q-card>
-
-        <q-card flat bordered class="vp-card q-mb-md" style="max-width: 720px">
-          <q-card-section>
-            <div class="row items-center">
-              <div class="vp-section-title">Categorie di spesa</div>
-              <q-space />
-              <q-btn
-                v-if="puoModificare"
-                dense
-                color="primary"
-                icon="add"
-                label="Nuova categoria"
-                data-testid="nuova-categoria"
-                @click="apriDialogCategoria(null)"
-              />
-            </div>
-            <q-list separator class="q-mt-sm">
-              <q-item v-for="c in categorie" :key="c.id" data-testid="riga-categoria">
-                <q-item-section>
-                  <q-item-label>{{ c.nome }}</q-item-label>
-                  <q-item-label caption>
-                    codice {{ c.codice }}
-                    <template v-if="c.ripartibile_inquilini"> · ripartibile tra inquilini</template>
-                  </q-item-label>
-                </q-item-section>
-                <q-item-section side>
-                  <div class="row items-center q-gutter-xs">
-                    <q-btn
-                      v-if="puoModificare"
-                      flat
-                      dense
-                      round
-                      icon="edit"
-                      :aria-label="`Modifica ${c.nome}`"
-                      @click="apriDialogCategoria(c)"
-                    />
-                    <q-btn
-                      v-if="puoModificare"
-                      flat
-                      dense
-                      round
-                      icon="delete_outline"
-                      color="negative"
-                      :aria-label="`Elimina ${c.nome}`"
-                      @click="eliminaCategoria(c)"
-                    />
-                  </div>
-                </q-item-section>
-              </q-item>
-              <q-item v-if="!loadingCategorie && categorie.length === 0">
-                <q-item-section class="text-grey">
-                  Nessuna categoria configurata.
-                </q-item-section>
-              </q-item>
-            </q-list>
-          </q-card-section>
-        </q-card>
-
-        <q-card flat bordered class="vp-card" style="max-width: 720px">
-          <q-card-section>
-            <div class="row items-center">
-              <div class="vp-section-title">Fornitori</div>
-              <q-space />
-              <q-btn
-                v-if="puoModificare"
-                dense
-                color="primary"
-                icon="add"
-                label="Nuovo fornitore"
-                data-testid="nuovo-fornitore"
-                @click="apriDialogFornitore(null)"
-              />
-            </div>
-            <q-list separator class="q-mt-sm">
-              <q-item v-for="f in fornitori" :key="f.id" data-testid="riga-fornitore">
-                <q-item-section>
-                  <q-item-label>{{ f.nome }}</q-item-label>
-                  <q-item-label caption>
-                    {{ f.tipo_display || etichettaTipoFornitore(f.tipo) }}
-                    <template v-if="f.partita_iva"> · P.IVA {{ f.partita_iva }}</template>
-                    <template v-if="f.contatto"> · {{ f.contatto }}</template>
-                  </q-item-label>
-                </q-item-section>
-                <q-item-section side>
-                  <div class="row items-center q-gutter-xs">
-                    <q-btn
-                      v-if="puoModificare"
-                      flat
-                      dense
-                      round
-                      icon="edit"
-                      :aria-label="`Modifica ${f.nome}`"
-                      @click="apriDialogFornitore(f)"
-                    />
-                    <q-btn
-                      v-if="puoModificare"
-                      flat
-                      dense
-                      round
-                      icon="delete_outline"
-                      color="negative"
-                      :aria-label="`Elimina ${f.nome}`"
-                      @click="eliminaFornitore(f)"
-                    />
-                  </div>
-                </q-item-section>
-              </q-item>
-              <q-item v-if="!loadingFornitori && fornitori.length === 0">
-                <q-item-section class="text-grey">
-                  Nessun fornitore registrato.
-                </q-item-section>
-              </q-item>
-            </q-list>
-          </q-card-section>
-        </q-card>
-      </q-tab-panel>
-
-      <!-- TARI / COSTI ANNUALI -->
-      <q-tab-panel name="tari" class="vp-immobile__panel">
-        <q-card flat bordered class="vp-card" style="max-width: 720px">
-          <q-card-section>
-            <div class="row items-center">
-              <div class="vp-section-title">Costi annuali (TARI e altro)</div>
-              <q-space />
-              <q-btn
-                v-if="puoModificare"
-                dense
-                color="primary"
-                icon="add"
-                label="Nuovo costo"
-                data-testid="nuovo-costo"
-                @click="apriDialogCosto(null)"
-              />
-            </div>
-            <div class="vp-hint q-mt-xs">
-              Costi annuali spalmati sui conguagli utenze (es. tassa rifiuti).
-            </div>
-            <q-list separator class="q-mt-sm">
-              <q-item v-for="c in costiAnnuali" :key="c.id" data-testid="riga-costo">
-                <q-item-section>
-                  <q-item-label>
-                    {{ c.voce_display || etichettaVoce(c.voce) }} {{ c.anno }}
-                  </q-item-label>
-                  <q-item-label caption>
-                    {{ formattaImporto(c.importo_annuale) }}/anno
-                    · dal {{ c.valid_from }}
-                    <template v-if="c.valid_to"> al {{ c.valid_to }}</template>
-                    <template v-if="c.note"> · {{ c.note }}</template>
-                  </q-item-label>
-                </q-item-section>
-                <q-item-section side>
-                  <div class="row items-center q-gutter-xs">
-                    <q-btn
-                      v-if="puoModificare"
-                      flat
-                      dense
-                      round
-                      icon="edit"
-                      :aria-label="`Modifica costo ${c.anno}`"
-                      @click="apriDialogCosto(c)"
-                    />
-                    <q-btn
-                      v-if="puoModificare"
-                      flat
-                      dense
-                      round
-                      icon="delete_outline"
-                      color="negative"
-                      :aria-label="`Elimina costo ${c.anno}`"
-                      @click="eliminaCosto(c)"
-                    />
-                  </div>
-                </q-item-section>
-              </q-item>
-              <q-item v-if="!loadingCosti && costiAnnuali.length === 0">
-                <q-item-section class="text-grey">
-                  Nessun costo annuale configurato.
-                </q-item-section>
-              </q-item>
-            </q-list>
-          </q-card-section>
-        </q-card>
-      </q-tab-panel>
-
-      <!-- DOCUMENTI -->
-      <q-tab-panel name="documenti" class="vp-immobile__panel">
-        <div style="max-width: 640px">
-          <div class="vp-hint q-mb-sm">
-            Documenti dell'immobile: contratto di locazione, side letter,
-            registrazione del contratto, regolamento condominiale. Con
-            "visibile agli inquilini" il documento compare anche nella loro
-            pagina "I miei documenti".
+        <div v-else class="vp-immobile__colonne">
+          <div class="vp-immobile__principale">
+            <DatiImmobilePannello
+              ref="datiPannello"
+              :dettaglio="dettaglio"
+              :quote-correnti="quoteCorrenti"
+              :puo-modificare="puoModificare"
+              @aggiornato="dettaglio = $event"
+            />
           </div>
-          <DocumentiPannello
-            :store="documentiStore"
-            :tipi="TIPI_DOCUMENTO_PROPRIETA"
-            con-visibilita
+          <div class="vp-immobile__servizio">
+            <StanzePannello :puo-modificare="puoModificare" />
+          </div>
+        </div>
+      </q-tab-panel>
+
+      <!-- CONTRATTI E DOCUMENTI: le carte della casa -->
+      <q-tab-panel name="contratti" class="vp-immobile__panel">
+        <div class="vp-immobile__pila">
+          <ContrattiPannello ref="contrattiPannello" :puo-modificare="puoModificare" />
+          <DocumentiProprietaPannello :puo-modificare="puoModificare" />
+          <ModelliDocumentoPannello :puo-modificare="puoModificare" />
+        </div>
+      </q-tab-panel>
+
+      <!-- SPESE: utenze, quote, costi annuali; a destra la configurazione -->
+      <q-tab-panel name="spese" class="vp-immobile__panel">
+        <div class="vp-immobile__colonne">
+          <div class="vp-immobile__principale">
+            <UtenzeCasaPannello :puo-modificare="puoModificare" />
+            <QuoteCondominioPannello :puo-modificare="puoModificare" />
+            <CostiAnnualiPannello :puo-modificare="puoModificare" />
+          </div>
+          <div class="vp-immobile__servizio">
+            <CategorieSpesaPannello :puo-modificare="puoModificare" />
+            <FornitoriPannello :puo-modificare="puoModificare" />
+          </div>
+        </div>
+      </q-tab-panel>
+
+      <!-- PROPRIETÀ: le persone, con ruolo, quota e conti -->
+      <q-tab-panel name="proprieta" class="vp-immobile__panel">
+        <div v-if="loadingGovernance" class="q-pa-lg flex flex-center">
+          <q-spinner size="32px" />
+        </div>
+        <div v-else class="vp-immobile__pila">
+          <MembriPannello
+            v-if="propertyId"
+            ref="membriPannello"
+            :property-id="propertyId"
+            :membri="membri"
+            :quote="quote"
+            :sono-proprietario="sonoProprietario"
+            @aggiornati="membri = $event"
+            @aggiornate="quote = $event"
+          />
+          <ContiBancariPannello
+            :conto-utenze-id="dettaglio?.bank_account_utenze ?? null"
+            :membri="membri"
           />
         </div>
-      </q-tab-panel>
-
-      <!-- MODELLI DOCUMENTO -->
-      <q-tab-panel name="modelli" class="vp-immobile__panel">
-        <ModelliDocumentoPannello :puo-modificare="puoModificare" />
-      </q-tab-panel>
-
-      <!-- MEMBRI -->
-      <q-tab-panel name="membri" class="vp-immobile__panel">
-        <div v-if="loadingGovernance" class="q-pa-lg flex flex-center">
-          <q-spinner size="32px" />
-        </div>
-        <MembriPannello
-          v-else-if="propertyId"
-          ref="membriPannello"
-          :property-id="propertyId"
-          :membri="membri"
-          :sono-proprietario="sonoProprietario"
-          @aggiornati="membri = $event"
-        />
-      </q-tab-panel>
-
-      <!-- CONTI BANCARI -->
-      <q-tab-panel name="conti" class="vp-immobile__panel">
-        <div v-if="loadingGovernance" class="q-pa-lg flex flex-center">
-          <q-spinner size="32px" />
-        </div>
-        <ContiBancariPannello
-          v-else
-          :conto-utenze-id="dettaglio?.bank_account_utenze ?? null"
-          :membri="membri"
-        />
-      </q-tab-panel>
-
-      <!-- QUOTE DI PROPRIETÀ -->
-      <q-tab-panel name="quote" class="vp-immobile__panel">
-        <div v-if="loadingGovernance" class="q-pa-lg flex flex-center">
-          <q-spinner size="32px" />
-        </div>
-        <QuoteProprietaPannello
-          v-else-if="propertyId"
-          :property-id="propertyId"
-          :membri="membri"
-          :quote="quote"
-          :sono-proprietario="sonoProprietario"
-          @aggiornate="quote = $event"
-        />
       </q-tab-panel>
     </q-tab-panels>
-
-    <!-- Dialog stanza -->
-    <q-dialog v-model="dialogStanza">
-      <q-card style="min-width: 380px">
-        <q-card-section>
-          <div class="vp-section-title">
-            {{ stanzaInModifica
-              ? `Modifica ${labels.singolare.toLowerCase()}`
-              : `Nuova ${labels.singolare.toLowerCase()}` }}
-          </div>
-        </q-card-section>
-        <q-card-section class="q-gutter-md">
-          <q-input
-            v-model="formStanza.nome"
-            label="Nome"
-            outlined
-            dense
-            autofocus
-            data-testid="stanza-nome"
-          />
-          <q-input
-            v-model="formStanza.superficie_mq"
-            label="Superficie (mq)"
-            type="number"
-            min="0"
-            step="0.01"
-            outlined
-            dense
-            data-testid="stanza-superficie"
-          />
-          <q-input
-            v-model="formStanza.ordinamento"
-            label="Ordinamento"
-            type="number"
-            min="0"
-            outlined
-            dense
-            data-testid="stanza-ordinamento"
-          />
-          <q-banner v-if="erroreStanza" class="vp-banner-errore" rounded dense>
-            {{ erroreStanza }}
-          </q-banner>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat label="Annulla" />
-          <q-btn
-            color="primary"
-            label="Salva"
-            :loading="savingStanza"
-            data-testid="salva-stanza"
-            @click="salvaStanza"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
-    <!-- Dialog contratto -->
-    <!-- no-route-dismiss: aggiornaQuery() riscrive la rotta consumando
-         ?contratto=, e senza questo il dialog appena aperto dal deep link
-         verrebbe chiuso dal cambio rotta. -->
-    <q-dialog v-model="dialogContratto" no-route-dismiss>
-      <q-card style="min-width: 460px">
-        <q-card-section>
-          <div class="vp-section-title">
-            {{ contrattoInModifica ? 'Modifica contratto' : 'Nuovo contratto' }}
-          </div>
-        </q-card-section>
-        <q-card-section class="q-gutter-md">
-          <q-input
-            v-model="formContratto.nome"
-            label="Nome (es. 'Contratto 2025')"
-            outlined
-            dense
-            autofocus
-            data-testid="contratto-nome"
-          />
-          <div class="row q-col-gutter-sm">
-            <div class="col-6">
-              <q-input
-                v-model="formContratto.data_stipula"
-                label="Data stipula"
-                type="date"
-                outlined
-                dense
-                data-testid="contratto-stipula"
-              />
-            </div>
-            <div class="col-6">
-              <q-input
-                v-model="formContratto.data_decorrenza"
-                label="Data decorrenza"
-                type="date"
-                outlined
-                dense
-                data-testid="contratto-decorrenza"
-              />
-            </div>
-          </div>
-          <div class="row q-col-gutter-sm">
-            <div class="col-4">
-              <q-input
-                v-model="formContratto.durata_anni"
-                label="Durata (anni)"
-                type="number"
-                min="1"
-                outlined
-                dense
-                data-testid="contratto-durata"
-              />
-            </div>
-            <div class="col-4">
-              <q-input
-                v-model="formContratto.durata_rinnovo_anni"
-                label="Rinnovo (anni)"
-                type="number"
-                min="0"
-                outlined
-                dense
-                hint="Il «+2» di 4+2"
-                data-testid="contratto-rinnovo"
-              />
-            </div>
-            <div class="col-4">
-              <q-input
-                v-model="formContratto.termine"
-                label="Termine anticipato"
-                type="date"
-                outlined
-                dense
-                clearable
-                hint="Solo se chiuso prima"
-              />
-            </div>
-          </div>
-          <q-select
-            v-model="formContratto.regime_fiscale"
-            :options="opzioniRegimeFiscale"
-            label="Regime fiscale"
-            outlined
-            dense
-            emit-value
-            map-options
-            data-testid="contratto-regime"
-          />
-          <q-select
-            v-model="formContratto.default_pagatore_bollette"
-            :options="opzioniPagatore"
-            label="Pagatore bollette (convenzione)"
-            outlined
-            dense
-            emit-value
-            map-options
-            clearable
-            data-testid="contratto-pagatore"
-          />
-          <q-toggle
-            v-model="formContratto.asseverato"
-            label="Asseverato"
-            dense
-          />
-
-          <!-- Estremi citati nelle premesse dell'atto di subentro: finora
-               esistevano solo dentro la ricevuta di registrazione caricata. -->
-          <div class="vp-section-title q-mt-md">Registrazione</div>
-          <div class="vp-hint q-mb-sm">
-            Servono all'atto di subentro. Li trovi sulla ricevuta rilasciata
-            dall'Agenzia delle Entrate.
-          </div>
-          <div class="row q-col-gutter-sm">
-            <div class="col-7">
-              <q-input
-                v-model="formContratto.ufficio_registrazione"
-                label="Ufficio territoriale"
-                outlined
-                dense
-                data-testid="contratto-ufficio"
-              />
-            </div>
-            <div class="col-5">
-              <q-input
-                v-model="formContratto.data_registrazione"
-                label="Data registrazione"
-                type="date"
-                outlined
-                dense
-                clearable
-                data-testid="contratto-data-registrazione"
-              />
-            </div>
-          </div>
-          <div class="row q-col-gutter-sm">
-            <div class="col-7">
-              <q-input
-                v-model="formContratto.numero_registrazione"
-                label="Numero"
-                outlined
-                dense
-                data-testid="contratto-numero-registrazione"
-              />
-            </div>
-            <div class="col-5">
-              <q-input
-                v-model="formContratto.serie_registrazione"
-                label="Serie"
-                outlined
-                dense
-                data-testid="contratto-serie"
-              />
-            </div>
-          </div>
-          <q-input
-            v-model="formContratto.codice_identificativo"
-            label="Codice identificativo del contratto"
-            outlined
-            dense
-            data-testid="contratto-codice-identificativo"
-          />
-          <q-input
-            v-model="formContratto.note"
-            label="Note"
-            type="textarea"
-            autogrow
-            outlined
-            dense
-          />
-          <q-banner v-if="erroreContratto" class="vp-banner-errore" rounded dense>
-            {{ erroreContratto }}
-          </q-banner>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat label="Annulla" />
-          <q-btn
-            color="primary"
-            label="Salva"
-            :loading="savingContratto"
-            data-testid="salva-contratto"
-            @click="salvaContratto"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
-    <!-- Dialog categoria spesa -->
-    <q-dialog v-model="dialogCategoria">
-      <q-card style="min-width: 380px">
-        <q-card-section>
-          <div class="vp-section-title">
-            {{ categoriaInModifica ? 'Modifica categoria' : 'Nuova categoria' }}
-          </div>
-        </q-card-section>
-        <q-card-section class="q-gutter-md">
-          <q-input
-            v-model="formCategoria.nome"
-            label="Nome"
-            outlined
-            dense
-            autofocus
-            data-testid="categoria-nome"
-          />
-          <q-input
-            v-model="formCategoria.codice"
-            label="Codice (slug, es. 'manutenzione')"
-            outlined
-            dense
-            data-testid="categoria-codice"
-          />
-          <q-toggle
-            v-model="formCategoria.ripartibile_inquilini"
-            label="Ripartibile tra inquilini"
-            dense
-          />
-          <q-banner v-if="erroreCategoria" class="vp-banner-errore" rounded dense>
-            {{ erroreCategoria }}
-          </q-banner>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat label="Annulla" />
-          <q-btn
-            color="primary"
-            label="Salva"
-            :loading="savingCategoria"
-            data-testid="salva-categoria"
-            @click="salvaCategoria"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
-    <!-- Dialog fornitore -->
-    <q-dialog v-model="dialogFornitore">
-      <q-card style="min-width: 380px">
-        <q-card-section>
-          <div class="vp-section-title">
-            {{ fornitoreInModifica ? 'Modifica fornitore' : 'Nuovo fornitore' }}
-          </div>
-        </q-card-section>
-        <q-card-section class="q-gutter-md">
-          <q-input
-            v-model="formFornitore.nome"
-            label="Nome"
-            outlined
-            dense
-            autofocus
-            data-testid="fornitore-nome"
-          />
-          <q-select
-            v-model="formFornitore.tipo"
-            :options="opzioniTipoFornitore"
-            label="Tipo"
-            outlined
-            dense
-            emit-value
-            map-options
-            data-testid="fornitore-tipo"
-          />
-          <q-input
-            v-model="formFornitore.partita_iva"
-            label="Partita IVA"
-            outlined
-            dense
-          />
-          <q-input
-            v-model="formFornitore.contatto"
-            label="Contatto"
-            type="textarea"
-            autogrow
-            outlined
-            dense
-          />
-          <q-banner v-if="erroreFornitore" class="vp-banner-errore" rounded dense>
-            {{ erroreFornitore }}
-          </q-banner>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat label="Annulla" />
-          <q-btn
-            color="primary"
-            label="Salva"
-            :loading="savingFornitore"
-            data-testid="salva-fornitore"
-            @click="salvaFornitore"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
-    <!-- Dialog costo annuale -->
-    <q-dialog v-model="dialogCosto">
-      <q-card style="min-width: 420px">
-        <q-card-section>
-          <div class="vp-section-title">
-            {{ costoInModifica ? 'Modifica costo annuale' : 'Nuovo costo annuale' }}
-          </div>
-        </q-card-section>
-        <q-card-section class="q-gutter-md">
-          <q-select
-            v-model="formCosto.voce"
-            :options="opzioniVoce"
-            label="Voce"
-            outlined
-            dense
-            emit-value
-            map-options
-            data-testid="costo-voce"
-          />
-          <div class="row q-col-gutter-sm">
-            <div class="col-6">
-              <q-input
-                v-model="formCosto.anno"
-                label="Anno"
-                type="number"
-                outlined
-                dense
-                data-testid="costo-anno"
-              />
-            </div>
-            <div class="col-6">
-              <q-input
-                v-model="formCosto.importo_annuale"
-                label="Importo annuale"
-                type="number"
-                min="0"
-                step="0.01"
-                suffix="€"
-                outlined
-                dense
-                data-testid="costo-importo"
-              />
-            </div>
-          </div>
-          <div class="row q-col-gutter-sm">
-            <div class="col-6">
-              <q-input
-                v-model="formCosto.valid_from"
-                label="Valido dal"
-                type="date"
-                outlined
-                dense
-                data-testid="costo-valid-from"
-              />
-            </div>
-            <div class="col-6">
-              <q-input
-                v-model="formCosto.valid_to"
-                label="Valido fino al"
-                type="date"
-                outlined
-                dense
-                clearable
-                hint="Vuoto = tuttora in vigore"
-              />
-            </div>
-          </div>
-          <q-input
-            v-model="formCosto.note"
-            label="Note"
-            type="textarea"
-            autogrow
-            outlined
-            dense
-          />
-          <q-banner v-if="erroreCosto" class="vp-banner-errore" rounded dense>
-            {{ erroreCosto }}
-          </q-banner>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat label="Annulla" />
-          <q-btn
-            color="primary"
-            label="Salva"
-            :loading="savingCosto"
-            data-testid="salva-costo"
-            @click="salvaCosto"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
-    <!-- Dialog quota condominio -->
-    <q-dialog v-model="dialogQuota">
-      <q-card style="min-width: 420px">
-        <q-card-section>
-          <div class="vp-section-title">
-            {{ quotaInModifica ? 'Modifica quota condominio' : 'Nuova quota condominio' }}
-          </div>
-        </q-card-section>
-        <q-card-section class="q-gutter-md">
-          <q-select
-            v-model="formQuota.tenant"
-            :options="opzioniInquilino"
-            label="Vale per"
-            outlined
-            dense
-            emit-value
-            map-options
-            data-testid="quota-tenant"
-          />
-          <q-input
-            v-model="formQuota.importo_mensile"
-            label="Importo mensile"
-            type="number"
-            min="0"
-            step="0.01"
-            suffix="€"
-            outlined
-            dense
-            data-testid="quota-importo"
-          />
-          <div class="row q-col-gutter-sm">
-            <div class="col-6">
-              <q-input
-                v-model="formQuota.valid_from"
-                label="Valida dal"
-                type="date"
-                outlined
-                dense
-                data-testid="quota-valid-from"
-              />
-            </div>
-            <div class="col-6">
-              <q-input
-                v-model="formQuota.valid_to"
-                label="Valida fino al"
-                type="date"
-                outlined
-                dense
-                clearable
-                hint="Vuoto = tuttora in vigore"
-              />
-            </div>
-          </div>
-          <q-input
-            v-model="formQuota.note"
-            label="Note"
-            type="textarea"
-            autogrow
-            outlined
-            dense
-          />
-          <div class="vp-hint">
-            La modifica vale sui canoni generati d'ora in poi: quelli già
-            emessi non cambiano da soli.
-          </div>
-          <q-banner v-if="erroreQuota" class="vp-banner-errore" rounded dense>
-            {{ erroreQuota }}
-          </q-banner>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat label="Annulla" />
-          <q-btn
-            color="primary"
-            label="Salva"
-            :loading="savingQuota"
-            data-testid="salva-quota"
-            @click="salvaQuota"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { useQuasar, type QTableProps } from 'quasar';
 import { useRoute, useRouter } from 'vue-router';
-import { api } from 'boot/axios';
-import { messaggioErrore } from 'src/utils/apiErrors';
 import {
   etichettaRuolo,
   usePropertiesStore,
@@ -1088,130 +129,51 @@ import {
   type PropertyDettaglio,
   type Quota,
 } from 'stores/properties';
-import { useTenantsStore } from 'stores/tenants';
 import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
-import DocumentiPannello from 'components/DocumentiPannello.vue';
-import ModelliDocumentoPannello from 'components/documenti/ModelliDocumentoPannello.vue';
+import VpIcon from 'components/utenze/VpIcon.vue';
+import EtichettaStato from 'components/impostazioni/ui/EtichettaStato.vue';
 import DatiImmobilePannello from 'components/impostazioni/DatiImmobilePannello.vue';
+import StanzePannello from 'components/impostazioni/StanzePannello.vue';
+import ContrattiPannello from 'components/impostazioni/ContrattiPannello.vue';
+import DocumentiProprietaPannello from 'components/impostazioni/DocumentiProprietaPannello.vue';
+import ModelliDocumentoPannello from 'components/documenti/ModelliDocumentoPannello.vue';
+import UtenzeCasaPannello from 'components/impostazioni/UtenzeCasaPannello.vue';
+import QuoteCondominioPannello from 'components/impostazioni/QuoteCondominioPannello.vue';
+import CostiAnnualiPannello from 'components/impostazioni/CostiAnnualiPannello.vue';
+import CategorieSpesaPannello from 'components/impostazioni/CategorieSpesaPannello.vue';
+import FornitoriPannello from 'components/impostazioni/FornitoriPannello.vue';
 import MembriPannello from 'components/impostazioni/MembriPannello.vue';
 import ContiBancariPannello from 'components/impostazioni/ContiBancariPannello.vue';
-import QuoteProprietaPannello from 'components/impostazioni/QuoteProprietaPannello.vue';
-import { useDocumentiProprietaStore, TIPI_DOCUMENTO_PROPRIETA } from 'stores/documenti';
 
-// ---------------------------------------------------------------------------
-// Tipi (allineati ai serializer backend: properties/billing)
-// ---------------------------------------------------------------------------
-
-interface Stanza {
-  id: number;
-  nome: string;
-  superficie_mq: string | null;
-  ordinamento: number;
-}
-
-type RegimeFiscale = 'cedolare_10' | 'cedolare_21' | 'irpef';
-
-interface Contratto {
-  id: number;
-  nome: string;
-  data_stipula: string;
-  data_decorrenza: string;
-  termine: string | null;
-  durata_anni: number;
-  durata_rinnovo_anni: number;
-  asseverato: boolean;
-  regime_fiscale: RegimeFiscale;
-  regime_fiscale_display?: string;
-  default_pagatore_bollette: number | null;
-  note: string;
-  ufficio_registrazione: string;
-  data_registrazione: string | null;
-  numero_registrazione: string;
-  serie_registrazione: string;
-  codice_identificativo: string;
-}
-
-interface Owner {
-  id: number;
-  nominativo: string;
-}
-
-interface Categoria {
-  id: number;
-  nome: string;
-  codice: string;
-  ripartibile_inquilini: boolean;
-}
-
-type TipoFornitore = 'energia' | 'gas' | 'acqua' | 'condominio' | 'altro';
-
-interface Fornitore {
-  id: number;
-  nome: string;
-  tipo: TipoFornitore;
-  tipo_display?: string;
-  partita_iva: string;
-  contatto: string;
-}
-
-type VoceAnnuale = 'tari' | 'altro';
-
-interface CostoAnnuale {
-  id: number;
-  voce: VoceAnnuale;
-  voce_display?: string;
-  anno: number;
-  importo_annuale: string;
-  valid_from: string;
-  valid_to: string | null;
-  note: string;
-}
-
-type VoceUtenza = 'luce' | 'gas' | 'acqua' | 'tari';
-type GestioneUtenza = 'proprieta' | 'inquilino';
-/** Stato mostrato dalla select: il terzo valore non è una gestione ma
- *  l'assenza della riga a DB. */
-type StatoUtenza = GestioneUtenza | 'assente';
-
-interface UtenzaConfig {
-  id: number;
-  voce: VoceUtenza;
-  voce_display?: string;
-  gestione: GestioneUtenza;
-  gestione_display?: string;
-  note: string;
-}
-
-interface QuotaCondominio {
-  id: number;
-  tenant: number | null;
-  tenant_nominativo: string | null;
-  valid_from: string;
-  valid_to: string | null;
-  importo_mensile: string;
-  note: string;
-}
-
-const $q = useQuasar();
 const route = useRoute();
 const router = useRouter();
 const propStore = usePropertiesStore();
-const tenantsStore = useTenantsStore();
 const contiStore = useOwnerBankAccountsStore();
 
 const TABS = [
-  'dati',
-  'stanze',
-  'contratti',
-  'spese',
-  'tari',
-  'documenti',
-  'modelli',
-  'membri',
-  'conti',
-  'quote',
+  { id: 'dati', label: 'Dati', icona: 'home' },
+  { id: 'contratti', label: 'Contratti e documenti', icona: 'contract' },
+  { id: 'spese', label: 'Spese', icona: 'euro' },
+  { id: 'proprieta', label: 'Proprietà', icona: 'users' },
 ] as const;
-type Tab = (typeof TABS)[number];
+type Tab = (typeof TABS)[number]['id'];
+
+/** Le dieci schede di prima restano indirizzi validi: i link dei "dati
+ *  mancanti" generati dal backend (`?tab=modelli`, `?tab=membri`, …) e i
+ *  segnalibri di chi usa l'app puntano ancora lì. */
+const ALIAS: Record<string, Tab> = {
+  dati: 'dati',
+  stanze: 'dati',
+  contratti: 'contratti',
+  documenti: 'contratti',
+  modelli: 'contratti',
+  spese: 'spese',
+  tari: 'spese',
+  proprieta: 'proprieta',
+  membri: 'proprieta',
+  conti: 'proprieta',
+  quote: 'proprieta',
+};
 
 function primo(v: unknown): string | null {
   const s = Array.isArray(v) ? v[0] : v;
@@ -1222,18 +184,15 @@ function primo(v: unknown): string | null {
  *  documenti linkano direttamente al punto in cui si compilano. */
 function tabDaRotta(): Tab {
   const nome = primo(route.query.tab);
-  return TABS.includes(nome as Tab) ? (nome as Tab) : 'dati';
+  return (nome && ALIAS[nome]) || 'dati';
 }
 
 const tabAttivo = ref<Tab>(tabDaRotta());
-
-const documentiStore = useDocumentiProprietaStore();
 
 const puoModificare = computed(
   () => propStore.mioRuolo === 'proprietario' || propStore.mioRuolo === 'gestore',
 );
 const sonoProprietario = computed(() => propStore.isProprietarioAttivo);
-const labels = computed(() => propStore.labels);
 
 // ---------------------------------------------------------------------------
 // Dati immobile, membri, quote di proprietà: lo stato vive nella pagina
@@ -1248,6 +207,7 @@ const quote = ref<Quota[]>([]);
 const loadingGovernance = ref(true);
 const datiPannello = ref<InstanceType<typeof DatiImmobilePannello> | null>(null);
 const membriPannello = ref<InstanceType<typeof MembriPannello> | null>(null);
+const contrattiPannello = ref<InstanceType<typeof ContrattiPannello> | null>(null);
 
 const quoteCorrenti = computed(() => quote.value.filter((q) => q.valid_to === null));
 
@@ -1268,930 +228,8 @@ async function caricaGovernance() {
   }
 }
 
-function asArray<T>(data: T[] | { results: T[] } | undefined | null): T[] {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
-  return data.results ?? [];
-}
-
-function formattaImporto(v: string | number): string {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return String(v);
-  return n.toLocaleString('it-IT', {
-    style: 'currency',
-    currency: 'EUR',
-  });
-}
-
 // ---------------------------------------------------------------------------
-// Stanze
-// ---------------------------------------------------------------------------
-
-const stanze = ref<Stanza[]>([]);
-const loadingStanze = ref(false);
-
-// Su unità intera l'unica stanza è l'appartamento implicito, creato per
-// costruzione dal signal: niente bottone "Nuova" (nasconderlo sempre, anche
-// durante il caricamento iniziale) e niente azione elimina sulla Room.
-const nascondiNuovaStanza = computed(() => propStore.isUnitaIntera);
-const nascondiEliminaStanza = computed(() => propStore.isUnitaIntera);
-
-const colonneStanze: QTableProps['columns'] = [
-  { name: 'nome', label: 'Nome', field: 'nome', align: 'left', sortable: true },
-  {
-    name: 'superficie_mq',
-    label: 'Superficie (mq)',
-    field: 'superficie_mq',
-    align: 'right',
-    sortable: true,
-    format: (v: string | null) => (v ? Number(v).toLocaleString('it-IT') : '—'),
-  },
-  {
-    name: 'ordinamento',
-    label: 'Ordinamento',
-    field: 'ordinamento',
-    align: 'right',
-    sortable: true,
-  },
-  { name: 'azioni', label: '', field: 'id', align: 'right' },
-];
-
-async function caricaStanze() {
-  loadingStanze.value = true;
-  try {
-    const { data } = await api.get<Stanza[] | { results: Stanza[] }>('/api/v1/rooms/');
-    stanze.value = asArray(data);
-  } catch (e: unknown) {
-    $q.notify({
-      type: 'negative',
-      message: messaggioErrore(e, 'Caricamento stanze non riuscito.'),
-    });
-  } finally {
-    loadingStanze.value = false;
-  }
-}
-
-const dialogStanza = ref(false);
-const stanzaInModifica = ref<Stanza | null>(null);
-const formStanza = ref({ nome: '', superficie_mq: '', ordinamento: '0' });
-const savingStanza = ref(false);
-const erroreStanza = ref('');
-
-function apriDialogStanza(s: Stanza | null) {
-  stanzaInModifica.value = s;
-  erroreStanza.value = '';
-  formStanza.value = {
-    nome: s?.nome ?? '',
-    superficie_mq: s?.superficie_mq ?? '',
-    ordinamento: String(s?.ordinamento ?? stanze.value.length),
-  };
-  dialogStanza.value = true;
-}
-
-async function salvaStanza() {
-  erroreStanza.value = '';
-  if (!formStanza.value.nome.trim()) {
-    erroreStanza.value = 'Il nome è obbligatorio.';
-    return;
-  }
-  savingStanza.value = true;
-  const payload = {
-    nome: formStanza.value.nome.trim(),
-    superficie_mq: formStanza.value.superficie_mq !== '' ? formStanza.value.superficie_mq : null,
-    ordinamento: Number(formStanza.value.ordinamento) || 0,
-  };
-  try {
-    if (stanzaInModifica.value) {
-      await api.patch(`/api/v1/rooms/${stanzaInModifica.value.id}/`, payload);
-      $q.notify({ type: 'positive', message: 'Stanza aggiornata.' });
-    } else {
-      await api.post('/api/v1/rooms/', payload);
-      $q.notify({ type: 'positive', message: 'Stanza creata.' });
-    }
-    dialogStanza.value = false;
-    await caricaStanze();
-  } catch (e: unknown) {
-    erroreStanza.value = messaggioErrore(e, 'Salvataggio non riuscito.');
-  } finally {
-    savingStanza.value = false;
-  }
-}
-
-function eliminaStanza(s: Stanza) {
-  $q.dialog({
-    title: 'Eliminare la stanza?',
-    message: `"${s.nome}" verrà rimossa dall'immobile.`,
-    cancel: { flat: true, label: 'Annulla' },
-    ok: { color: 'negative', label: 'Elimina' },
-  }).onOk(() => {
-    void (async () => {
-      try {
-        await api.delete(`/api/v1/rooms/${s.id}/`);
-        stanze.value = stanze.value.filter((x) => x.id !== s.id);
-        $q.notify({ type: 'positive', message: 'Stanza eliminata.' });
-      } catch (e: unknown) {
-        $q.notify({
-          type: 'negative',
-          message: messaggioErrore(
-            e,
-            'Eliminazione non riuscita: la stanza ha assegnazioni collegate.',
-          ),
-        });
-      }
-    })();
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Contratti
-// ---------------------------------------------------------------------------
-
-const contratti = ref<Contratto[]>([]);
-const loadingContratti = ref(false);
-const owners = ref<Owner[]>([]);
-
-const opzioniRegimeFiscale = [
-  { label: 'Cedolare secca 10%', value: 'cedolare_10' },
-  { label: 'Cedolare secca 21%', value: 'cedolare_21' },
-  { label: 'IRPEF ordinario', value: 'irpef' },
-];
-
-const opzioniPagatore = computed(() =>
-  owners.value.map((o) => ({ label: o.nominativo, value: o.id })),
-);
-
-function nominativoOwner(id: number): string {
-  return owners.value.find((o) => o.id === id)?.nominativo ?? `#${id}`;
-}
-
-function nomeContratto(c: Contratto): string {
-  return c.nome || `Contratto dal ${c.data_decorrenza}`;
-}
-
-async function caricaContratti() {
-  loadingContratti.value = true;
-  try {
-    const [{ data: dataContratti }, { data: dataOwners }] = await Promise.all([
-      api.get<Contratto[] | { results: Contratto[] }>('/api/v1/contracts/'),
-      api.get<Owner[] | { results: Owner[] }>('/api/v1/owners/'),
-    ]);
-    contratti.value = asArray(dataContratti);
-    owners.value = asArray(dataOwners);
-  } catch (e: unknown) {
-    $q.notify({
-      type: 'negative',
-      message: messaggioErrore(e, 'Caricamento contratti non riuscito.'),
-    });
-  } finally {
-    loadingContratti.value = false;
-  }
-}
-
-const dialogContratto = ref(false);
-const contrattoInModifica = ref<Contratto | null>(null);
-interface FormContratto {
-  nome: string;
-  data_stipula: string;
-  data_decorrenza: string;
-  termine: string | null;
-  durata_anni: string;
-  durata_rinnovo_anni: string;
-  asseverato: boolean;
-  regime_fiscale: RegimeFiscale;
-  default_pagatore_bollette: number | null;
-  note: string;
-  ufficio_registrazione: string;
-  data_registrazione: string | null;
-  numero_registrazione: string;
-  serie_registrazione: string;
-  codice_identificativo: string;
-}
-
-const formContratto = ref<FormContratto>({
-  nome: '',
-  data_stipula: '',
-  data_decorrenza: '',
-  termine: null,
-  durata_anni: '4',
-  durata_rinnovo_anni: '2',
-  asseverato: false,
-  regime_fiscale: 'cedolare_10',
-  default_pagatore_bollette: null,
-  note: '',
-  ufficio_registrazione: '',
-  data_registrazione: null,
-  numero_registrazione: '',
-  serie_registrazione: '',
-  codice_identificativo: '',
-});
-const savingContratto = ref(false);
-const erroreContratto = ref('');
-
-function apriDialogContratto(c: Contratto | null) {
-  contrattoInModifica.value = c;
-  erroreContratto.value = '';
-  formContratto.value = {
-    nome: c?.nome ?? '',
-    data_stipula: c?.data_stipula ?? '',
-    data_decorrenza: c?.data_decorrenza ?? '',
-    termine: c?.termine ?? null,
-    durata_anni: String(c?.durata_anni ?? 4),
-    durata_rinnovo_anni: String(c?.durata_rinnovo_anni ?? 2),
-    asseverato: c?.asseverato ?? false,
-    regime_fiscale: c?.regime_fiscale ?? 'cedolare_10',
-    default_pagatore_bollette: c?.default_pagatore_bollette ?? null,
-    note: c?.note ?? '',
-    ufficio_registrazione: c?.ufficio_registrazione ?? '',
-    data_registrazione: c?.data_registrazione ?? null,
-    numero_registrazione: c?.numero_registrazione ?? '',
-    serie_registrazione: c?.serie_registrazione ?? '',
-    codice_identificativo: c?.codice_identificativo ?? '',
-  };
-  dialogContratto.value = true;
-}
-
-async function salvaContratto() {
-  erroreContratto.value = '';
-  const f = formContratto.value;
-  if (!f.data_stipula || !f.data_decorrenza) {
-    erroreContratto.value = 'Data stipula e data decorrenza sono obbligatorie.';
-    return;
-  }
-  if (!Number(f.durata_anni)) {
-    erroreContratto.value = 'La durata in anni è obbligatoria.';
-    return;
-  }
-  savingContratto.value = true;
-  const payload = {
-    nome: f.nome.trim(),
-    data_stipula: f.data_stipula,
-    data_decorrenza: f.data_decorrenza,
-    termine: f.termine || null,
-    durata_anni: Number(f.durata_anni),
-    durata_rinnovo_anni: Number(f.durata_rinnovo_anni) || 0,
-    asseverato: f.asseverato,
-    regime_fiscale: f.regime_fiscale,
-    default_pagatore_bollette: f.default_pagatore_bollette,
-    note: f.note,
-    ufficio_registrazione: f.ufficio_registrazione.trim(),
-    data_registrazione: f.data_registrazione || null,
-    numero_registrazione: f.numero_registrazione.trim(),
-    serie_registrazione: f.serie_registrazione.trim(),
-    codice_identificativo: f.codice_identificativo.trim(),
-  };
-  try {
-    if (contrattoInModifica.value) {
-      await api.patch(`/api/v1/contracts/${contrattoInModifica.value.id}/`, payload);
-      $q.notify({ type: 'positive', message: 'Contratto aggiornato.' });
-    } else {
-      await api.post('/api/v1/contracts/', payload);
-      $q.notify({ type: 'positive', message: 'Contratto creato.' });
-    }
-    dialogContratto.value = false;
-    await caricaContratti();
-  } catch (e: unknown) {
-    erroreContratto.value = messaggioErrore(e, 'Salvataggio non riuscito.');
-  } finally {
-    savingContratto.value = false;
-  }
-}
-
-function eliminaContratto(c: Contratto) {
-  $q.dialog({
-    title: 'Eliminare il contratto?',
-    message: `"${nomeContratto(c)}" verrà rimosso.`,
-    cancel: { flat: true, label: 'Annulla' },
-    ok: { color: 'negative', label: 'Elimina' },
-  }).onOk(() => {
-    void (async () => {
-      try {
-        await api.delete(`/api/v1/contracts/${c.id}/`);
-        contratti.value = contratti.value.filter((x) => x.id !== c.id);
-        $q.notify({ type: 'positive', message: 'Contratto eliminato.' });
-      } catch (e: unknown) {
-        $q.notify({
-          type: 'negative',
-          message: messaggioErrore(e, 'Eliminazione non riuscita: dati collegati.'),
-        });
-      }
-    })();
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Spese: categorie
-// ---------------------------------------------------------------------------
-
-const categorie = ref<Categoria[]>([]);
-const loadingCategorie = ref(false);
-
-async function caricaCategorie() {
-  loadingCategorie.value = true;
-  try {
-    const { data } = await api.get<Categoria[] | { results: Categoria[] }>(
-      '/api/v1/expense-categories/',
-    );
-    categorie.value = asArray(data);
-  } catch (e: unknown) {
-    $q.notify({
-      type: 'negative',
-      message: messaggioErrore(e, 'Caricamento categorie non riuscito.'),
-    });
-  } finally {
-    loadingCategorie.value = false;
-  }
-}
-
-const dialogCategoria = ref(false);
-const categoriaInModifica = ref<Categoria | null>(null);
-const formCategoria = ref({ nome: '', codice: '', ripartibile_inquilini: false });
-const savingCategoria = ref(false);
-const erroreCategoria = ref('');
-
-function apriDialogCategoria(c: Categoria | null) {
-  categoriaInModifica.value = c;
-  erroreCategoria.value = '';
-  formCategoria.value = {
-    nome: c?.nome ?? '',
-    codice: c?.codice ?? '',
-    ripartibile_inquilini: c?.ripartibile_inquilini ?? false,
-  };
-  dialogCategoria.value = true;
-}
-
-async function salvaCategoria() {
-  erroreCategoria.value = '';
-  const f = formCategoria.value;
-  if (!f.nome.trim() || !f.codice.trim()) {
-    erroreCategoria.value = 'Nome e codice sono obbligatori.';
-    return;
-  }
-  savingCategoria.value = true;
-  const payload = {
-    nome: f.nome.trim(),
-    codice: f.codice.trim(),
-    ripartibile_inquilini: f.ripartibile_inquilini,
-  };
-  try {
-    if (categoriaInModifica.value) {
-      await api.patch(`/api/v1/expense-categories/${categoriaInModifica.value.id}/`, payload);
-      $q.notify({ type: 'positive', message: 'Categoria aggiornata.' });
-    } else {
-      await api.post('/api/v1/expense-categories/', payload);
-      $q.notify({ type: 'positive', message: 'Categoria creata.' });
-    }
-    dialogCategoria.value = false;
-    await caricaCategorie();
-  } catch (e: unknown) {
-    erroreCategoria.value = messaggioErrore(e, 'Salvataggio non riuscito.');
-  } finally {
-    savingCategoria.value = false;
-  }
-}
-
-function eliminaCategoria(c: Categoria) {
-  $q.dialog({
-    title: 'Eliminare la categoria?',
-    message: `"${c.nome}" verrà rimossa.`,
-    cancel: { flat: true, label: 'Annulla' },
-    ok: { color: 'negative', label: 'Elimina' },
-  }).onOk(() => {
-    void (async () => {
-      try {
-        await api.delete(`/api/v1/expense-categories/${c.id}/`);
-        categorie.value = categorie.value.filter((x) => x.id !== c.id);
-        $q.notify({ type: 'positive', message: 'Categoria eliminata.' });
-      } catch (e: unknown) {
-        $q.notify({
-          type: 'negative',
-          message: messaggioErrore(e, 'Eliminazione non riuscita: spese collegate.'),
-        });
-      }
-    })();
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Spese: fornitori
-// ---------------------------------------------------------------------------
-
-const fornitori = ref<Fornitore[]>([]);
-const loadingFornitori = ref(false);
-
-const opzioniTipoFornitore = [
-  { label: 'Energia elettrica', value: 'energia' },
-  { label: 'Gas', value: 'gas' },
-  { label: 'Acqua', value: 'acqua' },
-  { label: 'Condominio', value: 'condominio' },
-  { label: 'Altro', value: 'altro' },
-];
-
-function etichettaTipoFornitore(tipo: TipoFornitore): string {
-  return opzioniTipoFornitore.find((o) => o.value === tipo)?.label ?? tipo;
-}
-
-async function caricaFornitori() {
-  loadingFornitori.value = true;
-  try {
-    const { data } = await api.get<Fornitore[] | { results: Fornitore[] }>(
-      '/api/v1/suppliers/',
-    );
-    fornitori.value = asArray(data);
-  } catch (e: unknown) {
-    $q.notify({
-      type: 'negative',
-      message: messaggioErrore(e, 'Caricamento fornitori non riuscito.'),
-    });
-  } finally {
-    loadingFornitori.value = false;
-  }
-}
-
-const dialogFornitore = ref(false);
-const fornitoreInModifica = ref<Fornitore | null>(null);
-interface FormFornitore {
-  nome: string;
-  tipo: TipoFornitore;
-  partita_iva: string;
-  contatto: string;
-}
-
-const formFornitore = ref<FormFornitore>({
-  nome: '',
-  tipo: 'altro',
-  partita_iva: '',
-  contatto: '',
-});
-const savingFornitore = ref(false);
-const erroreFornitore = ref('');
-
-function apriDialogFornitore(f: Fornitore | null) {
-  fornitoreInModifica.value = f;
-  erroreFornitore.value = '';
-  formFornitore.value = {
-    nome: f?.nome ?? '',
-    tipo: f?.tipo ?? 'altro',
-    partita_iva: f?.partita_iva ?? '',
-    contatto: f?.contatto ?? '',
-  };
-  dialogFornitore.value = true;
-}
-
-async function salvaFornitore() {
-  erroreFornitore.value = '';
-  const f = formFornitore.value;
-  if (!f.nome.trim()) {
-    erroreFornitore.value = 'Il nome è obbligatorio.';
-    return;
-  }
-  savingFornitore.value = true;
-  const payload = {
-    nome: f.nome.trim(),
-    tipo: f.tipo,
-    partita_iva: f.partita_iva.trim(),
-    contatto: f.contatto.trim(),
-  };
-  try {
-    if (fornitoreInModifica.value) {
-      await api.patch(`/api/v1/suppliers/${fornitoreInModifica.value.id}/`, payload);
-      $q.notify({ type: 'positive', message: 'Fornitore aggiornato.' });
-    } else {
-      await api.post('/api/v1/suppliers/', payload);
-      $q.notify({ type: 'positive', message: 'Fornitore creato.' });
-    }
-    dialogFornitore.value = false;
-    await caricaFornitori();
-  } catch (e: unknown) {
-    erroreFornitore.value = messaggioErrore(e, 'Salvataggio non riuscito.');
-  } finally {
-    savingFornitore.value = false;
-  }
-}
-
-function eliminaFornitore(f: Fornitore) {
-  $q.dialog({
-    title: 'Eliminare il fornitore?',
-    message: `"${f.nome}" verrà rimosso.`,
-    cancel: { flat: true, label: 'Annulla' },
-    ok: { color: 'negative', label: 'Elimina' },
-  }).onOk(() => {
-    void (async () => {
-      try {
-        await api.delete(`/api/v1/suppliers/${f.id}/`);
-        fornitori.value = fornitori.value.filter((x) => x.id !== f.id);
-        $q.notify({ type: 'positive', message: 'Fornitore eliminato.' });
-      } catch (e: unknown) {
-        $q.notify({
-          type: 'negative',
-          message: messaggioErrore(e, 'Eliminazione non riuscita: dati collegati.'),
-        });
-      }
-    })();
-  });
-}
-
-// ---------------------------------------------------------------------------
-// TARI / costi annuali
-// ---------------------------------------------------------------------------
-
-const costiAnnuali = ref<CostoAnnuale[]>([]);
-const loadingCosti = ref(false);
-
-const opzioniVoce = [
-  { label: 'TARI (tassa rifiuti)', value: 'tari' },
-  { label: 'Altro', value: 'altro' },
-];
-
-function etichettaVoce(voce: VoceAnnuale): string {
-  return opzioniVoce.find((o) => o.value === voce)?.label ?? voce;
-}
-
-async function caricaCosti() {
-  loadingCosti.value = true;
-  try {
-    const { data } = await api.get<CostoAnnuale[] | { results: CostoAnnuale[] }>(
-      '/api/v1/annual-utility-costs/',
-    );
-    costiAnnuali.value = asArray(data).sort((a, b) => b.anno - a.anno);
-  } catch (e: unknown) {
-    $q.notify({
-      type: 'negative',
-      message: messaggioErrore(e, 'Caricamento costi annuali non riuscito.'),
-    });
-  } finally {
-    loadingCosti.value = false;
-  }
-}
-
-const dialogCosto = ref(false);
-const costoInModifica = ref<CostoAnnuale | null>(null);
-interface FormCosto {
-  voce: VoceAnnuale;
-  anno: string;
-  importo_annuale: string;
-  valid_from: string;
-  valid_to: string | null;
-  note: string;
-}
-
-const formCosto = ref<FormCosto>({
-  voce: 'tari',
-  anno: String(new Date().getFullYear()),
-  importo_annuale: '',
-  valid_from: '',
-  valid_to: null,
-  note: '',
-});
-const savingCosto = ref(false);
-const erroreCosto = ref('');
-
-function apriDialogCosto(c: CostoAnnuale | null) {
-  costoInModifica.value = c;
-  erroreCosto.value = '';
-  const annoCorrente = new Date().getFullYear();
-  formCosto.value = {
-    voce: c?.voce ?? 'tari',
-    anno: String(c?.anno ?? annoCorrente),
-    importo_annuale: c?.importo_annuale ?? '',
-    valid_from: c?.valid_from ?? `${annoCorrente}-01-01`,
-    valid_to: c?.valid_to ?? null,
-    note: c?.note ?? '',
-  };
-  dialogCosto.value = true;
-}
-
-async function salvaCosto() {
-  erroreCosto.value = '';
-  const f = formCosto.value;
-  if (!Number(f.anno) || f.importo_annuale === '' || !f.valid_from) {
-    erroreCosto.value = 'Anno, importo e data di inizio validità sono obbligatori.';
-    return;
-  }
-  savingCosto.value = true;
-  const payload = {
-    voce: f.voce,
-    anno: Number(f.anno),
-    importo_annuale: f.importo_annuale,
-    valid_from: f.valid_from,
-    valid_to: f.valid_to || null,
-    note: f.note,
-  };
-  try {
-    if (costoInModifica.value) {
-      await api.patch(`/api/v1/annual-utility-costs/${costoInModifica.value.id}/`, payload);
-      $q.notify({ type: 'positive', message: 'Costo annuale aggiornato.' });
-    } else {
-      await api.post('/api/v1/annual-utility-costs/', payload);
-      $q.notify({ type: 'positive', message: 'Costo annuale creato.' });
-    }
-    dialogCosto.value = false;
-    await caricaCosti();
-  } catch (e: unknown) {
-    erroreCosto.value = messaggioErrore(e, 'Salvataggio non riuscito.');
-  } finally {
-    savingCosto.value = false;
-  }
-}
-
-function eliminaCosto(c: CostoAnnuale) {
-  $q.dialog({
-    title: 'Eliminare il costo annuale?',
-    message: `${c.voce_display || etichettaVoce(c.voce)} ${c.anno} verrà rimosso.`,
-    cancel: { flat: true, label: 'Annulla' },
-    ok: { color: 'negative', label: 'Elimina' },
-  }).onOk(() => {
-    void (async () => {
-      try {
-        await api.delete(`/api/v1/annual-utility-costs/${c.id}/`);
-        costiAnnuali.value = costiAnnuali.value.filter((x) => x.id !== c.id);
-        $q.notify({ type: 'positive', message: 'Costo annuale eliminato.' });
-      } catch (e: unknown) {
-        $q.notify({
-          type: 'negative',
-          message: messaggioErrore(e, 'Eliminazione non riuscita.'),
-        });
-      }
-    })();
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Quote condominio a carico degli inquilini
-// ---------------------------------------------------------------------------
-
-const quoteCondominio = ref<QuotaCondominio[]>([]);
-const loadingQuote = ref(false);
-
-/** "Tutti" (quota base dell'immobile) più i singoli inquilini, per cui la
- *  quota è un'eccezione che prevale sulla base. Solo inquilini con almeno
- *  una assegnazione (anche futura): una quota su un profilo mai assegnato
- *  non entrerebbe mai nel calcolo del canone. */
-const opzioniInquilino = computed(() => [
-  { label: 'Tutti gli inquilini', value: null },
-  ...tenantsStore.tenantsConAssignment.map((t) => ({ label: t.nominativo, value: t.id })),
-]);
-
-async function caricaQuote() {
-  loadingQuote.value = true;
-  try {
-    const { data } = await api.get<QuotaCondominio[] | { results: QuotaCondominio[] }>(
-      '/api/v1/quote-condominio/',
-    );
-    quoteCondominio.value = asArray(data);
-  } catch (e: unknown) {
-    $q.notify({
-      type: 'negative',
-      message: messaggioErrore(e, 'Caricamento quote condominio non riuscito.'),
-    });
-  } finally {
-    loadingQuote.value = false;
-  }
-}
-
-const dialogQuota = ref(false);
-const quotaInModifica = ref<QuotaCondominio | null>(null);
-interface FormQuota {
-  tenant: number | null;
-  importo_mensile: string;
-  valid_from: string;
-  valid_to: string | null;
-  note: string;
-}
-
-const formQuota = ref<FormQuota>({
-  tenant: null,
-  importo_mensile: '',
-  valid_from: '',
-  valid_to: null,
-  note: '',
-});
-const savingQuota = ref(false);
-const erroreQuota = ref('');
-
-function apriDialogQuota(q: QuotaCondominio | null) {
-  quotaInModifica.value = q;
-  erroreQuota.value = '';
-  formQuota.value = {
-    tenant: q?.tenant ?? null,
-    importo_mensile: q?.importo_mensile ?? '',
-    valid_from: q?.valid_from ?? new Date().toISOString().slice(0, 10),
-    valid_to: q?.valid_to ?? null,
-    note: q?.note ?? '',
-  };
-  void tenantsStore.fetchTenantsConAssignment(true);
-  dialogQuota.value = true;
-}
-
-async function salvaQuota() {
-  erroreQuota.value = '';
-  const f = formQuota.value;
-  if (f.importo_mensile === '' || !f.valid_from) {
-    erroreQuota.value = 'Importo e data di inizio validità sono obbligatori.';
-    return;
-  }
-  savingQuota.value = true;
-  const payload = {
-    tenant: f.tenant,
-    importo_mensile: f.importo_mensile,
-    valid_from: f.valid_from,
-    valid_to: f.valid_to || null,
-    note: f.note,
-  };
-  try {
-    if (quotaInModifica.value) {
-      await api.patch(`/api/v1/quote-condominio/${quotaInModifica.value.id}/`, payload);
-      $q.notify({ type: 'positive', message: 'Quota condominio aggiornata.' });
-    } else {
-      await api.post('/api/v1/quote-condominio/', payload);
-      $q.notify({ type: 'positive', message: 'Quota condominio creata.' });
-    }
-    dialogQuota.value = false;
-    await caricaQuote();
-  } catch (e: unknown) {
-    erroreQuota.value = messaggioErrore(e, 'Salvataggio non riuscito.');
-  } finally {
-    savingQuota.value = false;
-  }
-}
-
-function eliminaQuota(q: QuotaCondominio) {
-  $q.dialog({
-    title: 'Eliminare la quota?',
-    message: `La quota di ${q.importo_mensile}€/mese dal ${q.valid_from} verrà rimossa.`,
-    cancel: { flat: true, label: 'Annulla' },
-    ok: { color: 'negative', label: 'Elimina' },
-  }).onOk(() => {
-    void (async () => {
-      try {
-        await api.delete(`/api/v1/quote-condominio/${q.id}/`);
-        quoteCondominio.value = quoteCondominio.value.filter((x) => x.id !== q.id);
-        $q.notify({ type: 'positive', message: 'Quota eliminata.' });
-      } catch (e: unknown) {
-        $q.notify({
-          type: 'negative',
-          message: messaggioErrore(e, 'Eliminazione non riuscita.'),
-        });
-      }
-    })();
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Utenze della casa: quali voci esistono e chi le gestisce
-// ---------------------------------------------------------------------------
-
-/** L'elenco è fisso: le quattro voci sono sempre in pagina anche senza riga a
- *  DB, perché la loro assenza è essa stessa la configurazione "non presente". */
-const VOCI_UTENZA: { voce: VoceUtenza; label: string }[] = [
-  { voce: 'luce', label: 'Luce' },
-  { voce: 'gas', label: 'Gas' },
-  { voce: 'acqua', label: 'Acqua' },
-  { voce: 'tari', label: 'TARI' },
-];
-
-const opzioniGestioneUtenza: { label: string; value: StatoUtenza }[] = [
-  { label: 'Gestita dalla proprietà', value: 'proprieta' },
-  { label: "A carico dell'inquilino", value: 'inquilino' },
-  { label: 'Non presente', value: 'assente' },
-];
-
-const utenzeConfig = ref<UtenzaConfig[]>([]);
-// Parte a true: prima della GET tutte le voci risulterebbero "non presente",
-// che è un'informazione sbagliata, non uno stato vuoto.
-const loadingUtenze = ref(true);
-const salvandoUtenza = ref<VoceUtenza | null>(null);
-const noteUtenza = ref<Record<VoceUtenza, string>>({
-  luce: '',
-  gas: '',
-  acqua: '',
-  tari: '',
-});
-
-function configUtenza(voce: VoceUtenza): UtenzaConfig | null {
-  return utenzeConfig.value.find((u) => u.voce === voce) ?? null;
-}
-
-function etichettaVoceUtenza(voce: VoceUtenza): string {
-  return VOCI_UTENZA.find((v) => v.voce === voce)?.label ?? voce;
-}
-
-function etichettaGestioneUtenza(stato: StatoUtenza): string {
-  return opzioniGestioneUtenza.find((o) => o.value === stato)?.label ?? stato;
-}
-
-const righeUtenze = computed(() =>
-  VOCI_UTENZA.map((v) => {
-    const config = configUtenza(v.voce);
-    return { ...v, config, stato: config?.gestione ?? 'assente' };
-  }),
-);
-
-function sincronizzaNoteUtenze() {
-  for (const v of VOCI_UTENZA) noteUtenza.value[v.voce] = configUtenza(v.voce)?.note ?? '';
-}
-
-async function caricaUtenzeConfig() {
-  loadingUtenze.value = true;
-  try {
-    const { data } = await api.get<UtenzaConfig[] | { results: UtenzaConfig[] }>(
-      '/api/v1/utenze-config/',
-    );
-    utenzeConfig.value = asArray(data);
-    sincronizzaNoteUtenze();
-  } catch (e: unknown) {
-    $q.notify({
-      type: 'negative',
-      message: messaggioErrore(e, 'Caricamento utenze della casa non riuscito.'),
-    });
-  } finally {
-    loadingUtenze.value = false;
-  }
-}
-
-/** Rimpiazza la singola riga con quella restituita dal backend invece di
- *  ricaricare la lista: una GET riallineerebbe anche le note che l'utente sta
- *  scrivendo sulle altre voci. */
-function aggiornaConfigUtenza(config: UtenzaConfig) {
-  utenzeConfig.value = utenzeConfig.value.map((u) => (u.id === config.id ? config : u));
-  noteUtenza.value[config.voce] = config.note ?? '';
-}
-
-async function cambiaGestioneUtenza(voce: VoceUtenza, stato: StatoUtenza) {
-  const config = configUtenza(voce);
-  if (stato === (config?.gestione ?? 'assente')) return;
-  const etichetta = etichettaVoceUtenza(voce);
-  salvandoUtenza.value = voce;
-  try {
-    if (stato === 'assente') {
-      if (config) {
-        await api.delete(`/api/v1/utenze-config/${config.id}/`);
-        utenzeConfig.value = utenzeConfig.value.filter((u) => u.id !== config.id);
-        noteUtenza.value[voce] = '';
-      }
-      $q.notify({
-        type: 'positive',
-        message: `${etichetta}: voce non presente in questa casa.`,
-      });
-      return;
-    }
-    if (config) {
-      const { data } = await api.patch<UtenzaConfig>(`/api/v1/utenze-config/${config.id}/`, {
-        gestione: stato,
-      });
-      aggiornaConfigUtenza(data);
-    } else {
-      const { data } = await api.post<UtenzaConfig>('/api/v1/utenze-config/', {
-        voce,
-        gestione: stato,
-        note: '',
-      });
-      utenzeConfig.value = [...utenzeConfig.value, data];
-      noteUtenza.value[voce] = data.note ?? '';
-    }
-    $q.notify({
-      type: 'positive',
-      message: `${etichetta}: ${etichettaGestioneUtenza(stato).toLowerCase()}.`,
-    });
-  } catch (e: unknown) {
-    $q.notify({
-      type: 'negative',
-      message: messaggioErrore(e, 'Aggiornamento della voce non riuscito.'),
-    });
-    // La select rilegge lo stato dai dati: rileggerli dal server la riallinea.
-    await caricaUtenzeConfig();
-  } finally {
-    salvandoUtenza.value = null;
-  }
-}
-
-/** La nota si salva quando il campo perde il fuoco: è un dettaglio
- *  descrittivo, non vale un bottone per riga. */
-async function salvaNotaUtenza(voce: VoceUtenza) {
-  const config = configUtenza(voce);
-  if (!config || salvandoUtenza.value === voce) return;
-  const nota = noteUtenza.value[voce].trim();
-  if (nota === (config.note ?? '').trim()) return;
-  salvandoUtenza.value = voce;
-  try {
-    const { data } = await api.patch<UtenzaConfig>(`/api/v1/utenze-config/${config.id}/`, {
-      note: nota,
-    });
-    aggiornaConfigUtenza(data);
-    $q.notify({
-      type: 'positive',
-      message: `Nota di ${etichettaVoceUtenza(voce)} aggiornata.`,
-    });
-  } catch (e: unknown) {
-    noteUtenza.value[voce] = config.note ?? '';
-    $q.notify({
-      type: 'negative',
-      message: messaggioErrore(e, 'Salvataggio della nota non riuscito.'),
-    });
-  } finally {
-    salvandoUtenza.value = null;
-  }
-}
-
+// Deep link: la lettura della query resta qui, l'azione ai pannelli.
 // ---------------------------------------------------------------------------
 
 /** Riscrive la query con il solo tab attivo: i param one-shot dei deep
@@ -2200,30 +238,26 @@ function aggiornaQuery(): void {
   void router.replace({ query: { tab: tabAttivo.value } });
 }
 
-/** Deep link `?tab=contratti&contratto=<id>`: apre direttamente il dialog
- *  del contratto da completare, altrimenti il link dei dati mancanti
- *  atterrerebbe sulla lista lasciando all'utente il compito di ritrovarlo. */
+/** `?tab=contratti&contratto=<id>`: apre il dialog del contratto indicato. */
 function apriContrattoDaId(id: number | null) {
   if (!id) return;
-  const contratto = contratti.value.find((c) => c.id === id);
-  if (contratto) apriDialogContratto(contratto);
+  void nextTick().then(() => contrattiPannello.value?.apriContratto(id));
 }
 
-/** Deep link `?tab=dati&campo=<nome>`: fuoco sul campo da compilare. */
+/** `?tab=dati&campo=<nome>`: fuoco sul campo da compilare. */
 function focusCampoDati(campo: string | null) {
   if (!campo) return;
   void nextTick().then(() => datiPannello.value?.focusCampo(campo));
 }
 
-/** Deep link `?tab=membri&modifica=anagrafica&owner=<id>&campo=<nome>`:
- *  apre il dialog anagrafica del membro indicato (dati mancanti dei
- *  documenti generati). */
+/** `?tab=membri&modifica=anagrafica&owner=<id>&campo=<nome>`: apre il dialog
+ *  anagrafica del membro indicato (dati mancanti dei documenti generati). */
 function apriAnagraficaMembro(
   modifica: string | null,
   ownerId: number | null,
   campo: string | null,
 ) {
-  if (tabAttivo.value !== 'membri' || modifica !== 'anagrafica' || !ownerId) return;
+  if (tabAttivo.value !== 'proprieta' || modifica !== 'anagrafica' || !ownerId) return;
   void nextTick().then(() => membriPannello.value?.apriAnagrafica(ownerId, campo));
 }
 
@@ -2234,14 +268,7 @@ onMounted(() => {
   const modifica = primo(route.query.modifica);
   const ownerId = Number(primo(route.query.owner)) || null;
 
-  void caricaStanze();
-  void caricaContratti().then(() => apriContrattoDaId(contrattoId));
-  void caricaCategorie();
-  void caricaFornitori();
-  void caricaCosti();
-  void caricaQuote();
-  void caricaUtenzeConfig();
-  void tenantsStore.fetchTenantsConAssignment();
+  apriContrattoDaId(contrattoId);
   void caricaGovernance().then(() => {
     if (tabAttivo.value === 'dati') focusCampoDati(campo);
     apriAnagraficaMembro(modifica, ownerId, campo);
@@ -2267,41 +294,103 @@ watch(
 </script>
 
 <style scoped>
-.vp-page-head {
-  margin-bottom: var(--vp-gap-4);
+.vp-immobile {
+  max-width: 1060px;
+  margin: 0 auto;
 }
-.vp-h1 {
-  font-size: 26px;
-  line-height: 1.2;
-  margin: 0;
-}
-.vp-section-title {
-  font-weight: 600;
-  font-size: 16px;
-  color: var(--vp-ink-1);
-}
-.vp-hint {
-  color: var(--vp-ink-3);
-  font-size: 13px;
-}
-.vp-banner-errore {
-  background: var(--vp-clay-soft, #fbeae5);
-  color: var(--vp-clay-deep, #8c3b21);
-}
-.vp-immobile__tabs {
-  border-bottom: 1px solid var(--vp-paper-3);
+.vp-immobile__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
   margin-bottom: var(--vp-gap-3);
 }
+.vp-immobile__titolo {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.vp-immobile__nome {
+  font-family: var(--vp-font-display);
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.1;
+  margin: 4px 0 0;
+}
+.vp-immobile__indirizzo {
+  font-size: 14px;
+  color: var(--vp-ink-3);
+}
+.vp-immobile__head-azioni {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vp-immobile__tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 var(--vp-gap-3);
+  flex-wrap: wrap;
+}
+.imm-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 15px;
+  border-radius: var(--vp-r-pill);
+  border: none;
+  background: transparent;
+  font-family: var(--vp-font-ui);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--vp-ink-2);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.imm-tab:hover {
+  background: var(--vp-paper-2);
+  color: var(--vp-ink);
+}
+.imm-tab[data-on] {
+  background: var(--vp-terra-soft);
+  color: var(--vp-terra-deep);
+}
+.imm-tab:focus-visible {
+  outline: 2px solid var(--vp-terra);
+  outline-offset: 1px;
+}
+
 .vp-immobile__panels {
   background: transparent;
 }
 .vp-immobile__panel {
   padding: 0;
 }
-.vp-utenza-select {
-  min-width: 200px;
+
+/* Colonna principale e colonna di servizio: le stanze accanto ai dati, la
+   configurazione delle spese accanto alle spese. */
+.vp-immobile__colonne {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: var(--vp-gap-3);
+  align-items: start;
 }
-.vp-utenza-nota {
-  max-width: 360px;
+.vp-immobile__principale,
+.vp-immobile__servizio,
+.vp-immobile__pila {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-gap-3);
+}
+@media (max-width: 1023px) {
+  .vp-immobile__colonne {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -1,87 +1,85 @@
 <template>
-  <div style="max-width: 720px">
-    <div class="vp-hint q-mb-md">
-      Il testo dei documenti generati è un dato di questa casa, non del
-      programma: si carica qui, come file HTML. Parti dall'esempio, adattalo e
-      ricaricalo. I segnaposto <code v-text="'{{chiave}}'" /> vengono
-      sostituiti alla generazione.
-    </div>
+  <div>
+    <CardSezione titolo="Modelli dei documenti generati">
+      <template #descrizione>
+        Il testo dei documenti generati è un dato di questa casa, non del
+        programma: si carica qui, come file HTML. Parti dall'esempio, adattalo
+        e ricaricalo; i segnaposto <code v-text="'{{chiave}}'" /> vengono
+        sostituiti alla generazione.
+      </template>
 
-    <q-card
-      v-for="doc in CODICI_DOCUMENTO"
-      :key="doc.codice"
-      flat
-      bordered
-      class="vp-card q-mb-md"
-      :data-testid="`modello-${doc.codice}`"
-    >
-      <q-card-section>
-        <div class="row items-center q-gutter-sm">
-          <div class="vp-section-title col">{{ doc.label }}</div>
-          <q-chip
-            dense
-            :color="store.perCodice(doc.codice) ? 'positive' : 'grey-5'"
-            text-color="white"
-            :label="store.perCodice(doc.codice) ? 'caricato' : 'non caricato'"
-          />
-        </div>
-
-        <div v-if="store.perCodice(doc.codice)" class="vp-hint q-mt-xs">
-          Aggiornato il {{ formattaData(store.perCodice(doc.codice)!.updated_at) }}
-        </div>
-        <div v-else class="vp-hint q-mt-xs">
-          Finché manca, il documento non si può generare.
-        </div>
-
-        <div class="row items-center q-gutter-sm q-mt-md">
-          <q-btn
-            v-if="puoModificare"
-            dense
-            no-caps
-            color="primary"
-            icon="upload_file"
-            :label="store.perCodice(doc.codice) ? 'Sostituisci' : 'Carica HTML'"
-            :data-testid="`carica-${doc.codice}`"
-            @click="scegliFile(doc.codice)"
-          />
-          <q-btn
-            dense
-            flat
-            no-caps
-            icon="download"
-            label="Scarica l'esempio"
-            @click="scaricaEsempio(doc.codice)"
-          />
-          <q-btn
-            v-if="store.perCodice(doc.codice)"
-            dense
-            flat
-            no-caps
-            icon="file_download"
-            label="Scarica il tuo"
-            @click="scaricaProprio(doc.codice)"
-          />
-          <q-btn
-            dense
-            flat
-            no-caps
-            icon="list"
-            label="Segnaposto"
-            @click="apriSegnaposto(doc.codice)"
-          />
-          <q-btn
-            v-if="puoModificare && store.perCodice(doc.codice)"
-            dense
-            flat
-            round
-            icon="delete_outline"
-            color="negative"
-            :aria-label="`Elimina il modello ${doc.label}`"
-            @click="confermaElimina(doc.codice, doc.label)"
-          />
-        </div>
-      </q-card-section>
-    </q-card>
+      <div class="imm-elenco">
+        <RigaElenco
+          v-for="(doc, i) in CODICI_DOCUMENTO"
+          :key="doc.codice"
+          :ultima="i === CODICI_DOCUMENTO.length - 1"
+          :data-testid="`modello-${doc.codice}`"
+        >
+          <template #tile><TileIcona icona="doc" colore="var(--vp-wood)" /></template>
+          <template #titolo>{{ doc.label }}</template>
+          <template #badge>
+            <EtichettaStato :tono="store.perCodice(doc.codice) ? 'ok' : 'off'">
+              {{ store.perCodice(doc.codice) ? 'Caricato' : 'Non caricato' }}
+            </EtichettaStato>
+          </template>
+          <template #meta>
+            <template v-if="store.perCodice(doc.codice)">
+              aggiornato il {{ formattaData(store.perCodice(doc.codice)!.updated_at) }}
+            </template>
+            <template v-else>Finché manca, il documento non si può generare.</template>
+          </template>
+          <template #azioni>
+            <q-btn
+              v-if="puoModificare"
+              flat
+              dense
+              no-caps
+              size="sm"
+              icon="upload_file"
+              :label="store.perCodice(doc.codice) ? 'Sostituisci' : 'Carica HTML'"
+              :data-testid="`carica-${doc.codice}`"
+              @click="scegliFile(doc.codice)"
+            />
+            <q-btn
+              flat
+              dense
+              no-caps
+              size="sm"
+              icon="download"
+              label="Esempio"
+              @click="scaricaEsempio(doc.codice)"
+            />
+            <q-btn
+              v-if="store.perCodice(doc.codice)"
+              flat
+              dense
+              no-caps
+              size="sm"
+              icon="file_download"
+              label="Il tuo"
+              @click="scaricaProprio(doc.codice)"
+            />
+            <q-btn
+              flat
+              dense
+              no-caps
+              size="sm"
+              icon="list"
+              label="Segnaposto"
+              @click="apriSegnaposto(doc.codice)"
+            />
+            <BtnIcona
+              v-if="puoModificare && store.perCodice(doc.codice)"
+              icona="trash"
+              pericolo
+              :etichetta="`Elimina il modello ${doc.label}`"
+              tooltip="Elimina"
+              @click="confermaElimina(doc.codice, doc.label)"
+            />
+          </template>
+        </RigaElenco>
+      </div>
+    </CardSezione>
 
     <input
       ref="inputFile"
@@ -131,6 +129,11 @@ import {
 } from 'stores/modelliDocumento';
 import { useFormatoData } from 'src/composables/useFormatoData';
 import { messaggioErrore } from 'src/utils/apiErrors';
+import CardSezione from 'components/impostazioni/ui/CardSezione.vue';
+import RigaElenco from 'components/impostazioni/ui/RigaElenco.vue';
+import TileIcona from 'components/impostazioni/ui/TileIcona.vue';
+import EtichettaStato from 'components/impostazioni/ui/EtichettaStato.vue';
+import BtnIcona from 'components/impostazioni/ui/BtnIcona.vue';
 
 defineProps<{ puoModificare?: boolean }>();
 
@@ -226,3 +229,9 @@ onMounted(() => {
   void store.fetch();
 });
 </script>
+
+<style scoped>
+.imm-elenco {
+  margin-top: 4px;
+}
+</style>

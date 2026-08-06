@@ -1,69 +1,51 @@
 <template>
-  <q-card flat bordered class="vp-card q-mb-md" style="max-width: 720px">
-    <q-card-section>
-      <div class="row items-center">
-        <div class="vp-section-title">Conti bancari</div>
-        <q-space />
-        <q-btn
-          dense
-          color="primary"
-          icon="add"
-          label="Nuovo conto"
-          data-testid="nuovo-conto"
-          @click="apriDialogConto(null)"
-        />
+  <CardSezione
+    titolo="Conti bancari"
+    descrizione="I conti dei membri: da qui si sceglie quello su cui gli inquilini versano. Ognuno può modificare solo i propri."
+  >
+    <template #azioni>
+      <BtnSoft etichetta="Nuovo conto" data-testid="nuovo-conto" @click="apriDialogConto(null)" />
+    </template>
+
+    <div class="imm-elenco">
+      <RigaElenco
+        v-for="(c, i) in conti"
+        :key="c.id"
+        :ultima="i === conti.length - 1"
+        data-testid="riga-conto"
+      >
+        <template #tile>
+          <TileIcona
+            icona="wallet"
+            :colore="c.id === contoUtenzeId ? 'var(--vp-terra)' : 'var(--vp-ink-3)'"
+            :bg="c.id === contoUtenzeId ? 'var(--vp-terra-soft)' : 'var(--vp-paper-2)'"
+          />
+        </template>
+        <template #titolo>{{ c.intestatario }} — {{ c.banca }}</template>
+        <template #badge>
+          <EtichettaStato v-if="c.id === contoUtenzeId" tono="terra">
+            Incassi e utenze
+          </EtichettaStato>
+          <EtichettaStato v-if="!c.attivo" tono="off">Non attivo</EtichettaStato>
+        </template>
+        <template #meta>
+          <span class="vp-mono imm-iban">{{ c.iban }}</span>
+        </template>
+        <template #azioni>
+          <AzioniRiga
+            :oggetto="`conto ${c.banca}`"
+            :puo-modificare="c.owner === mioOwnerProfileId || sonoSuperuser"
+            :puo-eliminare="c.owner === mioOwnerProfileId || sonoSuperuser"
+            @modifica="apriDialogConto(c)"
+            @elimina="eliminaConto(c)"
+          />
+        </template>
+      </RigaElenco>
+      <div v-if="conti.length === 0" class="imm-vuoto">
+        Nessun conto registrato: senza, gli inquilini non hanno un IBAN su cui versare.
       </div>
-      <div class="vp-hint q-mt-xs">
-        I conti dei membri: da qui si sceglie quello su cui gli inquilini
-        versano. Ognuno può modificare solo i propri.
-      </div>
-      <q-list separator class="q-mt-sm">
-        <q-item v-for="c in conti" :key="c.id" data-testid="riga-conto">
-          <q-item-section>
-            <q-item-label>
-              {{ c.intestatario }} — {{ c.banca }}
-              <q-chip v-if="c.id === contoUtenzeId" dense outline class="q-ml-xs">
-                incassi e utenze
-              </q-chip>
-            </q-item-label>
-            <q-item-label caption>
-              {{ c.iban }}
-              <template v-if="!c.attivo"> · non attivo</template>
-            </q-item-label>
-          </q-item-section>
-          <q-item-section side>
-            <div class="row items-center q-gutter-xs">
-              <q-btn
-                v-if="c.owner === mioOwnerProfileId || sonoSuperuser"
-                flat
-                dense
-                round
-                icon="edit"
-                :aria-label="`Modifica conto ${c.banca}`"
-                @click="apriDialogConto(c)"
-              />
-              <q-btn
-                v-if="c.owner === mioOwnerProfileId || sonoSuperuser"
-                flat
-                dense
-                round
-                icon="delete_outline"
-                color="negative"
-                :aria-label="`Elimina conto ${c.banca}`"
-                @click="eliminaConto(c)"
-              />
-            </div>
-          </q-item-section>
-        </q-item>
-        <q-item v-if="conti.length === 0">
-          <q-item-section class="text-grey">
-            Nessun conto registrato: senza, gli inquilini non hanno un
-            IBAN su cui versare.
-          </q-item-section>
-        </q-item>
-      </q-list>
-    </q-card-section>
-  </q-card>
+    </div>
+  </CardSezione>
 
   <!-- Dialog conto bancario -->
   <q-dialog v-model="dialogConto">
@@ -142,6 +124,12 @@ import { messaggioErrore } from 'src/utils/apiErrors';
 import { useAuthStore } from 'stores/auth';
 import { useOwnerBankAccountsStore, type BankAccountFull } from 'stores/ownerBankAccounts';
 import { type Membro } from 'stores/properties';
+import CardSezione from './ui/CardSezione.vue';
+import RigaElenco from './ui/RigaElenco.vue';
+import TileIcona from './ui/TileIcona.vue';
+import EtichettaStato from './ui/EtichettaStato.vue';
+import BtnSoft from './ui/BtnSoft.vue';
+import AzioniRiga from './ui/AzioniRiga.vue';
 
 const props = defineProps<{
   /** Il conto scelto in "Dati" come conto per incassi e utenze (chip). */
@@ -268,6 +256,17 @@ onMounted(caricaConti);
 </script>
 
 <style scoped>
+.imm-elenco {
+  margin-top: 4px;
+}
+.imm-vuoto {
+  font-size: 13px;
+  color: var(--vp-ink-3);
+  padding: 10px 2px;
+}
+.imm-iban {
+  font-size: 11.5px;
+}
 .vp-section-title {
   font-weight: 600;
   font-size: 16px;

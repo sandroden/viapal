@@ -137,6 +137,31 @@ function creaDocumentiStore(
         return { ok, falliti };
       },
 
+      /** Ogni file porta il proprio tipo: nel foglio di caricamento della
+       *  scheda Immobile si trascinano insieme documenti diversi (contratto
+       *  + side letter), e il tipo è proposto dal nome del file. */
+      async caricaTipizzati(payload: {
+        voci: { file: File; tipo: string; descrizione?: string }[];
+        visibileInquilini?: boolean;
+        targetId?: number;
+      }): Promise<{ ok: number; falliti: number }> {
+        this.uploading = true;
+        this.errore = null;
+        let ok = 0;
+        let falliti = 0;
+        const { voci, ...comuni } = payload;
+        try {
+          for (const voce of voci) {
+            const creato = await this._postUno({ ...comuni, ...voce });
+            if (creato) ok += 1;
+            else falliti += 1;
+          }
+        } finally {
+          this.uploading = false;
+        }
+        return { ok, falliti };
+      },
+
       /** POST di un singolo file (uso interno, non tocca lo stato uploading). */
       async _postUno(payload: {
         file: File;
