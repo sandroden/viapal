@@ -169,13 +169,15 @@ class TestInterOwnerEntryViewSet:
 
 
 @pytest.fixture
-def conto_owner_1(db, owner_1):
-    return OwnerBankAccount.objects.create(
+def conto_owner_1(db, owner_1, immobile):
+    conto = OwnerBankAccount.objects.create(
         owner=owner_1,
         banca="Banca 1",
         intestatario="Owner 1",
         iban="IT60X0542811101000000000777",
     )
+    conto.properties.add(immobile)
+    return conto
 
 
 @pytest.fixture

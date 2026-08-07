@@ -776,6 +776,29 @@ class PropertySerializer(serializers.ModelSerializer):
     def get_n_stanze(self, obj):
         return obj.rooms.count()
 
+    def validate_bank_account_utenze(self, conto):
+        """Il conto per incassi e utenze dev'essere in uso su questo immobile.
+
+        In creazione l'immobile non esiste ancora, quindi nessun conto può
+        esservi collegato: il campo si compila dopo, non alla nascita. La UI
+        infatti non lo propone, ma l'API va chiusa lo stesso — sarebbe l'unico
+        modo di puntare a un conto scollegato, e con esso l'inquilino
+        riceverebbe l'IBAN di un conto i cui movimenti non si vedono qui.
+        """
+        if conto is None:
+            return conto
+        if self.instance is None:
+            raise serializers.ValidationError(
+                "Si sceglie dopo aver creato l'immobile: prima il conto va "
+                "collegato dal pannello Conti bancari."
+            )
+        if not conto.properties.filter(pk=self.instance.pk).exists():
+            raise serializers.ValidationError(
+                "Conto non in uso su questo immobile: collegalo prima dal "
+                "pannello Conti bancari."
+            )
+        return conto
+
     def validate(self, attrs):
         tipo_gestione = attrs.get(
             "tipo_gestione",

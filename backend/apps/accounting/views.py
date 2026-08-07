@@ -69,9 +69,9 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
         # La BT e l'eventuale controparte devono appartenere al perimetro
         # dell'immobile della richiesta: niente scritture cross-property.
         membri = prop.memberships.values_list("user_id", flat=True)
-        if bt.owner_account.owner.user_id not in membri:
+        if not bt.owner_account.properties.filter(pk=prop.pk).exists():
             return Response(
-                {"detail": "La transazione appartiene a un conto estraneo a questo immobile."},
+                {"detail": "La transazione sta su un conto non in uso su questo immobile."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         controparte = None

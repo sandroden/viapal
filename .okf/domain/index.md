@@ -13,3 +13,4 @@ Conoscenza non ricostruibile dai soli `models.py`: algoritmi, regole, flussi.
 * [Solleciti e registro comunicazioni](solleciti.md) - riepilogo addebiti agli inquilini e archivio di cosa è stato inviato.
 * [Fascicolo documenti](fascicolo-documenti.md) - checklist documenti inquilino, stati derivati, visore interno.
 * [Unità intera](unita-intera.md) - Property.tipo_gestione, Room come unità locata, un solo pagatore.
+* [Conti bancari per immobile](conti-per-immobile.md) - il conto è unico, ma dove è in uso è esplicito: su questo poggia l'isolamento dei movimenti.

@@ -64,6 +64,12 @@ sceglie a mano. Fa eccezione la registrazione di **spese** (`/p/spese`,
 quick add), dove il conto proposto è quello di chi scrive: lì è chi ha
 anticipato il denaro.
 
+I conti eleggibili sono solo quelli **in uso su quell'immobile**
+(`OwnerBankAccount.properties`), non più quelli di chiunque ne sia membro:
+vedi [Conti bancari per immobile](/domain/conti-per-immobile.md). La stessa
+eccezione delle spese vale anche lì — per una spesa si accetta un conto
+proprio anche se non in uso sull'immobile.
+
 # Commenti
 
 `ReceivableComment` (FK `commenti`) sono messaggi liberi con autore e data,

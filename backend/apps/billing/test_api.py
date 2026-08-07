@@ -1534,14 +1534,16 @@ def owner_prop(db, user_prop):
 
 
 @pytest.fixture
-def owner_account(db, owner_prop):
+def owner_account(db, owner_prop, immobile):
     from properties.models import OwnerBankAccount
-    return OwnerBankAccount.objects.create(
+    conto = OwnerBankAccount.objects.create(
         owner=owner_prop,
         banca="Banca Test",
         intestatario="Owner Test Recon",
         iban="IT00X0000000000000000000000",
     )
+    conto.properties.add(immobile)
+    return conto
 
 
 @pytest.fixture

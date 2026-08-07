@@ -291,11 +291,14 @@ const loadingSalva = ref(false);
 
 const opzioniCategoria = computed(() => categoriesStore.categories);
 
-const contiUtente = computed(() =>
-  contiStore.accounts.length > 0
-    ? contiStore.accounts
-    : (auth.user?.bank_accounts ?? []),
-);
+/** Per una spesa il conto è quello di chi ha anticipato il denaro: ai conti
+ *  in uso sull'immobile si aggiungono sempre i propri, anche se non lo sono
+ *  (un gestore può pagare di tasca sua). Stessa eccezione del backend. */
+const contiUtente = computed(() => {
+  const propri = auth.user?.bank_accounts ?? [];
+  const visti = new Set(contiStore.accounts.map((a) => a.id));
+  return [...contiStore.accounts, ...propri.filter((a) => !visti.has(a.id))];
+});
 const opzioniContiBT = computed(() =>
   contiUtente.value.map((a) => ({
     value: a.id,

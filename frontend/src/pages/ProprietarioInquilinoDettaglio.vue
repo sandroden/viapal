@@ -1804,11 +1804,9 @@ async function salvaCorrezione(): Promise<void> {
   }
 }
 
-const contiUtente = computed(() =>
-  contiStore.accounts.length > 0
-    ? contiStore.accounts
-    : (auth.user?.bank_accounts ?? []),
-);
+/** Conto di *destinazione* di un incasso: solo quelli in uso sull'immobile
+ *  (vedi ProprietarioDaIncassare). */
+const contiUtente = computed(() => contiStore.accounts);
 </script>
 
 <style scoped>

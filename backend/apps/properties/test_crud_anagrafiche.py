@@ -138,11 +138,13 @@ def contract(immobile):
 
 
 @pytest.fixture
-def conto(owner_profile):
-    return OwnerBankAccount.objects.create(
+def conto(owner_profile, immobile):
+    conto = OwnerBankAccount.objects.create(
         owner=owner_profile, banca="Banca Crud", intestatario="Owner CRUD",
         iban="IT60X0542811101000000000001",
     )
+    conto.properties.add(immobile)
+    return conto
 
 
 # --- mondo B (isolamento cross-property) -----------------------------------

@@ -23,7 +23,11 @@ Coperture:
 5. ruoli membership: gestore = come proprietario su A; sola_lettura
    legge (200) ma non scrive (403);
 6. l'inquilino di A non vede nulla del mondo B;
-7. impersonation: l'owner A non può impersonare l'inquilino B.
+7. impersonation: l'owner A non può impersonare l'inquilino B;
+8. conti bancari: un utente membro di *entrambi* (proprietario di A, gestore
+   di B) non porta i propri conti né i propri movimenti dentro B — l'unico
+   caso in cui i due mondi si toccano, e quello da cui nasce il collegamento
+   esplicito conto↔immobile.
 """
 import datetime
 from decimal import Decimal
@@ -101,6 +105,7 @@ def _crea_mondo(prop, suff, gruppo_proprietari, gruppo_inquilini):
         intestatario=f"Owner {suff.upper()}",
         iban="IT60X0542811101000000000001",
     )
+    m.conto.properties.add(prop)
 
     # Tenant: user + profilo + stanza + assignment + receivable affitto.
     m.user_tenant = User.objects.create_user(
@@ -1007,3 +1012,272 @@ class TestCessioneGuardie:
             format="json",
         )
         assert resp.status_code == 400, resp.content
+
+
+# ---------------------------------------------------------------------------
+# 8. Conti bancari: visibilità per immobile, non per membership
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def doppio_ruolo(mondo_a, mondo_b, immobile2):
+    """L'utente reale del caso: proprietario di A, *gestore* di B.
+
+    Gestire l'immobile di qualcun altro non è un buon motivo perché i bonifici
+    di quell'immobile arrivino sul proprio conto, né perché i propri movimenti
+    bancari compaiano nella sua riconciliazione.
+    """
+    PropertyMembership.objects.create(
+        property=immobile2,
+        user=mondo_a.user_owner,
+        ruolo=PropertyMembership.Ruolo.GESTORE,
+    )
+    return mondo_a
+
+
+@pytest.fixture
+def client_doppio_ruolo(doppio_ruolo):
+    return _client(doppio_ruolo.user_owner)
+
+
+def _su_b(client, immobile2):
+    client.credentials(HTTP_X_PROPERTY_ID=str(immobile2.id))
+    return client
+
+
+class TestContiVisibilitaPerImmobile:
+    """Il conto di un gestore non appartiene all'immobile che gestisce."""
+
+    def test_conto_proprio_non_compare_sull_immobile_gestito(
+        self, client_doppio_ruolo, doppio_ruolo, mondo_b, immobile2
+    ):
+        resp = _su_b(client_doppio_ruolo, immobile2).get("/api/v1/bank-accounts/")
+        assert resp.status_code == 200, resp.content
+        ids = _ids(resp)
+        assert doppio_ruolo.conto.id not in ids
+        assert ids == {mondo_b.conto.id}
+
+    def test_movimenti_propri_non_compaiono_sull_immobile_gestito(
+        self, client_doppio_ruolo, doppio_ruolo, mondo_b, immobile2
+    ):
+        """La regressione principale: sull'immobile di produzione erano 183
+        movimenti di un altro immobile a comparire nella riconciliazione."""
+        resp = _su_b(client_doppio_ruolo, immobile2).get("/api/v1/bank-transactions/")
+        assert resp.status_code == 200, resp.content
+        ids = _ids(resp)
+        assert doppio_ruolo.bank_tx.id not in ids
+        assert ids == {mondo_b.bank_tx.id}
+
+    def test_conto_proprio_resta_visibile_sul_proprio_immobile(
+        self, client_doppio_ruolo, doppio_ruolo, immobile
+    ):
+        """Controprova: dove il conto è in uso non cambia nulla."""
+        client_doppio_ruolo.credentials(HTTP_X_PROPERTY_ID=str(immobile.id))
+        assert doppio_ruolo.conto.id in _ids(
+            client_doppio_ruolo.get("/api/v1/bank-accounts/")
+        )
+        assert doppio_ruolo.bank_tx.id in _ids(
+            client_doppio_ruolo.get("/api/v1/bank-transactions/")
+        )
+
+    def test_conto_proprio_non_eleggibile_a_conto_utenze_dell_immobile_gestito(
+        self, client_doppio_ruolo, doppio_ruolo, immobile2
+    ):
+        resp = _su_b(client_doppio_ruolo, immobile2).patch(
+            f"/api/v1/properties/{immobile2.id}/",
+            {"bank_account_utenze": doppio_ruolo.conto.id},
+            format="json",
+        )
+        assert resp.status_code == 400, resp.content
+        immobile2.refresh_from_db()
+        assert immobile2.bank_account_utenze_id is None
+
+    def test_conto_proprio_non_eleggibile_a_conto_affitto_dell_immobile_gestito(
+        self, client_doppio_ruolo, doppio_ruolo, mondo_b, immobile2
+    ):
+        resp = _su_b(client_doppio_ruolo, immobile2).patch(
+            f"/api/v1/room-assignments/{mondo_b.assignment.id}/",
+            {"bank_account_affitto": doppio_ruolo.conto.id},
+            format="json",
+        )
+        assert resp.status_code == 400, resp.content
+        mondo_b.assignment.refresh_from_db()
+        assert mondo_b.assignment.bank_account_affitto_id is None
+
+    def test_registra_pagamento_su_immobile_gestito_col_conto_proprio(
+        self, client_doppio_ruolo, doppio_ruolo, mondo_b, immobile2
+    ):
+        resp = _su_b(client_doppio_ruolo, immobile2).post(
+            f"/api/v1/receivables/{mondo_b.receivable.id}/registra-pagamento/",
+            {
+                "data": "2026-05-10",
+                "importo": "400.00",
+                "owner_account": doppio_ruolo.conto.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 403, resp.content
+
+    def test_spesa_anticipata_dal_gestore_col_proprio_conto_passa(
+        self, client_doppio_ruolo, doppio_ruolo, mondo_b, immobile2
+    ):
+        """Eccezione voluta: per una spesa il conto è quello di chi ha
+        anticipato il denaro, non quello su cui l'immobile incassa."""
+        n_bt = BankTransaction.objects.filter(owner_account=doppio_ruolo.conto).count()
+        resp = _su_b(client_doppio_ruolo, immobile2).post(
+            "/api/v1/expenses/",
+            {
+                "data": "2026-06-01",
+                "category": mondo_b.categoria.id,
+                "importo": "120.00",
+                "descrizione": "Anticipata dal gestore",
+                "crea_bank_transaction": True,
+                "bt_owner_account": doppio_ruolo.conto.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        assert (
+            BankTransaction.objects.filter(owner_account=doppio_ruolo.conto).count()
+            == n_bt + 1
+        )
+
+    def test_spesa_con_conto_di_un_estraneo_rifiutata(
+        self, client_doppio_ruolo, mondo_b, immobile2
+    ):
+        """L'eccezione vale per il *proprio* conto, non per uno qualsiasi."""
+        estraneo = OwnerBankAccount.objects.create(
+            owner=mondo_b.owner,
+            banca="Banca estranea",
+            intestatario="Estraneo",
+            iban="IT60X0542811101000000000009",
+        )
+        resp = _su_b(client_doppio_ruolo, immobile2).post(
+            "/api/v1/expenses/",
+            {
+                "data": "2026-06-01",
+                "category": mondo_b.categoria.id,
+                "importo": "120.00",
+                "descrizione": "Conto altrui non in uso qui",
+                "crea_bank_transaction": True,
+                "bt_owner_account": estraneo.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 403, resp.content
+
+
+class TestCollegaScollegaConto:
+    """Le azioni che sostituiscono l'eliminazione impossibile."""
+
+    def test_collegabili_elenca_i_conti_dei_membri_non_in_uso(
+        self, client_doppio_ruolo, doppio_ruolo, mondo_b, immobile2
+    ):
+        resp = _su_b(client_doppio_ruolo, immobile2).get(
+            "/api/v1/bank-accounts/collegabili/"
+        )
+        assert resp.status_code == 200, resp.content
+        righe = resp.json()
+        assert [r["id"] for r in righe] == [doppio_ruolo.conto.id]
+        # L'IBAN non esce in chiaro: è l'unico punto con conti estranei.
+        assert "iban" not in righe[0]
+        assert righe[0]["iban_finale"] == doppio_ruolo.conto.iban[-4:]
+
+    def test_collegabili_esclude_i_conti_non_attivi(
+        self, client_doppio_ruolo, doppio_ruolo, immobile2
+    ):
+        doppio_ruolo.conto.attivo = False
+        doppio_ruolo.conto.save(update_fields=["attivo"])
+        resp = _su_b(client_doppio_ruolo, immobile2).get(
+            "/api/v1/bank-accounts/collegabili/"
+        )
+        assert resp.json() == []
+
+    def test_collega_e_scollega(
+        self, client_doppio_ruolo, doppio_ruolo, immobile2
+    ):
+        client = _su_b(client_doppio_ruolo, immobile2)
+
+        resp = client.post(f"/api/v1/bank-accounts/{doppio_ruolo.conto.id}/collega/")
+        assert resp.status_code == 200, resp.content
+        assert doppio_ruolo.conto.id in _ids(client.get("/api/v1/bank-accounts/"))
+
+        resp = client.post(f"/api/v1/bank-accounts/{doppio_ruolo.conto.id}/scollega/")
+        assert resp.status_code == 204, resp.content
+        assert doppio_ruolo.conto.id not in _ids(client.get("/api/v1/bank-accounts/"))
+        # Il conto non è stato toccato: solo il legame con l'immobile.
+        assert OwnerBankAccount.objects.filter(pk=doppio_ruolo.conto.id).exists()
+
+    def test_scollega_rifiutato_se_e_il_conto_utenze(
+        self, client_doppio_ruolo, mondo_b, immobile2
+    ):
+        immobile2.bank_account_utenze = mondo_b.conto
+        immobile2.save(update_fields=["bank_account_utenze"])
+
+        resp = _su_b(client_doppio_ruolo, immobile2).post(
+            f"/api/v1/bank-accounts/{mondo_b.conto.id}/scollega/"
+        )
+        assert resp.status_code == 400, resp.content
+        assert mondo_b.conto.properties.filter(pk=immobile2.pk).exists()
+
+    def test_scollega_rifiutato_se_e_il_conto_affitto_di_un_assegnazione(
+        self, client_doppio_ruolo, mondo_b, immobile2
+    ):
+        mondo_b.assignment.bank_account_affitto = mondo_b.conto
+        mondo_b.assignment.save(update_fields=["bank_account_affitto"])
+
+        resp = _su_b(client_doppio_ruolo, immobile2).post(
+            f"/api/v1/bank-accounts/{mondo_b.conto.id}/scollega/"
+        )
+        assert resp.status_code == 400, resp.content
+        assert mondo_b.conto.properties.filter(pk=immobile2.pk).exists()
+
+    def test_sola_lettura_non_collega(
+        self, client_sola_lettura_a, mondo_a, mondo_b, immobile
+    ):
+        """`sola_lettura` (il commercialista) non scrive: lo blocca già
+        IsPropertyMember sui metodi non-safe."""
+        resp = client_sola_lettura_a.post(
+            f"/api/v1/bank-accounts/{mondo_b.conto.id}/collega/",
+            HTTP_X_PROPERTY_ID=str(immobile.id),
+        )
+        assert resp.status_code == 403, resp.content
+
+    def test_sola_lettura_non_elenca_i_collegabili(
+        self, client_sola_lettura_a, mondo_a, immobile
+    ):
+        """`collegabili/` è una GET, quindi IsPropertyMember da solo la
+        lascerebbe passare: enumererebbe proprio i conti che il pannello
+        nasconde apposta."""
+        resp = client_sola_lettura_a.get(
+            "/api/v1/bank-accounts/collegabili/",
+            HTTP_X_PROPERTY_ID=str(immobile.id),
+        )
+        assert resp.status_code == 403, resp.content
+
+    def test_collega_conto_di_immobile_estraneo_404(
+        self, client_owner_a, mondo_b, immobile
+    ):
+        """Si possono collegare solo i conti dei membri dell'immobile."""
+        resp = client_owner_a.post(
+            f"/api/v1/bank-accounts/{mondo_b.conto.id}/collega/",
+            HTTP_X_PROPERTY_ID=str(immobile.id),
+        )
+        assert resp.status_code == 404, resp.content
+        assert not mondo_b.conto.properties.filter(pk=immobile.pk).exists()
+
+    def test_conto_nuovo_nasce_in_uso_sull_immobile(self, client_owner_a, immobile):
+        resp = client_owner_a.post(
+            "/api/v1/bank-accounts/",
+            {
+                "banca": "Banca nuova",
+                "intestatario": "Owner A",
+                "iban": "IT60X0542811101000000000007",
+                "attivo": True,
+            },
+            format="json",
+            HTTP_X_PROPERTY_ID=str(immobile.id),
+        )
+        assert resp.status_code == 201, resp.content
+        conto = OwnerBankAccount.objects.get(pk=resp.json()["id"])
+        assert list(conto.properties.values_list("pk", flat=True)) == [immobile.pk]

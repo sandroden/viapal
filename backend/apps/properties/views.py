@@ -803,11 +803,9 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
                 {"tenant": "L'inquilino appartiene a un altro immobile."}
             )
         conto = _val("bank_account_affitto")
-        if conto is not None and not conto.owner.user.property_memberships.filter(
-            property=prop
-        ).exists():
+        if conto is not None and not conto.properties.filter(pk=prop.pk).exists():
             raise ValidationError(
-                {"bank_account_affitto": "Conto estraneo a questo immobile."}
+                {"bank_account_affitto": "Conto non in uso su questo immobile."}
             )
         contract = _val("contract")
         if contract is not None and contract.property_id != prop.pk:
@@ -1329,11 +1327,15 @@ class DocumentTemplateViewSet(ModelViewSet):
 
 
 class OwnerBankAccountViewSet(ProtectedDestroyMixin, ModelViewSet):
-    """Conti bancari dei membri dell'immobile attivo.
+    """Conti bancari in uso sull'immobile attivo.
 
-    Visibilità fra co-membri (decisione 2026-07-11): chi condivide un
-    immobile col titolare vede i suoi conti. Scrittura solo sui PROPRI
-    conti: l'owner è sempre il profilo del richiedente.
+    Non più "i conti dei membri" (decisione 2026-07-11, superata il
+    2026-08-07): la membership diceva che un gestore doveva vedersi proporre
+    i propri conti come destinazione dei bonifici di un immobile altrui. Ora
+    conta il collegamento esplicito ``properties``.
+
+    Scrittura sui dati del conto solo al titolare (+ superuser); collegare e
+    scollegare un conto dall'immobile spetta invece a chi lo gestisce.
     """
 
     serializer_class = OwnerBankAccountSerializer
@@ -1347,9 +1349,7 @@ class OwnerBankAccountViewSet(ProtectedDestroyMixin, ModelViewSet):
 
     def get_queryset(self):
         prop = get_request_property(self.request)
-        return super().get_queryset().filter(
-            owner__user__property_memberships__property=prop
-        ).distinct()
+        return super().get_queryset().per_property(prop)
 
     def _profilo_richiedente(self):
         from rest_framework.exceptions import PermissionDenied
@@ -1393,8 +1393,29 @@ class OwnerBankAccountViewSet(ProtectedDestroyMixin, ModelViewSet):
         if conto.owner.user_id != self.request.user.pk:
             raise PermissionDenied("Puoi modificare solo i tuoi conti.")
 
+    def _richiedi_gestione(self, prop):
+        """Collegare/scollegare un conto è un atto di gestione dell'immobile,
+        non di titolarità del conto: la fa chi lo amministra, per qualsiasi
+        conto dei membri (come già sceglie il conto utenze fra quelli altrui).
+        """
+        from rest_framework.exceptions import PermissionDenied
+
+        from properties.context import ruolo_su_property
+        from properties.models import PropertyMembership
+
+        ruolo = ruolo_su_property(self.request.user, prop)
+        if ruolo not in (
+            PropertyMembership.Ruolo.PROPRIETARIO,
+            PropertyMembership.Ruolo.GESTORE,
+        ):
+            raise PermissionDenied(
+                "Serve essere proprietario o gestore dell'immobile."
+            )
+
     def perform_create(self, serializer):
-        serializer.save(owner=self._owner_per_create())
+        # Un conto creato dal pannello di un immobile nasce in uso lì.
+        conto = serializer.save(owner=self._owner_per_create())
+        conto.properties.add(get_request_property(self.request))
 
     def perform_update(self, serializer):
         self._richiedi_titolare(serializer.instance)
@@ -1403,6 +1424,86 @@ class OwnerBankAccountViewSet(ProtectedDestroyMixin, ModelViewSet):
     def perform_destroy(self, instance):
         self._richiedi_titolare(instance)
         instance.delete()
+
+    @action(detail=False, methods=["get"])
+    def collegabili(self, request):
+        """I conti dei membri non ancora in uso su questo immobile.
+
+        Alimenta il dialog "Usa un conto esistente": è il solo punto in cui
+        compaiono conti estranei all'immobile, quindi solo quelli attivi (un
+        conto dismesso non si propone), senza IBAN in chiaro e riservato a chi
+        può davvero collegarli — un `sola_lettura` non deve poter enumerare i
+        conti che il pannello nasconde apposta.
+        """
+        prop = get_request_property(request)
+        self._richiedi_gestione(prop)
+        conti = (
+            OwnerBankAccount.objects.filter(
+                attivo=True,
+                owner__user__property_memberships__property=prop,
+            )
+            .exclude(properties=prop)
+            .select_related("owner")
+            .order_by("owner__nominativo", "ordinamento")
+            .distinct()
+        )
+        return Response([
+            {
+                "id": c.id,
+                "owner": c.owner_id,
+                "owner_nominativo": c.owner.nominativo,
+                "banca": c.banca,
+                "intestatario": c.intestatario,
+                "iban_finale": c.iban[-4:],
+            }
+            for c in conti
+        ])
+
+    @action(detail=True, methods=["post"])
+    def collega(self, request, pk=None):
+        """Mette il conto in uso su questo immobile."""
+        prop = get_request_property(request)
+        self._richiedi_gestione(prop)
+        conto = get_object_or_404(
+            OwnerBankAccount.objects.filter(
+                owner__user__property_memberships__property=prop
+            ).distinct(),
+            pk=pk,
+        )
+        conto.properties.add(prop)
+        return Response(self.get_serializer(conto).data)
+
+    @action(detail=True, methods=["post"])
+    def scollega(self, request, pk=None):
+        """Toglie il conto da questo immobile, lasciandolo intatto altrove.
+
+        È l'azione da usare quando un conto non c'entra con l'immobile:
+        eliminarlo non si può (e non si deve) se ha movimenti.
+        """
+        from rest_framework.exceptions import ValidationError
+
+        prop = get_request_property(request)
+        self._richiedi_gestione(prop)
+        conto = get_object_or_404(self.get_queryset(), pk=pk)
+
+        if prop.bank_account_utenze_id == conto.pk:
+            raise ValidationError(
+                "È il conto per incassi e utenze dell'immobile: cambialo "
+                "prima di toglierlo."
+            )
+        assegnazioni = RoomAssignment.objects.filter(
+            room__property=prop, bank_account_affitto=conto
+        )
+        if assegnazioni.exists():
+            nomi = ", ".join(
+                sorted(str(a.tenant) for a in assegnazioni.select_related("tenant"))
+            )
+            raise ValidationError(
+                f"È il conto dell'affitto di {nomi}: cambialo prima di toglierlo."
+            )
+
+        conto.properties.remove(prop)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ---------------------------------------------------------------------------

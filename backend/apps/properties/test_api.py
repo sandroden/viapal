@@ -139,13 +139,15 @@ def contract(db, immobile):
 
 
 @pytest.fixture
-def bank_account(db, owner_profile):
-    return OwnerBankAccount.objects.create(
+def bank_account(db, owner_profile, immobile):
+    conto = OwnerBankAccount.objects.create(
         owner=owner_profile,
         banca="Banca Test",
         intestatario="Proprietario Test",
         iban="IT60X0542811101000000000001",
     )
+    conto.properties.add(immobile)
+    return conto
 
 
 @pytest.fixture

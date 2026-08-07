@@ -1042,12 +1042,18 @@ class ExpenseViewSet(ModelViewSet):
         if crea_bt and bt_owner_account_id:
             from rest_framework.exceptions import PermissionDenied
 
+            # Il conto di una spesa è quello di chi ha anticipato il denaro,
+            # non quello su cui l'immobile incassa: oltre ai conti in uso qui
+            # si accetta un conto del richiedente. Senza questa eccezione un
+            # gestore non potrebbe registrare una spesa pagata di tasca sua.
             account = OwnerBankAccount.objects.filter(
+                Q(properties=prop) | Q(owner__user=self.request.user),
                 pk=bt_owner_account_id,
-                owner__user__property_memberships__property=prop,
-            ).first()
+            ).distinct().first()
             if account is None:
-                raise PermissionDenied("Conto estraneo a questo immobile.")
+                raise PermissionDenied(
+                    "Conto non in uso su questo immobile né tuo."
+                )
             if validated.get("anticipata_da_owner") is None:
                 validated["anticipata_da_owner"] = account.owner
 
@@ -1088,11 +1094,13 @@ class BankTransactionViewSet(ReadOnlyModelViewSet):
     pagination_class = BillingPagination
 
     def get_queryset(self):
-        # Visibilità fra co-membri: i conti dei membri dell'immobile attivo.
+        # I movimenti dei conti in uso su questo immobile. `BankTransaction`
+        # non ha una FK a Property: il conto è l'unico aggancio, quindi
+        # l'isolamento fra immobili poggia interamente sul collegamento.
         prop = get_request_property(self.request)
         qs = (
             BankTransaction.objects
-            .filter(owner_account__owner__user__property_memberships__property=prop)
+            .filter(owner_account__properties=prop)
             .select_related("owner_account__owner")
             .prefetch_related(
                 "allocations__receivable__assignment__tenant",
@@ -1276,13 +1284,13 @@ class ReconciliationBulkView(APIView):
 
         replace_set = set(replace_for_transactions)
 
-        # Perimetro immobile: le BT devono stare su conti di membri
-        # dell'immobile attivo e i Receivable appartenergli.
+        # Perimetro immobile: le BT devono stare su conti in uso
+        # sull'immobile attivo e i Receivable appartenergli.
         if replace_set:
             bt_ok = set(
                 BankTransaction.objects.filter(
                     pk__in=replace_set,
-                    owner_account__owner__user__property_memberships__property=prop,
+                    owner_account__properties=prop,
                 ).values_list("pk", flat=True)
             )
             if bt_ok != replace_set:
@@ -1497,16 +1505,15 @@ class RegistraPagamentoReceivableView(APIView):
         serializer.is_valid(raise_exception=True)
         v = serializer.validated_data
 
-        # Il conto di destinazione deve essere di un membro dell'immobile.
+        # Il conto di destinazione deve essere in uso su questo immobile.
         from properties.models import OwnerBankAccount
 
-        conto_ok = OwnerBankAccount.objects.filter(
-            pk=v["owner_account"].pk,
-            owner__user__property_memberships__property=get_request_property(request),
-        ).exists()
+        conto_ok = OwnerBankAccount.objects.per_property(
+            get_request_property(request)
+        ).filter(pk=v["owner_account"].pk).exists()
         if not conto_ok:
             return Response(
-                {"detail": "Conto estraneo a questo immobile."},
+                {"detail": "Conto non in uso su questo immobile."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -1684,14 +1691,13 @@ class BankTransactionBulkImportView(APIView):
         serializer = BankTransactionBulkImportInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         account = serializer.validated_data["owner_account"]
-        # Il conto deve essere di un membro di un immobile condiviso col
-        # richiedente (i movimenti bancari sono visibili fra co-membri).
-        condiviso = account.owner.user_id == request.user.pk or (
-            not request.user.is_superuser
-            and account.owner.user.property_memberships.filter(
-                property__memberships__user=request.user
-            ).exists()
-        ) or request.user.is_superuser
+        # Il conto dev'essere il proprio (caso normale: si importa il proprio
+        # estratto) oppure in uso su un immobile di cui si è membri.
+        condiviso = (
+            request.user.is_superuser
+            or account.owner.user_id == request.user.pk
+            or account.properties.filter(memberships__user=request.user).exists()
+        )
         if not condiviso:
             return Response(
                 {"detail": "Conto estraneo ai tuoi immobili."},

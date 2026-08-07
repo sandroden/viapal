@@ -193,6 +193,26 @@ class TestPropertyCreate:
         assert m.ruolo == PropertyMembership.Ruolo.GESTORE
         assert not OwnershipShare.objects.filter(property_id=prop_id).exists()
 
+    def test_conto_utenze_alla_nascita_400(self, client_prop, owner_profile, immobile):
+        """Nessun conto può essere in uso su un immobile che non esiste
+        ancora: sarebbe l'unico modo di puntare a un conto scollegato."""
+        from properties.models import OwnerBankAccount
+
+        conto = OwnerBankAccount.objects.create(
+            owner=owner_profile,
+            banca="Banca Nascita",
+            intestatario="Owner",
+            iban="IT60X0542811101000000000123",
+        )
+        conto.properties.add(immobile)
+
+        resp = client_prop.post(
+            "/api/v1/properties/",
+            {"nome": "Casa Y", "bank_account_utenze": conto.id},
+            format="json",
+        )
+        assert resp.status_code == 400, resp.content
+
     def test_ruolo_creatore_non_valido_400(self, client_prop):
         resp = client_prop.post(
             "/api/v1/properties/",

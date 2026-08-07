@@ -33,6 +33,7 @@ Partire da qui, poi seguire solo i link rilevanti (progressive disclosure).
 * [Fascicolo documenti](domain/fascicolo-documenti.md) - checklist documenti inquilino, stati derivati (scadenza/mancante/a carico proprietà), visore interno.
 * [Generazione documenti](domain/generazione-documenti.md) - atto di subentro e cessione di fabbricato in PDF; modello per immobile, dati mancanti con il posto in cui compilarli.
 * [Unità intera](domain/unita-intera.md) - Property.tipo_gestione, Room come unità locata, un solo pagatore.
+* [Conti bancari per immobile](domain/conti-per-immobile.md) - il conto è unico, ma dove è in uso è esplicito: su questo poggia l'isolamento dei movimenti.
 
 # Decisioni e invarianti
 

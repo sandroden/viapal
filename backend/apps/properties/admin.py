@@ -304,14 +304,26 @@ class OwnershipShareAdmin(ModalEditMixin, JumboModelAdmin):
 class OwnerBankAccountAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 800
     list_display = (
-        "owner", "banca", "iban", "attivo", "ordinamento",
+        "owner", "banca", "iban", "attivo", "immobili", "ordinamento",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
-    list_filter = ("attivo", "owner")
+    list_filter = ("attivo", "owner", "properties")
     list_select_related = ("owner",)
     search_fields = ("owner__nominativo", "banca", "iban", "intestatario")
     autocomplete_fields = ("owner",)
+    # Niente `filter_horizontal` su `properties`: nella modal di
+    # `ModalEditMixin` il form arriva via AJAX a DOMContentLoaded già passato,
+    # SelectFilter non si inizializza e il campo degrada a multi-select — che
+    # comparirebbe a due facce a seconda di come si apre la scheda. Il
+    # multi-select nativo è coerente ovunque e con pochi immobili basta.
     ordering = ("owner__nominativo", "ordinamento", "banca")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related("properties")
+
+    @admin.display(description="immobili")
+    def immobili(self, obj):
+        return ", ".join(p.nome for p in obj.properties.all()) or "—"
 
 
 # ---------------------------------------------------------------------------

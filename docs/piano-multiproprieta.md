@@ -210,7 +210,7 @@ Filtri queryset per app (il pattern, non l'elenco esaustivo):
 
 | Tema | Decisione proposta |
 |---|---|
-| **BankTransaction** (conto di Sandro usato per due proprietà) | visibile a chi condivide almeno una property col titolare del conto. La riconciliazione alloca su `Receivable` che sono property-scoped, quindi il *risultato* resta coerente per property. Caveat: Bruna vede anche i movimenti del conto di Sandro relativi all'altra casa — accettabile in famiglia, da raffinare con un flag `visibile_solo_al_titolare` se servirà. |
+| **BankTransaction** (conto di Sandro usato per due proprietà) | ~~visibile a chi condivide almeno una property col titolare del conto~~ **superata il 2026-08-07**: la visibilità per membership portava i conti e i movimenti di un gestore dentro l'immobile che amministra (in produzione 183 movimenti di un immobile visibili nell'altro). Il flag `visibile_solo_al_titolare` ipotizzato qui non sarebbe bastato — avrebbe nascosto i movimenti anche ai comproprietari che devono vederli. La discriminante è l'immobile: `OwnerBankAccount.properties` (M2M), il conto resta unico ma dove è in uso è esplicito. Vedi `.okf/domain/conti-per-immobile.md`. |
 | **Partitario bilaterale** (`InterOwner*`) | *(deciso 2026-07-11)* legato alla proprietà: FK `property`, visibile ai membri di quella property come oggi. Le entry generate da `Expense.riferimento_quota_owner` ereditano la property della Expense. |
 | **Impersonation** | attivare il filtro già predisposto in `impersonation.py:50-56`: un membro può impersonare solo inquilini delle proprie property. |
 | **Superuser/admin Django** | resta strumento di manutenzione di Sandro (vede tutto). Aggiungere `list_filter` per property ovunque. Nessuna funzione utente deve più richiedere l'admin. |
@@ -337,7 +337,7 @@ Palestrina non deve rompersi mai).
 
 ### Fase E — Rifiniture multi-utente
 - Registrazione self-service nuovi landlord (se si vuole aprire oltre la famiglia — opzionale, decisione separata: finché no, i nuovi utenti nascono solo per invito o da admin)
-- Visibilità BankTransaction raffinata, partitario bilaterale ristretto alla coppia
+- ✅ Visibilità BankTransaction raffinata *(fatta il 2026-08-07: conti collegati all'immobile, vedi §3.3)*; partitario bilaterale ristretto alla coppia
 - Notifiche con deep-link property-aware; export commercialista per-property
 - **Stima: a consumo**
 
@@ -407,5 +407,9 @@ Palestrina non deve rompersi mai).
   galleria pubblica adattata. Invariante: un'unità = un solo pagatore; utenze
   degradano al 100%. Backend + frontend, suite a 669 test verdi. Dettaglio in
   `.okf/domain/unita-intera.md`.
-- ⏭ **Fase E** — rifiniture (visibilità BankTransaction raffinata,
-  export commercialista per-property, notifiche deep-link) a consumo.
+- ⏭ **Fase E** — rifiniture a consumo. Fatta la visibilità delle
+  `BankTransaction`: il conto bancario si collega esplicitamente agli immobili
+  su cui è in uso (`OwnerBankAccount.properties`), al posto della visibilità
+  per membership che portava conti e movimenti di un gestore dentro l'immobile
+  altrui. Dettaglio in `.okf/domain/conti-per-immobile.md`. Restano export
+  commercialista per-property e notifiche deep-link.

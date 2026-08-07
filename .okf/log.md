@@ -1,5 +1,9 @@
 # Update Log
 
+## 2026-08-07
+* **Creation**: `domain/conti-per-immobile.md` — `OwnerBankAccount.properties` (M2M): il conto resta unico ma dove è in uso diventa un dato esplicito, al posto del predicato transitivo sulla membership. Nasce dal gestore che si vedeva proporre i propri conti come destinazione dei bonifici di un immobile altrui e i propri movimenti nella sua riconciliazione (in produzione 183 movimenti di un immobile visibili nell'altro). Invariante nuovo: l'isolamento delle BT poggia interamente sul collegamento del conto, perché `BankTransaction` non ha una property propria. Eccezione voluta per le spese (conto di chi anticipa). Backfill `properties.0036` da cinque sorgenti, inclusi i movimenti già riconciliati.
+* **Maintain**: `models/properties.md`, `domain/receivable.md` — rimandi al nuovo concetto; i conti eleggibili come destinazione sono quelli in uso sull'immobile.
+
 ## 2026-08-06
 * **Maintain**: `domain/fascicolo-documenti.md` — sezione "Documenti della casa: chi li vede": `PropertyDocument.contract` lega le carte al contratto e `RoomAssignment.contract` (facoltativo) dice sotto quale contratto sta un'occupazione; un documento di contratto visibile lo vedono solo gli inquilini di quel contratto, senza contratto sull'assegnazione nessuno. Il gate sta in due punti (queryset del viewset e `core/media_private.py`) e vanno tenuti allineati. Le assegnazioni precedenti alla migrazione `0034` hanno il campo vuoto.
 

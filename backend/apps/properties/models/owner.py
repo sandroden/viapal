@@ -210,14 +210,43 @@ class OwnershipShare(TimestampedModel):
             )
 
 
+class OwnerBankAccountQuerySet(models.QuerySet):
+    """Filtri di perimetro per i conti bancari."""
+
+    def per_property(self, prop):
+        """I conti in uso sull'immobile.
+
+        Sostituisce il vecchio predicato transitivo sulla membership
+        (``owner__user__property_memberships__property``), che mostrava i conti
+        di *chiunque* fosse membro: un gestore si vedeva proporre i propri
+        conti come destinazione dei bonifici di un immobile altrui.
+        """
+        return self.filter(properties=prop).distinct()
+
+
 class OwnerBankAccount(TimestampedModel):
-    """Conto bancario di un proprietario per ricevere i bonifici."""
+    """Conto bancario di un proprietario per ricevere i bonifici.
+
+    L'anagrafica del conto è unica e globale (un IBAN, uno storico di
+    movimenti), ma ``properties`` dice **dove** è in uso: solo lì compare fra
+    le destinazioni possibili e solo lì si vedono i suoi movimenti.
+    """
 
     owner = models.ForeignKey(
         OwnerProfile,
         on_delete=models.PROTECT,
         related_name="bank_accounts",
         verbose_name="proprietario",
+    )
+    properties = models.ManyToManyField(
+        "properties.Property",
+        related_name="bank_accounts",
+        blank=True,
+        verbose_name="immobili",
+        help_text=(
+            "Immobili su cui questo conto è in uso: solo lì compare fra le "
+            "destinazioni dei bonifici e solo lì si vedono i suoi movimenti."
+        ),
     )
     banca = models.CharField(
         max_length=100,
@@ -239,6 +268,8 @@ class OwnerBankAccount(TimestampedModel):
         default=0,
         verbose_name="ordinamento",
     )
+
+    objects = OwnerBankAccountQuerySet.as_manager()
 
     class Meta:
         verbose_name = "conto bancario proprietario"

@@ -149,7 +149,6 @@ import RegistraPagamentoDialog from 'src/components/RegistraPagamentoDialog.vue'
 import type { SemaforoLivello } from 'src/types/semaforo';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
-import { useAuthStore } from 'stores/auth';
 import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
 
 type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'deposito';
@@ -184,7 +183,6 @@ interface ReceivableInput {
 
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
-const auth = useAuthStore();
 const contiStore = useOwnerBankAccountsStore();
 const router = useRouter();
 const route = useRoute();
@@ -312,11 +310,10 @@ const totaleResiduo = computed(() =>
   righe.value.reduce((s, r) => s + Number(r.residuo || 0), 0),
 );
 
-const contiUtente = computed(() =>
-  contiStore.accounts.length > 0
-    ? contiStore.accounts
-    : (auth.user?.bank_accounts ?? []),
-);
+/** Qui il conto è la *destinazione* di un incasso: solo quelli in uso
+ *  sull'immobile. Ripiegare sui propri proporrebbe un conto che il backend
+ *  rifiuta — e che non deve incassare per un immobile altrui. */
+const contiUtente = computed(() => contiStore.accounts);
 
 function livelloStato(_: string, scadenza: string | null): SemaforoLivello {
   if (!scadenza) return 'salvia';

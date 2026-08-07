@@ -1,9 +1,15 @@
 <template>
   <CardSezione
     titolo="Conti bancari"
-    descrizione="I conti dei membri: da qui si sceglie quello su cui gli inquilini versano. Ognuno può modificare solo i propri."
+    descrizione="I conti in uso su questo immobile: da qui si sceglie quello su cui gli inquilini versano. Ognuno può modificare solo i propri."
   >
     <template #azioni>
+      <BtnSoft
+        v-if="puoGestire"
+        etichetta="Usa un conto esistente"
+        data-testid="usa-conto-esistente"
+        @click="apriDialogCollega"
+      />
       <BtnSoft etichetta="Nuovo conto" data-testid="nuovo-conto" @click="apriDialogConto(null)" />
     </template>
 
@@ -38,14 +44,66 @@
             :puo-eliminare="c.owner === mioOwnerProfileId || sonoSuperuser"
             @modifica="apriDialogConto(c)"
             @elimina="eliminaConto(c)"
-          />
+          >
+            <BtnIcona
+              v-if="puoGestire"
+              icona="x"
+              :etichetta="`Togli il conto ${c.banca} da questo immobile`"
+              tooltip="Togli da questo immobile"
+              data-testid="scollega-conto"
+              @click="scollegaConto(c)"
+            />
+          </AzioniRiga>
         </template>
       </RigaElenco>
       <div v-if="conti.length === 0" class="imm-vuoto">
-        Nessun conto registrato: senza, gli inquilini non hanno un IBAN su cui versare.
+        Nessun conto in uso su questo immobile: senza, gli inquilini non hanno un IBAN su
+        cui versare.
       </div>
     </div>
   </CardSezione>
+
+  <!-- Dialog: mette in uso su questo immobile un conto che esiste già -->
+  <q-dialog v-model="dialogCollega">
+    <q-card style="min-width: 420px">
+      <q-card-section>
+        <div class="vp-section-title">Usa un conto esistente</div>
+        <div class="vp-hint">
+          I conti dei membri non ancora in uso su questo immobile. Metterlo in uso lo rende
+          selezionabile come destinazione dei bonifici.
+        </div>
+      </q-card-section>
+      <q-card-section>
+        <q-select
+          v-model="contoDaCollegare"
+          :options="opzioniCollegabili"
+          label="Conto"
+          outlined
+          dense
+          emit-value
+          map-options
+          data-testid="conto-da-collegare"
+        />
+        <div v-if="opzioniCollegabili.length === 0" class="imm-vuoto">
+          Nessun altro conto disponibile: tutti quelli dei membri sono già in uso qui.
+        </div>
+        <q-banner v-if="erroreCollega" class="vp-banner-errore q-mt-md" rounded dense>
+          {{ erroreCollega }}
+        </q-banner>
+      </q-card-section>
+      <q-card-actions align="right">
+        <q-btn v-close-popup flat label="Annulla" />
+        <q-btn
+          color="primary"
+          label="Usa qui"
+          :disable="!contoDaCollegare"
+          :loading="collegando"
+          data-testid="conferma-collega"
+          @click="collegaConto"
+        />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
 
   <!-- Dialog conto bancario -->
   <q-dialog v-model="dialogConto">
@@ -123,13 +181,24 @@ import { api } from 'boot/axios';
 import { messaggioErrore } from 'src/utils/apiErrors';
 import { useAuthStore } from 'stores/auth';
 import { useOwnerBankAccountsStore, type BankAccountFull } from 'stores/ownerBankAccounts';
-import { type Membro } from 'stores/properties';
+import { usePropertiesStore, type Membro } from 'stores/properties';
 import CardSezione from './ui/CardSezione.vue';
 import RigaElenco from './ui/RigaElenco.vue';
 import TileIcona from './ui/TileIcona.vue';
 import EtichettaStato from './ui/EtichettaStato.vue';
 import BtnSoft from './ui/BtnSoft.vue';
+import BtnIcona from './ui/BtnIcona.vue';
 import AzioniRiga from './ui/AzioniRiga.vue';
+
+/** Un conto di un membro non ancora in uso su questo immobile. */
+interface ContoCollegabile {
+  id: number;
+  owner: number;
+  owner_nominativo: string;
+  banca: string;
+  intestatario: string;
+  iban_finale: string;
+}
 
 const props = defineProps<{
   /** Il conto scelto in "Dati" come conto per incassi e utenze (chip). */
@@ -140,8 +209,14 @@ const props = defineProps<{
 const $q = useQuasar();
 const auth = useAuthStore();
 const contiStore = useOwnerBankAccountsStore();
+const propStore = usePropertiesStore();
 
 const conti = ref<BankAccountFull[]>([]);
+const dialogCollega = ref(false);
+const collegabili = ref<ContoCollegabile[]>([]);
+const contoDaCollegare = ref<number | null>(null);
+const collegando = ref(false);
+const erroreCollega = ref('');
 const dialogConto = ref(false);
 const contoInModifica = ref<BankAccountFull | null>(null);
 const formConto = ref({ banca: '', intestatario: '', iban: '', attivo: true });
@@ -152,6 +227,22 @@ const erroreConto = ref('');
 
 const mioOwnerProfileId = computed(() => auth.user?.owner_profile_id ?? null);
 const sonoSuperuser = computed(() => !!auth.user?.is_superuser);
+/** Mettere in uso o togliere un conto è gestione dell'immobile, non
+ *  titolarità del conto: stesso gate del backend. */
+const puoGestire = computed(
+  () =>
+    sonoSuperuser.value ||
+    propStore.mioRuolo === 'proprietario' ||
+    propStore.mioRuolo === 'gestore',
+);
+/** Nel select non va l'IBAN intero: è il solo punto in cui compaiono conti
+ *  estranei a questo immobile. */
+const opzioniCollegabili = computed(() =>
+  collegabili.value.map((c) => ({
+    label: `${c.intestatario} — ${c.banca} (…${c.iban_finale})`,
+    value: c.id,
+  })),
+);
 /** I membri con profilo proprietario: gli intestatari possibili quando il
  *  superuser crea un conto a nome altrui. */
 const opzioniIntestatario = computed(() =>
@@ -165,6 +256,65 @@ async function caricaConti() {
     '/api/v1/bank-accounts/',
   );
   conti.value = Array.isArray(data) ? data : (data.results ?? []);
+}
+
+async function apriDialogCollega() {
+  erroreCollega.value = '';
+  contoDaCollegare.value = null;
+  try {
+    const { data } = await api.get<ContoCollegabile[]>('/api/v1/bank-accounts/collegabili/');
+    collegabili.value = data;
+  } catch {
+    collegabili.value = [];
+  }
+  dialogCollega.value = true;
+}
+
+async function collegaConto() {
+  if (!contoDaCollegare.value) return;
+  collegando.value = true;
+  erroreCollega.value = '';
+  try {
+    await api.post(`/api/v1/bank-accounts/${contoDaCollegare.value}/collega/`);
+    dialogCollega.value = false;
+    await ricaricaTutto();
+    $q.notify({ type: 'positive', message: 'Conto ora in uso su questo immobile.' });
+  } catch (e: unknown) {
+    erroreCollega.value = messaggioErrore(e, 'Operazione non riuscita.');
+  } finally {
+    collegando.value = false;
+  }
+}
+
+function scollegaConto(c: BankAccountFull) {
+  $q.dialog({
+    title: 'Togliere il conto da questo immobile?',
+    message:
+      `${c.intestatario} — ${c.banca} non comparirà più fra le destinazioni dei ` +
+      'bonifici e i suoi movimenti spariranno dalla riconciliazione di questo ' +
+      'immobile. Il conto e i suoi dati restano intatti.',
+    cancel: { flat: true, label: 'Annulla' },
+    ok: { color: 'primary', label: 'Togli' },
+  }).onOk(() => {
+    void (async () => {
+      try {
+        await api.post(`/api/v1/bank-accounts/${c.id}/scollega/`);
+        await ricaricaTutto();
+        $q.notify({ type: 'positive', message: 'Conto tolto da questo immobile.' });
+      } catch (e: unknown) {
+        $q.notify({
+          type: 'negative',
+          message: messaggioErrore(e, 'Operazione non riuscita.'),
+        });
+      }
+    })();
+  });
+}
+
+/** L'elenco e lo store da cui pescano i select del conto: sempre insieme. */
+async function ricaricaTutto() {
+  await caricaConti();
+  await contiStore.ensureLoaded(true);
 }
 
 function apriDialogConto(c: BankAccountFull | null) {
@@ -218,9 +368,8 @@ async function salvaConto() {
       await api.post('/api/v1/bank-accounts/', payload);
     }
     dialogConto.value = false;
-    await caricaConti();
     // Il select del conto dell'immobile pesca dallo store: va riallineato.
-    await contiStore.ensureLoaded(true);
+    await ricaricaTutto();
     $q.notify({ type: 'positive', message: 'Conto salvato.' });
   } catch (e: unknown) {
     erroreConto.value = messaggioErrore(e, 'Salvataggio non riuscito.');
@@ -232,20 +381,24 @@ async function salvaConto() {
 function eliminaConto(c: BankAccountFull) {
   $q.dialog({
     title: 'Eliminare il conto?',
-    message: `${c.intestatario} — ${c.banca} verrà rimosso.`,
+    message:
+      `${c.intestatario} — ${c.banca} verrà rimosso ovunque. Se serve solo ` +
+      'toglierlo da questo immobile, usa «Togli da questo immobile».',
     cancel: { flat: true, label: 'Annulla' },
     ok: { color: 'negative', label: 'Elimina' },
   }).onOk(() => {
     void (async () => {
       try {
         await api.delete(`/api/v1/bank-accounts/${c.id}/`);
-        await caricaConti();
-        await contiStore.ensureLoaded(true);
+        await ricaricaTutto();
         $q.notify({ type: 'positive', message: 'Conto eliminato.' });
       } catch (e: unknown) {
         $q.notify({
           type: 'negative',
-          message: messaggioErrore(e, 'Eliminazione non riuscita: ha movimenti collegati.'),
+          message: messaggioErrore(
+            e,
+            'Eliminazione non riuscita: ha movimenti collegati. Puoi toglierlo da questo immobile.',
+          ),
         });
       }
     })();
