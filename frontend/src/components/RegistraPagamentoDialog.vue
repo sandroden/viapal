@@ -275,7 +275,7 @@ async function salva() {
 
 <style lang="scss" scoped>
 .vp-rp-dlg {
-  min-width: 480px;
+  width: 480px;
   max-width: 92vw;
 }
 .vp-rp-dlg__titolo {
