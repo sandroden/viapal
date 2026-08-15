@@ -37,7 +37,7 @@
 
   <!-- Dialog costo annuale -->
   <q-dialog v-model="dialog">
-    <q-card style="min-width: 420px">
+    <q-card style="width: 420px; max-width: 92vw">
       <q-card-section>
         <div class="vp-section-title">
           {{ inModifica ? 'Modifica costo annuale' : 'Nuovo costo annuale' }}

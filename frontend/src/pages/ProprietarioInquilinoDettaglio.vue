@@ -828,7 +828,7 @@
 
     <!-- Dialog cessione stanza -->
     <q-dialog v-model="dialogCessione">
-      <q-card style="min-width: 440px">
+      <q-card style="width: 440px; max-width: 92vw">
         <q-card-section>
           <div class="vp-p-id__dialog-titolo">
             Cessione {{ assignmentCessione?.room_nome ?? 'stanza' }}
@@ -907,7 +907,7 @@
 
     <!-- Dialog correggi assegnazione -->
     <q-dialog v-model="dialogCorreggi">
-      <q-card style="min-width: 440px">
+      <q-card style="width: 440px; max-width: 92vw">
         <q-card-section>
           <div class="vp-p-id__dialog-titolo">
             Correggi {{ assignmentCorreggi?.room_nome ?? 'assegnazione' }}

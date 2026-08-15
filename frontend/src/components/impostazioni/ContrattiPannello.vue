@@ -157,7 +157,7 @@
        e senza questo il dialog appena aperto dal deep link verrebbe chiuso
        dal cambio rotta. -->
   <q-dialog v-model="dialog" no-route-dismiss>
-    <q-card style="min-width: 460px">
+    <q-card style="width: 460px; max-width: 92vw">
       <q-card-section>
         <div class="vp-section-title">
           {{ inModifica ? 'Modifica contratto' : 'Nuovo contratto' }}

@@ -193,7 +193,7 @@ async function salva() {
 
 <style lang="scss" scoped>
 .vp-dep-dlg {
-  min-width: 440px;
+  width: 440px;
   max-width: 92vw;
 }
 .vp-dep-dlg__titolo {

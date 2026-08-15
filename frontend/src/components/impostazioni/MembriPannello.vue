@@ -119,7 +119,7 @@
 
   <!-- Dialog nuovo assetto quote -->
   <q-dialog v-model="dialogQuote">
-    <q-card style="min-width: 420px">
+    <q-card style="width: 420px; max-width: 92vw">
       <q-card-section>
         <div class="vp-section-title">Nuovo assetto quote</div>
         <div class="vp-hint">

@@ -135,7 +135,7 @@
 
     <!-- Dialog nuovo inquilino -->
     <q-dialog v-model="dialogNuovo">
-      <q-card style="min-width: 420px">
+      <q-card style="width: 420px; max-width: 92vw">
         <q-card-section>
           <div class="vp-p-inq__dialog-titolo">Nuovo inquilino</div>
         </q-card-section>

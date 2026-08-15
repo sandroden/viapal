@@ -1,6 +1,6 @@
 <template>
   <q-dialog v-model="dialogModel">
-    <q-card style="min-width: 480px; max-width: 560px">
+    <q-card style="width: 480px; max-width: min(560px, 92vw)">
       <q-card-section>
         <div class="vp-asg__titolo">
           {{ isUnitaIntera ? 'Assegna appartamento' : 'Assegna stanza' }} a

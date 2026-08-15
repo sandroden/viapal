@@ -123,7 +123,7 @@ function salva(): void {
 
 <style scoped>
 .vp-bill-dlg {
-  min-width: 420px;
+  width: 420px;
   max-width: 92vw;
   border-radius: var(--vp-r-lg);
 }

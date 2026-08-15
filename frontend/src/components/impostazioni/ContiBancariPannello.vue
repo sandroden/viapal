@@ -65,7 +65,7 @@
 
   <!-- Dialog: mette in uso su questo immobile un conto che esiste già -->
   <q-dialog v-model="dialogCollega">
-    <q-card style="min-width: 420px">
+    <q-card style="width: 420px; max-width: 92vw">
       <q-card-section>
         <div class="vp-section-title">Usa un conto esistente</div>
         <div class="vp-hint">
@@ -107,7 +107,7 @@
 
   <!-- Dialog conto bancario -->
   <q-dialog v-model="dialogConto">
-    <q-card style="min-width: 420px">
+    <q-card style="width: 420px; max-width: 92vw">
       <q-card-section>
         <div class="vp-section-title">
           {{ contoInModifica ? 'Modifica conto' : 'Nuovo conto' }}

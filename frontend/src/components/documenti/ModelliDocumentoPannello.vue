@@ -91,7 +91,7 @@
 
     <!-- Segnaposto disponibili: derivati dal generatore, non riscritti a mano -->
     <q-dialog v-model="dialogSegnaposto">
-      <q-card style="min-width: 460px; max-width: 640px">
+      <q-card style="width: 460px; max-width: min(640px, 92vw)">
         <q-card-section>
           <div class="vp-section-title">Segnaposto disponibili</div>
           <div class="vp-hint">{{ titoloSegnaposto }}</div>

@@ -4,7 +4,7 @@
        query per consumarlo. Senza, quella navigazione lo richiuderebbe
        all'istante. -->
   <q-dialog v-model="aperto" no-route-dismiss @before-show="carica">
-    <q-card style="min-width: 520px; max-width: 640px">
+    <q-card style="width: 520px; max-width: min(640px, 92vw)">
       <q-card-section>
         <div class="vp-section-title">Anagrafica proprietario</div>
         <div class="vp-hint">

@@ -234,7 +234,7 @@ async function salva() {
 
 <style lang="scss" scoped>
 .vp-cong-dlg {
-  min-width: 480px;
+  width: 480px;
   max-width: 92vw;
 }
 .vp-cong-dlg__titolo {
