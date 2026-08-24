@@ -28,14 +28,24 @@
             dense
             label="Data del bonifico"
           />
-          <q-input
-            v-model.number="form.importo"
-            type="number"
-            step="0.01"
-            outlined
-            dense
-            label="Importo (€)"
-          />
+          <div>
+            <q-input
+              v-model.number="form.importo"
+              type="number"
+              step="0.01"
+              outlined
+              dense
+              label="Importo (€)"
+              @focus="selezionaTutto"
+            />
+            <div
+              v-if="notaImporto"
+              class="vp-rp-dlg__nota"
+              :class="{ 'vp-rp-dlg__nota--avviso': eccede }"
+            >
+              {{ notaImporto }}
+            </div>
+          </div>
           <q-select
             v-model="form.owner_account"
             :options="opzioniConti"
@@ -63,6 +73,12 @@
             label="Note (opzionale)"
             autogrow
           />
+          <q-banner v-if="confermaRichiesta" class="vp-rp-dlg__conferma" rounded>
+            Stai registrando {{ formattaEuro(form.importo) }}: sono
+            {{ formattaEuro(differenza) }} oltre il residuo di
+            {{ formattaEuro(residuo) }}. L'eccedenza resterà come credito
+            dell'inquilino. Premi di nuovo per confermare.
+          </q-banner>
           <q-banner v-if="errore" class="bg-red-1 text-red-9" rounded>{{ errore }}</q-banner>
         </q-form>
       </q-card-section>
@@ -72,7 +88,7 @@
         <q-btn
           unelevated
           color="primary"
-          label="Registra"
+          :label="confermaRichiesta ? 'Registra comunque' : 'Registra'"
           no-caps
           :loading="salvando"
           :disable="!form.owner_account || !importoValido"
@@ -208,6 +224,39 @@ const form = reactive<FormPagamento>({
 
 const salvando = ref(false);
 const errore = ref('');
+/** Il primo click su "Registra" con importo oltre il residuo non salva:
+ *  chiede conferma. È la rete contro l'importo digitato in coda a quello
+ *  proposto (590 + 100 → 590100). */
+const confermaRichiesta = ref(false);
+
+/** Tolleranza sugli arrotondamenti: sotto questa soglia importo e residuo
+ *  si considerano uguali. */
+const EPS = 0.005;
+
+/** Scarto fra importo e residuo, in valore assoluto (le restituzioni hanno
+ *  entrambi negativi). Positivo = eccedenza, negativo = pagamento parziale. */
+const differenza = computed(
+  () => Math.abs(form.importo || 0) - Math.abs(residuo.value),
+);
+const eccede = computed(() => differenza.value > EPS);
+
+/** Come si posiziona l'importo digitato rispetto a quanto resta da pagare:
+ *  visibile sempre, così un importo sbagliato (in più o in meno) si vede
+ *  prima di salvare. */
+const notaImporto = computed(() => {
+  if (!form.importo || Number.isNaN(form.importo)) return '';
+  const restituzione = props.receivable.importo_dovuto < 0;
+  if (eccede.value) {
+    return `${formattaEuro(differenza.value)} oltre il residuo di ${formattaEuro(residuo.value)}: resteranno come credito dell'inquilino.`;
+  }
+  if (differenza.value < -EPS) {
+    const resta = formattaEuro(-differenza.value);
+    return restituzione
+      ? `Restituzione parziale: resteranno ${resta} da restituire.`
+      : `Pagamento parziale: resteranno ${resta} da versare.`;
+  }
+  return 'Copre esattamente il residuo.';
+});
 
 const importoValido = computed(() => {
   const imp = form.importo;
@@ -215,6 +264,15 @@ const importoValido = computed(() => {
   // segno coerente col dovuto (restituzione deposito: dovuto<0 → importo<0)
   return props.receivable.importo_dovuto >= 0 ? imp > 0 : imp < 0;
 });
+
+// Ogni modifica dell'importo riapre la conferma: si conferma la cifra che si
+// ha davvero davanti.
+watch(
+  () => form.importo,
+  () => {
+    confermaRichiesta.value = false;
+  },
+);
 
 watch(
   () => props.modelValue,
@@ -227,9 +285,16 @@ watch(
       form.descrizione = descrizioneSuggerita();
       form.note = '';
       errore.value = '';
+      confermaRichiesta.value = false;
     }
   },
 );
+
+/** Il campo arriva precompilato col residuo: selezionarlo tutto al focus fa
+ *  sì che digitare *sostituisca* la cifra invece di accodarsi. */
+function selezionaTutto(e: Event) {
+  (e.target as HTMLInputElement).select();
+}
 
 function annulla() {
   aperto.value = false;
@@ -245,6 +310,10 @@ async function salva() {
       props.receivable.importo_dovuto < 0
         ? "L'importo deve essere negativo (restituzione)."
         : "L'importo deve essere maggiore di zero.";
+    return;
+  }
+  if (eccede.value && !confermaRichiesta.value) {
+    confermaRichiesta.value = true;
     return;
   }
   salvando.value = true;
@@ -285,5 +354,19 @@ async function salva() {
   color: var(--vp-ink-3);
   font-size: var(--vp-text-sm, 0.9rem);
   margin-top: 2px;
+}
+.vp-rp-dlg__nota {
+  color: var(--vp-ink-3);
+  font-size: var(--vp-text-sm, 0.9rem);
+  margin: 4px 2px 0;
+}
+.vp-rp-dlg__nota--avviso {
+  color: var(--vp-clay, #a8402a);
+  font-weight: 500;
+}
+.vp-rp-dlg__conferma {
+  background: var(--vp-clay-soft, #fbeae5);
+  color: var(--vp-ink);
+  font-size: var(--vp-text-sm, 0.9rem);
 }
 </style>
