@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { api } from 'boot/axios';
 import { fetchAllPaginated } from 'src/utils/paginate';
 
-export type StatoRiconciliazione = 'pieno' | 'parziale' | 'vuoto';
+export type StatoRiconciliazione = 'pieno' | 'parziale' | 'vuoto' | 'sovra';
 
 export interface BankTransactionAllocFE {
   id: number;

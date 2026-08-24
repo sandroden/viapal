@@ -37,7 +37,7 @@ Partire da qui, poi seguire solo i link rilevanti (progressive disclosure).
 
 # Decisioni e invarianti
 
-* [decisions/](decisions/) - unificazione Receivable, "banca vince sempre", guardia allocations, segni concordi.
+* [decisions/](decisions/) - unificazione Receivable, "banca vince sempre", guardia allocations, segni concordi, allocazioni non eccedenti.
 
 # Reference modelli Django
 

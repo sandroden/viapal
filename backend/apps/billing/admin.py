@@ -17,6 +17,8 @@ from jmb.jadmin import JumboActionForm, JumboModelAdmin, ModalEditMixin
 
 from properties.models import OwnerProfile, TenantProfile
 
+from .models.payments import TOLLERANZA_ALLOC
+
 from .models import (
     AnnualUtilityCost,
     BankTransaction,
@@ -141,6 +143,52 @@ class ReceivableCommentInline(admin.TabularInline):
         return _nome_autore(obj.autore) if obj.pk else "—"
 
 
+class BankTransactionAllocationInlineFormSet(forms.BaseInlineFormSet):
+    """Impedisce che le allocazioni eccedano l'importo del movimento.
+
+    Copre entrambe le strade che portano allo sbilancio, perché passano
+    dalla stessa pagina: aggiungere/modificare un'allocazione, e **correggere
+    l'importo della BT** lasciando le allocazioni di prima (il caso che
+    lasciava un addebito "pagato" per denaro mai incassato).
+
+    Regola volutamente rilassata, la stessa dell'endpoint di riconciliazione:
+    conta la **somma algebrica** delle allocazioni, che deve andare nel verso
+    della BT e non superarne l'importo in valore assoluto. Restano quindi
+    valide le partite compensate — es. restituzione deposito con trattenuta
+    utenze: BT −984 ↔ alloc −1060 + alloc +76.
+    """
+
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        importo_bt = getattr(self.instance, "importo", None)
+        if importo_bt is None:
+            return
+        somma = Decimal("0")
+        for form in self.forms:
+            cd = getattr(form, "cleaned_data", None)
+            if not cd or cd.get("DELETE"):
+                continue
+            importo = cd.get("importo")
+            if importo is not None:
+                somma += importo
+        if somma == 0:
+            return
+        if importo_bt == 0 or (somma > 0) != (importo_bt > 0):
+            raise forms.ValidationError(
+                f"Le allocazioni ({somma} €) vanno nel verso opposto al "
+                f"movimento ({importo_bt} €)."
+            )
+        if abs(somma) > abs(importo_bt) + TOLLERANZA_ALLOC:
+            raise forms.ValidationError(
+                f"Le allocazioni ({somma} €) superano l'importo del movimento "
+                f"({importo_bt} €): correggi gli importi allocati qui sotto — "
+                f"altrimenti gli addebiti restano coperti per "
+                f"{abs(somma) - abs(importo_bt)} € mai incassati."
+            )
+
+
 class BankTransactionAllocationInline(admin.TabularInline):
     """Allocazioni inline su BankTransaction (bonifico → addebiti).
 
@@ -156,6 +204,7 @@ class BankTransactionAllocationInline(admin.TabularInline):
     """
 
     model = BankTransactionAllocation
+    formset = BankTransactionAllocationInlineFormSet
     extra = 1
     fields = ("receivable", "importo", "info_alloc")
     readonly_fields = ("info_alloc",)
@@ -550,7 +599,16 @@ class BankTransactionAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, Jumb
     @admin.display(description="Residuo")
     def residuo_display(self, obj):
         r = obj.residuo
-        if r <= 0:
+        if r == 0:
+            return ""
+        if obj.is_sovra_allocato:
+            # Eccesso: allocato oltre l'importo del movimento.
+            return format_html(
+                '<span style="color:#c62828;" title="Allocazioni eccedenti">'
+                "{} €</span>",
+                f"{float(r):.2f}",
+            )
+        if (r > 0) != (obj.importo > 0):
             return ""
         return format_html(
             '<span style="color:#b35900;">{} €</span>', f"{float(r):.2f}"
@@ -568,6 +626,12 @@ class BankTransactionAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, Jumb
             return mark_safe(
                 '<span title="Allocazione parziale (residuo non assegnato)" '
                 'style="color:#ed6c02;font-size:1.1em;">⚠</span>'
+            )
+        if stato == "sovra":
+            return mark_safe(
+                "<span title=\"Allocazioni eccedenti l'importo del movimento: "
+                'sana con manage.py sana_allocazioni_eccedenti" '
+                'style="color:#c62828;font-size:1.1em;font-weight:700;">!</span>'
             )
         return mark_safe(
             '<span title="Nessuna allocazione" '

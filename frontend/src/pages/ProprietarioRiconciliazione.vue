@@ -1212,6 +1212,9 @@ async function salva() {
 function etichettaStato(s: string): string {
   if (s === 'pieno') return 'abbinato';
   if (s === 'parziale') return 'parziale';
+  // Anomalia: le imputazioni superano l'importo del movimento (tipico dopo
+  // la correzione dell'importo di un bonifico già abbinato).
+  if (s === 'sovra') return 'eccedente';
   return 'da abbinare';
 }
 
@@ -1435,6 +1438,11 @@ watch([filtroRiconciliato, filtroDataDa, filtroDataA], () => {
 .vp-p-rec__chip--pieno {
   background: var(--vp-salvia, #c6d6c6);
   color: var(--vp-ink);
+}
+.vp-p-rec__chip--sovra {
+  background: var(--vp-clay-soft, #fbeae5);
+  color: var(--vp-clay, #a8402a);
+  font-weight: 600;
 }
 .vp-p-rec__chip--conto {
   text-transform: none;

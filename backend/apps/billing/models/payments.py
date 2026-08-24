@@ -11,6 +11,10 @@ from django.db.models import Sum
 
 from properties.models import OwnerBankAccount, TimestampedModel
 
+#: Tolleranza (arrotondamenti) oltre la quale un'allocazione è considerata
+#: eccedente rispetto all'importo della transazione bancaria.
+TOLLERANZA_ALLOC = Decimal("0.01")
+
 
 class StatoPagamento(models.TextChoices):
     ATTESO = "atteso", "Atteso"
@@ -105,6 +109,17 @@ class BankTransaction(TimestampedModel):
         return agg or Decimal("0")
 
     @property
+    def is_sovra_allocato(self) -> bool:
+        """``True`` se le allocations eccedono l'importo del movimento.
+
+        Anomalia, non stato normale: nasce quando si corregge l'importo di
+        una BT **già riconciliata** (le allocations restano quelle di prima)
+        e lascia i Receivable coperti per denaro mai incassato. Si sana con
+        ``manage.py sana_allocazioni_eccedenti``.
+        """
+        return self.stato_riconciliazione == "sovra"
+
+    @property
     def is_riconciliato(self) -> bool:
         """``True`` se l'importo della BT è completamente coperto dalle sue
         allocations (segno-aware). BT con ``importo == 0`` sono trattate come
@@ -132,18 +147,29 @@ class BankTransaction(TimestampedModel):
 
     @property
     def stato_riconciliazione(self) -> str:
-        """Tre livelli: ``"pieno"``, ``"parziale"``, ``"vuoto"``.
+        """Quattro livelli: ``"pieno"``, ``"parziale"``, ``"vuoto"``, ``"sovra"``.
 
         - **pieno**: tutto l'importo della BT è coperto da allocations
           (entrate o uscite, segno-aware).
         - **parziale**: almeno un'allocation, ma con residuo non nullo.
         - **vuoto**: nessuna allocation.
+        - **sovra**: le allocations eccedono l'importo (in valore assoluto) o
+          vanno nel verso opposto — anomalia da sanare, vedi
+          ``is_sovra_allocato``.
+
+        La somma è algebrica: allocations di segno opposto fra loro sulla
+        stessa BT sono legittime (restituzione deposito con trattenuta
+        utenze), conta solo il totale.
         """
-        if self.importo == 0:
-            return "pieno"
         allocato = self.importo_allocato
+        if self.importo == 0:
+            return "sovra" if allocato != 0 else "pieno"
         if allocato == 0:
             return "vuoto"
+        if (allocato > 0) != (self.importo > 0):
+            return "sovra"
+        if abs(allocato) > abs(self.importo) + TOLLERANZA_ALLOC:
+            return "sovra"
         if self.importo > 0:
             return "pieno" if allocato >= self.importo else "parziale"
         return "pieno" if allocato <= self.importo else "parziale"

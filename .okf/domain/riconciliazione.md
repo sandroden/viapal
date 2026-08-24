@@ -48,6 +48,9 @@ credito), senza generare uno sbilancio a favore della proprietà.
   allocazioni vive non viene sovrascritto dai ricalcoli.
 - **[Segni concordi](/decisions/segni-concordi.md)**: allocazione, BT e Receivable
   concordi in segno (restituzione deposito = tutti negativi).
+- **[Allocazioni non eccedenti](/decisions/allocazioni-non-eccedenti.md)**: la somma
+  allocata non supera l'importo della BT — verificata anche quando si corregge
+  l'importo di un movimento già riconciliato.
 
 # Diagnosi "non abbinati"
 
