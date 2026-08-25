@@ -86,7 +86,21 @@ una bolletta di un periodo già `inviato` NON ricalcola i Receivable (warning UI
 Regola centrale: quando un periodo è **inviato** (`data_invio` valorizzato), i
 suoi importi sono **congelati** (pinning tramite le M2M). Le bollette arrivate in
 ritardo/retroattive si ribaltano sull'**ultimo periodo ancora aperto**, non su
-quelli già inviati. Comando `pin_bollette_storiche` per il pinning storico.
+quelli già inviati.
+
+La M2M `utility_bills` è però scritta **solo dall'emissione** (`persist=True`):
+i periodi nati dagli import hanno i `tot_*` ma nessuna bolletta agganciata, e
+l'abbinamento che si vede in UI è calcolo al volo per overlap di date, non
+dato. Le bollette restano quindi "libere" e candidabili al ribaltamento
+retroattivo. `pin_bollette_periodi_emessi` riempie il buco sui periodi già
+emessi, ma solo dove è dimostrabilmente innocuo: tutte le bollette contenute
+nel periodo (in pinning ognuna vale per intero) e ricostruzione coerente con i
+`tot_*` entro tolleranza; il dry-run verifica l'invariante "il pinning non
+cambia gli importi" ricalcolando dentro un savepoint. Chi resta fuori
+(bolletta a cavallo, o `tot_*` che nessuna bolletta a DB giustifica) va
+guardato a mano.
+
+Comando `pin_bollette_storiche` per il pinning storico bolletta→periodo.
 
 # Acquisizione della bolletta (parsing PDF)
 
