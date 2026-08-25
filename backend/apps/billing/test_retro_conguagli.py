@@ -235,3 +235,84 @@ class TestGuardiaStorico:
         ant = c.get(f"/api/v1/utility-periods/{pid_mag}/anteprima/").json()
         assert ant.get("skipped") == "no_bollette_luce_gas"
         assert ant["arretrati"] == []
+
+
+class TestFinestraRetro:
+    """`RETRO_FINESTRA_MESI`: il passato remoto non si riparte.
+
+    Caso reale (luglio 2026): due bollette segnaposto del 2023 importate dal
+    libro mano dopo la creazione dei periodi 2023 passavano la guardia
+    `created_at` e finivano nel conguaglio del mese corrente, gonfiando la
+    luce da 216,82 a 542,82.
+    """
+
+    def test_bolletta_fuori_finestra_non_si_ribalta(self, immobile):
+        """Serve un target *qualificato* (adiacente all'ultimo inviato) perché
+        il ramo retro parta: senza quello il test passerebbe anche senza fix."""
+        from billing.models import UtilityChargePeriod
+
+        _assignment_attivo(immobile)
+
+        # Periodo remoto chiuso a mano, senza pinnare nulla...
+        UtilityChargePeriod.objects.create(
+            property=immobile,
+            periodo_da=datetime.date(2024, 1, 1),
+            periodo_a=datetime.date(2024, 1, 31),
+            stato=UtilityChargePeriod.StatoPeriodo.INVIATO,
+        )
+        # ...e solo DOPO arriva la bolletta di quel mese: `created_at` la fa
+        # sembrare un conguaglio in ritardo (è il caso dei segnaposto 2023
+        # importati dal libro mano dopo la creazione dei periodi 2023).
+        storica = _bolletta(
+            immobile, "luce", "76.00",
+            datetime.date(2024, 1, 1), datetime.date(2024, 1, 31),
+            numero="STORICO-2024",
+        )
+        # Mese precedente al target, già inviato: rende luglio il target.
+        UtilityChargePeriod.objects.create(
+            property=immobile,
+            periodo_da=datetime.date(2025, 6, 1),
+            periodo_a=datetime.date(2025, 6, 30),
+            stato=UtilityChargePeriod.StatoPeriodo.INVIATO,
+        )
+        # Il mese corrente ha la sua bolletta, e solo quella deve contare.
+        _bolletta(
+            immobile, "luce", "216.82",
+            datetime.date(2025, 7, 1), datetime.date(2025, 7, 31),
+            numero="LUCE-CORRENTE",
+        )
+
+        c = _client(immobile)
+        pid_lug = _pid(c, 2025, 7)
+        ant = c.get(f"/api/v1/utility-periods/{pid_lug}/anteprima/").json()
+
+        # Fuori finestra (18 mesi indietro): niente ribaltamento.
+        assert ant["arretrati"] == [], ant["arretrati"]
+        assert Decimal(str(ant["totali_per_voce"]["luce"])) == Decimal("216.82")
+        assert storica.pk not in [
+            b["id"] for b in ant.get("bollette", []) if isinstance(b, dict)
+        ]
+
+    def test_conguaglio_dentro_la_finestra_si_ribalta_ancora(self, immobile):
+        """Controprova: a un mese di distanza il caso Edison resta vivo."""
+        from billing.models import UtilityChargePeriod
+
+        _assignment_attivo(immobile)
+        recente = UtilityChargePeriod.objects.create(
+            property=immobile,
+            periodo_da=datetime.date(2025, 6, 1),
+            periodo_a=datetime.date(2025, 6, 30),
+            stato=UtilityChargePeriod.StatoPeriodo.INVIATO,
+        )
+        cong = _bolletta(
+            immobile, "luce", "50.00",
+            datetime.date(2025, 6, 1), datetime.date(2025, 6, 30),
+            numero="EDISON-CONG-3",
+        )
+        assert cong.created_at > recente.created_at
+
+        c = _client(immobile)
+        pid_lug = _pid(c, 2025, 7)
+        ant = c.get(f"/api/v1/utility-periods/{pid_lug}/anteprima/").json()
+        assert len(ant["arretrati"]) == 1
+        assert ant["arretrati"][0]["bill_id"] == cong.pk

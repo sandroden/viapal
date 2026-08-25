@@ -14,6 +14,14 @@ VOCI_FATTURABILI = ("luce", "gas")
 # annuale, non una bolletta).
 VOCI_CONFIGURABILI_BOLLETTA = ("luce", "gas", "acqua")
 
+# Finestra del ribaltamento retroattivo (vedi `_attribuisci_bollette`). Il
+# retro serve al conguaglio arrivato in ritardo di qualche mese — il caso
+# Edison che ha motivato l'attribuzione v3 sta a ~4 mesi — non a resuscitare
+# lo storico: una bolletta che si chiude prima di questa finestra non entra
+# mai nella ripartizione del mese corrente, qualunque cosa dicano le date di
+# import. Gli inquilini di oggi ripartiscono le bollette di oggi.
+RETRO_FINESTRA_MESI = 6
+
 
 def _voci_fatturabili(property_id) -> tuple[str, ...]:
     """Voci "a bolletta" gestite dalla proprietà per questo immobile.
@@ -60,6 +68,12 @@ class QuotaInquilino(TypedDict, total=False):
     importo_esistente: Decimal | None  # Receivable utenze gia' presente per (period, assignment)
 
 
+def _mesi_indietro(d: date, mesi: int) -> date:
+    """Il giorno 1 del mese che sta `mesi` mesi prima di `d`."""
+    n = d.year * 12 + (d.month - 1) - mesi
+    return date(n // 12, n % 12 + 1, 1)
+
+
 def _giorni_intersezione(da1: date, a1: date, da2: date, a2: date) -> int:
     """Ritorna il numero di giorni di intersezione tra [da1, a1] e [da2, a2] (inclusivi)."""
     inizio = max(da1, da2)
@@ -91,7 +105,11 @@ def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list, list[dict],
       cioè il primo periodo che copre il giorno successivo alla fine
       dell'ultimo periodo inviato. Così un conguaglio arrivato a luglio che
       riprende aprile non va perso: finisce tutto sul mese dopo l'ultimo
-      addebito creato.
+      addebito creato. Il ribaltamento vale **solo dentro
+      ``RETRO_FINESTRA_MESI``**: una bolletta che si chiude prima di quella
+      finestra è storia, non un conguaglio in ritardo, e non entra mai nella
+      ripartizione del mese corrente — a prescindere da quando è stata
+      importata.
 
     I contributi sono al **netto** della ``quota_esclusa`` (voci a carico
     proprietà: canone RAI, aumento potenza, allacci...): la base è sempre
@@ -209,6 +227,11 @@ def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list, list[dict],
                 immobile_id=period.property_id,
                 prodotto__in=voci,
                 periodo_da__lte=ultimo_a,
+                # Finestra: niente ribaltamenti dal passato remoto. Una
+                # bolletta chiusa da più di RETRO_FINESTRA_MESI non è un
+                # conguaglio in ritardo, è storia — e la storia non si
+                # riparte tra gli inquilini di oggi.
+                periodo_a__gte=_mesi_indietro(P_da, RETRO_FINESTRA_MESI),
             ).exclude(pk__in=pinnate_da_inviati)
             for bill in candidate:
                 giorni_bolletta = (bill.periodo_a - bill.periodo_da).days + 1

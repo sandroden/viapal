@@ -54,6 +54,14 @@ nati prima della bolletta (guardia `bill.created_at > periodo.created_at`, che
 esclude gli import storici) — si ribaltano tutti sul periodo **target** (il
 primo che copre il giorno dopo la fine dell'ultimo inviato). Il risultato
 espone `arretrati` (bolletta, giorni, importo) mostrato come banner nel wizard.
+
+Il ribaltamento vale **solo dentro `RETRO_FINESTRA_MESI`** (6 mesi, costante in
+`calc/utility.py`): una bolletta che si chiude prima di quella finestra è
+storia, non un conguaglio in ritardo, e non entra mai nella ripartizione del
+mese corrente. La sola guardia `created_at` non bastava: gli import storici
+fatti *dopo* la creazione dei periodi che coprono la passano (caso reale
+2026-08: due segnaposto del libro mano 2023 gonfiavano la luce di luglio 2026
+da 216,82 a 542,82). Gli inquilini di oggi ripartiscono le bollette di oggi.
 Dettagli e casi limite: docs/piano-utenze-configurabili.md §8.
 
 # Quota esclusa (voci a carico proprietà)
