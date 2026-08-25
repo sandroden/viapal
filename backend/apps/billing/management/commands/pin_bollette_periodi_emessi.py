@@ -12,22 +12,28 @@ restano "libere", quindi candidabili al ribaltamento retroattivo su un
 periodo aperto — la strada da cui i segnaposto 2023 sono finiti nel
 conguaglio di luglio 2026.
 
-Regole (conservative per costruzione)
--------------------------------------
-Un periodo emesso viene pinnato solo se:
+Cosa aggancia
+-------------
+**Tutte** le bollette che intersecano il periodo, comprese le bimestrali che
+lo eccedono: una bolletta che copre due mesi appartiene a entrambi, e
+agganciarla a entrambi è la verità documentale. Il calcolo lo regge perché in
+modalità pinning una bolletta condivisa fra più periodi si ripartisce
+pro-rata sui giorni (vedi ``_attribuisci_bollette``): la somma sui periodi
+che la condividono resta l'importo della bolletta, niente doppia imputazione.
 
-1. **tutte** le bollette che lo intersecano vi sono interamente contenute —
-   il pinning conta l'importo intero, quindi su una bolletta a cavallo
-   cambierebbe i numeri (e un pinning parziale perderebbe il contributo di
-   quella a cavallo);
-2. la ricostruzione combacia con i ``tot_*`` già persistiti entro
-   ``--tolleranza`` — se il periodo fu emesso con più di quanto le bollette
-   a DB giustifichino, il dato mancante è la bolletta, e scrivere la M2M
-   registrerebbe una mezza verità.
+Il piano si valuta **in blocco**, non periodo per periodo: quanto vale una
+bimestrale su maggio dipende dal fatto che anche giugno la agganci.
 
-Ne segue l'invariante: **il pinning non cambia nessun importo**. Il comando
-lo verifica sui dati veri prima di applicare (ricalcolo prima/dopo dentro un
-savepoint) e rifiuta di pinnare i periodi che non lo rispettano.
+Un periodo viene saltato se:
+
+1. i suoi ``tot_*`` addebitano una voce di cui a DB non esiste nessuna
+   bolletta (manca il dato, non l'aggancio: registrare la M2M scriverebbe
+   una mezza verità);
+2. il pinning allontanerebbe il ricalcolo dai ``tot_*`` effettivamente
+   addebitati — verificato sui dati veri applicando il piano dentro un
+   savepoint, non assunto. Avvicinarsi invece va benissimo: un periodo che
+   oggi si vede attribuire arretrati fantasma (perché le bollette dei mesi
+   precedenti non erano agganciate a nessuno) torna al suo importo vero.
 
 Uso::
 
@@ -41,6 +47,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from properties.context import resolve_property_cli
+
+CENTESIMO = Decimal("0.01")
 
 
 class Command(BaseCommand):
@@ -60,12 +68,6 @@ class Command(BaseCommand):
             help="Filtra i periodi che iniziano in quell'anno.",
         )
         parser.add_argument(
-            "--tolleranza",
-            type=str,
-            default="1.00",
-            help="Scarto ammesso tra bollette ricostruite e tot_* persistiti (€).",
-        )
-        parser.add_argument(
             "--property",
             type=str,
             default=None,
@@ -76,7 +78,6 @@ class Command(BaseCommand):
         from billing.models import UtilityChargePeriod
 
         applica = options["apply"]
-        tolleranza = Decimal(options["tolleranza"])
         try:
             prop = resolve_property_cli(options.get("property"))
         except ValueError as e:
@@ -89,36 +90,58 @@ class Command(BaseCommand):
         ).distinct().order_by("periodo_da")
         if options.get("year"):
             periodi = periodi.filter(periodo_da__year=options["year"])
+        periodi = list(periodi)
 
-        pinnati = saltati = 0
+        piano: dict = {}
+        scartati: list[tuple] = []
         for period in periodi:
-            esito = self._valuta(period, tolleranza)
-            if esito["ok"]:
-                if applica:
-                    with transaction.atomic():
-                        period.utility_bills.set(esito["bollette"])
-                pinnati += 1
+            bollette, motivo = self._candidate(period)
+            if motivo:
+                scartati.append((period, motivo))
             else:
-                saltati += 1
-            self._riga(period, esito)
+                piano[period.pk] = (period, bollette)
+
+        # Il piano va verificato tutto insieme: togliere un periodo cambia la
+        # ripartizione delle bollette che condivideva con gli altri.
+        for _ in range(5):
+            cambia = self._verifica_in_blocco(piano)
+            if not cambia:
+                break
+            for pk in cambia:
+                period, _bollette = piano.pop(pk)
+                scartati.append(
+                    (period, "il pinning allontanerebbe il ricalcolo dagli importi addebitati")
+                )
+
+        if applica and piano:
+            with transaction.atomic():
+                for period, bollette in piano.values():
+                    period.utility_bills.set(bollette)
+
+        for period in periodi:
+            if period.pk in piano:
+                self._riga_ok(period, piano[period.pk][1])
+        for period, motivo in sorted(scartati, key=lambda t: t[0].periodo_da):
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  [{period.pk}] {period.periodo_da} → {period.periodo_a} "
+                    f"salto: {motivo}"
+                )
+            )
 
         prefix = "" if applica else "[DRY-RUN] "
         self.stdout.write("")
         self.stdout.write(
-            f"{prefix}Periodi emessi senza bollette agganciate: {periodi.count()} "
-            f"— pinnabili {pinnati}, da guardare a mano {saltati}"
+            f"{prefix}Periodi emessi senza bollette agganciate: {len(periodi)} "
+            f"— pinnabili {len(piano)}, da guardare a mano {len(scartati)}"
         )
-        if not applica and pinnati:
+        if not applica and piano:
             self.stdout.write("Rilancia con --apply per scrivere gli agganci.")
 
     # ------------------------------------------------------------------
-    def _valuta(self, period, tolleranza: Decimal) -> dict:
-        """Decide se il periodo è pinnabile e verifica l'invariante sui dati."""
-        from billing.calc.utility import (
-            _giorni_intersezione,
-            _voci_fatturabili,
-            calcola_conguaglio_periodo,
-        )
+    def _candidate(self, period) -> tuple[list, str]:
+        """Bollette da agganciare al periodo, o il motivo per cui non si tocca."""
+        from billing.calc.utility import _voci_fatturabili
         from billing.models import UtilityBill
 
         voci = _voci_fatturabili(period.property_id)
@@ -131,67 +154,87 @@ class Command(BaseCommand):
             ).order_by("periodo_da")
         )
         if not bollette:
-            return {"ok": False, "motivo": "nessuna bolletta interseca il periodo"}
+            return [], "nessuna bolletta interseca il periodo"
 
-        a_cavallo = [
-            b
-            for b in bollette
-            if _giorni_intersezione(
-                b.periodo_da, b.periodo_a, period.periodo_da, period.periodo_a
-            )
-            < (b.periodo_a - b.periodo_da).days + 1
+        # Una voce addebitata di cui non esiste alcuna bolletta è un dato
+        # mancante: l'aggancio non lo inventa.
+        addebitato = {
+            "luce": period.tot_luce or Decimal("0"),
+            "gas": period.tot_gas or Decimal("0"),
+        }
+        con_bolletta = {b.prodotto for b in bollette}
+        scoperte = [
+            f"{voce} ({importo:.2f} €)"
+            for voce, importo in addebitato.items()
+            if voce in voci and importo > CENTESIMO and voce not in con_bolletta
         ]
-        if a_cavallo:
-            elenco = ", ".join(
-                f"{b.pk}:{b.prodotto} {b.periodo_da}→{b.periodo_a}" for b in a_cavallo
+        if scoperte:
+            return [], (
+                f"addebitate senza bolletta a DB: {', '.join(scoperte)} "
+                "— manca il dato, non l'aggancio"
             )
-            return {"ok": False, "motivo": f"bollette a cavallo ({elenco})"}
+        return bollette, ""
 
-        ricostruito = sum((b.importo_ripartibile for b in bollette), Decimal("0.00"))
-        persistito = (
+    def _verifica_in_blocco(self, piano: dict) -> list:
+        """Applica il piano in un savepoint e torna i periodi che il pinning
+        allontanerebbe dagli importi addebitati (lista vuota = piano sano)."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        if not piano:
+            return []
+        prima = {
+            pk: calcola_conguaglio_periodo(pk, persist=False)["totali_per_voce"]
+            for pk in piano
+        }
+        with transaction.atomic():
+            sid = transaction.savepoint()
+            for period, bollette in piano.values():
+                period.utility_bills.set(bollette)
+            dopo = {
+                pk: calcola_conguaglio_periodo(pk, persist=False)["totali_per_voce"]
+                for pk in piano
+            }
+            transaction.savepoint_rollback(sid)
+        return [
+            pk
+            for pk, (period, _b) in piano.items()
+            if self._scarto(dopo[pk], period) > self._scarto(prima[pk], period) + CENTESIMO
+        ]
+
+    @staticmethod
+    def _scarto(totali: dict, period) -> Decimal:
+        """Distanza tra il ricalcolo e i tot_* addebitati (la verità storica).
+
+        La TARI non entra: viene dai costi annuali, non dalle bollette.
+        """
+        ricalcolo = sum(
+            (v for k, v in totali.items() if k != "tari"), Decimal("0.00")
+        )
+        addebitato = (
             (period.tot_luce or Decimal("0"))
             + (period.tot_gas or Decimal("0"))
             + (period.tot_altro or Decimal("0"))
         )
-        delta = ricostruito - persistito
-        if abs(delta) > tolleranza:
-            return {
-                "ok": False,
-                "motivo": (
-                    f"le bollette a DB giustificano {ricostruito:.2f} € dei "
-                    f"{persistito:.2f} € addebitati (delta {delta:+.2f} €): "
-                    f"manca una bolletta, non l'aggancio"
-                ),
-            }
+        return abs(ricalcolo - addebitato)
 
-        # Invariante: il pinning non deve cambiare nessun importo. Verificato
-        # sui dati veri, non solo in test: pin dentro un savepoint, ricalcolo,
-        # rollback.
-        prima = calcola_conguaglio_periodo(period.pk, persist=False)
-        with transaction.atomic():
-            sid = transaction.savepoint()
-            period.utility_bills.set(bollette)
-            dopo = calcola_conguaglio_periodo(period.pk, persist=False)
-            transaction.savepoint_rollback(sid)
-        if prima["totali_per_voce"] != dopo["totali_per_voce"]:
-            return {
-                "ok": False,
-                "motivo": (
-                    f"il pinning cambierebbe gli importi: "
-                    f"{prima['totali_per_voce']} → {dopo['totali_per_voce']}"
-                ),
-            }
+    def _riga_ok(self, period, bollette) -> None:
+        from billing.calc.utility import _giorni_intersezione
 
-        return {"ok": True, "bollette": bollette, "delta": delta}
-
-    def _riga(self, period, esito: dict) -> None:
-        testa = f"  [{period.pk}] {period.periodo_da} → {period.periodo_a}"
-        if esito["ok"]:
-            elenco = " ".join(
-                f"{b.pk}:{b.prodotto}:{b.importo_ripartibile}€" for b in esito["bollette"]
+        pezzi = []
+        for b in bollette:
+            giorni_b = (b.periodo_a - b.periodo_da).days + 1
+            giorni = _giorni_intersezione(
+                b.periodo_da, b.periodo_a, period.periodo_da, period.periodo_a
             )
-            self.stdout.write(
-                self.style.SUCCESS(f"{testa} pin {len(esito['bollette'])} → {elenco}")
+            quota = (
+                f"{b.importo_ripartibile}€"
+                if giorni >= giorni_b
+                else f"{b.importo_ripartibile}€×{giorni}/{giorni_b}gg"
             )
-        else:
-            self.stdout.write(self.style.WARNING(f"{testa} salto: {esito['motivo']}"))
+            pezzi.append(f"{b.pk}:{b.prodotto}:{quota}")
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"  [{period.pk}] {period.periodo_da} → {period.periodo_a} "
+                f"pin {len(bollette)} → {' '.join(pezzi)}"
+            )
+        )

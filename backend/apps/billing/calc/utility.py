@@ -126,11 +126,14 @@ def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list, list[dict],
 
     Override manuale (pinning): se ``period.utility_bills`` è già popolata,
     quelle bollette valgono per l'importo ripartibile intero (verità manuale,
-    no pro-rata, niente retroattivi). Una bolletta pinnata da un periodo
-    ``inviato`` non genera mai quote retroattive; i suoi giorni FUORI dal
-    periodo che l'ha pinnata restano però attribuibili come quota propria dei
-    mesi che coprono — chi pinna a mano una bolletta su un periodo che non la
-    copre tutta se ne assume la doppia imputazione.
+    niente retroattivi) — **tranne** quelle agganciate anche ad altri periodi,
+    che si ripartiscono pro-rata sui giorni. È il caso della bimestrale che
+    appartiene a entrambi i mesi: agganciarla a tutti e due è la verità
+    documentale e la somma resta l'importo della bolletta. Una bolletta
+    pinnata da un periodo ``inviato`` non genera mai quote retroattive; i suoi
+    giorni FUORI dal periodo che l'ha pinnata restano però attribuibili come
+    quota propria dei mesi che coprono — chi pinna a mano una bolletta su un
+    solo periodo che non la copre tutta se ne assume la doppia imputazione.
     """
     from billing.models import UtilityBill, UtilityChargePeriod
 
@@ -141,22 +144,41 @@ def _attribuisci_bollette(period) -> tuple[dict[str, Decimal], list, list[dict],
     esclusioni: list[dict] = []
     voci = _voci_fatturabili(period.property_id)
 
-    # Modalità pinning: la M2M è "verità manuale". Se popolata, ogni bolletta
-    # agganciata cade intera sul periodo (no pro-rata).
+    # Modalità pinning: la M2M è "verità manuale". Una bolletta agganciata a
+    # QUESTO SOLO periodo cade intera (è l'override: "questa bolletta la voglio
+    # qui"). Una bolletta agganciata anche ad altri periodi — il caso naturale
+    # della bimestrale, che appartiene a entrambi i mesi — si ripartisce
+    # pro-rata sui giorni, come farebbe la quota propria: così la somma sui
+    # periodi che la condividono resta l'importo della bolletta, senza doppia
+    # imputazione. Se il periodo non ne copre nemmeno un giorno vince
+    # l'override e vale intera.
     pinned = list(period.utility_bills.filter(prodotto__in=voci))
     if pinned:
         contributi: dict[str, Decimal] = {}
         for b in pinned:
+            giorni_bolletta = (b.periodo_a - b.periodo_da).days + 1
+            giorni = _giorni_intersezione(b.periodo_da, b.periodo_a, P_da, P_a)
+            condivisa = b.periods.count() > 1
+            if condivisa and 0 < giorni < giorni_bolletta:
+                quota = b.importo_ripartibile * Decimal(giorni) / Decimal(giorni_bolletta)
+            else:
+                quota = b.importo_ripartibile
             contributi[b.prodotto] = (
-                contributi.get(b.prodotto, Decimal("0.00")) + b.importo_ripartibile
+                contributi.get(b.prodotto, Decimal("0.00")) + quota
             )
             if b.quota_esclusa:
+                # La quota a carico proprietà segue la stessa frazione della
+                # quota ripartita, altrimenti su una bimestrale condivisa
+                # verrebbe esclusa due volte.
+                esclusa = b.quota_esclusa
+                if condivisa and 0 < giorni < giorni_bolletta:
+                    esclusa = esclusa * Decimal(giorni) / Decimal(giorni_bolletta)
                 esclusioni.append(
                     {
                         "bill_id": b.pk,
                         "prodotto": b.prodotto,
                         "motivo": b.motivo_esclusione,
-                        "quota_esclusa": b.quota_esclusa,
+                        "quota_esclusa": esclusa,
                     }
                 )
         return contributi, pinned, esclusioni, []

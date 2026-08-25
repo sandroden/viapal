@@ -3,9 +3,9 @@ Test di `pin_bollette_periodi_emessi`: riempire la M2M dei periodi già emessi
 senza toccare un solo importo.
 
 I periodi nati dagli import hanno i `tot_*` ma nessuna bolletta agganciata:
-l'abbinamento vive solo come calcolo al volo. Il comando lo rende dato, ma
-solo dove è dimostrabilmente innocuo — in modalità pinning ogni bolletta
-agganciata vale per intero, quindi una bolletta a cavallo cambierebbe i conti.
+l'abbinamento vive solo come calcolo al volo. Il comando lo rende dato — anche
+per le bimestrali, agganciate a entrambi i mesi che coprono — e si ferma dove
+il pinning allontanerebbe il ricalcolo da quanto fu davvero addebitato.
 """
 import datetime
 from decimal import Decimal
@@ -97,29 +97,47 @@ class TestPinPeriodiEmessi:
         assert p.utility_bills.count() == 0
         assert "pin 1" in out and "--apply" in out
 
-    def test_salta_il_periodo_con_bolletta_a_cavallo(self, immobile):
-        """Il gas quadrimestrale: pinnarlo conterebbe l'intero su ogni mese."""
-        p = _periodo_emesso(
+    def test_bimestrale_agganciata_a_entrambi_i_mesi(self, immobile):
+        """La bolletta che copre due periodi appartiene a entrambi: agganciata
+        a tutti e due, si ripartisce pro-rata e la somma resta l'intero."""
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        p1 = _periodo_emesso(
             immobile,
-            datetime.date(2025, 1, 1), datetime.date(2025, 2, 28),
-            luce="100.00", gas="30.00",
+            datetime.date(2025, 1, 1), datetime.date(2025, 1, 31),
+            luce="100.00", gas="31.00",
+        )
+        p2 = _periodo_emesso(
+            immobile,
+            datetime.date(2025, 2, 1), datetime.date(2025, 2, 28),
+            luce="100.00", gas="28.00",
         )
         _bolletta(
             immobile, "luce", "100.00",
-            datetime.date(2025, 1, 1), datetime.date(2025, 2, 28),
+            datetime.date(2025, 1, 1), datetime.date(2025, 1, 31), numero="L1",
         )
         _bolletta(
-            immobile, "gas", "120.00",
-            datetime.date(2025, 1, 1), datetime.date(2025, 4, 30),
+            immobile, "luce", "100.00",
+            datetime.date(2025, 2, 1), datetime.date(2025, 2, 28), numero="L2",
+        )
+        gas = _bolletta(
+            immobile, "gas", "59.00",
+            datetime.date(2025, 1, 1), datetime.date(2025, 2, 28), numero="G-BIM",
         )
 
-        out = _run(property=str(immobile.pk), apply=True)
+        _run(property=str(immobile.pk), apply=True)
 
-        assert p.utility_bills.count() == 0
-        assert "a cavallo" in out
+        assert gas.pk in p1.utility_bills.values_list("pk", flat=True)
+        assert gas.pk in p2.utility_bills.values_list("pk", flat=True)
+        # 59 € su 59 giorni: 31 a gennaio, 28 a febbraio. Niente doppioni.
+        g1 = calcola_conguaglio_periodo(p1.pk, persist=False)["totali_per_voce"]["gas"]
+        g2 = calcola_conguaglio_periodo(p2.pk, persist=False)["totali_per_voce"]["gas"]
+        assert g1 == Decimal("31.00"), g1
+        assert g2 == Decimal("28.00"), g2
+        assert g1 + g2 == Decimal("59.00")
 
     def test_salta_il_periodo_a_cui_manca_una_bolletta(self, immobile):
-        """Emesso 299, a DB ce ne sono 230: manca il dato, non l'aggancio."""
+        """tot_gas addebitato ma nessuna bolletta gas a DB: manca il dato."""
         p = _periodo_emesso(
             immobile,
             datetime.date(2024, 1, 1), datetime.date(2024, 2, 29),
@@ -133,7 +151,7 @@ class TestPinPeriodiEmessi:
         out = _run(property=str(immobile.pk), apply=True)
 
         assert p.utility_bills.count() == 0
-        assert "delta" in out
+        assert "manca il dato" in out
 
     def test_idempotente(self, immobile):
         p = _periodo_emesso(

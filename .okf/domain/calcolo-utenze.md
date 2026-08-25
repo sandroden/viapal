@@ -83,6 +83,13 @@ una bolletta di un periodo già `inviato` NON ricalcola i Receivable (warning UI
 
 # Pinning: "una volta inviato non si tocca più"
 
+In modalità pinning una bolletta agganciata a un **solo** periodo vale per
+intero (è l'override manuale: "questa bolletta la voglio qui"), mentre una
+agganciata a **più** periodi si ripartisce pro-rata sui giorni, come la quota
+propria: così la bimestrale sta in entrambi i mesi senza doppia imputazione.
+La trappola resta per chi pinna a mano una bolletta su un solo periodo che non
+la copre tutta.
+
 Regola centrale: quando un periodo è **inviato** (`data_invio` valorizzato), i
 suoi importi sono **congelati** (pinning tramite le M2M). Le bollette arrivate in
 ritardo/retroattive si ribaltano sull'**ultimo periodo ancora aperto**, non su
@@ -93,12 +100,15 @@ i periodi nati dagli import hanno i `tot_*` ma nessuna bolletta agganciata, e
 l'abbinamento che si vede in UI è calcolo al volo per overlap di date, non
 dato. Le bollette restano quindi "libere" e candidabili al ribaltamento
 retroattivo. `pin_bollette_periodi_emessi` riempie il buco sui periodi già
-emessi, ma solo dove è dimostrabilmente innocuo: tutte le bollette contenute
-nel periodo (in pinning ognuna vale per intero) e ricostruzione coerente con i
-`tot_*` entro tolleranza; il dry-run verifica l'invariante "il pinning non
-cambia gli importi" ricalcolando dentro un savepoint. Chi resta fuori
-(bolletta a cavallo, o `tot_*` che nessuna bolletta a DB giustifica) va
-guardato a mano.
+emessi, agganciando **tutte** le bollette che li intersecano — bimestrali
+comprese, che finiscono su entrambi i mesi coperti (scelta di Sandro: è la
+verità documentale). Il piano si valuta in blocco (quanto vale una bimestrale
+su maggio dipende dal fatto che anche giugno la agganci) e si ferma dove il
+pinning allontanerebbe il ricalcolo dai `tot_*` addebitati, verificato dentro
+un savepoint; avvicinarsi invece va bene (un periodo che oggi riceve arretrati
+fantasma torna al suo importo vero). Resta fuori solo chi ha una voce
+addebitata di cui a DB non esiste alcuna bolletta: lì manca il dato, non
+l'aggancio.
 
 `pin_bollette_storiche` lavora invece bolletta→periodo, e solo su periodi
 **aperti** che la contengono: non ribalta più sul "primo periodo dopo"
