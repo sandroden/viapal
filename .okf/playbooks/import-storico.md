@@ -19,7 +19,7 @@ idempotenti, da rieseguire anche in produzione. Restano alcune riconciliazioni
 |---------|-------|
 | `importa_contabilita_xlsx` | libro mano `Contabilità.xlsx` (BT sintetiche, bollette, TARI) |
 | `importa_utenze_da_xlsx` | bollette storiche da xlsx |
-| `pin_bollette_storiche` | pinning periodi utenze già inviati |
+| `pin_bollette_storiche` | aggancia una bolletta al periodo **aperto** che la contiene |
 | `pin_bollette_periodi_emessi` | riempie la M2M dei periodi **già emessi** che ne sono privi (dry-run di default) |
 | `riconcilia_bonifici` | matching automatico BT↔Receivable |
 | `riconcilia_storico_manuale` | 6 abbinamenti forensi inquilini passati (idempotente, fail-safe) |

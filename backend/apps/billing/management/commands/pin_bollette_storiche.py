@@ -2,14 +2,13 @@
 Aggancia (pin) le bollette luce/gas ai ``UtilityChargePeriod`` storici secondo
 le regole:
 
-1. Bolletta il cui range ``[periodo_da, periodo_a]`` coincide con un solo
-   periodo → pin a quel periodo.
-2. Bolletta multi-bimestre (range che cavalca più periodi) → pin al primo
-   periodo con ``periodo_da > bill.periodo_a`` (= ribaltamento sul periodo
-   successivo). Riflette la pratica: "bolletta retroattiva si carica sul
-   primo aperto dopo".
+bolletta → periodo **aperto** che la contiene interamente. Le bollette già
+agganciate e quelle che nessun periodo aperto contiene vengono saltate e
+segnalate.
 
-Bollette già agganciate a qualche periodo (M2M non vuota) vengono saltate.
+Per i periodi **già emessi** con la M2M vuota serve invece
+``pin_bollette_periodi_emessi``: lì il pinning va verificato importo per
+importo, perché in modalità pinning ogni bolletta agganciata vale per intero.
 
 Uso:
     uv run manage.py pin_bollette_storiche                 # dry-run
@@ -46,7 +45,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         from billing.calc.utility import VOCI_FATTURABILI
-        from billing.models import UtilityBill, UtilityChargePeriod
+        from billing.models import UtilityBill
 
         persist = options["persist"]
         year = options.get("year")
@@ -106,47 +105,30 @@ class Command(BaseCommand):
 
     @staticmethod
     def _scegli_periodo(bill, prop):
-        """Regola di pinning automatico:
-        - Se esiste UN periodo il cui range coincide col range della bolletta
-          → pin a quel periodo.
-        - Se esiste UN solo periodo che CONTIENE interamente il range della
-          bolletta → pin a quel periodo (caso bolletta mensile dentro un
-          bimestre).
-        - Altrimenti (range cavalca più periodi, multi-bimestre) → primo
-          periodo con ``periodo_da > bill.periodo_a`` (ribaltamento sul
-          successivo); se nessuno, l'ultimo periodo che contiene almeno un
-          giorno del range della bolletta.
+        """Il periodo APERTO che contiene interamente il range della bolletta.
+
+        Due limiti deliberati, imparati dal conguaglio gonfiato di luglio 2026:
+
+        - **mai un periodo ``inviato``**: quello che è stato emesso è
+          congelato, aggiungergli bollette ne falserebbe la ricostruzione (in
+          modalità pinning ogni bolletta vale per intero). Per riempire la
+          M2M dei periodi già emessi c'è ``pin_bollette_periodi_emessi``, che
+          verifica di non cambiare gli importi.
+        - **niente ribaltamento sul periodo successivo**: la regola v1 "la
+          bolletta multi-periodo si carica sul primo aperto dopo" precede
+          l'attribuzione day-based, che ripartisce sui mesi coperti. Una
+          bolletta che nessun periodo aperto contiene resta orfana e viene
+          segnalata, non spostata altrove.
         """
         from billing.models import UtilityChargePeriod
 
-        # 1. Periodo che coincide col range bolletta (esatto o contenente)
-        contenente = UtilityChargePeriod.objects.filter(
-            property=prop,
-            periodo_da__lte=bill.periodo_da,
-            periodo_a__gte=bill.periodo_a,
-        ).order_by("periodo_da")
-        if contenente.exists():
-            return contenente.first()
-
-        # 2. Multi-bimestre: ribalta sul primo periodo dopo periodo_a
-        successivo = (
+        return (
             UtilityChargePeriod.objects.filter(
-                property=prop, periodo_da__gt=bill.periodo_a
+                property=prop,
+                periodo_da__lte=bill.periodo_da,
+                periodo_a__gte=bill.periodo_a,
             )
+            .exclude(stato=UtilityChargePeriod.StatoPeriodo.INVIATO)
             .order_by("periodo_da")
             .first()
         )
-        if successivo:
-            return successivo
-
-        # 3. Fallback: ultimo periodo che interseca almeno parzialmente
-        ultimo_intersezione = (
-            UtilityChargePeriod.objects.filter(
-                property=prop,
-                periodo_da__lte=bill.periodo_a,
-                periodo_a__gte=bill.periodo_da,
-            )
-            .order_by("-periodo_da")
-            .first()
-        )
-        return ultimo_intersezione

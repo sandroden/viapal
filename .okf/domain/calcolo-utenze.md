@@ -100,7 +100,10 @@ cambia gli importi" ricalcolando dentro un savepoint. Chi resta fuori
 (bolletta a cavallo, o `tot_*` che nessuna bolletta a DB giustifica) va
 guardato a mano.
 
-Comando `pin_bollette_storiche` per il pinning storico bolletta→periodo.
+`pin_bollette_storiche` lavora invece bolletta→periodo, e solo su periodi
+**aperti** che la contengono: non ribalta più sul "primo periodo dopo"
+(regola v1, precedente alla day-based) e non tocca i periodi inviati — così
+com'era avrebbe pinnato le bollette 2022 sul febbraio 2023 già emesso.
 
 # Acquisizione della bolletta (parsing PDF)
 
