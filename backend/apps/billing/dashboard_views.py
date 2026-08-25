@@ -500,7 +500,10 @@ class DashboardProprietarioView(APIView):
                 )
                 .exclude(stato__in=[StatoPagamento.PAGATO, StatoPagamento.INSOLUTO])
                 .select_related(
-                    "assignment__tenant", "assignment__room", "utility_period"
+                    "assignment__tenant",
+                    "assignment__room__property__bank_account_utenze",
+                    "assignment__bank_account_affitto",
+                    "utility_period",
                 )
             )
             scadenza_qs = (
@@ -512,7 +515,10 @@ class DashboardProprietarioView(APIView):
                     scadenza__gte=oggi,
                 )
                 .select_related(
-                    "assignment__tenant", "assignment__room", "utility_period"
+                    "assignment__tenant",
+                    "assignment__room__property__bank_account_utenze",
+                    "assignment__bank_account_affitto",
+                    "utility_period",
                 )
             )
 
@@ -546,6 +552,11 @@ class DashboardProprietarioView(APIView):
                 "scadenza": r.scadenza.isoformat(),
                 "stato": r.stato,
                 "giorni_ritardo": giorni,
+                # Servono al dialog di registrazione incasso aperto da qui:
+                # il conto proposto è quello su cui l'addebito doveva entrare,
+                # mai quello di chi sta guardando la pagina.
+                "bank_account_destinazione_id": r.bank_account_destinazione_id,
+                "conto_suggerito_id": _conto_suggerito_id(r),
             }
 
         ritardi = sorted([_fmt(r) for r in ritardi_qs], key=lambda x: x["scadenza"])

@@ -5,3 +5,4 @@
 * [Guardia allocations](guardia-allocations.md) - un Receivable con allocazioni vive non si sovrascrive.
 * [Segni concordi](segni-concordi.md) - allocazione, BT e Receivable concordi in segno.
 * [Allocazioni non eccedenti](allocazioni-non-eccedenti.md) - la somma allocata non supera l'importo del movimento, nemmeno dopo una correzione.
+* [Incasso sempre attribuito](incasso-sempre-attribuito.md) - un addebito pagato dice sempre chi ha incassato; si chiude solo registrando il movimento.

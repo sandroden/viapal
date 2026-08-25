@@ -91,3 +91,6 @@ scadenze).
   (generazione affitti, conguaglio) — vedi [guardia allocations](/decisions/guardia-allocations.md).
 - Allocazioni, BT e Receivable devono essere **concordi in segno** — vedi
   [segni concordi](/decisions/segni-concordi.md).
+- Un Receivable `pagato` ha sempre `incassato_da_owner` (vincolo di database):
+  si chiude registrandone il movimento, mai scrivendo lo stato a mano — vedi
+  [incasso sempre attribuito](/decisions/incasso-sempre-attribuito.md).

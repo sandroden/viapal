@@ -686,6 +686,47 @@ class ReceivableForReconcileSerializer(serializers.ModelSerializer):
         return r.importo_dovuto - allocato
 
 
+class ConfermaPagamentoInputSerializer(serializers.Serializer):
+    """Input per POST /api/v1/<causale>/{id}/conferma_pagato/.
+
+    Il conto è obbligatorio: confermare un pagamento significa dire su quale
+    conto è arrivato, e quindi chi lo ha incassato. Data e importo sono
+    facoltativi — di default la data già dichiarata (o oggi) e il residuo.
+    """
+
+    owner_account = serializers.IntegerField()
+    data = serializers.DateField(required=False, allow_null=True)
+    importo = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False, allow_null=True
+    )
+    descrizione = serializers.CharField(
+        allow_blank=True, max_length=300, required=False, default=""
+    )
+    note = serializers.CharField(allow_blank=True, required=False, default="")
+
+    def validate_importo(self, value):
+        if value is not None and value == 0:
+            raise serializers.ValidationError("L'importo non può essere zero.")
+        return value
+
+    def validate_owner_account(self, value):
+        return _conto_incasso_valido(value)
+
+
+def _conto_incasso_valido(pk):
+    """Il conto attivo con quel pk, o ValidationError. Condiviso dagli input
+    di incasso: registra-pagamento e conferma_pagato hanno la stessa regola."""
+    from properties.models import OwnerBankAccount
+
+    try:
+        acct = OwnerBankAccount.objects.get(pk=pk)
+    except OwnerBankAccount.DoesNotExist:
+        raise serializers.ValidationError("Conto inesistente.")
+    if not acct.attivo:
+        raise serializers.ValidationError("Il conto selezionato non è attivo.")
+    return acct
+
+
 class RegistraPagamentoInputSerializer(serializers.Serializer):
     """Input per POST /api/v1/receivables/{id}/registra-pagamento/.
 
@@ -709,14 +750,7 @@ class RegistraPagamentoInputSerializer(serializers.Serializer):
         return value
 
     def validate_owner_account(self, value):
-        from properties.models import OwnerBankAccount
-        try:
-            acct = OwnerBankAccount.objects.get(pk=value)
-        except OwnerBankAccount.DoesNotExist:
-            raise serializers.ValidationError("Conto inesistente.")
-        if not acct.attivo:
-            raise serializers.ValidationError("Il conto selezionato non è attivo.")
-        return acct
+        return _conto_incasso_valido(value)
 
 
 class BankMovimentoSerializer(serializers.Serializer):

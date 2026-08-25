@@ -391,7 +391,9 @@ class TestDicharaPagato:
 
 
 class TestConfermaPayment:
-    def test_proprietario_conferma(self, user_prop, user_inq_1, rent_payment_1):
+    def test_proprietario_conferma(
+        self, user_prop, user_inq_1, rent_payment_1, conto_alloc
+    ):
         # Usa due client separati per evitare conflitti di sessione
         inq_client = APIClient(enforce_csrf_checks=False)
         inq_client.force_login(user_inq_1)
@@ -400,31 +402,68 @@ class TestConfermaPayment:
 
         # Prima l'inquilino dichiara
         inq_client.post(f"/api/v1/rent-payments/{rent_payment_1.id}/dichiara_pagato/")
-        # Poi il proprietario conferma
+        # Poi il proprietario conferma, dicendo su che conto è entrato
         resp = prop_client.post(
-            f"/api/v1/rent-payments/{rent_payment_1.id}/conferma_pagato/"
+            f"/api/v1/rent-payments/{rent_payment_1.id}/conferma_pagato/",
+            {"owner_account": conto_alloc.id},
+            format="json",
         )
         assert resp.status_code == 200
         assert resp.json()["stato"] == StatoPagamento.PAGATO
+        rent_payment_1.refresh_from_db()
+        # È il punto di tutta la firma obbligatoria: si sa chi ha incassato.
+        assert rent_payment_1.incassato_da_owner == conto_alloc.owner
 
-    def test_conferma_salda_intero_dovuto(self, client_prop, rent_payment_1):
-        """La conferma del proprietario dà per saldato tutto il dovuto,
-        anche se la copertura da bonifici era parziale."""
-        rent_payment_1.importo_pagato = Decimal("300")
-        rent_payment_1.stato = StatoPagamento.DICHIARATO
-        rent_payment_1.save(update_fields=["importo_pagato", "stato"])
-
+    def test_conferma_senza_conto_rifiutata(self, client_prop, rent_payment_1):
+        """Senza conto non si conferma: era la strada che lasciava addebiti
+        pagati ma senza incassante, invisibili ai saldi tra proprietari."""
         resp = client_prop.post(
             f"/api/v1/rent-payments/{rent_payment_1.id}/conferma_pagato/"
+        )
+        assert resp.status_code == 400
+        assert "owner_account" in resp.json()
+        rent_payment_1.refresh_from_db()
+        assert rent_payment_1.stato != StatoPagamento.PAGATO
+
+    def test_conferma_crea_il_movimento(
+        self, client_prop, rent_payment_1, conto_alloc
+    ):
+        """Confermare registra l'incasso: nasce il movimento con la sua
+        allocazione, e stato/importo li ricalcola il signal."""
+        rent_payment_1.stato = StatoPagamento.DICHIARATO
+        rent_payment_1.save(update_fields=["stato"])
+
+        resp = client_prop.post(
+            f"/api/v1/rent-payments/{rent_payment_1.id}/conferma_pagato/",
+            {"owner_account": conto_alloc.id, "data": "2026-05-04"},
+            format="json",
         )
         assert resp.status_code == 200
         rent_payment_1.refresh_from_db()
         assert rent_payment_1.stato == StatoPagamento.PAGATO
         assert rent_payment_1.importo_pagato == rent_payment_1.importo_dovuto
+        assert rent_payment_1.data_pagamento == datetime.date(2026, 5, 4)
+        alloc = rent_payment_1.allocations.get()
+        assert alloc.importo == rent_payment_1.importo_dovuto
+        assert alloc.bank_transaction.owner_account == conto_alloc
 
-    def test_inquilino_non_conferma(self, client_inq_1, rent_payment_1):
+    def test_conferma_conto_di_altro_immobile_rifiutata(
+        self, client_prop, rent_payment_1, conto_alloc
+    ):
+        """Il denaro può entrare solo su un conto in uso su questo immobile."""
+        conto_alloc.properties.clear()
+        resp = client_prop.post(
+            f"/api/v1/rent-payments/{rent_payment_1.id}/conferma_pagato/",
+            {"owner_account": conto_alloc.id},
+            format="json",
+        )
+        assert resp.status_code == 403
+
+    def test_inquilino_non_conferma(self, client_inq_1, rent_payment_1, conto_alloc):
         resp = client_inq_1.post(
-            f"/api/v1/rent-payments/{rent_payment_1.id}/conferma_pagato/"
+            f"/api/v1/rent-payments/{rent_payment_1.id}/conferma_pagato/",
+            {"owner_account": conto_alloc.id},
+            format="json",
         )
         assert resp.status_code == 403
 
@@ -578,7 +617,9 @@ class TestUtilityChargeViewSet:
         assert resp.status_code == 200
         assert resp.json()["stato"] == StatoPagamento.DICHIARATO
 
-    def test_proprietario_conferma_conguaglio(self, user_prop, user_inq_1, charge_1):
+    def test_proprietario_conferma_conguaglio(
+        self, user_prop, user_inq_1, charge_1, conto_alloc
+    ):
         inq_client = APIClient(enforce_csrf_checks=False)
         inq_client.force_login(user_inq_1)
         prop_client = APIClient(enforce_csrf_checks=False)
@@ -586,7 +627,9 @@ class TestUtilityChargeViewSet:
 
         inq_client.post(f"/api/v1/utility-charges/{charge_1.id}/dichiara_pagato/")
         resp = prop_client.post(
-            f"/api/v1/utility-charges/{charge_1.id}/conferma_pagato/"
+            f"/api/v1/utility-charges/{charge_1.id}/conferma_pagato/",
+            {"owner_account": conto_alloc.id},
+            format="json",
         )
         assert resp.status_code == 200
         assert resp.json()["stato"] == StatoPagamento.PAGATO
@@ -873,7 +916,7 @@ class TestDashboardProprietario:
         assert resp.status_code == 403
 
     def test_dashboard_proprietario_anno_passato(
-        self, client_prop, assignment_1, assignment_2
+        self, client_prop, assignment_1, assignment_2, owner_alessandro
     ):
         # Crea un pagamento storico nell'anno scorso
         anno_scorso = datetime.date.today().year - 1
@@ -887,6 +930,7 @@ class TestDashboardProprietario:
             scadenza=datetime.date(anno_scorso, 6, 1),
             data_pagamento=datetime.date(anno_scorso, 6, 3),
             stato=StatoPagamento.PAGATO,
+            incassato_da_owner=owner_alessandro,
         )
         resp = client_prop.get(f"/api/v1/dashboard/proprietario/?anno={anno_scorso}")
         assert resp.status_code == 200
@@ -898,7 +942,7 @@ class TestDashboardProprietario:
         assert data["kpi"]["incasso_anno"] == 400.0
 
     def test_dashboard_proprietario_mese_specifico(
-        self, client_prop, assignment_1
+        self, client_prop, assignment_1, owner_alessandro
     ):
         # 2 pagamenti diversi mesi nello stesso anno
         anno_scorso = datetime.date.today().year - 1
@@ -912,6 +956,7 @@ class TestDashboardProprietario:
             scadenza=datetime.date(anno_scorso, 3, 1),
             data_pagamento=datetime.date(anno_scorso, 3, 5),
             stato=StatoPagamento.PAGATO,
+            incassato_da_owner=owner_alessandro,
         )
         Receivable.objects.create(
             assignment=assignment_1,
@@ -923,6 +968,7 @@ class TestDashboardProprietario:
             scadenza=datetime.date(anno_scorso, 11, 1),
             data_pagamento=datetime.date(anno_scorso, 11, 4),
             stato=StatoPagamento.PAGATO,
+            incassato_da_owner=owner_alessandro,
         )
         resp = client_prop.get(
             f"/api/v1/dashboard/proprietario/?anno={anno_scorso}&mese=11"
@@ -2071,7 +2117,8 @@ class TestRegistraPagamentoReceivable:
         self, client_prop, rent_payment_1, owner_account
     ):
         rent_payment_1.stato = StatoPagamento.PAGATO
-        rent_payment_1.save(update_fields=["stato"])
+        rent_payment_1.incassato_da_owner = owner_account.owner
+        rent_payment_1.save(update_fields=["stato", "incassato_da_owner"])
         resp = client_prop.post(
             self._url(rent_payment_1.id),
             {

@@ -132,9 +132,8 @@
             color="primary"
             icon="check"
             no-caps
-            label="Conferma"
-            :loading="processing[props.row.rowKey]"
-            @click="conferma(props.row)"
+            :label="props.row.stato === 'dichiarato' ? 'Conferma' : 'Registra incasso'"
+            @click="apriIncasso(props.row)"
           />
           <q-btn
             v-if="props.row.stato === 'dichiarato'"
@@ -154,6 +153,14 @@
         </q-td>
       </template>
     </q-table>
+
+    <RegistraPagamentoDialog
+      v-if="rigaIncasso"
+      v-model="dialogIncasso"
+      :receivable="rigaIncasso"
+      :owner-accounts="conti.accounts"
+      @saved="dopoIncasso"
+    />
   </q-page>
 </template>
 
@@ -161,8 +168,10 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import type { QTableProps } from 'quasar';
 import { Notify } from 'quasar';
-import { useDashboardStore, type ProprietarioRiga } from 'stores/dashboard';
+import { useDashboardStore, type ProprietarioRiga, type TipoPagamento } from 'stores/dashboard';
 import { usePaymentsStore } from 'stores/payments';
+import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
+import RegistraPagamentoDialog from 'src/components/RegistraPagamentoDialog.vue';
 import SemaforoBadge from 'src/components/SemaforoBadge.vue';
 import type { SemaforoLivello } from 'src/types/semaforo';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
@@ -173,11 +182,31 @@ interface RigaTabella extends ProprietarioRiga {
   rowKey: string;
 }
 
+// Stessa forma attesa da RegistraPagamentoDialog (i tipi di uno <script setup>
+// non sono importabili, come già in ProprietarioInquilinoDettaglio).
+type CausaleReceivable = 'affitto' | 'utenze' | 'extra' | 'deposito';
+
+interface ReceivableInput {
+  id: number;
+  causale: CausaleReceivable;
+  importo_dovuto: number;
+  importo_pagato: number;
+  descrizione: string;
+  tenant_nominativo: string;
+  scadenza: string;
+  bank_account_destinazione_id: number | null;
+  conto_suggerito_id: number | null;
+}
+
 const store = useDashboardStore();
 const payments = usePaymentsStore();
+const conti = useOwnerBankAccountsStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
 const processing = reactive<Record<string, boolean>>({});
+
+const dialogIncasso = ref(false);
+const rigaIncasso = ref<ReceivableInput | null>(null);
 
 const filtroStato = ref<string>('tutti');
 const filtroInquilino = ref<string>('tutti');
@@ -295,6 +324,8 @@ function handleEsc(e: KeyboardEvent) {
 
 onMounted(() => {
   void store.loadProprietario(annoCorrente, meseCorrente);
+  // I conti servono al dialog di incasso: senza, la select sarebbe vuota.
+  void conti.ensureLoaded();
   window.addEventListener('keydown', handleEsc);
 });
 
@@ -342,17 +373,33 @@ function filtraInquilino(nome: string) {
   filtroInquilino.value = nome;
 }
 
-async function conferma(row: RigaTabella) {
-  processing[row.rowKey] = true;
-  try {
-    await payments.confermaPagato(row.tipo, row.id, {});
-    Notify.create({ type: 'positive', message: 'Pagamento confermato', icon: 'check_circle' });
-    await store.loadProprietario(annoCorrente, meseCorrente, true);
-  } catch (e: unknown) {
-    Notify.create({ type: 'negative', message: messaggioErrore(e, 'Conferma non riuscita') });
-  } finally {
-    processing[row.rowKey] = false;
-  }
+const TIPO_TO_CAUSALE: Record<TipoPagamento, CausaleReceivable> = {
+  rent: 'affitto',
+  utility_charge: 'utenze',
+  extra: 'extra',
+  deposit: 'deposito',
+};
+
+/** Confermare un pagamento è registrarne l'incasso: il dialog chiede conto,
+ *  data e importo, e da lì il movimento dice chi ha ricevuto. Senza quel
+ *  passaggio l'addebito risulterebbe pagato ma invisibile ai saldi. */
+function apriIncasso(row: RigaTabella) {
+  rigaIncasso.value = {
+    id: row.id,
+    causale: TIPO_TO_CAUSALE[row.tipo],
+    importo_dovuto: row.importo_dovuto,
+    importo_pagato: row.importo_pagato,
+    descrizione: row.descrizione,
+    tenant_nominativo: row.tenant,
+    scadenza: row.scadenza,
+    bank_account_destinazione_id: row.bank_account_destinazione_id,
+    conto_suggerito_id: row.conto_suggerito_id,
+  };
+  dialogIncasso.value = true;
+}
+
+async function dopoIncasso() {
+  await store.loadProprietario(annoCorrente, meseCorrente, true);
 }
 
 async function rifiuta(row: RigaTabella) {

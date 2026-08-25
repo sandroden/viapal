@@ -6,6 +6,7 @@ Sostituisce RentPayment, UtilityCharge ed ExtraCharge — accorpando lo stesso
 "piano del dovuto" sotto un unico modello con campo `causale`.
 """
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from core.storages import media_private_storage
@@ -145,6 +146,21 @@ class Receivable(TimestampedModel):
                 condition=models.Q(causale="utenze"),
                 name="receivable_utenze_unique",
             ),
+            # Un addebito pagato deve dire chi ha incassato: senza, sparisce
+            # dai saldi tra proprietari e lo scarto emerge mesi dopo, quando
+            # nessuno ricorda più chi ha ricevuto il denaro. Vincolo a livello
+            # di database perché la regola vale per ogni strada di scrittura —
+            # API, admin, management command, script una tantum.
+            models.CheckConstraint(
+                condition=~models.Q(
+                    stato="pagato", incassato_da_owner__isnull=True
+                ),
+                name="receivable_pagato_ha_incassante",
+                violation_error_message=(
+                    "Un addebito pagato deve indicare il proprietario che ha "
+                    "incassato."
+                ),
+            ),
         ]
         indexes = [
             models.Index(fields=["causale", "stato"]),
@@ -155,6 +171,22 @@ class Receivable(TimestampedModel):
         "", "Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
         "Lug", "Ago", "Set", "Ott", "Nov", "Dic",
     )
+
+    def clean(self):
+        """Stessa regola del vincolo di database, con un messaggio leggibile.
+
+        Il vincolo protegge ogni strada di scrittura; questo `clean` serve a
+        chi passa dall'admin, che altrimenti vedrebbe un errore 500 invece
+        della riga di errore sul campo.
+        """
+        super().clean()
+        if self.stato == StatoPagamento.PAGATO and self.incassato_da_owner_id is None:
+            raise ValidationError({
+                "incassato_da_owner": (
+                    "Indica il proprietario che ha incassato: un addebito "
+                    "pagato senza incassante resta fuori dai saldi."
+                )
+            })
 
     def __str__(self):
         if self.descrizione:

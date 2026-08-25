@@ -2,6 +2,12 @@
 Inserisce un ExtraCharge "Conguaglio condominiale <anno>" per ogni inquilino
 attivo a una data di riferimento, e segna come pagati quelli passati come argomento.
 
+NB (ago 2026): comando storico, già eseguito. Marca PAGATO senza indicare
+l'incassante, quindi oggi violerebbe il vincolo `receivable_pagato_ha_incassante`
+(vedi decisione "incasso sempre attribuito"): rieseguirlo con `--pagato` finisce
+in IntegrityError. Un pagamento si registra dall'endpoint di incasso, non
+scrivendo lo stato.
+
 Uso (default 2025):
     python manage.py inserisci_conguaglio_condominiale --anno 2025 --importo 262 \
         --data-invio 2026-01-28 --giorni-scadenza 60 \

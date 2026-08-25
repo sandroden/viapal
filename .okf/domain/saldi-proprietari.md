@@ -24,6 +24,11 @@ affitti in modo non uniforme; questa area tiene i conti tra loro. Servizi in
 Il campo `Expense.riferimento_quota_owner` permette di imputare una spesa a un
 proprietario specifico anziché ripartirla per quote.
 
+Entrano nel riparto solo i Receivable pagati **con** `incassato_da_owner`: la
+quadratura elenca a parte gli «incassi esclusi dal calcolo» (incassante senza
+quota attiva, importo pagato mancante). Il caso «manca incassato da» non è più
+producibile — cfr. [Incasso sempre attribuito](/decisions/incasso-sempre-attribuito.md).
+
 # Settlement
 
 `settlement.py`: `genera_settlement` cristallizza un conguaglio fra proprietari in
@@ -46,3 +51,4 @@ trattare un movimento bancario come regolamento fra proprietari (idempotente e r
 
 - [Conto economico](/domain/conto-economico.md) — ponte cassa↔competenza.
 - [Reference accounting](/models/accounting.md).
+- [Incasso sempre attribuito](/decisions/incasso-sempre-attribuito.md) — perché ogni pagato ha un incassante.

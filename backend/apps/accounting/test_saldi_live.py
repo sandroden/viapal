@@ -16,6 +16,7 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth.models import User
+from django.db.utils import IntegrityError
 
 from accounting.models import OwnerLedgerEntry, OwnerSettlement
 from accounting.services.saldi_live import (
@@ -286,27 +287,25 @@ def test_quadratura_ok_con_flussi_completi(db, immobile, quote_terzi, sandro, br
     assert q.expense_orfane == []
 
 
-def test_quadratura_segnala_receivable_senza_incassante(db, immobile, quote_terzi, assignment):
-    """Receivable pagato senza incassato_da_owner: escluso dai saldi, ma la
-    quadratura lo porta a galla."""
-    r = Receivable.objects.create(
-        assignment=assignment,
-        causale=Receivable.Causale.AFFITTO,
-        competenza_da=datetime.date(2025, 4, 1),
-        competenza_a=datetime.date(2025, 4, 30),
-        scadenza=datetime.date(2025, 4, 5),
-        importo_dovuto=Decimal("400"),
-        importo_pagato=Decimal("400"),
-        data_pagamento=datetime.date(2025, 4, 4),
-        stato=StatoPagamento.PAGATO,
-        incassato_da_owner=None,
-    )
-    at = datetime.date(2025, 6, 30)
-    saldi = calcola_saldi_correnti(immobile, at)
-    q = verifica_quadratura(immobile, at, saldi)
-    assert q.quadra is False
-    assert [o["id"] for o in q.receivable_orfani] == [r.pk]
-    assert "incassato da" in q.receivable_orfani[0]["motivo"]
+def test_db_rifiuta_pagato_senza_incassante(db, immobile, quote_terzi, assignment):
+    """Un addebito pagato senza incassante non è più rappresentabile.
+
+    Era la causa degli «incassi esclusi dal calcolo» nei saldi: adesso il
+    vincolo di database lo impedisce a monte, da qualunque strada di scrittura.
+    """
+    with pytest.raises(IntegrityError):
+        Receivable.objects.create(
+            assignment=assignment,
+            causale=Receivable.Causale.AFFITTO,
+            competenza_da=datetime.date(2025, 4, 1),
+            competenza_a=datetime.date(2025, 4, 30),
+            scadenza=datetime.date(2025, 4, 5),
+            importo_dovuto=Decimal("400"),
+            importo_pagato=Decimal("400"),
+            data_pagamento=datetime.date(2025, 4, 4),
+            stato=StatoPagamento.PAGATO,
+            incassato_da_owner=None,
+        )
 
 
 def test_quadratura_segnala_anticipante_senza_quota(db, immobile, quote_terzi, sandro, bruna, fabio):

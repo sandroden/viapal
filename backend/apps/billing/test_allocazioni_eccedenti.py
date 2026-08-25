@@ -20,6 +20,67 @@ from billing.models import (
 
 
 # ---------------------------------------------------------------------------
+# Correzione del movimento: l'addebito lo segue
+# ---------------------------------------------------------------------------
+
+
+class TestCorrezioneBankTransaction:
+    """Chi ha incassato e quando derivano dalla BT: correggerla riallinea.
+
+    Senza il signal, cambiare il conto di un bonifico già riconciliato
+    lasciava sull'addebito il proprietario sbagliato, in silenzio.
+    """
+
+    @pytest.fixture
+    def conto_altro_owner(self, db, immobile):
+        from django.contrib.auth.models import User
+
+        from properties.models import OwnerBankAccount, OwnerProfile
+
+        u = User.objects.create_user("prop_due", email="p2@v.it", password="pwd")
+        owner = OwnerProfile.objects.create(user=u, nominativo="Owner Due")
+        acct = OwnerBankAccount.objects.create(
+            owner=owner, banca="Banca Due", intestatario="Owner Due",
+            iban="IT00X0000000000000000000002",
+        )
+        acct.properties.add(immobile)
+        return acct
+
+    def _bt_pagante(self, deposito_alloc, conto_alloc):
+        bt = BankTransaction.objects.create(
+            data=datetime.date(2026, 9, 10), descrizione="versamento deposito",
+            importo=Decimal("980.00"), owner_account=conto_alloc,
+        )
+        BankTransactionAllocation.objects.create(
+            bank_transaction=bt, receivable=deposito_alloc, importo=Decimal("980.00")
+        )
+        deposito_alloc.refresh_from_db()
+        assert deposito_alloc.stato == StatoPagamento.PAGATO
+        assert deposito_alloc.incassato_da_owner == conto_alloc.owner
+        return bt
+
+    def test_cambio_conto_sposta_incassante(
+        self, deposito_alloc, conto_alloc, conto_altro_owner
+    ):
+        bt = self._bt_pagante(deposito_alloc, conto_alloc)
+
+        bt.owner_account = conto_altro_owner
+        bt.save(update_fields=["owner_account"])
+
+        deposito_alloc.refresh_from_db()
+        assert deposito_alloc.incassato_da_owner == conto_altro_owner.owner
+
+    def test_cambio_data_sposta_data_pagamento(self, deposito_alloc, conto_alloc):
+        bt = self._bt_pagante(deposito_alloc, conto_alloc)
+
+        bt.data = datetime.date(2026, 9, 12)
+        bt.save(update_fields=["data"])
+
+        deposito_alloc.refresh_from_db()
+        assert deposito_alloc.data_pagamento == datetime.date(2026, 9, 12)
+
+
+# ---------------------------------------------------------------------------
 # Modello: rilevazione dell'anomalia
 # ---------------------------------------------------------------------------
 

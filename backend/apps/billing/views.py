@@ -27,6 +27,11 @@ from accounts.permissions import (  # noqa: F401
     IsProprietario,
 )
 from properties.context import get_request_property
+from billing.calc.incassi import (
+    IncassoRifiutato,
+    registra_incasso,
+    residuo_da_incassare,
+)
 from properties.views import ProtectedDestroyMixin, _valida_owner_membro
 from billing.models import (
     AnnualUtilityCost,
@@ -47,6 +52,7 @@ from billing.serializers import (
     AnnualUtilityCostSerializer,
     BankTransactionBulkImportInputSerializer,
     BankTransactionSerializer,
+    ConfermaPagamentoInputSerializer,
     ExpenseCategorySerializer,
     ExpenseSerializer,
     ExtraChargeSerializer,
@@ -75,6 +81,27 @@ def _is_proprietario(user) -> bool:
 
 def _is_inquilino(user) -> bool:
     return user.groups.filter(name="inquilini").exists()
+
+
+def _valida_conto_incasso(owner_account, prop) -> Response | None:
+    """``None`` se il conto è in uso sull'immobile, altrimenti la Response 403.
+
+    Il denaro può entrare solo su un conto collegato all'immobile: è il
+    collegamento su cui poggia l'isolamento dei movimenti fra immobili.
+    """
+    from properties.models import OwnerBankAccount
+
+    in_uso = (
+        OwnerBankAccount.objects.per_property(prop)
+        .filter(pk=owner_account.pk)
+        .exists()
+    )
+    if in_uso:
+        return None
+    return Response(
+        {"detail": "Conto non in uso su questo immobile."},
+        status=status.HTTP_403_FORBIDDEN,
+    )
 
 
 class _ReceivableMixin:
@@ -205,7 +232,14 @@ class _ReceivableMixin:
 
     @action(detail=True, methods=["post"], url_path="conferma_pagato")
     def conferma_pagato(self, request, pk=None):
-        """Proprietario conferma il pagamento dichiarato."""
+        """Proprietario conferma il pagamento: serve il conto su cui è entrato.
+
+        Confermare non è una spunta: è registrare un incasso. Senza il conto
+        non sapremmo *chi* ha ricevuto, e l'addebito resterebbe fuori dai saldi
+        tra proprietari — il buco che questa firma obbligatoria impedisce.
+        Il movimento e l'allocazione li crea ``registra_incasso``; è il signal
+        di riallineamento a portare l'addebito a PAGATO.
+        """
         if not _is_proprietario(request.user):
             return Response(
                 {"detail": "Solo i proprietari possono confermare un pagamento."},
@@ -224,20 +258,42 @@ class _ReceivableMixin:
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Confermare significa dare per saldato l'intero dovuto: anche se la
-        # copertura da bonifici è parziale, il proprietario sta attestando che
-        # il resto è arrivato. Se poi arriva l'allocazione bancaria, il signal
-        # di riallineamento ricalcola comunque dal dato reale.
-        receivable.stato = StatoPagamento.PAGATO
-        receivable.importo_pagato = receivable.importo_dovuto
-        if not receivable.data_pagamento:
-            receivable.data_pagamento = datetime.date.today()
-        receivable.save(update_fields=["stato", "importo_pagato", "data_pagamento"])
+        serializer = ConfermaPagamentoInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        v = serializer.validated_data
 
+        prop = receivable.assignment.room.property
+        errore = _valida_conto_incasso(v["owner_account"], prop)
+        if errore:
+            return errore
+
+        importo = v.get("importo") or residuo_da_incassare(receivable)
+        data_incasso = (
+            v.get("data") or receivable.data_pagamento or datetime.date.today()
+        )
+        try:
+            registra_incasso(
+                receivable,
+                data=data_incasso,
+                importo=importo,
+                owner_account=v["owner_account"],
+                descrizione=v.get("descrizione") or self._descrizione_incasso(receivable),
+                note=v.get("note", ""),
+            )
+        except IncassoRifiutato as e:
+            return Response({"detail": e.detail}, status=e.status_code)
+
+        receivable.refresh_from_db()
         return Response(
             self.get_serializer(receivable).data,
             status=status.HTTP_200_OK,
         )
+
+    @staticmethod
+    def _descrizione_incasso(receivable) -> str:
+        """Descrizione di default del movimento creato confermando."""
+        tenant = receivable.assignment.tenant.nominativo
+        return f"Incasso {receivable.get_causale_display()} — {tenant}"[:300]
 
     @action(detail=True, methods=["post"], url_path="rifiuta_pagato")
     def rifiuta_pagato(self, request, pk=None):
@@ -1506,53 +1562,23 @@ class RegistraPagamentoReceivableView(APIView):
         v = serializer.validated_data
 
         # Il conto di destinazione deve essere in uso su questo immobile.
-        from properties.models import OwnerBankAccount
-
-        conto_ok = OwnerBankAccount.objects.per_property(
-            get_request_property(request)
-        ).filter(pk=v["owner_account"].pk).exists()
-        if not conto_ok:
-            return Response(
-                {"detail": "Conto non in uso su questo immobile."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        allocato_attuale = (
-            receivable.allocations.aggregate(tot=Sum("importo"))["tot"] or Decimal("0")
+        errore = _valida_conto_incasso(
+            v["owner_account"], get_request_property(request)
         )
-        residuo = receivable.importo_dovuto - allocato_attuale
-        # Invariante: BT/allocation/Receivable hanno tutti lo stesso segno.
-        # Receivable > 0 → residuo > 0, importo > 0 (entrata).
-        # Receivable < 0 (restituzione deposito) → residuo < 0, importo < 0 (uscita).
-        if residuo == 0:
-            return Response(
-                {"detail": "Receivable già completamente allocato."},
-                status=status.HTTP_409_CONFLICT,
-            )
-        if (residuo > 0) != (v["importo"] > 0):
-            atteso = "positivo" if residuo > 0 else "negativo"
-            return Response(
-                {"detail": f"L'importo deve essere {atteso} (coerente col dovuto)."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        if errore:
+            return errore
 
-        # |quota| = min(|importo|, |residuo|), preservando il segno del residuo.
-        quota = v["importo"] if abs(v["importo"]) <= abs(residuo) else residuo
-
-        with transaction.atomic():
-            bt = BankTransaction.objects.create(
+        try:
+            bt, _quota = registra_incasso(
+                receivable,
                 data=v["data"],
-                descrizione=v["descrizione"] or "",
                 importo=v["importo"],
                 owner_account=v["owner_account"],
-                note=v.get("note", "") or "",
+                descrizione=v["descrizione"],
+                note=v.get("note", ""),
             )
-            BankTransactionAllocation.objects.create(
-                bank_transaction=bt,
-                receivable=receivable,
-                importo=quota,
-            )
-            _riallinea_receivable(receivable.id)
+        except IncassoRifiutato as e:
+            return Response({"detail": e.detail}, status=e.status_code)
 
         bt_qs = (
             BankTransaction.objects.filter(pk=bt.pk)

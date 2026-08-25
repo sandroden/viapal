@@ -43,9 +43,11 @@ class Command(BaseCommand):
             suppliers = self._seed_suppliers(prop, owner_profiles)
             self._seed_utility_bills(prop, suppliers, owner_profiles)
             periods = self._seed_utility_charge_periods(prop)
-            self._seed_utility_charges(periods, room_assignments, tenant_profiles)
+            self._seed_utility_charges(
+                periods, room_assignments, tenant_profiles, owner_profiles
+            )
             self._seed_rent_payments(room_assignments, owner_profiles, bank_accounts)
-            self._seed_extra_charges(room_assignments)
+            self._seed_extra_charges(room_assignments, owner_profiles)
             self._seed_expenses(prop, owner_profiles, suppliers)
             self._seed_reminder_rules_and_templates(prop)
             self._seed_seconda_property(owner_profiles)
@@ -883,7 +885,9 @@ class Command(BaseCommand):
     # UTILITY CHARGES (5 inquilini x 4 periodi = 20 record) — modello trasparente
     # -----------------------------------------------------------------------
 
-    def _seed_utility_charges(self, periods, room_assignments, tenant_profiles):
+    def _seed_utility_charges(
+        self, periods, room_assignments, tenant_profiles, owner_profiles
+    ):
         """
         Popola i totali (luce/gas/tari) e giorni_totali su ogni
         UtilityChargePeriod, e crea 5 Receivable utenze per periodo con
@@ -892,6 +896,9 @@ class Command(BaseCommand):
         Stato:
           gen, feb, mar 2026 -> 'pagato' con data_pagamento entro scadenza+3
           apr 2026 -> 'atteso' (scadenza futura)
+
+        Le utenze pagate risultano incassate da Bruna: un addebito pagato deve
+        sempre dire chi ha incassato.
         """
         from decimal import ROUND_HALF_UP
 
@@ -915,6 +922,7 @@ class Command(BaseCommand):
 
         period_order = ["2026-01", "2026-02", "2026-03", "2026-04"]
         paid_periods = {"2026-01", "2026-02", "2026-03"}
+        incassante = owner_profiles["bruna"]
 
         created_charges = 0
 
@@ -958,6 +966,7 @@ class Command(BaseCommand):
                         "stato": "pagato" if is_paid else "atteso",
                         "data_pagamento": scadenza + timedelta(days=3) if is_paid else None,
                         "importo_pagato": quota if is_paid else None,
+                        "incassato_da_owner": incassante if is_paid else None,
                     },
                 )
                 if charge_created:
@@ -1094,7 +1103,7 @@ class Command(BaseCommand):
     # EXTRA CHARGES
     # -----------------------------------------------------------------------
 
-    def _seed_extra_charges(self, room_assignments):
+    def _seed_extra_charges(self, room_assignments, owner_profiles):
         """Crea 1 Receivable extra di esempio: conguaglio condominiale per Diana."""
         from billing.models import Receivable
 
@@ -1109,6 +1118,10 @@ class Command(BaseCommand):
                 "importo_dovuto": Decimal("85.00"),
                 "scadenza": date(2025, 12, 31),
                 "stato": "pagato",
+                "importo_pagato": Decimal("85.00"),
+                "data_pagamento": date(2025, 12, 30),
+                # Pagato vuol dire incassato da qualcuno, sempre.
+                "incassato_da_owner": owner_profiles["bruna"],
                 "note": "Riparto spese condominiali straordinarie 2025",
             },
         )

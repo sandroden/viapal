@@ -117,6 +117,10 @@ export interface ProprietarioRiga {
   scadenza: string;
   stato: string;
   giorni_ritardo: number;
+  /** Conto su cui l'incasso risulta già registrato, se c'è. */
+  bank_account_destinazione_id: number | null;
+  /** Conto dell'immobile su cui l'inquilino deve versare. */
+  conto_suggerito_id: number | null;
 }
 
 export interface ProprietarioKpi {

@@ -12,6 +12,8 @@ Cosa succede:
   riallineato (PAGATO se la somma allocations ≥ dovuto, altrimenti ATTESO
   con ``importo_pagato`` parziale).
 - **Cancelli un'allocation** → idem, eventualmente torna ad ATTESO.
+- **Modifichi una BT già riconciliata** (conto o data) → i Receivable che
+  copre vengono riallineati: cambia l'incassante e la data del pagamento.
 - **Salvi una UtilityBill con pagata_da_owner valorizzato** → viene creato
   o aggiornato l'``Expense`` collegato (categoria "Utenze").
 - **Rimuovi pagata_da_owner o cancelli la bolletta** → l'``Expense``
@@ -23,7 +25,7 @@ from django.db.models import Max, Sum
 from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 
-from billing.models import BankTransactionAllocation, UtilityBill
+from billing.models import BankTransaction, BankTransactionAllocation, UtilityBill
 from billing.models.payments import StatoPagamento
 
 _SOGLIA = Decimal("1.00")
@@ -100,6 +102,21 @@ def _on_alloc_saved(sender, instance, **kwargs):
 @receiver(post_delete, sender=BankTransactionAllocation)
 def _on_alloc_deleted(sender, instance, **kwargs):
     _riallinea_receivable(instance.receivable_id)
+
+
+@receiver(post_save, sender=BankTransaction)
+def _on_bt_saved(sender, instance, created, **kwargs):
+    """Correggere il movimento riallinea gli addebiti che copre.
+
+    ``incassato_da_owner`` e ``data_pagamento`` derivano dal conto e dalla data
+    della BT: correggere in admin il conto di un bonifico già riconciliato,
+    senza questo, lascerebbe scritto sull'addebito il proprietario sbagliato —
+    e nessuno se ne accorgerebbe.
+    """
+    if created:
+        return
+    for receivable_id in instance.allocations.values_list("receivable_id", flat=True):
+        _riallinea_receivable(receivable_id)
 
 
 # ---------------------------------------------------------------------------
