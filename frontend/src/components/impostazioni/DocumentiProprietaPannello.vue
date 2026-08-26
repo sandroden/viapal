@@ -161,10 +161,12 @@ const originalePerCopia = ref<DocumentoFE | null>(null);
 
 /** Le carte di un contratto vivono sulla riga del contratto: qui restano
  *  solo quelle della casa, che non appartengono a nessuno di essi. Le copie
- *  per la lettura hanno una sezione loro: l'archivio ufficiale resta quello
- *  che è. */
+ *  per la lettura e i fac-simile hanno una sezione loro: l'archivio
+ *  ufficiale resta quello che è. */
 const documentiCasa = computed(() =>
-  store.documenti.filter((d) => !d.contract && !d.copia_di),
+  store.documenti.filter(
+    (d) => !d.contract && !d.copia_di && !d.esponibile_per_natura,
+  ),
 );
 
 const contratti = ref<{ id: number; nome: string; data_decorrenza: string }[]>([]);
@@ -187,6 +189,8 @@ async function caricaContratti() {
 
 function icona(tipo: string): string {
   switch (tipo) {
+    case 'fac_simile':
+      return 'list';
     case 'contratto':
       return 'contract';
     case 'registrazione_contratto':

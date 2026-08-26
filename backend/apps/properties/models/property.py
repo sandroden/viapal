@@ -813,6 +813,7 @@ class PropertyDocument(TimestampedModel):
         REGISTRAZIONE_CONTRATTO = "registrazione_contratto", "Registrazione contratto"
         REGOLAMENTO_CONDOMINIALE = "regolamento_condominiale", "Regolamento condominiale"
         REGOLE_CONVIVENZA = "regole_convivenza", "Regole di convivenza"
+        FAC_SIMILE = "fac_simile", "Fac-simile"
         ALTRO = "altro", "Altro"
 
     #: Tipi che *sono* la carta di un contratto: senza il contratto sono un
@@ -824,6 +825,11 @@ class PropertyDocument(TimestampedModel):
     TIPI_CONTRATTUALI = frozenset(
         {Tipo.CONTRATTO, Tipo.SIDE_LETTER, Tipo.REGISTRAZIONE_CONTRATTO}
     )
+
+    #: Documento generato apposta per essere letto da fuori: non nomina
+    #: nessuno, quindi non ha bisogno di una copia oscurata. Sta accanto
+    #: alle copie per la lettura e non fra le carte della casa.
+    TIPI_ESPONIBILI_PER_NATURA = frozenset({Tipo.FAC_SIMILE})
 
     property = models.ForeignKey(
         Property,

@@ -334,6 +334,11 @@ class PropertyDocumentSerializer(serializers.ModelSerializer):
     #: In quanti link di lettura è in uso: serve al badge e a spiegare il 409
     #: quando si prova a eliminarlo.
     link_in_uso = serializers.SerializerMethodField()
+    #: Documento nato per essere letto da fuori (fac-simile): non nomina
+    #: nessuno, quindi non ha bisogno di una copia oscurata e sta accanto
+    #: alle copie invece che fra le carte della casa. Esposto come booleano
+    #: e non come lista di tipi: il frontend non deve ricopiarsi la regola.
+    esponibile_per_natura = serializers.SerializerMethodField()
 
     class Meta:
         model = PropertyDocument
@@ -353,6 +358,7 @@ class PropertyDocumentSerializer(serializers.ModelSerializer):
             "copia_di",
             "copia_di_titolo",
             "esponibile",
+            "esponibile_per_natura",
             "link_in_uso",
             "created_at",
         ]
@@ -371,6 +377,9 @@ class PropertyDocumentSerializer(serializers.ModelSerializer):
 
     def get_copia_di_titolo(self, obj) -> str:
         return obj.copia_di.titolo if obj.copia_di_id else ""
+
+    def get_esponibile_per_natura(self, obj) -> bool:
+        return obj.tipo in PropertyDocument.TIPI_ESPONIBILI_PER_NATURA
 
     def get_link_in_uso(self, obj) -> int:
         annotato = getattr(obj, "n_voci_link", None)
@@ -1013,6 +1022,7 @@ class DocumentShareSerializer(serializers.ModelSerializer):
             "destinatario",
             "tenant",
             "introduzione",
+            "introduzione_html",
             "attivo",
             "visite",
             "ultima_visita",
@@ -1025,6 +1035,7 @@ class DocumentShareSerializer(serializers.ModelSerializer):
             "property": {"required": False, "read_only": True},
             "visite": {"read_only": True},
             "ultima_visita": {"read_only": True},
+            "introduzione_html": {"read_only": True},
         }
 
     def get_url_pubblico(self, obj) -> str:
@@ -1060,7 +1071,9 @@ class PublicShareSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DocumentShare
-        fields = ["casa", "destinatario", "introduzione", "voci"]
+        # ``introduzione_html``: la premessa è markdown come i chiarimenti,
+        # e la pagina pubblica riceve solo HTML già sanitizzato.
+        fields = ["casa", "destinatario", "introduzione_html", "voci"]
 
     def get_casa(self, obj) -> dict:
         return {"nome": obj.property.nome, "indirizzo": obj.property.indirizzo}

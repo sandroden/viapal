@@ -20,6 +20,10 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
+#: Sostituisce ogni dato omesso nel fac-simile. La parola è quella che si
+#: usa negli atti, e detta così si vede che manca qualcosa di proposito.
+OMISSIS = "OMISSIS"
+
 MESI = (
     "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
@@ -122,6 +126,13 @@ class Fonti:
     deposito: Decimal | None = None
     rate_deposito: int = 0
     oggi: datetime.date | None = None
+    #: Fonti e segnaposto da non scrivere: al loro posto va ``OMISSIS``.
+    #: Serve al fac-simile, che è lo stesso documento senza le parti che
+    #: cambiano da una persona (e da una stanza) all'altra. Un token vale
+    #: sia come nome di fonte («uscente») sia come chiave di segnaposto
+    #: («oneri_accessori»), così si può togliere una voce sola senza
+    #: togliere tutta la sua fonte.
+    omissioni: frozenset[str] = frozenset()
 
     @property
     def canone(self):
@@ -182,6 +193,43 @@ def raccogli_fonti(tenant, assignment=None, oggi=None) -> Fonti:
         deposito=totale_deposito or tenant.deposito_versato,
         rate_deposito=depositi.count(),
         oggi=oggi,
+    )
+
+
+#: Cosa sparisce da un fac-simile: le parti che cambiano da una persona (e
+#: da una stanza) all'altra. Restano l'immobile, i locatori, gli estremi del
+#: contratto registrato e le clausole — cioè tutto ciò per cui il documento
+#: si manda a leggere. ``oneri_accessori`` è nell'elenco pur essendo una
+#: voce del contratto: la quota condominio ammette un'eccezione per singolo
+#: inquilino (``TenantCondominioRate.tenant``), quindi la cifra base non è
+#: detto sia quella di chi legge.
+OMISSIONI_FACSIMILE = frozenset(
+    {"tenant", "uscente", "assignment", "deposito", "oneri_accessori"}
+)
+
+
+def fonti_facsimile(immobile, contract=None, oggi=None) -> Fonti:
+    """Fonti di un documento senza nessuna persona e senza nessuna stanza.
+
+    Non c'è un inquilino né un'assegnazione: i campi che li leggerebbero
+    sono nelle omissioni e non vengono nemmeno chiamati (vedi
+    ``Documento.contesto``). Serve un contratto, perché un fac-simile di
+    atto di subentro senza gli estremi di registrazione non dice niente.
+    """
+    from properties.models import quote_attive_at
+
+    oggi = oggi or datetime.date.today()
+    contract = contract or immobile.contratto_attivo(oggi)
+    quote = quote_attive_at(immobile, oggi)
+    return Fonti(
+        tenant=None,
+        assignment=None,
+        property=immobile,
+        contract=contract,
+        comproprietari=sorted(quote, key=lambda o: o.nominativo),
+        firmatario=immobile.owner_firmatario,
+        oggi=oggi,
+        omissioni=OMISSIONI_FACSIMILE,
     )
 
 
@@ -313,6 +361,11 @@ class Documento:
         for campo in self.tutti_i_campi(fonti):
             if campo.derivato or not campo.obbligatorio:
                 continue
+            # Un campo omesso non è un campo mancante: nel fac-simile non
+            # c'è nessun uscente da compilare, e chiederlo bloccherebbe la
+            # generazione di un documento che non lo nomina.
+            if self.omesso(campo, fonti):
+                continue
             if campo.richiede is not None and not campo.richiede(fonti):
                 continue
             if not _vuoto(campo.leggi(fonti)):
@@ -329,10 +382,25 @@ class Documento:
             )
         return fuori
 
+    @staticmethod
+    def omesso(campo: Campo, fonti: Fonti) -> bool:
+        return bool(
+            fonti.omissioni
+            and (campo.fonte in fonti.omissioni or campo.chiave in fonti.omissioni)
+        )
+
     def contesto(self, fonti: Fonti) -> dict[str, str]:
-        """Valori dei segnaposto, già formattati come stringhe."""
+        """Valori dei segnaposto, già formattati come stringhe.
+
+        Un campo omesso non viene nemmeno letto: nel fac-simile le fonti che
+        lo alimentano (inquilino, assegnazione) non ci sono proprio, e
+        leggerle solo per buttare via il risultato sarebbe un modo elaborato
+        di rischiare un errore.
+        """
         return {
-            campo.chiave: _stringa(campo.leggi(fonti))
+            campo.chiave: (
+                OMISSIS if self.omesso(campo, fonti) else _stringa(campo.leggi(fonti))
+            )
             for campo in self.tutti_i_campi(fonti)
             if campo.chiave
         }

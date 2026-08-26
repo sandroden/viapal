@@ -31,8 +31,23 @@ export interface DocumentoFE {
   copia_di_titolo?: string;
   /** Può stare in un link di lettura mandato a chi non ha un account. */
   esponibile?: boolean;
+  /** Nato per essere letto da fuori (fac-simile): non nomina nessuno,
+   *  quindi non ha bisogno di una copia oscurata. La regola sta sul
+   *  backend (``TIPI_ESPONIBILI_PER_NATURA``), qui arriva già decisa. */
+  esponibile_per_natura?: boolean;
   /** In quanti link di lettura è in uso (badge, e spiegazione del 409). */
   link_in_uso?: number;
+}
+
+/** Un dato che manca al documento, con il posto in cui si compila.
+ *  Stessa forma restituita dall'anteprima dei documenti generati. */
+export interface DatoMancante {
+  campo: string;
+  etichetta: string;
+  fonte: string;
+  dove: string;
+  link: string;
+  esterno: boolean;
 }
 
 export interface TipoDocumentoOption {
@@ -90,6 +105,35 @@ function creaDocumentiStore(
           this.errore = messaggioErrore(e, 'Errore caricamento documenti');
         } finally {
           this.loading = false;
+        }
+      },
+
+      /** Genera il fac-simile di un documento (solo documenti proprietà).
+       *
+       *  Non è la copia oscurata di un atto firmato — quella nominerebbe
+       *  qualcuno — ma lo stesso modello con OMISSIS al posto delle parti
+       *  che cambiano da un caso all'altro. In caso di dati incompleti il
+       *  backend risponde 400 con l'elenco di cosa manca e dove si compila:
+       *  torna quello, non un messaggio. */
+      async generaFacsimile(
+        codice: string,
+      ): Promise<{ ok: boolean; mancanti?: DatoMancante[] }> {
+        this.uploading = true;
+        this.errore = null;
+        try {
+          const { data } = await api.post<DocumentoFE>(`${endpoint}facsimile/`, {
+            codice,
+          });
+          this.documenti.unshift(data);
+          return { ok: true };
+        } catch (e: unknown) {
+          const corpo = (e as { response?: { data?: { mancanti?: DatoMancante[] } } })
+            .response?.data;
+          if (corpo?.mancanti?.length) return { ok: false, mancanti: corpo.mancanti };
+          this.errore = messaggioErrore(e, 'Generazione del fac-simile non riuscita');
+          return { ok: false };
+        } finally {
+          this.uploading = false;
         }
       },
 
@@ -300,6 +344,7 @@ export const TIPI_DOCUMENTO_PROPRIETA: TipoDocumentoOption[] = [
   { label: 'Registrazione contratto', value: 'registrazione_contratto' },
   { label: 'Regolamento condominiale', value: 'regolamento_condominiale' },
   { label: 'Regole di convivenza', value: 'regole_convivenza' },
+  { label: 'Fac-simile', value: 'fac_simile' },
   { label: 'Altro', value: 'altro' },
 ];
 

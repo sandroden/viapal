@@ -5,6 +5,7 @@ import datetime
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, Exists, Max, OuterRef, Q, Sum
 from django.db.models.functions import Coalesce
@@ -36,6 +37,7 @@ from properties.models import (
     Room,
     RoomAssignment,
     ShareItem,
+    TESTO_PREDEFINITO,
     TenantDocument,
     TenantProfile,
     rendi_markdown,
@@ -673,6 +675,51 @@ class PropertyDocumentViewSet(ProtectedDestroyMixin, ModelViewSet):
     def perform_update(self, serializer):
         self._valida_contratto(serializer, get_request_property(self.request))
         serializer.save()
+
+    @action(detail=False, methods=["get", "post"], url_path="facsimile")
+    def facsimile(self, request):
+        """Il fac-simile di un documento generabile, come carta dell'immobile.
+
+        GET dice cosa manca, POST lo genera. Non è la copia oscurata di un
+        atto già firmato — quella nominerebbe qualcuno — ma lo stesso
+        modello con ``OMISSIS`` al posto delle parti che cambiano da un caso
+        all'altro: un fac-simile solo vale per ogni candidato e per ogni
+        stanza.
+        """
+        from rest_framework.exceptions import ValidationError
+
+        from properties import documenti as generatore
+
+        prop = get_request_property(request)
+        dati = request.query_params if request.method == "GET" else request.data
+        codice = dati.get("codice") or ""
+        try:
+            anteprima = generatore.anteprima_facsimile(prop, codice)
+        except KeyError:
+            raise ValidationError({"codice": f"Documento sconosciuto: {codice!r}."})
+
+        if request.method == "GET":
+            return Response(anteprima)
+        if not anteprima["completo"]:
+            raise ValidationError(anteprima)
+
+        pdf, nome = generatore.genera_facsimile(prop, codice)
+        documento = PropertyDocument(
+            property=prop,
+            tipo=PropertyDocument.Tipo.FAC_SIMILE,
+            descrizione=f"{anteprima['documento_display']} — fac-simile",
+            esponibile=True,
+            # Un fac-simile non è la carta di nessuno: nell'area
+            # dell'inquilino, che ha l'atto vero, non ci va.
+            visibile_inquilini=False,
+            caricato_da=request.user,
+        )
+        documento.file.save(nome, ContentFile(pdf), save=False)
+        documento.full_clean()
+        documento.save()
+        return Response(
+            self.get_serializer(documento).data, status=status.HTTP_201_CREATED
+        )
 
     @action(detail=True, methods=["post"], url_path="copia-lettura")
     def copia_lettura(self, request, pk=None):
@@ -2121,6 +2168,16 @@ class DocumentShareViewSet(ModelViewSet):
         # Rileggere: ``get_object()`` arriva dal queryset con le voci già
         # prefetchate, quindi nell'ordine di prima.
         return Response(self.get_serializer(self.get_queryset().get(pk=share.pk)).data)
+
+    @action(detail=False, methods=["get"], url_path="testo-predefinito")
+    def testo_predefinito(self, request):
+        """La proposta con cui si apre l'editor di un chiarimento nuovo.
+
+        È una proposta, non un modello: quello che finisce nel link è la
+        copia ritoccata dentro la voce, e resta com'era il giorno in cui il
+        link è stato mandato.
+        """
+        return Response(TESTO_PREDEFINITO)
 
     @action(detail=False, methods=["post"], url_path="anteprima-markdown")
     def anteprima_markdown(self, request):
