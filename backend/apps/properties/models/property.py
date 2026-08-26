@@ -812,7 +812,18 @@ class PropertyDocument(TimestampedModel):
         SIDE_LETTER = "side_letter", "Side letter"
         REGISTRAZIONE_CONTRATTO = "registrazione_contratto", "Registrazione contratto"
         REGOLAMENTO_CONDOMINIALE = "regolamento_condominiale", "Regolamento condominiale"
+        REGOLE_CONVIVENZA = "regole_convivenza", "Regole di convivenza"
         ALTRO = "altro", "Altro"
+
+    #: Tipi che *sono* la carta di un contratto: senza il contratto sono un
+    #: dato malformato, non una scelta. Una side letter senza ``contract``
+    #: finisce fra i documenti generali della casa e la vedono gli inquilini
+    #: di tutti i contratti — l'opposto di cosa è una side letter.
+    #: Gli altri tipi (regolamento, regole di convivenza) valgono per la casa
+    #: e il collegamento resta facoltativo.
+    TIPI_CONTRATTUALI = frozenset(
+        {Tipo.CONTRATTO, Tipo.SIDE_LETTER, Tipo.REGISTRAZIONE_CONTRATTO}
+    )
 
     property = models.ForeignKey(
         Property,
@@ -887,6 +898,22 @@ class PropertyDocument(TimestampedModel):
     def __str__(self):
         return f"{self.get_tipo_display()} — {self.property.nome}"
 
+    @classmethod
+    def valida_ambito(cls, tipo, contract_id):
+        """Messaggio d'errore se il tipo vuole un contratto e non ce l'ha.
+
+        Condivisa fra ``clean()`` (admin) e il serializer DRF: la regola sta
+        scritta in un posto solo.
+        """
+        if tipo in cls.TIPI_CONTRATTUALI and not contract_id:
+            etichetta = cls.Tipo(tipo).label
+            return (
+                f"«{etichetta}» è la carta di un contratto: indica quale. "
+                "Senza contratto finirebbe fra i documenti generali della "
+                "casa, visibile agli inquilini di ogni contratto."
+            )
+        return None
+
     def clean(self):
         super().clean()
         if self.contract_id and self.property_id:
@@ -894,6 +921,9 @@ class PropertyDocument(TimestampedModel):
                 raise ValidationError(
                     {"contract": "Il contratto è di un altro immobile."}
                 )
+        errore = self.valida_ambito(self.tipo, self.contract_id)
+        if errore:
+            raise ValidationError({"contract": errore})
 
     # builtins.property: il campo `property` oscura il builtin nel corpo classe
     @builtins.property

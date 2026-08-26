@@ -26,7 +26,7 @@ Tutti i modelli ereditano da `TimestampedModel` (`created_at`/`updated_at`).
 | `OwnerBankAccount` | `owner`, `banca`, `iban`, `intestatario`, `attivo`, `properties` (M2M) | conto proprietario; l'anagrafica è unica e globale, `properties` dice **dove** è in uso — vedi [Conti bancari per immobile](/domain/conti-per-immobile.md) |
 | `TenantProfile` | `user` (1:1), `giorno_pagamento_affitto`, `frequenza_conguagli`, `ciclo_fatturazione`, `deposito_versato`, `deposito_da_restituire`, `data_restituzione_prevista`, + `AnagraficaPersonaMixin` e `documento_tipo/numero/autorita/data_rilascio` | inquilino |
 | `TenantDocument` | `tenant`, `tipo`, `file`, `data_scadenza`, `generato` | CI/CF/passaporto/permesso/contratto lavoro/ricevuta registrazione (agenzia)/ricevuta e atto di subentro utenze, atto di subentro nel contratto, cessione di fabbricato; nessuno è obbligatorio. `generato=True` = prodotto dall'app: solo questi vengono sostituiti rigenerando |
-| `PropertyDocument` | `property`, `tipo`, `file`, `data_scadenza`, `visibile_inquilini` | contratto/side letter/registrazione/regolamento; CRUD lato gestione, lettura inquilini dei soli documenti con `visibile_inquilini=True` ("Documenti della casa" in /i/documenti) |
+| `PropertyDocument` | `property`, `contract`, `tipo`, `file`, `data_scadenza`, `visibile_inquilini` | contratto/side letter/registrazione (carte **di un contratto**: `contract` obbligatorio) e regolamento/regole di convivenza/altro (carte della casa); CRUD lato gestione, lettura inquilini dei soli documenti con `visibile_inquilini=True` ("Documenti della casa" in /i/documenti) |
 
 # Vedi anche
 

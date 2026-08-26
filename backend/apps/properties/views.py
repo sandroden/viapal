@@ -603,7 +603,10 @@ class PropertyDocumentViewSet(ModelViewSet):
     """
 
     serializer_class = PropertyDocumentSerializer
-    parser_classes = [MultiPartParser, FormParser]
+    # JSONParser per i PATCH di metadati (tipo, descrizione, contratto,
+    # visibilità) senza rimandare il file: in multipart un campo vuoto non
+    # sa dire «nessun contratto», in JSON è ``null``.
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_permissions(self):
         if self.request.method not in SAFE_METHODS:

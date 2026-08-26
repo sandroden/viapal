@@ -736,9 +736,15 @@ class TestPropertyDocumentViewSet:
         settings.MEDIA_ROOT = str(tmp_path)
 
     def test_proprietario_carica_documento(self, client_prop, user_prop, immobile):
+        # Carta della casa: un tipo contrattuale senza contratto ora è
+        # rifiutato (vedi test_documenti_ambito.py), e qui si verifica altro.
         resp = client_prop.post(
             "/api/v1/property-documents/",
-            {"tipo": "contratto", "file": _pdf_finto(), "descrizione": "2024"},
+            {
+                "tipo": "regolamento_condominiale",
+                "file": _pdf_finto(),
+                "descrizione": "2024",
+            },
             format="multipart",
         )
         assert resp.status_code == 201, resp.content

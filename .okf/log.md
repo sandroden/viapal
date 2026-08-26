@@ -1,5 +1,9 @@
 # Update Log
 
+## 2026-08-26
+* **Maintain**: `domain/fascicolo-documenti.md` — sezione "L'ambito è nel tipo": contratto/side letter/registrazione richiedono `contract` (`TIPI_CONTRATTUALI` + `valida_ambito()` in `clean()` e nel serializer), nuovo tipo `regole_convivenza`, PATCH JSON per staccare il contratto, dialog «Modifica documento» (prima l'unico modo di correggere era ricaricare, da cui i doppioni casa/contratto), avvisi nel foglio di caricamento, etichetta del chip non più il nome file (la querystring firmata la rendeva illeggibile). Command `sistema_documenti_immobile` con le due diagnosi di coda.
+* **Maintain**: `models/properties.md` — `PropertyDocument`: `contract` in tabella e distinzione carte-di-contratto / carte-della-casa.
+
 ## 2026-08-07
 * **Creation**: `domain/conti-per-immobile.md` — `OwnerBankAccount.properties` (M2M): il conto resta unico ma dove è in uso diventa un dato esplicito, al posto del predicato transitivo sulla membership. Nasce dal gestore che si vedeva proporre i propri conti come destinazione dei bonifici di un immobile altrui e i propri movimenti nella sua riconciliazione (in produzione 183 movimenti di un immobile visibili nell'altro). Invariante nuovo: l'isolamento delle BT poggia interamente sul collegamento del conto, perché `BankTransaction` non ha una property propria. Eccezione voluta per le spese (conto di chi anticipa). Backfill `properties.0036` da cinque sorgenti, inclusi i movimenti già riconciliati.
 * **Maintain**: `models/properties.md`, `domain/receivable.md` — rimandi al nuovo concetto; i conti eleggibili come destinazione sono quelli in uso sull'immobile.

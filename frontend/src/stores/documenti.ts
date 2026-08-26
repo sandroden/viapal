@@ -196,21 +196,39 @@ function creaDocumentiStore(
         }
       },
 
-      /** Cambia la visibilità agli inquilini (solo documenti proprietà).
-       *  L'endpoint accetta solo form-data, quindi PATCH via FormData. */
-      async impostaVisibilita(id: number, visibile: boolean): Promise<boolean> {
+      /** Modifica i metadati di un documento già caricato, senza rimandare
+       *  il file. In JSON e non in form-data: ``contract: null`` deve poter
+       *  dire «staccalo dal contratto», e un campo vuoto in multipart non
+       *  sa distinguere «nessuno» da «non toccare». */
+      async aggiorna(
+        id: number,
+        patch: {
+          tipo?: string;
+          descrizione?: string;
+          contract?: number | null;
+          visibile_inquilini?: boolean;
+          data_scadenza?: string | null;
+        },
+      ): Promise<boolean> {
         this.errore = null;
         try {
-          const form = new FormData();
-          form.append('visibile_inquilini', visibile ? 'true' : 'false');
-          const { data } = await api.patch<DocumentoFE>(`${endpoint}${id}/`, form);
+          const { data } = await api.patch<DocumentoFE>(`${endpoint}${id}/`, patch);
           const idx = this.documenti.findIndex((d) => d.id === id);
           if (idx >= 0) this.documenti[idx] = data;
           return true;
         } catch (e: unknown) {
-          this.errore = messaggioErrore(e, 'Errore aggiornamento visibilità');
+          this.errore = messaggioErrore(e, 'Errore aggiornamento documento');
           return false;
         }
+      },
+
+      /** Cambia la visibilità agli inquilini (solo documenti proprietà). */
+      async impostaVisibilita(id: number, visibile: boolean): Promise<boolean> {
+        const ok = await this.aggiorna(id, { visibile_inquilini: visibile });
+        if (!ok && this.errore === 'Errore aggiornamento documento') {
+          this.errore = 'Errore aggiornamento visibilità';
+        }
+        return ok;
       },
 
       async elimina(id: number): Promise<boolean> {
@@ -233,8 +251,18 @@ export const TIPI_DOCUMENTO_PROPRIETA: TipoDocumentoOption[] = [
   { label: 'Side letter', value: 'side_letter' },
   { label: 'Registrazione contratto', value: 'registrazione_contratto' },
   { label: 'Regolamento condominiale', value: 'regolamento_condominiale' },
+  { label: 'Regole di convivenza', value: 'regole_convivenza' },
   { label: 'Altro', value: 'altro' },
 ];
+
+/** Tipi che *sono* la carta di un contratto: senza contratto il backend li
+ *  rifiuta (``PropertyDocument.TIPI_CONTRATTUALI``). Duplicata qui come la
+ *  lista dei tipi: il FE non ha un endpoint da cui derivarla. */
+export const TIPI_CONTRATTUALI = ['contratto', 'side_letter', 'registrazione_contratto'];
+
+export function richiedeContratto(tipo: string): boolean {
+  return TIPI_CONTRATTUALI.includes(tipo);
+}
 
 export const useDocumentiStore = creaDocumentiStore(
   'documenti',

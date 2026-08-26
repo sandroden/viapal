@@ -73,6 +73,29 @@
           <span class="imm-sheet__vis-nota">{{ notaVisibilita }}</span>
         </q-toggle>
 
+        <q-banner
+          v-if="contrattualiSenzaContratto.length"
+          class="vp-banner-errore"
+          rounded
+          dense
+          data-testid="avviso-ambito"
+        >
+          Contratto, side letter e ricevuta di registrazione sono carte di un
+          contratto: scegli quale in «Collega a», altrimenti finiscono fra i
+          documenti generali della casa.
+        </q-banner>
+
+        <q-banner
+          v-else-if="giaPresenti.length"
+          class="imm-sheet__avviso"
+          rounded
+          dense
+          data-testid="avviso-doppione"
+        >
+          Qui c'è già: {{ giaPresenti.join(', ') }}. Se è lo stesso documento,
+          modifica quello invece di caricarne un altro.
+        </q-banner>
+
         <q-banner v-if="errore" class="vp-banner-errore" rounded dense>{{ errore }}</q-banner>
       </q-card-section>
 
@@ -82,7 +105,7 @@
           color="primary"
           unelevated
           :label="voci.length > 1 ? `Carica ${voci.length} file` : 'Carica'"
-          :disable="voci.length === 0"
+          :disable="voci.length === 0 || contrattualiSenzaContratto.length > 0"
           :loading="store.uploading"
           data-testid="carica-documenti"
           @click="carica"
@@ -95,6 +118,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
+import { richiedeContratto } from 'stores/documenti';
 import type { DocumentiStore, TipoDocumentoOption } from 'stores/documenti';
 import VpIcon from 'components/utenze/VpIcon.vue';
 import BtnIcona from './ui/BtnIcona.vue';
@@ -139,6 +163,26 @@ const opzioniDestinazione = computed(() => [
   })),
 ]);
 
+/** Un tipo contrattuale destinato alla casa: il backend lo rifiuta, e
+ *  prima di rifiutarlo lo diceva soltanto lui. */
+const contrattualiSenzaContratto = computed(() =>
+  contract.value === null
+    ? voci.value.filter((v) => richiedeContratto(v.tipo)).map((v) => v.file.name)
+    : [],
+);
+
+/** Documento dello stesso tipo già presente nella stessa destinazione: non
+ *  blocca (fronte e retro sono legittimi) ma è il segnale che mancava
+ *  quando lo stesso file è finito in archivio due volte. */
+const giaPresenti = computed(() => {
+  const tipiInCoda = new Set(voci.value.map((v) => v.tipo));
+  return props.store.documenti
+    .filter(
+      (d) => tipiInCoda.has(d.tipo) && (d.contract ?? null) === contract.value,
+    )
+    .map((d) => d.tipo_display);
+});
+
 const notaVisibilita = computed(() =>
   contract.value === null
     ? '— compare nella loro pagina «I miei documenti»'
@@ -150,8 +194,10 @@ const notaVisibilita = computed(() =>
 function tipoDaNome(nome: string): string {
   const n = nome.toLowerCase();
   const indizi: [RegExp, string][] = [
-    [/side.?letter/, 'side_letter'],
-    [/registrazion|ricevuta|rli/, 'registrazione_contratto'],
+    [/side.?letter|accompagnament|lettera/, 'side_letter'],
+    // "registrazone" senza la i: il file reale ha il refuso nel nome.
+    [/registrazion|registrazon|ricevuta|rli|agenzia.?entrate/, 'registrazione_contratto'],
+    [/conviven/, 'regole_convivenza'],
     [/regolament/, 'regolamento_condominiale'],
     // "firmato" da solo basta: la copia firmata è quasi sempre il contratto.
     [/contratt|locazion|firmat/, 'contratto'],
@@ -298,6 +344,11 @@ async function carica() {
 .imm-sheet__vis-nota {
   font-size: 12px;
   color: var(--vp-ink-3);
+}
+.imm-sheet__avviso {
+  background: var(--vp-paper-2);
+  color: var(--vp-ink-2);
+  font-size: 12.5px;
 }
 .vp-banner-errore {
   background: var(--vp-clay-soft, #fbeae5);

@@ -40,7 +40,7 @@
                   <button
                     type="button"
                     class="imm-dc"
-                    :title="`${d.tipo_display} — apri`"
+                    :title="`${nomeFileDi(d)} — apri`"
                     @click="apriFile(d)"
                   >
                     <VpIcon name="doc" :size="13" />
@@ -48,7 +48,19 @@
                     <VpIcon name="open" :size="11" />
                   </button>
                   <!-- Un file di contratto non compare più in "Altri
-                       documenti": senza questo non sarebbe più eliminabile. -->
+                       documenti": senza questo non sarebbe più eliminabile,
+                       né correggibile nel tipo o nel contratto. -->
+                  <button
+                    v-if="puoModificare"
+                    type="button"
+                    class="imm-dc imm-dc--edit"
+                    :aria-label="`Modifica ${etichettaFile(d)}`"
+                    :data-testid="`modifica-file-${d.id}`"
+                    @click="modificaFile(d)"
+                  >
+                    <VpIcon name="edit" :size="12" />
+                    <q-tooltip>Modifica tipo, descrizione, contratto</q-tooltip>
+                  </button>
                   <button
                     v-if="puoModificare"
                     type="button"
@@ -332,6 +344,14 @@
     :contratti="contratti"
     :contratto-iniziale="contrattoPerCaricamento"
   />
+
+  <ModificaDocumentoDialog
+    v-model="modificaAperta"
+    :store="documentiStore"
+    :documento="fileInModifica"
+    :tipi="TIPI_DOCUMENTO_PROPRIETA"
+    :contratti="contratti"
+  />
 </template>
 
 <script setup lang="ts">
@@ -346,6 +366,7 @@ import {
 } from 'stores/documenti';
 import VpIcon from 'components/utenze/VpIcon.vue';
 import CaricaDocumentiSheet from './CaricaDocumentiSheet.vue';
+import ModificaDocumentoDialog from './ModificaDocumentoDialog.vue';
 import CardSezione from './ui/CardSezione.vue';
 import RigaElenco from './ui/RigaElenco.vue';
 import TileIcona from './ui/TileIcona.vue';
@@ -447,16 +468,41 @@ function asArray<T>(data: T[] | { results: T[] } | undefined | null): T[] {
 
 const sheetAperto = ref(false);
 const contrattoPerCaricamento = ref<number | null>(null);
+const modificaAperta = ref(false);
+const fileInModifica = ref<DocumentoFE | null>(null);
 
 function fileDi(contractId: number): DocumentoFE[] {
   return documentiStore.documenti.filter((d) => d.contract === contractId);
 }
 
-/** Il nome del file caricato, non il tipo: "contratto firmato.pdf" dice più
- *  di "Contratto di locazione" quando i file sono tre. */
+/** Il nome del file, quando è leggibile.
+ *
+ *  Con lo storage firmato l'URL porta la querystring (``?X-Amz-…``) e il
+ *  nome mostrato diventava un troncone illeggibile: due file diversi
+ *  sembravano lo stesso, ed è così che è passato inosservato un doppione.
+ *  Tolta la query resta il nome; se il tipo è già parlante lo si preferisce. */
+function nomeFileDi(d: DocumentoFE): string {
+  const senzaQuery = (d.file ?? '').split('?')[0] ?? '';
+  return decodeURIComponent(senzaQuery.split('/').pop() ?? '');
+}
+
+function etichettaBase(d: DocumentoFE): string {
+  return d.descrizione || d.tipo_display || '';
+}
+
+/** Due file dello stesso tipo senza descrizione sullo stesso contratto
+ *  darebbero due chip identici — la stessa indistinguibilità che ha lasciato
+ *  passare un doppione. In quel caso torna il nome del file. */
 function etichettaFile(d: DocumentoFE): string {
-  const nome = decodeURIComponent(d.file.split('/').pop() ?? '');
-  return nome || d.tipo_display;
+  const base = etichettaBase(d);
+  if (!base) return nomeFileDi(d);
+  const gemelli = documentiStore.documenti.some(
+    (x) =>
+      x.id !== d.id &&
+      (x.contract ?? null) === (d.contract ?? null) &&
+      etichettaBase(x) === base,
+  );
+  return gemelli ? `${base} · ${nomeFileDi(d)}` : base;
 }
 
 function apriFile(d: DocumentoFE) {
@@ -466,6 +512,13 @@ function apriFile(d: DocumentoFE) {
 /** Segnala il buco più comune: il contratto senza la sua copia firmata. */
 function mancaIlFirmato(c: Contratto): boolean {
   return !fileDi(c.id).some((d) => d.tipo === 'contratto');
+}
+
+/** Da qui si sposta un file su un altro contratto, o lo si rimanda alla
+ *  casa: prima l'unica via era eliminarlo e ricaricarlo. */
+function modificaFile(d: DocumentoFE) {
+  fileInModifica.value = d;
+  modificaAperta.value = true;
 }
 
 function apriCaricamento(contractId: number) {
@@ -739,11 +792,17 @@ function elimina(c: Contratto) {
   min-width: 0;
   max-width: 100%;
 }
-.imm-dc--del {
+.imm-dc--del,
+.imm-dc--edit {
   padding: 0 6px;
   border-color: transparent;
   background: transparent;
   color: var(--vp-ink-4);
+}
+.imm-dc--edit:hover {
+  border-color: transparent;
+  background: var(--vp-paper-2);
+  color: var(--vp-ink-1);
 }
 .imm-dc--del:hover {
   border-color: transparent;

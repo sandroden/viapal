@@ -172,6 +172,50 @@ Conseguenze da ricordare:
   occupazioni, ma un documento che era visibile torna a essere una carta della
   casa — e da quel momento **lo vedono tutti** gli inquilini.
 
+# L'ambito è nel tipo (2026-08-26)
+
+`contract` è nullable, ma non allo stesso modo per tutti i tipi.
+**Contratto, side letter e ricevuta di registrazione *sono* la carta di un
+contratto**: senza quel collegamento non stanno "nella casa", sono un dato
+malformato — e per giunta con l'effetto opposto a quello voluto, perché
+finiscono fra i documenti generali che vedono gli inquilini di *ogni*
+contratto. Regolamento condominiale e regole di convivenza valgono invece
+per la casa, e lì il contratto resta facoltativo.
+
+La lista sta in `PropertyDocument.TIPI_CONTRATTUALI`, la regola in
+`valida_ambito()`, applicata da `clean()` (admin) e dal `validate()` del
+serializer — i due percorsi di scrittura non passano l'uno per l'altro.
+
+Sul PATCH il controllo scatta **solo se la richiesta tocca `tipo` o
+`contract`**: sui documenti già in archivio malformati, cambiare la sola
+visibilità non deve fallire per un difetto che quella modifica non ha
+introdotto. Altrimenti un record legacy non si potrebbe nemmeno nascondere.
+
+**Tipo nuovo**: `regole_convivenza` (prima era `altro` più una descrizione
+scritta a mano).
+
+Fino a qui l'unico modo di correggere tipo o contratto di un documento era
+**ricaricarlo**, ed è così che sono nati i doppioni casa/contratto: la stessa
+carta due volte, una per posto, senza che nulla lo segnalasse. Ora:
+
+- `PropertyDocumentViewSet` accetta anche JSON (serve `contract: null` per
+  staccare: in multipart un campo vuoto non sa dire "nessuno");
+- il dialog «Modifica documento» (matita sulla riga e sul chip del contratto)
+  cambia tipo, descrizione, destinazione e visibilità;
+- il foglio di caricamento avvisa se un tipo contrattuale è diretto alla casa
+  (e blocca) e se un documento dello stesso tipo è già in quella
+  destinazione (avvisa soltanto: fronte e retro sono legittimi);
+- l'etichetta del chip non è più il nome del file: con lo storage firmato
+  l'URL porta la querystring e il nome diventava un troncone illeggibile —
+  è così che un doppione è passato inosservato.
+
+`manage.py sistema_documenti_immobile [--apply]` applica la lista chiusa
+delle correzioni al caso reale (idempotente, fail-safe, travasa la
+descrizione al gemello che resta) e chiude con due diagnosi: le carte di
+contratto rimaste senza contratto, e i documenti spuntati «visibili agli
+inquilini» che **nessun inquilino vede** perché nessuna assegnazione è
+collegata al loro contratto.
+
 # Vedi anche
 
 - [Generazione documenti](/domain/generazione-documenti.md) — atto di

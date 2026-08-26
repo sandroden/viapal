@@ -351,6 +351,27 @@ class PropertyDocumentSerializer(serializers.ModelSerializer):
             return ""
         return obj.contract.nome or f"Contratto dal {obj.contract.data_decorrenza}"
 
+    def validate(self, attrs):
+        """Un tipo contrattuale vuole il suo contratto.
+
+        Il controllo scatta solo se la richiesta tocca ``tipo`` o
+        ``contract``: sui documenti legacy malformati un PATCH che cambia
+        solo la visibilità non deve fallire per un difetto che non ha
+        introdotto. Chi li apre per correggerli vede l'errore.
+        """
+        attrs = super().validate(attrs)
+        tocca_ambito = "tipo" in attrs or "contract" in attrs
+        if not tocca_ambito:
+            return attrs
+        tipo = attrs.get("tipo") or getattr(self.instance, "tipo", None)
+        contract = attrs["contract"] if "contract" in attrs else getattr(
+            self.instance, "contract", None
+        )
+        errore = PropertyDocument.valida_ambito(tipo, contract.pk if contract else None)
+        if errore:
+            raise serializers.ValidationError({"contract": errore})
+        return attrs
+
 
 class RoomSerializer(serializers.ModelSerializer):
     # La property è assegnata dal server (immobile attivo): mai in scrittura.

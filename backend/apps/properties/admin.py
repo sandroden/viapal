@@ -154,9 +154,12 @@ class PropertyDocumentAjaxInline(AjaxInline):
     model = PropertyDocument
     fk_name = "property"
     width = 700
+    # ``contract`` in colonna: senza, un documento agganciato a un contratto
+    # e uno generale sono indistinguibili in elenco, ed è esattamente lo
+    # scambio che genera i doppioni.
     list_display = (
-        "tipo", "descrizione", "data_scadenza", "visibile_inquilini", "file_link",
-        "get_edit_icon_iframe", "get_delete_icon_iframe",
+        "tipo", "descrizione", "contract", "data_scadenza", "visibile_inquilini",
+        "file_link", "get_edit_icon_iframe", "get_delete_icon_iframe",
     )
 
 
@@ -168,14 +171,15 @@ class PropertyDocumentAdmin(ModalEditMixin, JumboModelAdmin):
     form = PropertyDocumentForm
     modal_edit_width = 700
     list_display = (
-        "property", "tipo", "descrizione", "data_scadenza", "visibile_inquilini",
-        "get_modal_edit_icon", "get_modal_delete_icon",
+        "property", "tipo", "descrizione", "contract", "data_scadenza",
+        "visibile_inquilini", "get_modal_edit_icon", "get_modal_delete_icon",
     )
     list_filter = ("tipo", "visibile_inquilini", "property")
     list_select_related = ("property",)
     search_fields = ("property__nome", "descrizione")
     autocomplete_fields = ("property",)
-    raw_id_fields = ("contract",)
+    # Non raw_id: i contratti sono pochi e con l'id nudo il campo sembra non
+    # esserci. Un select con il nome del contratto si usa.
     fieldsets = (
         ("Documento", {
             "fields": (

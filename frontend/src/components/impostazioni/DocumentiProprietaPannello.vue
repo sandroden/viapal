@@ -56,6 +56,14 @@
           />
           <BtnIcona
             v-if="puoModificare"
+            icona="edit"
+            :etichetta="`Modifica ${d.tipo_display}`"
+            tooltip="Modifica tipo, descrizione, contratto"
+            data-testid="modifica-documento"
+            @click="modifica(d)"
+          />
+          <BtnIcona
+            v-if="puoModificare"
             icona="trash"
             pericolo
             :etichetta="`Elimina ${d.tipo_display}`"
@@ -73,6 +81,14 @@
   <CaricaDocumentiSheet
     v-model="sheetAperto"
     :store="store"
+    :tipi="tipi"
+    :contratti="contratti"
+  />
+
+  <ModificaDocumentoDialog
+    v-model="modificaAperta"
+    :store="store"
+    :documento="inModifica"
     :tipi="tipi"
     :contratti="contratti"
   />
@@ -94,6 +110,7 @@ import RigaElenco from './ui/RigaElenco.vue';
 import TileIcona from './ui/TileIcona.vue';
 import BtnIcona from './ui/BtnIcona.vue';
 import CaricaDocumentiSheet from './CaricaDocumentiSheet.vue';
+import ModificaDocumentoDialog from './ModificaDocumentoDialog.vue';
 
 defineProps<{ puoModificare: boolean }>();
 
@@ -103,6 +120,8 @@ const store = useDocumentiProprietaStore();
 const tipi = TIPI_DOCUMENTO_PROPRIETA;
 
 const sheetAperto = ref(false);
+const modificaAperta = ref(false);
+const inModifica = ref<DocumentoFE | null>(null);
 
 /** Le carte di un contratto vivono sulla riga del contratto: qui restano
  *  solo quelle della casa, che non appartengono a nessuno di essi. */
@@ -134,6 +153,8 @@ function icona(tipo: string): string {
       return 'receipt';
     case 'regolamento_condominiale':
       return 'home';
+    case 'regole_convivenza':
+      return 'users';
     default:
       return 'doc';
   }
@@ -151,6 +172,14 @@ function dettaglio(d: DocumentoFE): string {
 
 function apri(d: DocumentoFE) {
   window.open(d.file, '_blank', 'noopener');
+}
+
+/** Dopo il caricamento tipo e contratto erano immutabili: l'unico modo di
+ *  correggere un documento era ricaricarlo, ed è così che sono nati i
+ *  doppioni casa/contratto. */
+function modifica(d: DocumentoFE) {
+  inModifica.value = d;
+  modificaAperta.value = true;
 }
 
 async function cambiaVisibilita(d: DocumentoFE) {
