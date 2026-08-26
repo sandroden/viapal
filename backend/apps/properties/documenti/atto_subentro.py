@@ -115,9 +115,13 @@ class AttoSubentro(Documento):
             lambda f: f.property.civico, campo_db="civico",
         ),
         Campo(
+            # ``Property.via`` è la via *per esteso* ("Via Palestrina",
+            # "Piazza Trento"): il campo si chiama «via/piazza» e la
+            # comunicazione di cessione lo usa già così. Anteporre "Via"
+            # qui produceva "Monza, Via Via Palestrina n. 20".
             "immobile", "Immobile (riga completa)", "property",
             lambda f: (
-                f"{f.property.comune}, Via {f.property.via} n. {f.property.civico}"
+                f"{f.property.comune}, {f.property.via} n. {f.property.civico}"
             ),
             derivato=True,
         ),

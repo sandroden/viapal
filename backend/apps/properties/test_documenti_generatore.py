@@ -18,7 +18,9 @@ from billing.models import Receivable, TenantCondominioRate
 from properties.documenti import (
     DatiInsufficienti,
     anteprima,
+    anteprima_facsimile,
     esempio,
+    genera_facsimile,
     genera_pdf,
     segnaposto,
 )
@@ -104,7 +106,10 @@ def _tenant(immobile, nominativo, completo=True):
 def scenario(immobile):
     """Immobile, contratto, comproprietari, uscente e subentrante completi."""
     for campo, valore in {
-        "via": "Palestrina", "civico": "20", "cap": "20900", "comune": "Monza",
+        # ``via`` è la via *per esteso*, come in produzione e come la usa la
+        # comunicazione di cessione: il campo si chiama «via/piazza» perché
+        # ci sta dentro anche "Piazza Trento".
+        "via": "Via Palestrina", "civico": "20", "cap": "20900", "comune": "Monza",
         "provincia": "MB", "piano": "2", "vani": "5",
     }.items():
         setattr(immobile, campo, valore)
@@ -232,7 +237,7 @@ class TestScenarioCompleto:
         assert riepilogo == {
             "data_cessione": INGRESSO,
             "firmatario": "Dentella Alessandro",
-            "fabbricato": "Palestrina 20, 20900 Monza (MB)",
+            "fabbricato": "Via Palestrina 20, 20900 Monza (MB)",
         }
 
     def test_documento_sconosciuto(self, scenario):
@@ -512,3 +517,145 @@ class TestSegnaposto:
 def test_formattazione_importi():
     assert eur(Decimal("1234.5")) == "1.234,50"
     assert eur(Decimal("70")) == "70,00"
+
+
+# ---------------------------------------------------------------------------
+# Fac-simile
+# ---------------------------------------------------------------------------
+#
+# Lo stesso atto senza nessuna persona e senza nessuna stanza: si manda a
+# leggere a chi deve ancora decidere. Le due cose da tenere ferme sono che
+# non nomini nessuno e che si generi *anche quando* l'inquilino e
+# l'assegnazione non ci sono — è tutto il punto: uno vale per tutti.
+
+
+class TestFacSimile:
+    def test_si_genera_senza_inquilino_e_senza_assegnazione(self, scenario):
+        stato = anteprima_facsimile(scenario["immobile"], ATTO, oggi=OGGI)
+        assert stato["completo"], stato["mancanti"]
+
+        pdf, nome = genera_facsimile(scenario["immobile"], ATTO, oggi=OGGI)
+
+        assert pdf.startswith(b"%PDF")
+        assert nome.startswith("facsimile-atto-subentro-")
+
+    def test_non_nomina_nessun_inquilino(self, scenario):
+        pdf, _ = genera_facsimile(scenario["immobile"], ATTO, oggi=OGGI)
+        testo = _testo_pdf(pdf)
+
+        assert "Bouchane" not in testo
+        assert "Di Maio" not in testo
+        assert "RSSMRA90C12F704X" not in testo
+        assert "Camera 2" not in testo
+        assert "OMISSIS" in testo
+
+    def test_indirizzo_non_raddoppia_il_via(self, scenario):
+        """«Monza, Via Via Palestrina n. 20»: il campo contiene già "Via"."""
+        testo = _testo_pdf(genera_facsimile(scenario["immobile"], ATTO, oggi=OGGI)[0])
+
+        assert "Via Via" not in testo
+        assert "Monza, Via Palestrina n. 20" in testo
+
+    def test_i_locatori_e_il_contratto_restano(self, scenario):
+        """Quello che si manda a leggere è proprio questo: chi sono i
+        proprietari e a quale contratto registrato si subentra."""
+        testo = _testo_pdf(genera_facsimile(scenario["immobile"], ATTO, oggi=OGGI)[0])
+
+        assert "Dentella Alessandro" in testo
+        assert "002272" in testo
+        assert "Desio" in testo
+
+    def test_senza_uscente_non_e_un_dato_mancante(self, immobile, scenario):
+        """L'atto normale pretende di sapere a chi si subentra; il fac-simile
+        non nomina nessuno, quindi non ha niente da chiedere."""
+        scenario["assegnazione"].subentra_a = None
+        scenario["assegnazione"].save()
+
+        assert anteprima_facsimile(immobile, ATTO, oggi=OGGI)["completo"]
+
+    def test_senza_contratto_dice_cosa_manca(self, immobile, scenario):
+        scenario["contratto"].delete()
+
+        stato = anteprima_facsimile(immobile, ATTO, oggi=OGGI)
+
+        assert not stato["completo"]
+        assert "contract" in _chiavi(stato["mancanti"])
+        with pytest.raises(DatiInsufficienti):
+            genera_facsimile(immobile, ATTO, oggi=OGGI)
+
+    def test_senza_modello_dice_cosa_manca(self, immobile, scenario):
+        DocumentTemplate.objects.filter(property=immobile, codice=ATTO).delete()
+
+        stato = anteprima_facsimile(immobile, ATTO, oggi=OGGI)
+
+        assert not stato["completo"]
+        assert "modello" in _chiavi(stato["mancanti"])
+
+    def test_documento_sconosciuto(self, immobile):
+        with pytest.raises(KeyError):
+            anteprima_facsimile(immobile, "inventato", oggi=OGGI)
+
+
+class TestFacSimileAPI:
+    """Dall'app: il fac-simile nasce già esponibile e già fuori dall'area
+    dell'inquilino, che l'atto vero ce l'ha."""
+
+    URL = "/api/v1/property-documents/facsimile/"
+
+    @pytest.fixture(autouse=True)
+    def media_private_tmp(self, settings, tmp_path):
+        settings.MEDIA_PRIVATE_ROOT = str(tmp_path / "media-private")
+        settings.MEDIA_ROOT = str(tmp_path / "media")
+
+    @pytest.fixture
+    def api(self, immobile):
+        from rest_framework.test import APIClient
+
+        from properties.models import PropertyMembership
+
+        utente = User.objects.create_user("prop-facsimile")
+        PropertyMembership.objects.create(
+            property=immobile,
+            user=utente,
+            ruolo=PropertyMembership.Ruolo.PROPRIETARIO,
+        )
+        client = APIClient(enforce_csrf_checks=False)
+        client.force_login(utente)
+        client.defaults["HTTP_X_PROPERTY_ID"] = str(immobile.pk)
+        return client
+
+    def test_genera_e_lo_rende_esponibile(self, api, scenario):
+        from properties.models import PropertyDocument
+
+        r = api.post(self.URL, {"codice": ATTO}, format="json")
+
+        assert r.status_code == 201, r.data
+        documento = PropertyDocument.objects.get(pk=r.data["id"])
+        assert documento.tipo == PropertyDocument.Tipo.FAC_SIMILE
+        assert documento.esponibile is True
+        assert documento.visibile_inquilini is False
+        assert documento.copia_di_id is None
+        assert "OMISSIS" in _testo_pdf(documento.file.read())
+
+    def test_dati_incompleti_400_con_l_elenco(self, api, immobile, scenario):
+        scenario["contratto"].numero_registrazione = ""
+        scenario["contratto"].save()
+
+        r = api.post(self.URL, {"codice": ATTO}, format="json")
+
+        assert r.status_code == 400
+        assert "registrazione_numero" in str(r.data)
+
+    def test_get_dice_cosa_manca_senza_generare(self, api, immobile, scenario):
+        from properties.models import PropertyDocument
+
+        r = api.get(self.URL, {"codice": ATTO})
+
+        assert r.status_code == 200
+        assert r.data["completo"] is True
+        assert not PropertyDocument.objects.filter(
+            tipo=PropertyDocument.Tipo.FAC_SIMILE
+        ).exists()
+
+    def test_codice_sconosciuto_400(self, api, scenario):
+        assert api.post(self.URL, {"codice": "inventato"}, format="json").status_code == 400
