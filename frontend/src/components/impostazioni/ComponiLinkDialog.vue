@@ -51,7 +51,7 @@
             <span class="lk-voce__n">{{ i + 1 }}.</span>
             <VpIcon :name="v.tipo === 'documento' ? 'doc' : 'message'" :size="14" />
             <span class="lk-voce__titolo">{{ v.titolo_effettivo || 'Senza titolo' }}</span>
-            <span v-if="v.tipo === 'testo'" class="lk-voce__tag">nota</span>
+            <span v-if="v.tipo === 'testo'" class="lk-voce__tag">testo</span>
             <span class="lk-voce__spazio" />
             <BtnIcona
               icona="up"
@@ -70,7 +70,7 @@
             <BtnIcona
               v-if="v.tipo === 'testo'"
               icona="edit"
-              etichetta="Modifica la nota"
+              etichetta="Modifica il testo"
               tooltip="Modifica"
               @click="apriTesto(v)"
             />
@@ -96,7 +96,7 @@
             @click="aggiuntaAperta = true"
           />
           <BtnSoft
-            etichetta="Nota su un allegato"
+            etichetta="Testo fra gli allegati"
             icona="message"
             variante="ghost"
             data-testid="aggiungi-testo"
@@ -195,6 +195,12 @@
         {{ titoloEditor }}
       </q-card-section>
       <q-card-section class="lk-testo__corpo">
+        <!-- Chi apre questo dialog cercando «il testo» ha in mente la
+             premessa: dire subito che questo va altrove costa una riga. -->
+        <div v-if="!modificaLaPremessa" class="lk-testo__dove">
+          Va <strong>nell'elenco</strong>, in mezzo agli allegati, e si sposta
+          con le frecce. La spiegazione che apre la pagina è la premessa.
+        </div>
         <!-- La premessa non ha titolo: è il cappello della pagina, non
              una voce dell'elenco. -->
         <q-input
@@ -400,10 +406,10 @@ let timerAnteprima: ReturnType<typeof setTimeout> | null = null;
  *  quella che si scrive quasi sempre: da lì si ritocca per questo link. Su
  *  una voce esistente non si tocca niente — quello che c'è è già stato
  *  deciso. */
-/** Una nota è un commento su un allegato: si apre in bianco. La proposta è
- *  della premessa e solo di quella — è lì che va il testo che si scrive
- *  quasi sempre, e vederla comparire anche qui faceva sembrare i due
- *  bottoni la stessa cosa. */
+/** Un testo fra gli allegati si apre in bianco, e su una voce esistente con
+ *  quello che c'è dentro. La proposta è della premessa e solo di quella: è
+ *  lì che va la spiegazione generale, e vederla comparire anche qui faceva
+ *  sembrare i due bottoni la stessa cosa. */
 function apriTesto(v: VoceLink | null) {
   modificaLaPremessa.value = false;
   voceInModifica.value = v;
@@ -449,7 +455,7 @@ function svuotaTesto() {
 
 const titoloEditor = computed(() => {
   if (modificaLaPremessa.value) return 'Premessa del pacchetto';
-  return voceInModifica.value ? 'Modifica la nota' : 'Nota su un allegato';
+  return voceInModifica.value ? 'Modifica il testo' : 'Testo fra gli allegati';
 });
 
 function chiediAnteprima() {
@@ -639,6 +645,11 @@ function chiudiTutto() {
   gap: 12px;
   flex: 1;
   min-height: 0;
+}
+.lk-testo__dove {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--vp-ink-3);
 }
 .lk-testo__due {
   display: grid;

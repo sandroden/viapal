@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-08-26
+* **Maintain**: `domain/link-lettura.md` — le due forme del testo si distinguono per **dove finiscono**, non per cosa dicono: «Nota su un allegato» prometteva una nota per ciascun allegato ed è diventata «Testo fra gli allegati». Chi cerca «il testo» ha in mente la premessa.
 * **Maintain**: `domain/link-lettura.md` — lessico fissato da Sandro: sezione «Documenti fac-simile senza dati personali» (il nome del piano non diceva che i dati personali non ci sono), «copia oscurata» ≠ «fac-simile», e nel pacchetto «premessa» ≠ «nota». Dal compositore si può esporre e allegare in un colpo una carta della casa non ancora spuntata: prima quella spunta stava solo in «Altri documenti» e da lì non c'era modo di sapere che esistesse.
 * **Maintain**: `domain/link-lettura.md` — il testo scritto a mano è la **premessa** del pacchetto (`DocumentShare.introduzione`, ora markdown reso in `introduzione_html`): apre la pagina e spiega quello che segue, gli allegati vengono dopo. La voce di testo resta per un chiarimento fra due allegati. Payload pubblico: `introduzione` → `introduzione_html`.
 * **Maintain**: `domain/link-lettura.md` — il chiarimento non è un testo scritto una volta ma una proposta del backend (`TESTO_PREDEFINITO`) con cui l'editor si apre; niente importi dentro, altrimenti lo stesso link non vale per più stanze. Trappola: con `nl2br` attivo un testo mandato a capo nel sorgente esce spezzato a metà frase.

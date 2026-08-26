@@ -97,22 +97,27 @@ La sezione che le raccoglie si chiama **«Documenti fac-simile senza dati
 personali»**: «Copie per la lettura», che era il nome del piano, non diceva
 la cosa che conta, cioè che i dati personali non ci sono.
 
-Nel pacchetto il testo scritto a mano ha due forme e due nomi: la
-**premessa**, che apre la pagina, e la **nota**, che commenta un allegato.
+Nel pacchetto il testo scritto a mano ha due forme, e a distinguerle è
+**dove finiscono**, non di cosa parlano: la **premessa** apre la pagina, un
+**testo fra gli allegati** sta nell'elenco insieme ai PDF. Chiamarlo «nota
+su un allegato» prometteva una nota per ciascun allegato, che non è quello
+che fa.
 
-# La premessa e le note
+# La premessa e i testi fra gli allegati
 
 Il testo scritto a mano ha **due posti**, e non sono equivalenti:
 
 * **`DocumentShare.introduzione`** — la *premessa*: apre la pagina e spiega
   tutto quello che segue, poi vengono gli allegati. È il posto normale del
   testo, ed è lì che va la proposta.
-* **`ShareItem.corpo_md`** — una *nota* su un allegato, quando serve dire
-  qualcosa su uno di essi. Resta possibile, non è la via principale.
+* **`ShareItem.corpo_md`** — un testo *dentro l'elenco*, fra un allegato e
+  l'altro («il regolamento è del 2019, l'articolo 7 è superato»). Resta
+  possibile, non è la via principale.
 
-Nel compositore i due bottoni erano indistinguibili finché anche la nota si
-apriva precompilata con la proposta: la proposta è della premessa e solo di
-quella, la nota si apre in bianco.
+Nel compositore i due bottoni erano indistinguibili finché anche il testo
+dell'elenco si apriva precompilato con la proposta: la proposta è della
+premessa e solo di quella. Chi cerca «il testo» ha in mente la premessa,
+quindi l'altro editor dice in una riga dove va a finire.
 
 Entrambi sono markdown reso e sanitizzato **nel `save()` del modello**
 (`introduzione_html` / `corpo_html`), con `markdown` + `nh3` e allowlist
