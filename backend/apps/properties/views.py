@@ -6,9 +6,9 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Exists, Max, OuterRef, Q, Sum
+from django.db.models import Count, Exists, Max, OuterRef, Q, Sum
 from django.db.models.functions import Coalesce
-from django.http import Http404
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status
 from rest_framework.decorators import action
@@ -24,6 +24,7 @@ from properties.context import get_request_property
 from properties.fascicolo import costruisci_fascicolo
 from properties.models import (
     Contract,
+    DocumentShare,
     DocumentTemplate,
     GalleryArea,
     GalleryImage,
@@ -34,12 +35,15 @@ from properties.models import (
     PropertyDocument,
     Room,
     RoomAssignment,
+    ShareItem,
     TenantDocument,
     TenantProfile,
+    rendi_markdown,
 )
 from properties.serializers import (
     CessioneAssignmentSerializer,
     ContractSerializer,
+    DocumentShareSerializer,
     DocumentTemplateSerializer,
     GalleryAreaSerializer,
     GalleryImageSerializer,
@@ -49,8 +53,10 @@ from properties.serializers import (
     PropertyDocumentSerializer,
     PropertySerializer,
     PublicGallerySerializer,
+    PublicShareSerializer,
     RoomAssignmentSerializer,
     RoomSerializer,
+    ShareItemSerializer,
     TenantDocumentSerializer,
     TenantProfileSerializer,
     TenantProfileWriteSerializer,
@@ -592,17 +598,25 @@ class TenantDocumentViewSet(ModelViewSet):
         serializer.save(tenant=tenant, caricato_da=user)
 
 
-class PropertyDocumentViewSet(ModelViewSet):
+class PropertyDocumentViewSet(ProtectedDestroyMixin, ModelViewSet):
     """
     Documenti dell'immobile (contratto, side letter, registrazione,
     regolamento condominiale).
     - Lato gestione: CRUD completo sull'immobile attivo (scrittura preclusa
       al ruolo sola_lettura); la ``property`` è sempre quella della richiesta.
+      La lista comprende anche le copie per la lettura: il FE le separa in
+      una sezione a parte guardando ``copia_di``.
     - Inquilini: sola lettura dei documenti del proprio immobile marcati
-      ``visibile_inquilini`` (sezione "Documenti della casa").
+      ``visibile_inquilini``, escluse le copie per la lettura (chi ha
+      l'originale non deve vedersi offrire la versione oscurata).
     """
 
     serializer_class = PropertyDocumentSerializer
+    protected_detail = (
+        "Impossibile eliminare il documento: è in uso in un link di lettura "
+        "o ne esiste una copia per la lettura. Rimuovilo dai link (o "
+        "elimina la copia) e riprova."
+    )
     # JSONParser per i PATCH di metadati (tipo, descrizione, contratto,
     # visibilità) senza rimandare il file: in multipart un campo vuoto non
     # sa dire «nessun contratto», in JSON è ``null``.
@@ -615,7 +629,12 @@ class PropertyDocumentViewSet(ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = PropertyDocument.objects.select_related("property", "contract")
+        # ``n_voci_link`` evita una query per riga in ``link_in_uso``: la
+        # lista dei documenti di un immobile è breve, ma è caricata a ogni
+        # apertura del tab.
+        qs = PropertyDocument.objects.select_related(
+            "property", "contract", "copia_di"
+        ).annotate(n_voci_link=Count("voci_link"))
         if not _is_gestione(user):
             tenant = getattr(user, "tenant_profile", None)
             if tenant is None:
@@ -626,9 +645,14 @@ class PropertyDocumentViewSet(ModelViewSet):
             miei_contratti = RoomAssignment.objects.filter(
                 tenant=tenant, contract__isnull=False
             ).values_list("contract_id", flat=True)
-            return qs.filter(
-                property_id=tenant.property_id, visibile_inquilini=True
-            ).filter(Q(contract__isnull=True) | Q(contract_id__in=miei_contratti))
+            return (
+                qs.filter(
+                    property_id=tenant.property_id,
+                    visibile_inquilini=True,
+                    copia_di__isnull=True,
+                )
+                .filter(Q(contract__isnull=True) | Q(contract_id__in=miei_contratti))
+            )
         return qs.filter(property=get_request_property(self.request))
 
     def _valida_contratto(self, serializer, prop):
@@ -649,6 +673,56 @@ class PropertyDocumentViewSet(ModelViewSet):
     def perform_update(self, serializer):
         self._valida_contratto(serializer, get_request_property(self.request))
         serializer.save()
+
+    @action(detail=True, methods=["post"], url_path="copia-lettura")
+    def copia_lettura(self, request, pk=None):
+        """Carica la copia oscurata di questo documento.
+
+        Il file arriva già oscurato: l'applicazione non entra nel merito
+        (coprire con un rettangolo nero non cancella il testo sotto —
+        l'avvertenza sta nel dialog di caricamento). Qui si limita a legarlo
+        all'originale e a nascerlo esponibile, che è il suo unico scopo.
+        """
+        from rest_framework.exceptions import ValidationError
+
+        originale = self.get_object()
+        errore = PropertyDocument.valida_copia(
+            originale, originale.property_id, pk=None
+        )
+        if errore:
+            raise ValidationError({"copia_di": errore})
+        file = request.data.get("file")
+        if not file:
+            raise ValidationError({"file": "Serve il PDF oscurato."})
+        descrizione = (request.data.get("descrizione") or "").strip()
+        copia = PropertyDocument(
+            property=originale.property,
+            contract=originale.contract,
+            tipo=originale.tipo,
+            file=file,
+            descrizione=descrizione or f"{originale.titolo} — copia oscurata",
+            copia_di=originale,
+            esponibile=True,
+            # Una copia oscurata non è la carta ufficiale di nessuno: non va
+            # nell'area dell'inquilino, che ha l'originale.
+            visibile_inquilini=False,
+            caricato_da=request.user,
+        )
+        # full_clean completo: i validator del FileField (estensione, 10 MB)
+        # devono valere anche qui, non solo nel POST generico. La copia
+        # eredita tipo e contratto dall'originale, quindi su un originale
+        # legacy malformato (tipo contrattuale senza contratto) il difetto
+        # emerge qui: 400 con il messaggio, non 500.
+        try:
+            copia.full_clean()
+        except DjangoValidationError as e:
+            raise ValidationError(
+                e.message_dict if hasattr(e, "error_dict") else e.messages
+            )
+        copia.save()
+        return Response(
+            self.get_serializer(copia).data, status=status.HTTP_201_CREATED
+        )
 
 
 class RoomViewSet(ProtectedDestroyMixin, ModelViewSet):
@@ -1971,6 +2045,200 @@ class PublicGalleryView(RetrieveAPIView):
         return Property.objects.filter(pubblica=True).prefetch_related(
             "rooms", "rooms__gallery_images", "gallery_areas", "gallery_areas__gallery_images"
         )
+
+
+class DocumentShareViewSet(ModelViewSet):
+    """Link di lettura dell'immobile attivo (composizione e revoca)."""
+
+    serializer_class = DocumentShareSerializer
+    permission_classes = [IsPropertyMember]
+
+    def get_queryset(self):
+        return (
+            DocumentShare.objects.filter(
+                property=get_request_property(self.request)
+            )
+            .prefetch_related("voci__documento")
+            .select_related("property")
+        )
+
+    def _valida_tenant(self, serializer, prop):
+        """L'inquilino collegato, se indicato, è di questo immobile."""
+        from rest_framework.exceptions import ValidationError
+
+        tenant = serializer.validated_data.get("tenant")
+        if tenant is not None and tenant.property_id != prop.pk:
+            raise ValidationError({"tenant": "L'inquilino è di un altro immobile."})
+
+    def perform_create(self, serializer):
+        prop = get_request_property(self.request)
+        self._valida_tenant(serializer, prop)
+        serializer.save(property=prop, creato_da=self.request.user)
+
+    def perform_update(self, serializer):
+        self._valida_tenant(serializer, get_request_property(self.request))
+        serializer.save()
+
+    @action(detail=True, methods=["post"])
+    def revoca(self, request, pk=None):
+        """Spegne il link senza cancellarlo: l'URL già mandato dà 404 e la
+        traccia di a chi era stato mandato resta."""
+        share = self.get_object()
+        share.attivo = False
+        share.save(update_fields=["attivo", "updated_at"])
+        return Response(self.get_serializer(share).data)
+
+    @action(detail=True, methods=["post"])
+    def riattiva(self, request, pk=None):
+        share = self.get_object()
+        share.attivo = True
+        share.save(update_fields=["attivo", "updated_at"])
+        return Response(self.get_serializer(share).data)
+
+    @action(detail=True, methods=["post"])
+    def riordina(self, request, pk=None):
+        """``{"voci": [id, id, ...]}`` — l'ordine è quello della lista.
+
+        In un colpo solo e atomico: un riordino a due PATCH lascerebbe un
+        istante con due voci sullo stesso numero.
+        """
+        from rest_framework.exceptions import ValidationError
+
+        share = self.get_object()
+        ids = request.data.get("voci")
+        if not isinstance(ids, list):
+            raise ValidationError({"voci": "Serve la lista degli id nell'ordine."})
+        voci = {voce.pk: voce for voce in share.voci.all()}
+        if set(ids) != set(voci):
+            raise ValidationError(
+                {"voci": "La lista deve contenere esattamente le voci del link."}
+            )
+        for posizione, voce_id in enumerate(ids):
+            voce = voci[voce_id]
+            if voce.ordine != posizione:
+                voce.ordine = posizione
+                voce.save(update_fields=["ordine", "updated_at"])
+        # Rileggere: ``get_object()`` arriva dal queryset con le voci già
+        # prefetchate, quindi nell'ordine di prima.
+        return Response(self.get_serializer(self.get_queryset().get(pk=share.pk)).data)
+
+    @action(detail=False, methods=["post"], url_path="anteprima-markdown")
+    def anteprima_markdown(self, request):
+        """Markdown → HTML, con lo stesso renderer e lo stesso sanitizzatore
+        che userà la pagina pubblica. Il FE non ne ha uno suo: due renderer
+        vorrebbe dire che l'anteprima mente."""
+        return Response({"html": rendi_markdown(request.data.get("corpo_md") or "")})
+
+
+class ShareItemViewSet(ModelViewSet):
+    """Voci di un link di lettura. L'ambito è sempre l'immobile attivo."""
+
+    serializer_class = ShareItemSerializer
+    permission_classes = [IsPropertyMember]
+
+    def get_queryset(self):
+        qs = ShareItem.objects.filter(
+            share__property=get_request_property(self.request)
+        ).select_related("share", "documento")
+        share_id = self.request.query_params.get("share")
+        if share_id:
+            qs = qs.filter(share_id=share_id)
+        return qs
+
+    def _valida_share(self, serializer):
+        """Il link della voce è dell'immobile attivo.
+
+        Vale anche in aggiornamento: il queryset garantisce che la voce sia
+        nostra, non che lo sia lo share in cui la si vuole spostare.
+        """
+        from rest_framework.exceptions import ValidationError
+
+        share = serializer.validated_data.get("share") or getattr(
+            serializer.instance, "share", None
+        )
+        if share is None or share.property_id != get_request_property(self.request).pk:
+            raise ValidationError({"share": "Il link è di un altro immobile."})
+        return share
+
+    def perform_create(self, serializer):
+        share = self._valida_share(serializer)
+        if "ordine" not in serializer.validated_data:
+            ultimo = share.voci.aggregate(m=Max("ordine"))["m"]
+            serializer.save(ordine=0 if ultimo is None else ultimo + 1)
+            return
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._valida_share(serializer)
+        serializer.save()
+
+
+class PublicDocumentShareView(RetrieveAPIView):
+    """Il pacchetto come lo vede chi ha il link: nessuna sessione, nessun
+    account. Il token è l'autorizzazione, e vale solo per questo share."""
+
+    serializer_class = PublicShareSerializer
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    lookup_field = "token"
+
+    def get_queryset(self):
+        return DocumentShare.objects.filter(attivo=True).select_related("property")
+
+    def retrieve(self, request, *args, **kwargs):
+        from django.db.models import F
+        from django.utils import timezone
+
+        share = self.get_object()
+        # F() e non save(): due aperture in parallelo non devono perdersi, e
+        # updated_at resta la data dell'ultima modifica vera del pacchetto.
+        DocumentShare.objects.filter(pk=share.pk).update(
+            visite=F("visite") + 1, ultima_visita=timezone.now()
+        )
+        return Response(self.get_serializer(share).data)
+
+
+class PublicShareFileView(APIView):
+    """Il file di una voce, servito al portatore del token.
+
+    Vista sorella di ``core.media_private``, non un suo ramo: là il record
+    che autorizza è quello che possiede il file e l'utente deve essere
+    autenticato, qui il record che autorizza è il token. Tenerle separate
+    lascia intatta l'invariante dell'altra.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request, token, item_id):
+        import posixpath
+
+        from core.storages import media_private_storage
+
+        share = DocumentShare.objects.filter(token=token, attivo=True).first()
+        if share is None:
+            raise Http404
+        voce = (
+            ShareItem.objects.select_related("documento")
+            .filter(pk=item_id, share=share, documento__isnull=False)
+            .first()
+        )
+        # Non più esponibile = revocato anche nei link già mandati: il
+        # controllo si ripete qui, non solo quando si compone il pacchetto.
+        if voce is None or not voce.documento.esponibile:
+            raise Http404
+
+        path = voce.documento.file.name
+        storage = media_private_storage()
+        if not storage.exists(path):
+            raise Http404
+        risposta = FileResponse(
+            storage.open(path, "rb"),
+            filename=posixpath.basename(path),
+            as_attachment=False,
+        )
+        risposta["X-Robots-Tag"] = "noindex, nofollow"
+        return risposta
 
 
 class InformativaPrivacyView(APIView):

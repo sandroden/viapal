@@ -13,7 +13,9 @@ Matrice di accesso (oltre al superuser, che passa sempre via
 - ``documenti-proprieta/`` (PropertyDocument): i membri della proprietà;
   se ``visibile_inquilini``, anche gli inquilini della proprietà — ma se il
   documento è collegato a un contratto, solo quelli la cui assegnazione sta
-  sotto quel contratto.
+  sotto quel contratto, e mai le copie per la lettura (``copia_di``). Chi
+  apre un link di lettura non passa di qui: ha una vista sua
+  (``PublicShareFileView``), autorizzata dal token.
 - ``bollette/`` (UtilityBill): membri e inquilini dell'immobile (le
   bollette sono mostrate agli inquilini in /i/utenze).
 - ``ricevute/`` (Receivable.ricevuta): l'inquilino dell'assegnazione;
@@ -55,6 +57,11 @@ def _autorizza_documento_proprieta(user, path, property_ids):
     if doc.property_id in property_ids:
         return True
     if not doc.visibile_inquilini:
+        return False
+    # Una copia per la lettura non è per chi ha già l'originale: fuori dalla
+    # lista API e fuori anche di qui, che è la porta che conta con l'URL in
+    # mano. Ai membri resta accessibile (è un documento dell'immobile).
+    if doc.copia_di_id:
         return False
     profilo = getattr(user, "tenant_profile", None)
     if profilo is None or profilo.property_id != doc.property_id:

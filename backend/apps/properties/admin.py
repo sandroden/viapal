@@ -14,6 +14,7 @@ from jmb.jadmin import AjaxInline, ConstrainedModelForm, JumboModelAdmin, ModalE
 
 from .models import (
     Contract,
+    DocumentShare,
     DocumentTemplate,
     GalleryArea,
     GalleryImage,
@@ -25,6 +26,7 @@ from .models import (
     PropertyMembership,
     Room,
     RoomAssignment,
+    ShareItem,
     TenantDocument,
     TenantProfile,
 )
@@ -172,9 +174,10 @@ class PropertyDocumentAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 700
     list_display = (
         "property", "tipo", "descrizione", "contract", "data_scadenza",
-        "visibile_inquilini", "get_modal_edit_icon", "get_modal_delete_icon",
+        "visibile_inquilini", "copia_di", "esponibile",
+        "get_modal_edit_icon", "get_modal_delete_icon",
     )
-    list_filter = ("tipo", "visibile_inquilini", "property")
+    list_filter = ("tipo", "visibile_inquilini", "esponibile", "property")
     list_select_related = ("property",)
     search_fields = ("property__nome", "descrizione")
     autocomplete_fields = ("property",)
@@ -185,6 +188,14 @@ class PropertyDocumentAdmin(ModalEditMixin, JumboModelAdmin):
             "fields": (
                 "property", "contract", "tipo", "file", "descrizione",
                 "data_scadenza", "visibile_inquilini",
+            ),
+        }),
+        ("Link di lettura", {
+            "fields": ("copia_di", "esponibile"),
+            "description": (
+                "Una copia per la lettura è la versione oscurata di un "
+                "originale: sta fuori dagli elenchi ufficiali e serve solo "
+                "ai link mandati a chi non ha un account."
             ),
         }),
     )
@@ -836,3 +847,33 @@ class DocumentTemplateAdmin(ModalEditMixin, JumboModelAdmin):
         }),
     )
     readonly_fields = ("created_at", "updated_at")
+
+
+# ---------------------------------------------------------------------------
+# Link di lettura
+# ---------------------------------------------------------------------------
+
+
+class ShareItemInline(admin.TabularInline):
+    """Voci del pacchetto. ``corpo_html`` non c'è: è cache del markdown,
+    rigenerata a ogni salvataggio."""
+
+    model = ShareItem
+    extra = 0
+    fields = ("ordine", "titolo", "documento", "corpo_md")
+    ordering = ("ordine", "id")
+
+
+@admin.register(DocumentShare)
+class DocumentShareAdmin(admin.ModelAdmin):
+    """Il link si compone dal frontend; qui si guarda e si revoca."""
+
+    list_display = (
+        "destinatario", "property", "attivo", "visite", "ultima_visita",
+        "created_at",
+    )
+    list_filter = ("attivo", "property")
+    search_fields = ("destinatario", "token")
+    readonly_fields = ("token", "visite", "ultima_visita", "created_at", "updated_at")
+    autocomplete_fields = ("property",)
+    inlines = [ShareItemInline]

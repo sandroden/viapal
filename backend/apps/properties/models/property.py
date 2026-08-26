@@ -881,6 +881,27 @@ class PropertyDocument(TimestampedModel):
             "documento nella loro area (es. contratto, regolamento condominiale)."
         ),
     )
+    copia_di = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="copie_lettura",
+        verbose_name="copia per la lettura di",
+        help_text=(
+            "Versione priva dei dati personali di terzi, da mandare a chi "
+            "deve ancora firmare. Non compare fra i documenti ufficiali."
+        ),
+    )
+    esponibile = models.BooleanField(
+        default=False,
+        verbose_name="esponibile in un link di lettura",
+        help_text=(
+            "Se attivo, il documento può essere messo in un link di lettura "
+            "mandato a chi non ha un account. Una copia per la lettura nasce "
+            "già spuntata; toglierla svuota i link già mandati."
+        ),
+    )
     caricato_da = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -914,6 +935,27 @@ class PropertyDocument(TimestampedModel):
             )
         return None
 
+    @classmethod
+    def valida_copia(cls, originale, property_id, pk=None):
+        """Messaggio d'errore se ``copia_di`` non è un originale valido.
+
+        Un livello solo: la copia per la lettura è copia di un documento
+        ufficiale, mai di un'altra copia. Come ``valida_ambito``, sta qui
+        perché la usano sia ``clean()`` (admin) sia il serializer DRF.
+        """
+        if originale is None:
+            return None
+        if pk is not None and originale.pk == pk:
+            return "Un documento non può essere copia di sé stesso."
+        if property_id and originale.property_id != property_id:
+            return "L'originale è di un altro immobile."
+        if originale.copia_di_id:
+            return (
+                "Quel documento è già una copia per la lettura: la copia si "
+                "fa dall'originale."
+            )
+        return None
+
     def clean(self):
         super().clean()
         if self.contract_id and self.property_id:
@@ -924,6 +966,11 @@ class PropertyDocument(TimestampedModel):
         errore = self.valida_ambito(self.tipo, self.contract_id)
         if errore:
             raise ValidationError({"contract": errore})
+        errore = self.valida_copia(
+            self.copia_di if self.copia_di_id else None, self.property_id, self.pk
+        )
+        if errore:
+            raise ValidationError({"copia_di": errore})
 
     # builtins.property: il campo `property` oscura il builtin nel corpo classe
     @builtins.property
@@ -932,3 +979,8 @@ class PropertyDocument(TimestampedModel):
         if not self.data_scadenza:
             return False
         return self.data_scadenza < datetime.date.today()
+
+    @builtins.property
+    def titolo(self):
+        """Come si chiama il documento quando lo si mostra da solo."""
+        return self.descrizione or self.get_tipo_display()

@@ -6,6 +6,7 @@ from rest_framework.routers import DefaultRouter
 
 from properties.views import (
     ContractViewSet,
+    DocumentShareViewSet,
     DocumentTemplateViewSet,
     GalleryAreaViewSet,
     InformativaPrivacyView,
@@ -14,9 +15,12 @@ from properties.views import (
     OwnerProfileViewSet,
     PropertyDocumentViewSet,
     PropertyViewSet,
+    PublicDocumentShareView,
     PublicGalleryView,
+    PublicShareFileView,
     RoomAssignmentViewSet,
     RoomViewSet,
+    ShareItemViewSet,
     TenantDocumentViewSet,
     TenantProfileViewSet,
 )
@@ -38,12 +42,24 @@ router.register(
     r"document-templates", DocumentTemplateViewSet, basename="document-template"
 )
 router.register(r"bank-accounts", OwnerBankAccountViewSet, basename="owner-bank-account")
+router.register(r"document-shares", DocumentShareViewSet, basename="document-share")
+router.register(r"share-items", ShareItemViewSet, basename="share-item")
 
 urlpatterns = [
     path(
         "public/galleria/<slug:slug>/",
         PublicGalleryView.as_view(),
         name="public-gallery",
+    ),
+    path(
+        "public/documenti/<str:token>/",
+        PublicDocumentShareView.as_view(),
+        name="public-document-share",
+    ),
+    path(
+        "public/documenti/<str:token>/file/<int:item_id>/",
+        PublicShareFileView.as_view(),
+        name="public-document-share-file",
     ),
     path(
         "privacy/informativa/",

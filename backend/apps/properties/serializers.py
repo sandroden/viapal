@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from properties.models import (
     Contract,
+    DocumentShare,
     GalleryArea,
     GalleryImage,
     OwnerBankAccount,
@@ -16,6 +17,7 @@ from properties.models import (
     PropertyDocument,
     Room,
     RoomAssignment,
+    ShareItem,
     TenantDocument,
     TenantProfile,
 )
@@ -326,6 +328,12 @@ class PropertyDocumentSerializer(serializers.ModelSerializer):
     tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
     scaduto = serializers.BooleanField(read_only=True)
     contract_nome = serializers.SerializerMethodField()
+    titolo = serializers.CharField(read_only=True)
+    #: Di cosa è copia, per la riga «copia di: ...» della sezione dedicata.
+    copia_di_titolo = serializers.SerializerMethodField()
+    #: In quanti link di lettura è in uso: serve al badge e a spiegare il 409
+    #: quando si prova a eliminarlo.
+    link_in_uso = serializers.SerializerMethodField()
 
     class Meta:
         model = PropertyDocument
@@ -341,15 +349,32 @@ class PropertyDocumentSerializer(serializers.ModelSerializer):
             "data_scadenza",
             "scaduto",
             "visibile_inquilini",
+            "titolo",
+            "copia_di",
+            "copia_di_titolo",
+            "esponibile",
+            "link_in_uso",
             "created_at",
         ]
         # La property è imposta dalla view (l'immobile attivo della richiesta).
-        extra_kwargs = {"property": {"required": False, "read_only": True}}
+        # ``copia_di`` lo valorizza l'azione ``copia-lettura``: in un POST
+        # generico non deve essere impostabile a mano.
+        extra_kwargs = {
+            "property": {"required": False, "read_only": True},
+            "copia_di": {"read_only": True},
+        }
 
     def get_contract_nome(self, obj) -> str:
         if not obj.contract_id:
             return ""
         return obj.contract.nome or f"Contratto dal {obj.contract.data_decorrenza}"
+
+    def get_copia_di_titolo(self, obj) -> str:
+        return obj.copia_di.titolo if obj.copia_di_id else ""
+
+    def get_link_in_uso(self, obj) -> int:
+        annotato = getattr(obj, "n_voci_link", None)
+        return annotato if annotato is not None else obj.voci_link.count()
 
     def validate(self, attrs):
         """Un tipo contrattuale vuole il suo contratto.
@@ -909,3 +934,136 @@ class QuoteReplaceSerializer(serializers.Serializer):
     quote = serializers.ListField(
         child=serializers.DictField(), allow_empty=False,
     )
+
+
+# ── Link di lettura ────────────────────────────────────────────────────────
+
+
+class ShareItemSerializer(serializers.ModelSerializer):
+    """Una voce del pacchetto, lato gestione.
+
+    ``corpo_html`` è di sola lettura: lo produce il modello a ogni save,
+    reso e sanitizzato — il markdown è la fonte.
+    """
+
+    tipo = serializers.CharField(read_only=True)
+    documento_titolo = serializers.SerializerMethodField()
+    documento_file = serializers.SerializerMethodField()
+    titolo_effettivo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ShareItem
+        fields = [
+            "id",
+            "share",
+            "ordine",
+            "titolo",
+            "titolo_effettivo",
+            "tipo",
+            "documento",
+            "documento_titolo",
+            "documento_file",
+            "corpo_md",
+            "corpo_html",
+        ]
+        extra_kwargs = {
+            "share": {"required": True},
+            "corpo_html": {"read_only": True},
+        }
+
+    def get_documento_titolo(self, obj) -> str:
+        return obj.documento.titolo if obj.documento_id else ""
+
+    def get_documento_file(self, obj) -> str:
+        return obj.documento.file.name if obj.documento_id else ""
+
+    def get_titolo_effettivo(self, obj) -> str:
+        if obj.titolo:
+            return obj.titolo
+        return obj.documento.titolo if obj.documento_id else ""
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        share = attrs.get("share") or getattr(self.instance, "share", None)
+        documento = (
+            attrs["documento"] if "documento" in attrs
+            else getattr(self.instance, "documento", None)
+        )
+        corpo_md = (
+            attrs["corpo_md"] if "corpo_md" in attrs
+            else getattr(self.instance, "corpo_md", "")
+        )
+        errore = ShareItem.valida_voce(documento, corpo_md, share)
+        if errore:
+            raise serializers.ValidationError({"documento": errore})
+        return attrs
+
+
+class DocumentShareSerializer(serializers.ModelSerializer):
+    voci = ShareItemSerializer(many=True, read_only=True)
+    url_pubblico = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentShare
+        fields = [
+            "id",
+            "property",
+            "token",
+            "url_pubblico",
+            "destinatario",
+            "tenant",
+            "introduzione",
+            "attivo",
+            "visite",
+            "ultima_visita",
+            "voci",
+            "created_at",
+        ]
+        # La property è l'immobile attivo della richiesta; il token lo genera
+        # il modello e non si sceglie.
+        extra_kwargs = {
+            "property": {"required": False, "read_only": True},
+            "visite": {"read_only": True},
+            "ultima_visita": {"read_only": True},
+        }
+
+    def get_url_pubblico(self, obj) -> str:
+        from django.conf import settings
+
+        base = getattr(settings, "APP_BASE_URL", "").rstrip("/")
+        return f"{base}/d/{obj.token}"
+
+
+class PublicShareItemSerializer(serializers.ModelSerializer):
+    """La voce come la vede chi apre il link: nessun id interno di documento,
+    nessun path di file — il file si chiede per id di voce."""
+
+    tipo = serializers.CharField(read_only=True)
+    titolo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ShareItem
+        fields = ["id", "tipo", "titolo", "corpo_html"]
+
+    def get_titolo(self, obj) -> str:
+        if obj.titolo:
+            return obj.titolo
+        return obj.documento.titolo if obj.documento_id else ""
+
+
+class PublicShareSerializer(serializers.ModelSerializer):
+    """Payload pubblico del pacchetto. Espone il minimo: niente inquilino
+    collegato, niente chi l'ha creato, niente contatore di aperture."""
+
+    casa = serializers.SerializerMethodField()
+    voci = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentShare
+        fields = ["casa", "destinatario", "introduzione", "voci"]
+
+    def get_casa(self, obj) -> dict:
+        return {"nome": obj.property.nome, "indirizzo": obj.property.indirizzo}
+
+    def get_voci(self, obj) -> list:
+        return PublicShareItemSerializer(obj.voci_servibili(), many=True).data
