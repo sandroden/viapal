@@ -223,6 +223,16 @@ contratto rimaste senza contratto, e i documenti spuntati «visibili agli
 inquilini» che **nessun inquilino vede** perché nessuna assegnazione è
 collegata al loro contratto.
 
+**In produzione l'ordine è obbligato** (il deploy del solo codice è invece
+sicuro e può precederli):
+
+1. `collega_assegnazioni_contratto --contratto "Collettivo 2025" --apply`
+2. `sistema_documenti_immobile --apply`
+
+Invertendoli si apre una finestra in cui nessun inquilino vede contratto e
+lettera: il secondo comando cancella i doppioni senza contratto — quelli che
+tutti vedevano — e i gemelli diventano visibili solo dopo il primo.
+
 # Vedi anche
 
 - [Generazione documenti](/domain/generazione-documenti.md) — atto di

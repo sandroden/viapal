@@ -27,3 +27,6 @@ bunx @marp-team/marp-cli --watch docs/contabilita-fratelli.md --html
   inquilino (generazione Receivable affitto/utenze, riconciliazione, UI),
   punti d'ingresso (admin, action, CLI) e operazioni di manutenzione
   ordinaria (con esempi cron).
+- [piano-link-lettura.md](piano-link-lettura.md) — pagina pubblica a token per
+  far leggere i documenti a un inquilino in arrivo, senza account e senza i
+  dati di chi ha firmato prima. Approvato il 2026-08-26, da implementare.
