@@ -86,6 +86,21 @@ class TestPaginaOG:
         assert _meta(html, "og:url").endswith(f"/g/{immobile.slug}?stanza={camera.pk}")
         assert f"stanza={camera.pk}" in _meta(html, "og:image")
 
+    def test_la_camera_si_indica_anche_col_nome(self, client, annuncio):
+        immobile, camera = annuncio
+        html = client.get(f"/g/{immobile.slug}?stanza=camera-blu").content.decode()
+
+        assert _meta(html, "og:title").startswith("Camera Blu — ")
+        assert _meta(html, "og:url").endswith("?stanza=camera-blu")
+        # Il link leggibile e quello con l'id devono mostrare la stessa foto.
+        per_id = client.get(f"/g/{immobile.slug}?stanza={camera.pk}").content.decode()
+        assert _meta(html, "og:image").split("&")[0] == _meta(per_id, "og:image").split("&")[0]
+
+    def test_nome_inesistente_ricade_sulla_casa(self, client, annuncio):
+        immobile, _ = annuncio
+        html = client.get(f"/g/{immobile.slug}?stanza=camera-che-non-ce").content.decode()
+        assert _meta(html, "og:title") == "Casa di Via Palestrina"
+
     def test_camera_di_un_altro_immobile_viene_ignorata(self, client, annuncio, immobile2):
         immobile, _ = annuncio
         intrusa = Room.objects.create(property=immobile2, nome="Camera Altrui", pubblica=True)

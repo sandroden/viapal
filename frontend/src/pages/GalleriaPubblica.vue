@@ -675,8 +675,26 @@ async function load() {
 
 // Link della singola camera, quello da mandare a chi cerca *quella*
 // stanza: l'anteprima social che ne esce è la sua foto (backend og.py).
-async function copiaLinkStanza(r: { id: number; nome: string }) {
-  const url = `${window.location.origin}/g/${route.params.slug as string}?stanza=${r.id}`;
+// Nell'URL va il nome, non l'id: chi riceve il link legge di che camera si
+// tratta. Il backend accetta entrambi; l'id resta il ripiego quando il nome
+// non produce uno slug utile (vuoto, o due camere che si chiamano uguale).
+function slugNome(nome: string): string {
+  return nome
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function riferimentoStanza(r: StanzaPubblica): string {
+  const slug = slugNome(r.nome);
+  const omonime = roomsPubbliche.value.filter((x) => slugNome(x.nome) === slug).length;
+  return slug && omonime === 1 ? slug : String(r.id);
+}
+
+async function copiaLinkStanza(r: StanzaPubblica) {
+  const url = `${window.location.origin}/g/${route.params.slug as string}?stanza=${riferimentoStanza(r)}`;
   try {
     await navigator.clipboard.writeText(url);
     $q.notify({ type: 'positive', message: `Link di «${r.nome}» copiato`, caption: url });
@@ -690,10 +708,16 @@ async function copiaLinkStanza(r: { id: number; nome: string }) {
 // Qui serve solo a mostrare subito la camera di cui si parla. Query e non
 // fragment perché l'ancora `#room-N` il server non la vedrebbe mai.
 async function vaiAllaStanzaRichiesta() {
-  const id = route.query.stanza;
-  if (!id) return;
+  const riferimento = String(route.query.stanza ?? '').trim();
+  if (!riferimento) return;
+  // Il parametro può essere il nome in forma di slug o, per i link vecchi,
+  // l'id: entrambi vanno ricondotti alla sezione da mostrare.
+  const stanza =
+    roomsPubbliche.value.find((r) => String(r.id) === riferimento) ??
+    roomsPubbliche.value.find((r) => slugNome(r.nome) === slugNome(riferimento));
+  if (!stanza) return;
   await nextTick();
-  const sezione = document.getElementById(`room-${String(id)}`);
+  const sezione = document.getElementById(`room-${stanza.id}`);
   if (!sezione) return;
   sezione.scrollIntoView({ behavior: 'smooth', block: 'start' });
   sezione.classList.add('room--evidenziata');

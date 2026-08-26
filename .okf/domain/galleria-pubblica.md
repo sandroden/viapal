@@ -132,8 +132,13 @@ la SPA parte come sempre.
   sorgente (`?v=…`): Facebook ricorda uno scrape per settimane, cambiare
   foto deve cambiare l'URL. Sta sotto `/api/` per non aggiungere regole di
   routing.
-- **Un link per camera**: `/g/<slug>?stanza=<id>` dà titolo, descrizione e
-  foto della singola camera. Query e non fragment: `#room-3` il server non lo
+- **Un link per camera**: `/g/<slug>?stanza=<camera>` dà titolo, descrizione
+  e foto della singola camera. Il riferimento è il **nome in forma di slug**
+  (`?stanza=camera-3`), leggibile da chi riceve il link; l'id numerico resta
+  accettato per non rompere i link già condivisi, e il frontend risolve
+  entrambi. Il pulsante "Copia link" accanto a ogni camera disponibile
+  (solo proprietario) evita di doverlo comporre a mano: ripiega sull'id se
+  il nome non dà uno slug utile (vuoto, o due camere omonime). Query e non fragment: `#room-3` il server non lo
   vedrebbe mai. `og:url` **deve** riportare il parametro, altrimenti i social
   deduplicano i cinque link e mostrano tutti la stessa card. Il frontend usa
   il parametro per scorrere alla sezione e darle un lampo di colore.

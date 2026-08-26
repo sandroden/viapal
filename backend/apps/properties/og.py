@@ -27,6 +27,7 @@ from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils.html import escape
+from django.utils.text import slugify
 from PIL import Image, ImageOps
 
 from .models import Property, Room
@@ -216,15 +217,24 @@ def og_image(request, slug):
 
 
 def _stanza_richiesta(prop, request):
-    """Stanza indicata da ``?stanza=<id>``, se pubblica e dell'immobile."""
-    grezzo = request.GET.get("stanza")
+    """Stanza indicata da ``?stanza=…``: id numerico o nome in forma di slug.
+
+    Il nome (`?stanza=camera-3`) è la forma da condividere, leggibile da chi
+    riceve il link; l'id resta valido perché i link già mandati in giro non
+    smettano di funzionare.
+    """
+    grezzo = (request.GET.get("stanza") or "").strip()
     if not grezzo:
         return None
-    try:
-        pk = int(grezzo)
-    except (TypeError, ValueError):
+    stanze = Room.objects.filter(property=prop, pubblica=True).order_by("ordinamento", "id")
+    if grezzo.isdigit():
+        per_id = stanze.filter(pk=int(grezzo)).first()
+        if per_id is not None:
+            return per_id
+    voluto = slugify(grezzo)
+    if not voluto:
         return None
-    return Room.objects.filter(property=prop, pk=pk, pubblica=True).first()
+    return next((s for s in stanze if slugify(s.nome) == voluto), None)
 
 
 def _meta(request, prop, room):
