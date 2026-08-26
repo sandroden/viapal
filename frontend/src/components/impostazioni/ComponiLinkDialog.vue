@@ -91,7 +91,7 @@
         <div class="lk-aggiungi">
           <BtnSoft
             etichetta="Aggiungi documento"
-            :disabilitato="esponibiliDisponibili.length === 0"
+            :disabilitato="esponibiliDisponibili.length === 0 && daEsporre.length === 0"
             data-testid="aggiungi-documento"
             @click="aggiuntaAperta = true"
           />
@@ -103,10 +103,13 @@
             @click="apriTesto(null)"
           />
         </div>
-        <div v-if="esponibiliDisponibili.length === 0" class="lk-nota">
-          Nel link entra solo ciò che è esponibile: carica una copia per la
-          lettura, o spunta «esponibile» su un documento che non nomina
-          nessuno (le regole di convivenza).
+        <div
+          v-if="esponibiliDisponibili.length === 0 && daEsporre.length === 0"
+          class="lk-nota"
+        >
+          Non c'è altro da aggiungere. Per mandare una carta che nomina
+          qualcuno serve prima la sua copia oscurata, in «Documenti fac-simile
+          senza dati personali».
         </div>
 
         <q-banner v-if="store.errore" class="vp-banner-errore" rounded dense>
@@ -125,11 +128,12 @@
   <q-dialog v-model="aggiuntaAperta">
     <q-card class="lk-scelta">
       <q-card-section class="lk-comp__titolo">Aggiungi un documento</q-card-section>
-      <q-card-section>
+      <q-card-section class="lk-scelta__corpo">
         <q-select
+          v-if="esponibiliDisponibili.length"
           v-model="documentoDaAggiungere"
           :options="esponibiliDisponibili"
-          label="Documento esponibile"
+          label="Documento senza dati personali"
           outlined
           dense
           emit-value
@@ -137,10 +141,41 @@
           autofocus
           data-testid="scelta-documento"
         />
+        <div v-else class="lk-scelta__vuoto">
+          Nessun documento pronto: o è già tutto nel pacchetto, o va prima
+          preparata una copia oscurata.
+        </div>
+
+        <!-- Le carte della casa che non nominano nessuno non hanno bisogno
+             di una copia: basta dire che possono uscire. Prima quella spunta
+             stava solo in «Altri documenti», e da qui non c'era modo di
+             sapere che esisteva. -->
+        <template v-if="daEsporre.length">
+          <div class="lk-scelta__eti">Carte della casa non ancora esponibili</div>
+          <div class="lk-scelta__nota">
+            Escono <strong>così come sono</strong>, senza copia oscurata:
+            aggiungile solo se non nominano nessuno.
+          </div>
+          <div v-for="d in daEsporre" :key="d.id" class="lk-scelta__riga">
+            <VpIcon name="doc" :size="14" />
+            <span class="lk-scelta__nome">{{ etichetta(d) }}</span>
+            <BtnSoft
+              etichetta="Esponi e aggiungi"
+              icona="link"
+              variante="ghost"
+              :disabilitato="store.salvataggio"
+              :data-testid="`esponi-e-aggiungi-${d.id}`"
+              @click="void esponiEAggiungi(d)"
+            />
+          </div>
+        </template>
       </q-card-section>
       <q-card-actions align="right">
         <q-btn v-close-popup flat label="Annulla" />
+        <!-- Senza il select non c'è niente da confermare: le carte da
+             esporre si aggiungono dal loro bottone. -->
         <q-btn
+          v-if="esponibiliDisponibili.length"
           color="primary"
           label="Aggiungi"
           :disable="!documentoDaAggiungere"
@@ -266,6 +301,36 @@ const esponibiliDisponibili = computed(() => {
 /** La descrizione proposta dal server finisce già con «— copia oscurata»:
  *  ripeterlo darebbe «… — copia oscurata (copia oscurata)». Il marcatore
  *  serve solo quando chi ha caricato ha scritto un'altra descrizione. */
+/** Le carte della casa che potrebbero uscire ma non sono ancora spuntate.
+ *  Solo quelle **senza contratto**: contratto firmato, side letter e
+ *  ricevuta di registrazione nominano le persone che hanno firmato, e per
+ *  quelle serve una copia oscurata — non una spunta. */
+const daEsporre = computed(() => {
+  const giaDentro = new Set((link.value?.voci ?? []).map((v) => v.documento));
+  return documenti.documenti.filter(
+    (d) =>
+      !d.esponibile &&
+      !d.esponibile_per_natura &&
+      !d.copia_di &&
+      !d.contract &&
+      !giaDentro.has(d.id),
+  );
+});
+
+async function esponiEAggiungi(d: DocumentoFE) {
+  if (!link.value) return;
+  if (!(await documenti.impostaEsponibile(d.id, true))) {
+    $q.notify({ type: 'negative', message: documenti.errore ?? 'Non riuscito.' });
+    return;
+  }
+  const ok = await store.aggiungiVoce({ share: link.value.id, documento: d.id });
+  if (!ok) {
+    $q.notify({ type: 'negative', message: store.errore ?? 'Voce non aggiunta.' });
+    return;
+  }
+  aggiuntaAperta.value = false;
+}
+
 function etichetta(d: DocumentoFE): string {
   const nome = d.titolo || d.descrizione || d.tipo_display;
   if (!d.copia_di || /copia/i.test(nome)) return nome;
@@ -517,8 +582,43 @@ function chiudiTutto() {
   line-height: 1.45;
 }
 .lk-scelta {
-  width: 460px;
-  max-width: 92vw;
+  width: 520px;
+  max-width: 93vw;
+}
+.lk-scelta__corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.lk-scelta__vuoto {
+  font-size: 13px;
+  color: var(--vp-ink-3);
+  line-height: 1.5;
+}
+.lk-scelta__eti {
+  margin-top: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vp-ink-3);
+}
+.lk-scelta__nota {
+  font-size: 12px;
+  color: var(--vp-ink-3);
+  line-height: 1.45;
+}
+.lk-scelta__riga {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  padding: 3px 0;
+}
+.lk-scelta__nome {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Ci si scrive dentro un testo lungo: nasce grande e si allarga a mano
    (l'angolo in basso a destra). ``resize`` vuole ``overflow`` diverso da
