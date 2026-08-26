@@ -80,8 +80,8 @@
           <BtnIcona
             v-if="puoModificare"
             icona="doc"
-            :etichetta="`Copia per la lettura di ${d.tipo_display}`"
-            tooltip="Copia per la lettura (versione oscurata)"
+            :etichetta="`Copia oscurata di ${d.tipo_display}`"
+            tooltip="Copia oscurata: la versione senza dati personali"
             :data-testid="`copia-lettura-${d.id}`"
             @click="copiaLettura(d)"
           />
@@ -161,8 +161,8 @@ const originalePerCopia = ref<DocumentoFE | null>(null);
 
 /** Le carte di un contratto vivono sulla riga del contratto: qui restano
  *  solo quelle della casa, che non appartengono a nessuno di essi. Le copie
- *  per la lettura e i fac-simile hanno una sezione loro: l'archivio
- *  ufficiale resta quello che è. */
+ *  oscurate e i fac-simile hanno una sezione loro: l'archivio ufficiale
+ *  resta quello che è. */
 const documentiCasa = computed(() =>
   store.documenti.filter(
     (d) => !d.contract && !d.copia_di && !d.esponibile_per_natura,

@@ -334,7 +334,7 @@ async function esponiEAggiungi(d: DocumentoFE) {
 function etichetta(d: DocumentoFE): string {
   const nome = d.titolo || d.descrizione || d.tipo_display;
   if (!d.copia_di || /copia/i.test(nome)) return nome;
-  return `${nome} (copia per la lettura)`;
+  return `${nome} (copia oscurata)`;
 }
 
 async function salvaTestata() {

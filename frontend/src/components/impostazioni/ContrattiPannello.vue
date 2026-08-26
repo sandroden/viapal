@@ -65,14 +65,14 @@
                     v-if="puoModificare"
                     type="button"
                     class="imm-dc imm-dc--copia"
-                    :aria-label="`Copia per la lettura di ${etichettaFile(d)}`"
+                    :aria-label="`Copia oscurata di ${etichettaFile(d)}`"
                     :data-testid="`copia-lettura-${d.id}`"
                     @click="copiaLettura(d)"
                   >
                     <VpIcon name="link" :size="12" />
                     <q-tooltip>
-                      Copia per la lettura: la versione oscurata da mandare a
-                      chi deve ancora firmare
+                      Copia oscurata: la versione senza dati personali, da
+                      mandare a chi deve ancora firmare
                     </q-tooltip>
                   </button>
                   <button
@@ -490,7 +490,7 @@ const fileInModifica = ref<DocumentoFE | null>(null);
 const copiaAperta = ref(false);
 const originalePerCopia = ref<DocumentoFE | null>(null);
 
-/** Le copie per la lettura non sono chip del contratto: stanno nella loro
+/** Le copie oscurate non sono chip del contratto: stanno nella loro
  *  sezione, così l'archivio ufficiale resta quello che è. */
 function fileDi(contractId: number): DocumentoFE[] {
   return documentiStore.documenti.filter((d) => d.contract === contractId && !d.copia_di);

@@ -2,7 +2,7 @@
   <q-dialog v-model="aperto" @hide="svuota">
     <q-card class="cl-dialog">
       <q-card-section class="cl-dialog__head">
-        <div class="cl-dialog__titolo">Copia per la lettura</div>
+        <div class="cl-dialog__titolo">Copia oscurata</div>
         <BtnIcona icona="x" etichetta="Chiudi" @click="aperto = false" />
       </q-card-section>
 
@@ -26,7 +26,7 @@
           v-else
           v-model="originaleId"
           :options="opzioniOriginali"
-          label="Copia di quale documento"
+          label="Oscura quale documento"
           outlined
           dense
           emit-value
@@ -174,7 +174,7 @@ async function salva() {
     errore.value = store.errore ?? 'Caricamento non riuscito.';
     return;
   }
-  $q.notify({ type: 'positive', message: 'Copia per la lettura caricata.' });
+  $q.notify({ type: 'positive', message: 'Copia oscurata caricata.' });
   aperto.value = false;
 }
 </script>

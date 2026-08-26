@@ -269,7 +269,7 @@ class ShareItem(TimestampedModel):
             if not documento.esponibile:
                 return (
                     "Quel documento non è esponibile in un link: usane una "
-                    "copia per la lettura, o spuntalo come esponibile."
+                    "copia oscurata, o spuntalo come esponibile."
                 )
         return None
 

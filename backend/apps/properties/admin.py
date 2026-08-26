@@ -193,7 +193,7 @@ class PropertyDocumentAdmin(ModalEditMixin, JumboModelAdmin):
         ("Link di lettura", {
             "fields": ("copia_di", "esponibile"),
             "description": (
-                "Una copia per la lettura è la versione oscurata di un "
+                "Una copia oscurata è la versione senza dati personali di un "
                 "originale: sta fuori dagli elenchi ufficiali e serve solo "
                 "ai link mandati a chi non ha un account."
             ),

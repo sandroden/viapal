@@ -827,8 +827,8 @@ class PropertyDocument(TimestampedModel):
     )
 
     #: Documento generato apposta per essere letto da fuori: non nomina
-    #: nessuno, quindi non ha bisogno di una copia oscurata. Sta accanto
-    #: alle copie per la lettura e non fra le carte della casa.
+    #: nessuno, quindi non ha bisogno di essere oscurato. Sta accanto alle
+    #: copie oscurate e non fra le carte della casa.
     TIPI_ESPONIBILI_PER_NATURA = frozenset({Tipo.FAC_SIMILE})
 
     property = models.ForeignKey(
@@ -893,7 +893,7 @@ class PropertyDocument(TimestampedModel):
         null=True,
         blank=True,
         related_name="copie_lettura",
-        verbose_name="copia per la lettura di",
+        verbose_name="copia oscurata di",
         help_text=(
             "Versione priva dei dati personali di terzi, da mandare a chi "
             "deve ancora firmare. Non compare fra i documenti ufficiali."
@@ -904,8 +904,8 @@ class PropertyDocument(TimestampedModel):
         verbose_name="esponibile in un link di lettura",
         help_text=(
             "Se attivo, il documento può essere messo in un link di lettura "
-            "mandato a chi non ha un account. Una copia per la lettura nasce "
-            "già spuntata; toglierla svuota i link già mandati."
+            "mandato a chi non ha un account. Una copia oscurata nasce già "
+            "spuntata; toglierla svuota i link già mandati."
         ),
     )
     caricato_da = models.ForeignKey(
@@ -945,7 +945,7 @@ class PropertyDocument(TimestampedModel):
     def valida_copia(cls, originale, property_id, pk=None):
         """Messaggio d'errore se ``copia_di`` non è un originale valido.
 
-        Un livello solo: la copia per la lettura è copia di un documento
+        Un livello solo: la copia oscurata è copia di un documento
         ufficiale, mai di un'altra copia. Come ``valida_ambito``, sta qui
         perché la usano sia ``clean()`` (admin) sia il serializer DRF.
         """
@@ -957,8 +957,8 @@ class PropertyDocument(TimestampedModel):
             return "L'originale è di un altro immobile."
         if originale.copia_di_id:
             return (
-                "Quel documento è già una copia per la lettura: la copia si "
-                "fa dall'originale."
+                "Quel documento è già una copia oscurata: si oscura "
+                "l'originale."
             )
         return None
 

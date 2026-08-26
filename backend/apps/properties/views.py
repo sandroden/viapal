@@ -606,18 +606,18 @@ class PropertyDocumentViewSet(ProtectedDestroyMixin, ModelViewSet):
     regolamento condominiale).
     - Lato gestione: CRUD completo sull'immobile attivo (scrittura preclusa
       al ruolo sola_lettura); la ``property`` è sempre quella della richiesta.
-      La lista comprende anche le copie per la lettura: il FE le separa in
+      La lista comprende anche le copie oscurate: il FE le separa in
       una sezione a parte guardando ``copia_di``.
     - Inquilini: sola lettura dei documenti del proprio immobile marcati
-      ``visibile_inquilini``, escluse le copie per la lettura (chi ha
+      ``visibile_inquilini``, escluse le copie oscurate (chi ha
       l'originale non deve vedersi offrire la versione oscurata).
     """
 
     serializer_class = PropertyDocumentSerializer
     protected_detail = (
         "Impossibile eliminare il documento: è in uso in un link di lettura "
-        "o ne esiste una copia per la lettura. Rimuovilo dai link (o "
-        "elimina la copia) e riprova."
+        "o ne esiste una copia oscurata. Rimuovilo dai link (o elimina la "
+        "copia) e riprova."
     )
     # JSONParser per i PATCH di metadati (tipo, descrizione, contratto,
     # visibilità) senza rimandare il file: in multipart un campo vuoto non

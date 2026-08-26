@@ -6,7 +6,7 @@ Le due invarianti che i test devono tenere ferme:
 * **solo l'esponibile esce**, e il controllo si ripete al momento di servire
   il file — togliere la spunta revoca il documento anche nei link già
   mandati, non solo nel compositore;
-* **la copia per la lettura non è un documento ufficiale**: sta fuori da
+* **la copia oscurata non è un documento ufficiale**: sta fuori da
   tutti gli elenchi, compreso quello dell'inquilino, che l'originale ce
   l'ha già.
 

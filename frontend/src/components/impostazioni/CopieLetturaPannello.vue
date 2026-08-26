@@ -1,11 +1,11 @@
 <template>
   <CardSezione
-    titolo="Copie per la lettura"
-    descrizione="Quello che si manda a chi deve ancora firmare: le versioni oscurate dei documenti e i fac-simile. Si preparano una volta e si riusano per ogni destinatario; non compaiono fra le carte del contratto, né in «Altri documenti», né nella pagina degli inquilini."
+    titolo="Documenti fac-simile senza dati personali"
+    descrizione="Quello che si manda a chi deve ancora firmare: le copie oscurate dei documenti veri e i fac-simile, che nascono già senza nomi. Si preparano una volta e si riusano per ogni destinatario; non compaiono fra le carte del contratto, né in «Altri documenti», né nella pagina degli inquilini."
   >
     <template v-if="puoModificare" #azioni>
       <BtnSoft
-        etichetta="Copia per la lettura"
+        etichetta="Copia oscurata"
         data-testid="nuova-copia-lettura"
         @click="apriCaricamento(null)"
       />
@@ -83,8 +83,8 @@
         </template>
       </RigaElenco>
       <div v-if="copie.length === 0" class="cl-vuoto">
-        Nessuna copia caricata. Il contratto oscurato si carica una volta e
-        vale per tutti i destinatari.
+        Ancora niente. Il contratto oscurato si carica una volta e vale per
+        tutti i destinatari; il fac-simile dell'atto si genera da qui.
       </div>
     </div>
   </CardSezione>
@@ -203,7 +203,8 @@ function origineDi(d: DocumentoFE): string {
     return 'generato dal modello, non nomina nessuno';
   }
   const nome = d.copia_di_titolo || '—';
-  return d.contract_nome ? `copia di: ${nome} · ${d.contract_nome}` : `copia di: ${nome}`;
+  const testo = `copia oscurata di: ${nome}`;
+  return d.contract_nome ? `${testo} · ${d.contract_nome}` : testo;
 }
 
 function etichettaUso(d: DocumentoFE): string {
@@ -267,7 +268,7 @@ function vai(m: DatoMancante) {
 
 function conferma(d: DocumentoFE) {
   $q.dialog({
-    title: 'Eliminare la copia?',
+    title: 'Eliminare il documento?',
     message: `"${titoloDi(d)}" verrà rimossa. Se è in un link di lettura, l'eliminazione viene rifiutata.`,
     cancel: { flat: true, label: 'Annulla' },
     ok: { color: 'negative', label: 'Elimina' },
