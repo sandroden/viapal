@@ -47,6 +47,28 @@ Attributi che governano il comportamento:
 sola («Inquilino uscente»), non le quattro che ne discendono. Stesso schema
 per il firmatario della cessione.
 
+## Le omissioni: lo stesso documento senza nessuno dentro
+
+`Fonti.omissioni` è un insieme di token che valgono sia come **fonte** di un
+campo (`tenant`, `uscente`, `assignment`, `deposito`) sia come singola
+**chiave** di segnaposto (`oneri_accessori`). Un campo che ci ricade non
+viene nemmeno letto — al suo posto va `OMISSIS` — **e non entra fra i dati
+mancanti**. Quest'ultima metà è quella che conta: senza, un fac-simile non si
+genererebbe perché «manca l'uscente», che è esattamente ciò che non deve
+esserci.
+
+`fonti_facsimile(immobile)` costruisce le fonti senza inquilino e senza
+assegnazione: restano immobile, locatori, contratto registrato e clausole.
+Il risultato si manda a chi deve ancora decidere — vedi
+[Link di lettura](/domain/link-lettura.md).
+
+## `Property.via` contiene già la denominazione
+
+Il campo si chiama «via/piazza» e vale `"Via Palestrina"`, non `"Palestrina"`
+(ci sta dentro anche `"Piazza Trento"`). La comunicazione di cessione lo usava
+già così; l'atto di subentro anteponeva un altro `Via` e produceva
+`"Monza, Via Via Palestrina n. 20"`. Corretto il 2026-08-26.
+
 # Dove si compila
 
 `DOVE` + `link_per` in `base.py` mappano ogni fonte al suo posto:
@@ -171,3 +193,5 @@ perché lì il legame è certo.
   nella checklist.
 - [Modelli properties](/models/properties.md) — anagrafiche, indirizzo
   strutturato, estremi di registrazione, `DocumentTemplate`.
+- [Link di lettura](/domain/link-lettura.md) — il fac-simile e come finisce
+  in un pacchetto da mandare fuori.

@@ -83,10 +83,18 @@ Log minimo: `visite` e `ultima_visita`, incrementati con
 `update(visite=F("visite")+1)`. Niente IP né user-agent — sono dati di un
 terzo che non serve conservare.
 
-# Il testo di chiarimento
+# La premessa e i chiarimenti
 
-`ShareItem.corpo_md` (markdown scritto a mano) → `corpo_html` reso e
-sanitizzato **nel `save()` del modello**, con `markdown` + `nh3` e allowlist
+Il testo scritto a mano ha **due posti**, e non sono equivalenti:
+
+* **`DocumentShare.introduzione`** — la *premessa*: apre la pagina e spiega
+  tutto quello che segue, poi vengono gli allegati. È il posto normale del
+  testo, ed è lì che va la proposta.
+* **`ShareItem.corpo_md`** — un chiarimento *fra* due allegati, quando serve
+  dire qualcosa su uno di essi. Resta possibile, non è la via principale.
+
+Entrambi sono markdown reso e sanitizzato **nel `save()` del modello**
+(`introduzione_html` / `corpo_html`), con `markdown` + `nh3` e allowlist
 stretta (niente `img`, niente attributi di stile, schemi `http/https/mailto`).
 La pagina pubblica mostra solo HTML già passato dal sanitizzatore.
 
@@ -98,6 +106,21 @@ in un iframe, che in mezzo a una pagina sarebbe scomodo.
 L'anteprima del compositore passa da `POST document-shares/anteprima-markdown/`
 e **non** da un renderer JS: due renderer significherebbero un'anteprima che
 mente.
+
+`TESTO_PREDEFINITO` (in `models/share.py`, servito da
+`GET document-shares/testo-predefinito/`) è la **proposta** con cui l'editor
+si apre su una premessa vuota: da lì si ritocca per il singolo link. Sta sul
+backend e non nel frontend perché è testo, non interfaccia — il giorno in
+cui servirà diverso da immobile a immobile diventa una riga in tabella senza
+toccare la pagina che lo mostra. Non contiene importi: un canone per stanza
+scritto lì dentro impedirebbe di riusare lo stesso link per più stanze, e
+resterebbe quello del giorno dell'invio.
+
+Trappola del renderer: `nl2br` è attivo, perché chi scrive in una textarea
+si aspetta che un a capo sia un a capo. Ne segue che un testo mandato a capo
+per stare comodo nel sorgente esce **spezzato a metà frase** — `TESTO_PREDEFINITO`
+è quindi composto da paragrafi di una riga sola, concatenati implicitamente
+in Python.
 
 # Serving del file
 
@@ -120,7 +143,7 @@ Pubbliche (`AllowAny`, nessuna sessione):
 
 | Endpoint | Cosa dà |
 |---|---|
-| `GET /api/v1/public/documenti/<token>/` | `{casa, destinatario, introduzione, voci}`; 404 se sconosciuto o revocato; incrementa `visite` |
+| `GET /api/v1/public/documenti/<token>/` | `{casa, destinatario, introduzione_html, voci}`; 404 se sconosciuto o revocato; incrementa `visite` |
 | `GET /api/v1/public/documenti/<token>/file/<item_id>/` | il PDF inline; 404 se la voce non è di quello share o il documento non è più esponibile |
 
 Gestione (`IsPropertyMember`): `document-shares/` (+ `revoca/`, `riattiva/`,
@@ -149,11 +172,45 @@ sei. L'applicazione si limita all'avvertenza nel dialog di caricamento —
 il rettangolo nero non cancella il testo sotto, va appiattito in immagini,
 e i metadati vanno controllati.
 
+# Il fac-simile
+
+L'atto di subentro **non si manda oscurato**: si genera senza nessuno dentro.
+
+`Fonti.omissioni` è un insieme di token che valgono sia come *fonte* di un
+campo (`tenant`, `uscente`, `assignment`, `deposito`) sia come singola
+*chiave* di segnaposto (`oneri_accessori`): i campi che vi ricadono non
+vengono nemmeno letti — al loro posto va `OMISSIS` — e non entrano fra i
+dati mancanti. Quest'ultima parte è la meno ovvia e la più importante: senza,
+un fac-simile non si potrebbe generare perché «manca l'uscente», che è
+esattamente ciò che non deve esserci.
+
+`fonti_facsimile(immobile)` costruisce le fonti **senza inquilino e senza
+assegnazione**: restano immobile, locatori, contratto registrato e clausole.
+
+Perché anche il destinatario è OMISSIS, contro quanto diceva il piano:
+il destinatario di un link è testo libero e spesso non è ancora in
+anagrafica, e un documento che non nomina né una persona né una stanza si
+prepara una volta e vale per tutti i candidati. `oneri_accessori` è omesso
+perché la quota condominio ammette un'eccezione per singolo inquilino
+(`TenantCondominioRate.tenant`): la cifra base non è detto sia quella di chi
+legge.
+
+Il PDF nasce come `PropertyDocument` di tipo **`FAC_SIMILE`**, `esponibile`
+e non visibile agli inquilini. **Non è una `copia_di`**: non è la copia di un
+originale in archivio. Per questo la sezione «Copie per la lettura» del
+frontend filtra `copia_di != null OR tipo == 'fac_simile'`, e «Altri
+documenti» esclude entrambi.
+
+Endpoint: `GET|POST property-documents/facsimile/?codice=…` — il GET dice
+cosa manca, il POST genera. Su dati incompleti il POST risponde 400 con
+l'anteprima intera, così il frontend mostra *dove* si compila invece di un
+messaggio d'errore.
+
 # Non fatto
 
-- Variante **anonima dell'atto di subentro** (`OMISSIS` sui campi
-  dell'uscente) generata direttamente come copia esponibile: fase 4 del
-  piano, non implementata.
+- Variante **personalizzata** dell'atto (con i dati del destinatario, come
+  diceva il piano): è a un argomento di distanza — togliere `tenant` da
+  `OMISSIONI_FACSIMILE` — ma vuole un destinatario in anagrafica.
 - Segnaposto `{{quota_condominio}}` nei chiarimenti: per ora il valore lo si
   scrive a mano, e resta quello del giorno in cui il link è stato mandato —
   che per un chiarimento è probabilmente giusto.

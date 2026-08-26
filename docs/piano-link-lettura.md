@@ -1,16 +1,22 @@
 # Piano: link di lettura dei documenti (pagina pubblica a token)
 
-> Stato al 2026-08-26: **fasi 1–3 implementate** (backend, FE gestione, pagina
-> pubblica). Restano la **fase 4** (variante anonima dell'atto di subentro) e
-> la **fase 5** (caricare le copie oscurate vere e comporre il primo
-> pacchetto), che dipende da file che l'applicazione non produce.
+> Stato al 2026-08-26: **fasi 1–5 implementate**. Le copie oscurate del
+> contratto e della side letter esistono (fatte una tantum fuori
+> dall'applicazione, come previsto) e in sviluppo il primo pacchetto è
+> composto. In produzione le copie le carica Sandro.
 >
-> Due scostamenti dal piano, decisi in corso d'opera:
+> Scostamenti dal piano, decisi in corso d'opera:
 > - **`copia_di` è `PROTECT`, non `SET_NULL`** — vedi Parte 3, nota in fondo;
 > - **l'anteprima del markdown passa da un endpoint**, non da un renderer JS
 >   nel browser: due renderer significherebbero un'anteprima che mente;
 > - **tre dei quattro filtri di lista sono client-side** — vedi la nota
->   sotto la tabella nella Parte 4.
+>   sotto la tabella nella Parte 4;
+> - **il fac-simile dell'atto non nomina nemmeno il destinatario** e non è
+>   una `copia_di` — vedi le Decisioni chiuse in fondo;
+> - **il testo scritto a mano è la premessa del pacchetto**, non una voce
+>   numerata fra gli allegati: `introduzione` è diventata markdown e apre la
+>   pagina. La voce di testo resta possibile per un chiarimento fra due
+>   allegati, ma non è più la via principale.
 
 Mandare a un inquilino in arrivo un link, senza account, che apra i documenti
 da leggere prima della firma, **senza i dati personali di chi ha firmato prima**.
@@ -161,6 +167,12 @@ scomodo.
 
 Il testo sta nella voce, non nel documento: due link possono avere
 chiarimenti diversi sugli stessi allegati.
+
+**Come è stato fatto**: l'editor di una premessa vuota si apre già compilato
+con una proposta (`TESTO_PREDEFINITO`, servita dal backend) — quello che si
+scrive quasi sempre, da ritoccare per il singolo link. Non contiene importi:
+un canone per stanza scritto lì impedirebbe di riusare lo stesso link per più
+stanze.
 
 Estensione possibile, non nel primo giro: segnaposto `{{quota_condominio}}`
 risolti alla generazione, come già fa il generatore documenti. Per ora il
@@ -316,10 +328,11 @@ indicizzabile, non revocabile.
    share, markdown sanitizzato, endpoint, test.
 2. ✅ FE gestione: «Copie per la lettura», compositore, copia link, revoca.
 3. ✅ FE pagina pubblica.
-4. ⬜ Generatore: variante `anonimo` dell'atto di subentro (`OMISSIS` sui campi
-   dell'uscente), che produce direttamente una copia esponibile.
-5. ⬜ Dati: caricare le due copie oscurate, spuntare le regole di convivenza,
-   comporre il primo pacchetto.
+4. ✅ Generatore: fac-simile dell'atto di subentro (`OMISSIS` su tutto ciò
+   che cambia da un caso all'altro), che nasce già esponibile.
+5. ✅ Dati (in sviluppo): copie oscurate del contratto e della side letter,
+   regole di convivenza spuntate, primo pacchetto composto. In produzione
+   restano da caricare le copie e da rifare il pacchetto.
 
 In produzione basta `migrate` (properties `0038`): i due campi nuovi hanno
 default, le due tabelle nuove nascono vuote. L'immagine va ricostruita —
@@ -328,9 +341,29 @@ default, le due tabelle nuove nascono vuote. L'immagine va ricostruita —
 # Decisioni chiuse
 
 - **Atto di subentro anonimo**: **sì, nel pacchetto**, come anteprima di cosa
-  si firmerà. `OMISSIS` sui campi dell'uscente; i dati del destinatario ci
-  sono, è lui la controparte. Il PDF generato nasce come copia esponibile,
-  legata all'assegnazione per cui è stato prodotto.
+  si firmerà.
+
+  *Come è stato fatto, e in cosa diverge dal piano.* Il piano diceva
+  «`OMISSIS` sui campi dell'uscente; i dati del destinatario ci sono, è lui
+  la controparte», e una copia legata all'assegnazione per cui era stata
+  prodotta. È stato implementato invece un **fac-simile**: `OMISSIS` anche
+  sul destinatario, sulla stanza, sul canone e sul deposito. Due ragioni.
+  La prima: il destinatario di un link è testo libero e spesso non è ancora
+  in anagrafica, quindi un atto compilato con i suoi dati non si potrebbe
+  generare. La seconda: un documento che non nomina né una persona né una
+  stanza si compone **una volta e vale per tutti i candidati e per tutte le
+  stanze** — che è quello che serve per riusare lo stesso link.
+
+  Restano nel fac-simile l'immobile, i locatori per esteso, gli estremi del
+  contratto registrato e tutte le clausole: cioè tutto ciò per cui lo si
+  manda a leggere.
+
+  Non è una `copia_di`: non è la copia di un originale in archivio, è un
+  documento generato che non ha originale. Ha un tipo suo
+  (`PropertyDocument.Tipo.FAC_SIMILE`), nasce `esponibile` e
+  `visibile_inquilini=False`, e compare accanto alle copie per la lettura.
+  La variante personalizzata resta a un argomento di distanza:
+  `Fonti.omissioni` è un insieme, basta toglierci `tenant`.
 - **Oscuramento dei PDF**: **fuori dall'applicazione**. Sandro prepara e
   carica i file già oscurati. Niente comando PyMuPDF: sul contratto reale
   coprirebbe una pagina su sette (le altre sono scansioni senza strato di
