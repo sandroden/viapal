@@ -117,7 +117,7 @@ function creaDocumentiStore(
        *  torna quello, non un messaggio. */
       async generaFacsimile(
         codice: string,
-      ): Promise<{ ok: boolean; mancanti?: DatoMancante[] }> {
+      ): Promise<{ ok: boolean; documento?: DocumentoFE; mancanti?: DatoMancante[] }> {
         this.uploading = true;
         this.errore = null;
         try {
@@ -125,7 +125,7 @@ function creaDocumentiStore(
             codice,
           });
           this.documenti.unshift(data);
-          return { ok: true };
+          return { ok: true, documento: data };
         } catch (e: unknown) {
           const corpo = (e as { response?: { data?: { mancanti?: DatoMancante[] } } })
             .response?.data;
@@ -337,6 +337,11 @@ function creaDocumentiStore(
     },
   });
 }
+
+/** L'unico documento che ha senso mandare a chi deve ancora decidere: la
+ *  comunicazione di cessione di fabbricato è un adempimento verso
+ *  l'autorità, non una carta che un candidato legge prima di firmare. */
+export const CODICE_FACSIMILE = 'atto_subentro_locazione';
 
 export const TIPI_DOCUMENTO_PROPRIETA: TipoDocumentoOption[] = [
   { label: 'Contratto di locazione', value: 'contratto' },

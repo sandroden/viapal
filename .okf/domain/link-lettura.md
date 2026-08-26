@@ -230,7 +230,22 @@ documenti» esclude entrambi.
 Endpoint: `GET|POST property-documents/facsimile/?codice=…` — il GET dice
 cosa manca, il POST genera. Su dati incompleti il POST risponde 400 con
 l'anteprima intera, così il frontend mostra *dove* si compila invece di un
-messaggio d'errore.
+messaggio d'errore (`DatiMancantiDialog`, condiviso con il compositore).
+
+# Tutto si raggiunge da dove si compone
+
+Regola imparata due volte sullo stesso punto: se una carta può stare in un
+pacchetto, ci si deve arrivare **dal compositore**, non sapendo che altrove
+esiste un bottone. Il dialog «Aggiungi un documento» ha quindi tre strade:
+
+| Cosa | Come ci arriva |
+|---|---|
+| già esponibile | il select |
+| carta della casa non ancora spuntata | «Esponi e aggiungi» — solo senza `contract`: chi ha un contratto nomina qualcuno e vuole una copia oscurata |
+| fac-simile non ancora generato | «Genera e aggiungi» |
+
+Prima la spunta stava solo in «Altri documenti» e il fac-simile solo nella
+sua sezione: da dove si compone non c'era modo di sapere che esistessero.
 
 # Non fatto
 

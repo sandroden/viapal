@@ -91,34 +91,11 @@
 
   <CopiaLetturaDialog v-model="dialogAperto" :originale="originaleScelto" />
 
-  <!-- I dati mancanti non si chiedono qui: si dice dove stanno di casa,
-       come già fa il dialog dei documenti generati. -->
-  <q-dialog v-model="mancantiAperto">
-    <q-card class="cl-mancanti">
-      <q-card-section class="cl-mancanti__titolo">
-        Il fac-simile non si può ancora generare
-      </q-card-section>
-      <q-card-section>
-        <p class="cl-mancanti__intro">
-          Mancano {{ mancanti.length }} {{ mancanti.length === 1 ? 'dato' : 'dati' }}
-          dell'immobile o del contratto. Si compilano dove stanno di casa: da lì
-          torni e generi.
-        </p>
-        <ul class="cl-mancanti__lista">
-          <li v-for="m in mancanti" :key="m.campo + m.etichetta">
-            <div>
-              <div class="cl-mancanti__eti">{{ m.etichetta }}</div>
-              <div class="cl-mancanti__dove">{{ m.dove }}</div>
-            </div>
-            <BtnSoft etichetta="Vai" icona="open" variante="ghost" @click="vai(m)" />
-          </li>
-        </ul>
-      </q-card-section>
-      <q-card-actions align="right">
-        <q-btn v-close-popup flat label="Chiudi" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+  <DatiMancantiDialog
+    v-model="mancantiAperto"
+    :mancanti="mancanti"
+    titolo="Il fac-simile non si può ancora generare"
+  />
 
   <ModificaDocumentoDialog
     v-model="modificaAperta"
@@ -133,9 +110,9 @@
 import { computed, onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { api } from 'boot/axios';
-import { useRouter } from 'vue-router';
 import {
   useDocumentiProprietaStore,
+  CODICE_FACSIMILE,
   TIPI_DOCUMENTO_PROPRIETA,
   type DatoMancante,
   type DocumentoFE,
@@ -148,18 +125,13 @@ import EtichettaStato from './ui/EtichettaStato.vue';
 import BtnIcona from './ui/BtnIcona.vue';
 import BtnSoft from './ui/BtnSoft.vue';
 import CopiaLetturaDialog from './CopiaLetturaDialog.vue';
+import DatiMancantiDialog from './DatiMancantiDialog.vue';
 import ModificaDocumentoDialog from './ModificaDocumentoDialog.vue';
 
 defineProps<{ puoModificare: boolean }>();
 
 const $q = useQuasar();
-const router = useRouter();
 const store = useDocumentiProprietaStore();
-
-/** L'unico documento che ha senso mandare a leggere: la comunicazione di
- *  cessione di fabbricato è un adempimento verso l'autorità, non una carta
- *  che un candidato legge prima di decidere. */
-const CODICE_FACSIMILE = 'atto_subentro_locazione';
 
 const mancantiAperto = ref(false);
 const mancanti = ref<DatoMancante[]>([]);
@@ -257,15 +229,6 @@ async function generaFacsimile() {
   $q.notify({ type: 'negative', message: store.errore ?? 'Generazione non riuscita.' });
 }
 
-function vai(m: DatoMancante) {
-  if (m.esterno) {
-    window.open(m.link, '_blank', 'noopener');
-    return;
-  }
-  mancantiAperto.value = false;
-  void router.push(m.link);
-}
-
 function conferma(d: DocumentoFE) {
   $q.dialog({
     title: 'Eliminare il documento?',
@@ -313,42 +276,5 @@ defineExpose({ apriCaricamento });
 .cl-esp:focus-visible {
   outline: 2px solid var(--vp-terra);
   outline-offset: 1px;
-}
-.cl-mancanti {
-  width: 520px;
-  max-width: 93vw;
-}
-.cl-mancanti__titolo {
-  font-family: var(--vp-serif, Georgia, serif);
-  font-size: 18px;
-}
-.cl-mancanti__intro {
-  font-size: 13px;
-  color: var(--vp-ink-2);
-  line-height: 1.5;
-  margin: 0 0 10px;
-}
-.cl-mancanti__lista {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.cl-mancanti__lista li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--vp-paper-3);
-}
-.cl-mancanti__lista li:last-child {
-  border-bottom: none;
-}
-.cl-mancanti__eti {
-  font-size: 13.5px;
-}
-.cl-mancanti__dove {
-  font-size: 12px;
-  color: var(--vp-ink-3);
 }
 </style>

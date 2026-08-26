@@ -91,7 +91,11 @@
         <div class="lk-aggiungi">
           <BtnSoft
             etichetta="Aggiungi documento"
-            :disabilitato="esponibiliDisponibili.length === 0 && daEsporre.length === 0"
+            :disabilitato="
+              esponibiliDisponibili.length === 0 &&
+              daEsporre.length === 0 &&
+              facsimileEsiste
+            "
             data-testid="aggiungi-documento"
             @click="aggiuntaAperta = true"
           />
@@ -104,7 +108,9 @@
           />
         </div>
         <div
-          v-if="esponibiliDisponibili.length === 0 && daEsporre.length === 0"
+          v-if="
+            esponibiliDisponibili.length === 0 && daEsporre.length === 0 && facsimileEsiste
+          "
           class="lk-nota"
         >
           Non c'è altro da aggiungere. Per mandare una carta che nomina
@@ -169,6 +175,29 @@
             />
           </div>
         </template>
+
+        <!-- Il fac-simile non esiste finché non lo si genera, e da qui non
+             c'era modo di sapere che si potesse. È l'unica carta del
+             pacchetto che l'applicazione produce da sé. -->
+        <template v-if="!facsimileEsiste">
+          <div class="lk-scelta__eti">Da generare</div>
+          <div class="lk-scelta__nota">
+            Lo stesso atto che firmerai, con «OMISSIS» al posto dei nomi, della
+            stanza e degli importi: si prepara una volta e vale per tutti.
+          </div>
+          <div class="lk-scelta__riga">
+            <VpIcon name="doc" :size="14" />
+            <span class="lk-scelta__nome">Atto di subentro — fac-simile</span>
+            <BtnSoft
+              etichetta="Genera e aggiungi"
+              icona="plus"
+              variante="ghost"
+              :disabilitato="documenti.uploading || store.salvataggio"
+              data-testid="genera-e-aggiungi-facsimile"
+              @click="void generaEAggiungi()"
+            />
+          </div>
+        </template>
       </q-card-section>
       <q-card-actions align="right">
         <q-btn v-close-popup flat label="Annulla" />
@@ -185,6 +214,12 @@
       </q-card-actions>
     </q-card>
   </q-dialog>
+
+  <DatiMancantiDialog
+    v-model="mancantiAperto"
+    :mancanti="mancanti"
+    titolo="Il fac-simile non si può ancora generare"
+  />
 
   <!-- Il testo di chiarimento: markdown a sinistra, com'è reso a destra.
        L'anteprima la produce il backend, con lo stesso sanitizzatore della
@@ -259,10 +294,16 @@
 import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { useLinkLetturaStore, type LinkLettura, type VoceLink } from 'stores/linkLettura';
-import { useDocumentiProprietaStore, type DocumentoFE } from 'stores/documenti';
+import {
+  useDocumentiProprietaStore,
+  CODICE_FACSIMILE,
+  type DatoMancante,
+  type DocumentoFE,
+} from 'stores/documenti';
 import VpIcon from 'components/utenze/VpIcon.vue';
 import BtnIcona from './ui/BtnIcona.vue';
 import BtnSoft from './ui/BtnSoft.vue';
+import DatiMancantiDialog from './DatiMancantiDialog.vue';
 
 const props = defineProps<{ linkId: number | null }>();
 const aperto = defineModel<boolean>({ required: true });
@@ -323,6 +364,36 @@ const daEsporre = computed(() => {
   );
 });
 
+/** Un fac-simile per immobile basta: non nomina nessuno, quindi non c'è
+ *  niente che lo leghi a un destinatario o a una stanza. */
+const facsimileEsiste = computed(() =>
+  documenti.documenti.some((d) => d.esponibile_per_natura),
+);
+
+async function generaEAggiungi() {
+  if (!link.value) return;
+  const esito = await documenti.generaFacsimile(CODICE_FACSIMILE);
+  if (!esito.ok || !esito.documento) {
+    if (esito.mancanti?.length) {
+      mancanti.value = esito.mancanti;
+      aggiuntaAperta.value = false;
+      mancantiAperto.value = true;
+      return;
+    }
+    $q.notify({ type: 'negative', message: documenti.errore ?? 'Non riuscito.' });
+    return;
+  }
+  const ok = await store.aggiungiVoce({
+    share: link.value.id,
+    documento: esito.documento.id,
+  });
+  if (!ok) {
+    $q.notify({ type: 'negative', message: store.errore ?? 'Voce non aggiunta.' });
+    return;
+  }
+  aggiuntaAperta.value = false;
+}
+
 async function esponiEAggiungi(d: DocumentoFE) {
   if (!link.value) return;
   if (!(await documenti.impostaEsponibile(d.id, true))) {
@@ -357,6 +428,8 @@ async function salvaTestata() {
 
 const aggiuntaAperta = ref(false);
 const documentoDaAggiungere = ref<number | null>(null);
+const mancantiAperto = ref(false);
+const mancanti = ref<DatoMancante[]>([]);
 
 async function aggiungiDocumento() {
   if (!link.value || !documentoDaAggiungere.value) return;
