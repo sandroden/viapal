@@ -51,7 +51,7 @@
             <span class="lk-voce__n">{{ i + 1 }}.</span>
             <VpIcon :name="v.tipo === 'documento' ? 'doc' : 'message'" :size="14" />
             <span class="lk-voce__titolo">{{ v.titolo_effettivo || 'Senza titolo' }}</span>
-            <span v-if="v.tipo === 'testo'" class="lk-voce__tag">chiarimento</span>
+            <span v-if="v.tipo === 'testo'" class="lk-voce__tag">nota</span>
             <span class="lk-voce__spazio" />
             <BtnIcona
               icona="up"
@@ -70,9 +70,9 @@
             <BtnIcona
               v-if="v.tipo === 'testo'"
               icona="edit"
-              etichetta="Modifica il testo"
+              etichetta="Modifica la nota"
               tooltip="Modifica"
-              @click="void apriTesto(v)"
+              @click="apriTesto(v)"
             />
             <BtnIcona
               icona="trash"
@@ -83,8 +83,8 @@
             />
           </div>
           <div v-if="link.voci.length === 0" class="lk-vuoto">
-            Pacchetto vuoto: aggiungi le carte da leggere e, se serve, un
-            chiarimento scritto.
+            Nessun allegato: aggiungi le carte da leggere. La spiegazione sta
+            nella premessa, qui sopra.
           </div>
         </div>
 
@@ -96,10 +96,11 @@
             @click="aggiuntaAperta = true"
           />
           <BtnSoft
-            etichetta="Scrivi un testo"
+            etichetta="Nota su un allegato"
             icona="message"
+            variante="ghost"
             data-testid="aggiungi-testo"
-            @click="void apriTesto(null)"
+            @click="apriTesto(null)"
           />
         </div>
         <div v-if="esponibiliDisponibili.length === 0" class="lk-nota">
@@ -184,7 +185,7 @@
           <!-- Solo a campo vuoto: rimettere la proposta su un testo già
                scritto vorrebbe dire cancellarlo. -->
           <BtnSoft
-            v-if="!corpoMd.trim()"
+            v-if="modificaLaPremessa && !corpoMd.trim()"
             etichetta="Parti dal testo proposto"
             icona="refresh"
             variante="ghost"
@@ -334,7 +335,11 @@ let timerAnteprima: ReturnType<typeof setTimeout> | null = null;
  *  quella che si scrive quasi sempre: da lì si ritocca per questo link. Su
  *  una voce esistente non si tocca niente — quello che c'è è già stato
  *  deciso. */
-async function apriTesto(v: VoceLink | null) {
+/** Una nota è un commento su un allegato: si apre in bianco. La proposta è
+ *  della premessa e solo di quella — è lì che va il testo che si scrive
+ *  quasi sempre, e vederla comparire anche qui faceva sembrare i due
+ *  bottoni la stessa cosa. */
+function apriTesto(v: VoceLink | null) {
   modificaLaPremessa.value = false;
   voceInModifica.value = v;
   testoAperto.value = true;
@@ -347,7 +352,6 @@ async function apriTesto(v: VoceLink | null) {
   titoloTesto.value = '';
   corpoMd.value = '';
   anteprima.value = '';
-  await proponi();
 }
 
 /** La premessa: stesso editor, e su una premessa vuota parte dalla
@@ -380,7 +384,7 @@ function svuotaTesto() {
 
 const titoloEditor = computed(() => {
   if (modificaLaPremessa.value) return 'Premessa del pacchetto';
-  return voceInModifica.value ? 'Modifica il chiarimento' : 'Scrivi un chiarimento';
+  return voceInModifica.value ? 'Modifica la nota' : 'Nota su un allegato';
 });
 
 function chiediAnteprima() {
