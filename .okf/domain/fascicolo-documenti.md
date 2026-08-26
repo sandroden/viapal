@@ -163,6 +163,13 @@ Conseguenze da ricordare:
   senza, l'inquilino non vede le carte di nessun contratto. Le assegnazioni
   esistenti prima della migrazione `0034` ce l'hanno vuoto: finché non lo si
   compila, nessun inquilino vede documenti di contratto.
+  `manage.py collega_assegnazioni_contratto --contratto "<nome>" [--dal] [--apply]`
+  collega in blocco quelle **iniziate dalla decorrenza in poi** — lo stesso
+  criterio con cui la prima assegnazione propone il contratto. Non tocca chi
+  un contratto ce l'ha già, e **non indovina i casi a cavallo** (chi c'era
+  prima della decorrenza ed è rimasto dopo): li elenca e si ferma, perché lì
+  serve una decisione di merito. A Via Palestrina, 2026-08-26: 7 occupazioni
+  collegate al «Collettivo 2025», 3 a cavallo lasciate a Sandro.
 - Alla prima assegnazione il contratto in vigore alla data d'ingresso è
   **proposto**, non imposto: un `contract: null` esplicito nel payload
   significa "nessun contratto" e viene rispettato.
