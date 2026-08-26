@@ -15,8 +15,13 @@
 >   una `copia_di` — vedi le Decisioni chiuse in fondo;
 > - **il testo scritto a mano è la premessa del pacchetto**, non una voce
 >   numerata fra gli allegati: `introduzione` è diventata markdown e apre la
->   pagina. La voce di testo resta possibile per un chiarimento fra due
->   allegati, ma non è più la via principale.
+>   pagina. La voce di testo resta possibile come *nota* su un allegato, ma
+>   non è più la via principale;
+> - **la sezione non si chiama «Copie per la lettura»** ma «Documenti
+>   fac-simile senza dati personali» (nome scelto da Sandro): il nome del
+>   piano non diceva la cosa che conta, cioè che i dati personali non ci
+>   sono. Nel lessico visibile «copia oscurata» e «fac-simile» restano due
+>   cose distinte.
 
 Mandare a un inquilino in arrivo un link, senza account, che apra i documenti
 da leggere prima della firma, **senza i dati personali di chi ha firmato prima**.
@@ -151,6 +156,14 @@ testo dell'atto di subentro): due cose diverse con lo stesso nome a due
 centimetri di distanza. «Copia per la lettura» dice cos'è. Se preferisci
 un'altra parola è una stringa da cambiare.
 
+**Come è finita**: Sandro l'ha cambiata. Il nome non diceva la cosa che
+conta — che i dati personali non ci sono — e la sezione si chiama
+**«Documenti fac-simile senza dati personali»**. Nel resto delle stringhe
+«copia oscurata» e «fac-simile» restano due cose distinte: la prima è la
+versione redatta di un documento vero, la seconda un documento che non ha
+mai avuto nessuno dentro. Il resto di questo piano conserva il lessico
+originale, che è quello con cui è stato approvato.
+
 ## Il testo di chiarimento
 
 La seconda forma di una voce: titolo + corpo in **markdown** (grassetto,
@@ -188,7 +201,7 @@ Su `PropertyDocument`, due campi nuovi:
 ```python
 copia_di = FK("self", PROTECT, null=True, blank=True,
               related_name="copie_lettura",
-              verbose_name="copia per la lettura di",
+              verbose_name="copia oscurata di",
               help_text="Versione priva dei dati personali di terzi. "
                         "Non compare fra i documenti ufficiali.")
 esponibile = BooleanField(default=False,

@@ -23,9 +23,10 @@ codice da solo non racconta.
 Su `PropertyDocument`:
 
 - **`copia_di`** (FK a sé stesso) — «questo non è un originale, è la copia
-  per la lettura di quell'altro». Valorizzato ⇒ **fuori da tutte le liste
+  oscurata di quell'altro». Valorizzato ⇒ **fuori da tutte le liste
   ufficiali** (chip del contratto, «Altri documenti», pagina
-  `/i/documenti` dell'inquilino), dentro la sezione «Copie per la lettura».
+  `/i/documenti` dell'inquilino), dentro la sezione «Documenti fac-simile
+  senza dati personali».
 - **`esponibile`** (bool) — «può stare in un link». Serve alle regole di
   convivenza, che sono un documento ufficiale a tutti gli effetti e vanno
   esposte così come sono. Una copia nasce con la spunta già messa.
@@ -83,15 +84,35 @@ Log minimo: `visite` e `ultima_visita`, incrementati con
 `update(visite=F("visite")+1)`. Niente IP né user-agent — sono dati di un
 terzo che non serve conservare.
 
-# La premessa e i chiarimenti
+# Come si chiamano le cose
+
+Sono nomi scelti da Sandro, e le due parole non sono sinonimi:
+
+* **copia oscurata** — la versione di un documento vero da cui sono stati
+  tolti i dati di chi ha firmato prima (`copia_di` valorizzato);
+* **fac-simile** — un documento generato che non ha mai avuto nessuno dentro
+  (`tipo = FAC_SIMILE`).
+
+La sezione che le raccoglie si chiama **«Documenti fac-simile senza dati
+personali»**: «Copie per la lettura», che era il nome del piano, non diceva
+la cosa che conta, cioè che i dati personali non ci sono.
+
+Nel pacchetto il testo scritto a mano ha due forme e due nomi: la
+**premessa**, che apre la pagina, e la **nota**, che commenta un allegato.
+
+# La premessa e le note
 
 Il testo scritto a mano ha **due posti**, e non sono equivalenti:
 
 * **`DocumentShare.introduzione`** — la *premessa*: apre la pagina e spiega
   tutto quello che segue, poi vengono gli allegati. È il posto normale del
   testo, ed è lì che va la proposta.
-* **`ShareItem.corpo_md`** — un chiarimento *fra* due allegati, quando serve
-  dire qualcosa su uno di essi. Resta possibile, non è la via principale.
+* **`ShareItem.corpo_md`** — una *nota* su un allegato, quando serve dire
+  qualcosa su uno di essi. Resta possibile, non è la via principale.
+
+Nel compositore i due bottoni erano indistinguibili finché anche la nota si
+apriva precompilata con la proposta: la proposta è della premessa e solo di
+quella, la nota si apre in bianco.
 
 Entrambi sono markdown reso e sanitizzato **nel `save()` del modello**
 (`introduzione_html` / `corpo_html`), con `markdown` + `nh3` e allowlist
@@ -197,7 +218,7 @@ legge.
 
 Il PDF nasce come `PropertyDocument` di tipo **`FAC_SIMILE`**, `esponibile`
 e non visibile agli inquilini. **Non è una `copia_di`**: non è la copia di un
-originale in archivio. Per questo la sezione «Copie per la lettura» del
+originale in archivio. Per questo la sezione «Documenti fac-simile senza dati personali» del
 frontend filtra `copia_di != null OR tipo == 'fac_simile'`, e «Altri
 documenti» esclude entrambi.
 
