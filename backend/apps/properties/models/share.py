@@ -57,6 +57,46 @@ def rendi_markdown(testo):
     )
 
 
+#: I paragrafi della proposta, uno per elemento. Ciascuno è una **riga sola**
+#: nel markdown prodotto: il renderer ha ``nl2br`` attivo — un a capo scritto
+#: a mano è un a capo voluto, che è quello che si aspetta chi scrive in una
+#: textarea — quindi un testo mandato a capo per stare comodo nel sorgente
+#: uscirebbe spezzato. Le stringhe qui sotto sono concatenate implicitamente:
+#: il sorgente resta stretto, l'output no.
+_PARAGRAFI = (
+    "Il canone della stanza, la quota condominio e le utenze si pagano "
+    "**una volta sola al mese**, con un unico bonifico.",
+
+    "- **Canone della stanza** — l'importo della stanza che ti interessa è "
+    "indicato nel contratto, e te lo confermiamo prima della firma.\n"
+    "- **Quota condominio** — importo fisso mensile che copre le spese "
+    "condominiali dell'appartamento.\n"
+    "- **Luce, gas e TARI** — non sono forfettarie: si dividono a consumo "
+    "fra chi ha abitato nel periodo della bolletta, in proporzione ai "
+    "giorni. Ricevi il dettaglio di come è stato calcolato, bolletta per "
+    "bolletta.\n"
+    "- **Deposito cauzionale** — si versa all'ingresso e si restituisce "
+    "alla fine, al netto di eventuali danni.",
+
+    "Quando entri ricevi un accesso all'area riservata: lì trovi la "
+    "situazione aggiornata, il dettaglio delle utenze e i documenti.",
+
+    "Se qualcosa non torna, chiedi prima di firmare.",
+)
+
+#: Il chiarimento che si mette quasi sempre, come **proposta**: l'editor lo
+#: precompila e da lì si ritocca per il singolo link. Non descrive nessuna
+#: stanza e non contiene nessun importo — così lo stesso pacchetto vale per
+#: più stanze, e una cifra che cambia non resta scritta in un link già
+#: mandato. Sta qui e non nel frontend perché è testo, non interfaccia: il
+#: giorno in cui servirà diverso da immobile a immobile diventa una riga in
+#: tabella senza toccare la pagina che lo mostra.
+TESTO_PREDEFINITO = {
+    "titolo": "Cosa pagherai ogni mese",
+    "corpo_md": "\n\n".join(_PARAGRAFI) + "\n",
+}
+
+
 def genera_token():
     """Token del link. Funzione a livello di modulo, non una lambda né una
     chiamata diretta: ``default=secrets.token_urlsafe(32)`` sarebbe valutato
@@ -97,9 +137,14 @@ class DocumentShare(TimestampedModel):
     )
     introduzione = models.TextField(
         blank=True,
-        verbose_name="introduzione",
-        help_text="Due righe in cima alla pagina, prima delle voci.",
+        verbose_name="premessa (markdown)",
+        help_text=(
+            "La spiegazione che apre la pagina, prima degli allegati: cosa "
+            "si paga, come funzionano le utenze, cosa succede all'ingresso. "
+            "Markdown, come i chiarimenti."
+        ),
     )
+    introduzione_html = models.TextField(blank=True, editable=False)
     attivo = models.BooleanField(
         default=True,
         verbose_name="attivo",
@@ -125,6 +170,16 @@ class DocumentShare(TimestampedModel):
 
     def __str__(self):
         return f"Link per {self.destinatario}"
+
+    def save(self, *args, **kwargs):
+        # Come per ``ShareItem``: il markdown è la fonte, l'HTML è cache
+        # sanitizzata e non si edita a mano. Un ``update_fields`` che non lo
+        # nomina lo lascerebbe indietro rispetto al testo.
+        self.introduzione_html = rendi_markdown(self.introduzione)
+        campi = kwargs.get("update_fields")
+        if campi is not None and "introduzione" in campi:
+            kwargs["update_fields"] = [*campi, "introduzione_html"]
+        super().save(*args, **kwargs)
 
     def clean(self):
         super().clean()

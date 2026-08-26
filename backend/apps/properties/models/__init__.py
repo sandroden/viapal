@@ -18,7 +18,13 @@ from .property import (
     Room,
     RoomAssignment,
 )
-from .share import DocumentShare, ShareItem, genera_token, rendi_markdown
+from .share import (
+    TESTO_PREDEFINITO,
+    DocumentShare,
+    ShareItem,
+    genera_token,
+    rendi_markdown,
+)
 from .tenant import TenantDocument, TenantProfile
 
 __all__ = [
@@ -38,6 +44,7 @@ __all__ = [
     "Contract",
     "DocumentTemplate",
     "DocumentShare",
+    "TESTO_PREDEFINITO",
     "ShareItem",
     "genera_token",
     "rendi_markdown",

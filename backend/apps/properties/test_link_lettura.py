@@ -14,6 +14,7 @@ Il resto sono le trappole del token: un link revocato è 404, la voce di un
 altro share è 404, e il file non deve finire indicizzato.
 """
 import datetime
+import re
 from decimal import Decimal
 
 import pytest
@@ -31,6 +32,7 @@ from properties.models import (
     Room,
     RoomAssignment,
     ShareItem,
+    TESTO_PREDEFINITO,
     TenantProfile,
     rendi_markdown,
 )
@@ -129,7 +131,7 @@ def test_link_revocato_404(client, immobile):
 
 
 def test_anonimo_legge_il_pacchetto_e_conta_le_aperture(client, immobile):
-    share = _share(immobile, introduzione="Ciao, ecco le carte.")
+    share = _share(immobile, introduzione="Ciao, **ecco le carte**.")
     doc = _doc(immobile, esponibile=True, descrizione="Regole di convivenza")
     ShareItem.objects.create(share=share, documento=doc, ordine=0)
     ShareItem.objects.create(
@@ -140,6 +142,7 @@ def test_anonimo_legge_il_pacchetto_e_conta_le_aperture(client, immobile):
 
     assert r.status_code == 200
     assert r.data["destinatario"] == "Simona Bagnato"
+    assert "<strong>ecco le carte</strong>" in r.data["introduzione_html"]
     assert r.data["casa"]["nome"] == immobile.nome
     assert [v["titolo"] for v in r.data["voci"]] == [
         "Regole di convivenza",
@@ -159,7 +162,7 @@ def test_il_pacchetto_non_espone_dati_interni(client, immobile):
 
     r = client.get(f"/api/v1/public/documenti/{share.token}/")
 
-    assert set(r.data) == {"casa", "destinatario", "introduzione", "voci"}
+    assert set(r.data) == {"casa", "destinatario", "introduzione_html", "voci"}
     assert set(r.data["voci"][0]) == {"id", "tipo", "titolo", "corpo_html"}
 
 
@@ -381,6 +384,38 @@ def test_eliminare_un_documento_in_un_link_e_bloccato(api, immobile):
 # ── Il testo di chiarimento ───────────────────────────────────────────────
 
 
+def test_premessa_resa_e_sanitizzata(immobile):
+    """La premessa apre la pagina e spiega tutto quello che segue: è
+    markdown come i chiarimenti, e passa dallo stesso sanitizzatore."""
+    share = _share(immobile, introduzione="## Ciao\n\n<script>x</script>**bene**")
+
+    assert "<h2>Ciao</h2>" in share.introduzione_html
+    assert "<script" not in share.introduzione_html
+    assert "<strong>bene</strong>" in share.introduzione_html
+
+
+def test_premessa_si_rigenera_anche_con_update_fields(immobile):
+    """``save(update_fields=["introduzione"])`` non deve lasciare indietro
+    l'HTML: la pagina pubblica mostra quello, non il markdown."""
+    share = _share(immobile, introduzione="prima")
+    share.introduzione = "**dopo**"
+    share.save(update_fields=["introduzione", "updated_at"])
+
+    share.refresh_from_db()
+    assert "<strong>dopo</strong>" in share.introduzione_html
+
+
+def test_premessa_si_scrive_dall_api(api, immobile):
+    share = _share(immobile)
+
+    r = api.patch(
+        f"{SHARES}{share.pk}/", {"introduzione": "**ciao**"}, format="json"
+    )
+
+    assert r.status_code == 200
+    assert "<strong>ciao</strong>" in r.data["introduzione_html"]
+
+
 def test_markdown_sanitizzato(immobile):
     share = _share(immobile)
     voce = ShareItem.objects.create(
@@ -399,6 +434,31 @@ def test_markdown_niente_immagini_ne_onclick():
     html = rendi_markdown('![x](http://evil/x.png)\n\n<p onclick="x()">ciao</p>')
     assert "<img" not in html
     assert "onclick" not in html
+
+
+def test_testo_predefinito_e_una_proposta(api):
+    """L'editor di un chiarimento nuovo parte da qui. Due paletti: che ci
+    sia, e che non contenga importi — un link vale per più stanze, e una
+    cifra scritta dentro resterebbe quella del giorno dell'invio."""
+    r = api.get(f"{SHARES}testo-predefinito/")
+
+    assert r.status_code == 200
+    assert r.data["titolo"]
+    assert r.data["corpo_md"] == TESTO_PREDEFINITO["corpo_md"]
+    assert "€" not in r.data["corpo_md"]
+    assert not re.search(r"\d+\s*(€|euro)", r.data["corpo_md"], re.I)
+
+
+def test_testo_predefinito_e_markdown_valido(api):
+    """Il testo si vede reso, non com'è scritto: se il segno di spunta o
+    l'elenco non passano il sanitizzatore, il difetto è qui."""
+    html = rendi_markdown(TESTO_PREDEFINITO["corpo_md"])
+
+    assert "<li>" in html and "<strong>" in html
+    assert "<script" not in html
+    # ``nl2br`` è attivo: un paragrafo mandato a capo nel sorgente uscirebbe
+    # spezzato a metà frase. Nessun <br> dentro un paragrafo o una voce.
+    assert "<br" not in html
 
 
 def test_anteprima_markdown_usa_lo_stesso_renderer(api):

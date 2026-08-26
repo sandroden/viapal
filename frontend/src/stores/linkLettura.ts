@@ -27,6 +27,9 @@ export interface LinkLettura {
   destinatario: string;
   tenant: number | null;
   introduzione: string;
+  /** La premessa resa e sanitizzata dal backend: si mostra questa, mai il
+   *  markdown grezzo. */
+  introduzione_html: string;
   attivo: boolean;
   visite: number;
   ultima_visita: string | null;
@@ -197,6 +200,24 @@ export const useLinkLetturaStore = defineStore('linkLettura', {
       } catch (e: unknown) {
         this.errore = messaggioErrore(e, 'Riordino non riuscito.');
         return false;
+      }
+    },
+
+    /** La proposta con cui si apre l'editor di un chiarimento nuovo.
+     *
+     *  Viene dal backend e non da una costante qui: è testo, non
+     *  interfaccia, e il giorno in cui servirà diverso da immobile a
+     *  immobile cambia là senza toccare questa pagina. Se la richiesta
+     *  fallisce si apre vuoto: una proposta mancante non deve impedire di
+     *  scrivere. */
+    async testoPredefinito(): Promise<{ titolo: string; corpo_md: string }> {
+      try {
+        const { data } = await api.get<{ titolo: string; corpo_md: string }>(
+          `${SHARES}testo-predefinito/`,
+        );
+        return data;
+      } catch {
+        return { titolo: '', corpo_md: '' };
       }
     },
 

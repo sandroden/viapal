@@ -21,9 +21,15 @@
         <div v-if="pacchetto.casa.indirizzo" class="pk-testata__indirizzo">
           {{ pacchetto.casa.indirizzo }}
         </div>
-        <p v-if="pacchetto.introduzione" class="pk-testata__intro">
-          {{ pacchetto.introduzione }}
-        </p>
+        <!-- La premessa spiega tutto quello che segue: sta in cima e non
+             fra gli allegati numerati. Markdown reso e sanitizzato dal
+             backend, come i chiarimenti. -->
+        <!-- eslint-disable-next-line vue/no-v-html -->
+        <div
+          v-if="pacchetto.introduzione_html"
+          class="pk-md pk-testata__intro"
+          v-html="pacchetto.introduzione_html"
+        />
       </header>
 
       <section v-for="(v, i) in pacchetto.voci" :key="v.id" class="pk-voce">
@@ -79,7 +85,7 @@ interface VocePubblica {
 interface Pacchetto {
   casa: { nome: string; indirizzo: string };
   destinatario: string;
-  introduzione: string;
+  introduzione_html: string;
   voci: VocePubblica[];
 }
 
@@ -156,11 +162,7 @@ onMounted(() => {
   color: var(--vp-ink-3, #857e76);
 }
 .pk-testata__intro {
-  margin: 14px 0 0;
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--vp-ink-2, #5a5550);
-  white-space: pre-line;
+  margin-top: 16px;
 }
 .pk-voce {
   margin-bottom: 34px;

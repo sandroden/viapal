@@ -16,15 +16,30 @@
           data-testid="link-destinatario"
           @blur="salvaTestata"
         />
-        <q-input
-          v-model="introduzione"
-          label="Due righe di introduzione"
-          type="textarea"
-          autogrow
-          outlined
-          dense
-          @blur="salvaTestata"
-        />
+        <!-- La premessa spiega tutto quello che segue: sta in cima alla
+             pagina, prima degli allegati, e si scrive nello stesso editor
+             dei chiarimenti. -->
+        <div class="lk-premessa">
+          <div class="lk-premessa__testa">
+            <span class="lk-premessa__eti">Premessa</span>
+            <BtnSoft
+              :etichetta="link?.introduzione ? 'Modifica' : 'Scrivi la premessa'"
+              :icona="link?.introduzione ? 'edit' : 'plus'"
+              variante="ghost"
+              data-testid="modifica-premessa"
+              @click="void apriPremessa()"
+            />
+          </div>
+          <!-- eslint-disable-next-line vue/no-v-html -->
+          <div
+            v-if="link?.introduzione_html"
+            class="lk-md lk-premessa__corpo"
+            v-html="link.introduzione_html"
+          />
+          <div v-else class="lk-premessa__vuota">
+            Nessuna premessa: la pagina si apre direttamente con gli allegati.
+          </div>
+        </div>
 
         <div v-if="link" class="lk-voci">
           <div
@@ -57,7 +72,7 @@
               icona="edit"
               etichetta="Modifica il testo"
               tooltip="Modifica"
-              @click="apriTesto(v)"
+              @click="void apriTesto(v)"
             />
             <BtnIcona
               icona="trash"
@@ -84,7 +99,7 @@
             etichetta="Scrivi un testo"
             icona="message"
             data-testid="aggiungi-testo"
-            @click="apriTesto(null)"
+            @click="void apriTesto(null)"
           />
         </div>
         <div v-if="esponibiliDisponibili.length === 0" class="lk-nota">
@@ -141,10 +156,13 @@
   <q-dialog v-model="testoAperto" @hide="svuotaTesto">
     <q-card class="lk-testo">
       <q-card-section class="lk-comp__titolo">
-        {{ voceInModifica ? 'Modifica il chiarimento' : 'Scrivi un chiarimento' }}
+        {{ titoloEditor }}
       </q-card-section>
       <q-card-section class="lk-testo__corpo">
+        <!-- La premessa non ha titolo: è il cappello della pagina, non
+             una voce dell'elenco. -->
         <q-input
+          v-if="!modificaLaPremessa"
           v-model="titoloTesto"
           label="Titolo"
           outlined
@@ -159,9 +177,19 @@
             outlined
             label="Testo (markdown)"
             hint="**grassetto**, - elenchi, ## titoli, tabelle"
-            input-style="min-height: 190px"
+            input-style="height: 100%"
             data-testid="corpo-markdown"
             @update:model-value="chiediAnteprima"
+          />
+          <!-- Solo a campo vuoto: rimettere la proposta su un testo già
+               scritto vorrebbe dire cancellarlo. -->
+          <BtnSoft
+            v-if="!corpoMd.trim()"
+            etichetta="Parti dal testo proposto"
+            icona="refresh"
+            variante="ghost"
+            data-testid="testo-proposto"
+            @click="void proponi()"
           />
           <div class="lk-testo__prev">
             <div class="lk-testo__prev-eti">Anteprima</div>
@@ -206,14 +234,21 @@ const link = computed<LinkLettura | null>(
 );
 
 const destinatario = ref('');
-const introduzione = ref('');
+/** Da quale link viene il valore che sta nella casella. Senza, se il dialog
+ *  si apre prima che lo store abbia il link, la casella conserva il testo di
+ *  un'apertura precedente e il primo blur lo scrive addosso a questo. */
+const destinatarioDi = ref<number | null>(null);
 
 watch(
   () => [props.linkId, aperto.value] as const,
   () => {
-    if (!aperto.value || !link.value) return;
+    if (!aperto.value || !link.value) {
+      destinatarioDi.value = null;
+      destinatario.value = '';
+      return;
+    }
     destinatario.value = link.value.destinatario;
-    introduzione.value = link.value.introduzione;
+    destinatarioDi.value = link.value.id;
   },
   { immediate: true },
 );
@@ -237,21 +272,13 @@ function etichetta(d: DocumentoFE): string {
 }
 
 async function salvaTestata() {
-  if (!link.value) return;
-  if (
-    destinatario.value === link.value.destinatario &&
-    introduzione.value === link.value.introduzione
-  ) {
-    return;
-  }
+  if (!link.value || destinatarioDi.value !== link.value.id) return;
+  if (destinatario.value === link.value.destinatario) return;
   if (!destinatario.value.trim()) {
     destinatario.value = link.value.destinatario;
     return;
   }
-  await store.aggiorna(link.value.id, {
-    destinatario: destinatario.value,
-    introduzione: introduzione.value,
-  });
+  await store.aggiorna(link.value.id, { destinatario: destinatario.value });
 }
 
 // ── Voci documento ────────────────────────────────────────────────────────
@@ -295,17 +322,53 @@ async function sposta(indice: number, delta: number) {
 
 const testoAperto = ref(false);
 const voceInModifica = ref<VoceLink | null>(null);
+/** L'editor serve a due cose: la premessa del pacchetto e i chiarimenti fra
+ *  un allegato e l'altro. Cambia solo dove si salva. */
+const modificaLaPremessa = ref(false);
 const titoloTesto = ref('');
 const corpoMd = ref('');
 const anteprima = ref('');
 let timerAnteprima: ReturnType<typeof setTimeout> | null = null;
 
-function apriTesto(v: VoceLink | null) {
+/** Apre l'editor. Su una voce nuova parte dalla proposta del backend, che è
+ *  quella che si scrive quasi sempre: da lì si ritocca per questo link. Su
+ *  una voce esistente non si tocca niente — quello che c'è è già stato
+ *  deciso. */
+async function apriTesto(v: VoceLink | null) {
+  modificaLaPremessa.value = false;
   voceInModifica.value = v;
-  titoloTesto.value = v?.titolo ?? '';
-  corpoMd.value = v?.corpo_md ?? '';
-  anteprima.value = v?.corpo_html ?? '';
   testoAperto.value = true;
+  if (v) {
+    titoloTesto.value = v.titolo;
+    corpoMd.value = v.corpo_md;
+    anteprima.value = v.corpo_html;
+    return;
+  }
+  titoloTesto.value = '';
+  corpoMd.value = '';
+  anteprima.value = '';
+  await proponi();
+}
+
+/** La premessa: stesso editor, e su una premessa vuota parte dalla
+ *  proposta — è lì che il testo che si scrive quasi sempre va a finire. */
+async function apriPremessa() {
+  modificaLaPremessa.value = true;
+  voceInModifica.value = null;
+  testoAperto.value = true;
+  titoloTesto.value = '';
+  corpoMd.value = link.value?.introduzione ?? '';
+  anteprima.value = link.value?.introduzione_html ?? '';
+  if (!corpoMd.value) await proponi();
+}
+
+/** Riempie l'editor con la proposta e ne calcola l'anteprima. */
+async function proponi() {
+  const proposta = await store.testoPredefinito();
+  if (!proposta.corpo_md) return;
+  titoloTesto.value = titoloTesto.value || proposta.titolo;
+  corpoMd.value = proposta.corpo_md;
+  anteprima.value = await store.anteprimaMarkdown(proposta.corpo_md);
 }
 
 function svuotaTesto() {
@@ -314,6 +377,11 @@ function svuotaTesto() {
   corpoMd.value = '';
   anteprima.value = '';
 }
+
+const titoloEditor = computed(() => {
+  if (modificaLaPremessa.value) return 'Premessa del pacchetto';
+  return voceInModifica.value ? 'Modifica il chiarimento' : 'Scrivi un chiarimento';
+});
 
 function chiediAnteprima() {
   if (timerAnteprima) clearTimeout(timerAnteprima);
@@ -327,9 +395,11 @@ function chiediAnteprima() {
 async function salvaTesto() {
   if (!link.value) return;
   const payload = { titolo: titoloTesto.value, corpo_md: corpoMd.value };
-  const ok = voceInModifica.value
-    ? await store.aggiornaVoce(voceInModifica.value, payload)
-    : await store.aggiungiVoce({ share: link.value.id, ...payload });
+  const ok = modificaLaPremessa.value
+    ? await store.aggiorna(link.value.id, { introduzione: corpoMd.value })
+    : voceInModifica.value
+      ? await store.aggiornaVoce(voceInModifica.value, payload)
+      : await store.aggiungiVoce({ share: link.value.id, ...payload });
   if (!ok) {
     $q.notify({ type: 'negative', message: store.errore ?? 'Salvataggio non riuscito.' });
     return;
@@ -362,6 +432,34 @@ function chiudiTutto() {
   display: flex;
   flex-direction: column;
   gap: 13px;
+}
+.lk-premessa {
+  border: 1px solid var(--vp-paper-3);
+  border-radius: 9px;
+  padding: 8px 11px 10px;
+}
+.lk-premessa__testa {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.lk-premessa__eti {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vp-ink-3);
+}
+.lk-premessa__corpo {
+  margin-top: 6px;
+  max-height: 190px;
+  overflow: auto;
+  font-size: 13px;
+}
+.lk-premessa__vuota {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--vp-ink-3);
 }
 .lk-voci {
   border: 1px solid var(--vp-paper-3);
@@ -418,19 +516,42 @@ function chiudiTutto() {
   width: 460px;
   max-width: 92vw;
 }
+/* Ci si scrive dentro un testo lungo: nasce grande e si allarga a mano
+   (l'angolo in basso a destra). ``resize`` vuole ``overflow`` diverso da
+   visible, e il q-dialog non impone una larghezza propria. */
 .lk-testo {
-  width: 760px;
+  width: min(1120px, 94vw);
   max-width: 96vw;
+  height: min(760px, 88vh);
+  max-height: 92vh;
+  resize: both;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 .lk-testo__corpo {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1;
+  min-height: 0;
 }
 .lk-testo__due {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+/* Le due colonne seguono l'altezza del dialog invece di restare alte
+   quanto il testo: allargandolo si guadagna spazio per scrivere. */
+.lk-testo__due :deep(.q-field),
+.lk-testo__due :deep(.q-field__control),
+.lk-testo__due :deep(.q-field__native) {
+  height: 100%;
+}
+.lk-testo__due :deep(.q-field__native) {
+  resize: none;
 }
 @media (max-width: 720px) {
   .lk-testo__due {
@@ -442,7 +563,7 @@ function chiudiTutto() {
   border-radius: 8px;
   padding: 10px 12px;
   overflow: auto;
-  max-height: 300px;
+  min-height: 0;
 }
 .lk-testo__prev-eti {
   font-size: 11px;
