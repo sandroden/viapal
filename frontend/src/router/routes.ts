@@ -50,6 +50,20 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // Pacchetto di documenti aperto da un token: chi lo riceve non ha un
+    // account e non ne avrà uno finché non subentra. Nessuna sessione.
+    path: '/d/:token',
+    component: () => import('layouts/PublicLayout.vue'),
+    meta: { public: true },
+    children: [
+      {
+        path: '',
+        name: 'pacchetto-documenti',
+        component: () => import('pages/PacchettoDocumenti.vue'),
+      },
+    ],
+  },
+  {
     // Privacy/cookie per i visitatori anonimi (link dal footer della
     // galleria pubblica). L'informativa completa per gli inquilini resta
     // in /i/privacy.
