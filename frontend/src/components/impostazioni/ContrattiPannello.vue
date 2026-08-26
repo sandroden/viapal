@@ -64,6 +64,20 @@
                   <button
                     v-if="puoModificare"
                     type="button"
+                    class="imm-dc imm-dc--copia"
+                    :aria-label="`Copia per la lettura di ${etichettaFile(d)}`"
+                    :data-testid="`copia-lettura-${d.id}`"
+                    @click="copiaLettura(d)"
+                  >
+                    <VpIcon name="link" :size="12" />
+                    <q-tooltip>
+                      Copia per la lettura: la versione oscurata da mandare a
+                      chi deve ancora firmare
+                    </q-tooltip>
+                  </button>
+                  <button
+                    v-if="puoModificare"
+                    type="button"
                     class="imm-dc imm-dc--del"
                     :aria-label="`Elimina ${etichettaFile(d)}`"
                     @click="eliminaFile(d)"
@@ -352,6 +366,8 @@
     :tipi="TIPI_DOCUMENTO_PROPRIETA"
     :contratti="contratti"
   />
+
+  <CopiaLetturaDialog v-model="copiaAperta" :originale="originalePerCopia" />
 </template>
 
 <script setup lang="ts">
@@ -367,6 +383,7 @@ import {
 import VpIcon from 'components/utenze/VpIcon.vue';
 import CaricaDocumentiSheet from './CaricaDocumentiSheet.vue';
 import ModificaDocumentoDialog from './ModificaDocumentoDialog.vue';
+import CopiaLetturaDialog from './CopiaLetturaDialog.vue';
 import CardSezione from './ui/CardSezione.vue';
 import RigaElenco from './ui/RigaElenco.vue';
 import TileIcona from './ui/TileIcona.vue';
@@ -470,9 +487,13 @@ const sheetAperto = ref(false);
 const contrattoPerCaricamento = ref<number | null>(null);
 const modificaAperta = ref(false);
 const fileInModifica = ref<DocumentoFE | null>(null);
+const copiaAperta = ref(false);
+const originalePerCopia = ref<DocumentoFE | null>(null);
 
+/** Le copie per la lettura non sono chip del contratto: stanno nella loro
+ *  sezione, così l'archivio ufficiale resta quello che è. */
 function fileDi(contractId: number): DocumentoFE[] {
-  return documentiStore.documenti.filter((d) => d.contract === contractId);
+  return documentiStore.documenti.filter((d) => d.contract === contractId && !d.copia_di);
 }
 
 /** Il nome del file, quando è leggibile.
@@ -512,6 +533,11 @@ function apriFile(d: DocumentoFE) {
 /** Segnala il buco più comune: il contratto senza la sua copia firmata. */
 function mancaIlFirmato(c: Contratto): boolean {
   return !fileDi(c.id).some((d) => d.tipo === 'contratto');
+}
+
+function copiaLettura(d: DocumentoFE) {
+  originalePerCopia.value = d;
+  copiaAperta.value = true;
 }
 
 /** Da qui si sposta un file su un altro contratto, o lo si rimanda alla
@@ -793,13 +819,15 @@ function elimina(c: Contratto) {
   max-width: 100%;
 }
 .imm-dc--del,
+.imm-dc--copia,
 .imm-dc--edit {
   padding: 0 6px;
   border-color: transparent;
   background: transparent;
   color: var(--vp-ink-4);
 }
-.imm-dc--edit:hover {
+.imm-dc--edit:hover,
+.imm-dc--copia:hover {
   border-color: transparent;
   background: var(--vp-paper-2);
   color: var(--vp-ink-1);

@@ -23,6 +23,16 @@ export interface DocumentoFE {
    *  della casa). */
   contract?: number | null;
   contract_nome?: string;
+  /** Come si chiama il documento quando lo si mostra da solo. */
+  titolo?: string;
+  /** Documenti immobile: valorizzato = è la copia oscurata di quel
+   *  documento, e sta fuori da tutti gli elenchi ufficiali. */
+  copia_di?: number | null;
+  copia_di_titolo?: string;
+  /** Può stare in un link di lettura mandato a chi non ha un account. */
+  esponibile?: boolean;
+  /** In quanti link di lettura è in uso (badge, e spiegazione del 409). */
+  link_in_uso?: number;
 }
 
 export interface TipoDocumentoOption {
@@ -80,6 +90,37 @@ function creaDocumentiStore(
           this.errore = messaggioErrore(e, 'Errore caricamento documenti');
         } finally {
           this.loading = false;
+        }
+      },
+
+      /** Carica la copia oscurata di un documento esistente (solo documenti
+       *  proprietà: l'azione esiste solo su quell'endpoint).
+       *
+       *  Il file arriva già oscurato: l'applicazione non entra nel merito
+       *  (un rettangolo nero non cancella il testo sotto). Il legame con
+       *  l'originale e la spunta «esponibile» li mette il server. */
+      async caricaCopiaLettura(payload: {
+        originaleId: number;
+        file: File;
+        descrizione?: string;
+      }): Promise<boolean> {
+        this.uploading = true;
+        this.errore = null;
+        try {
+          const fd = new FormData();
+          fd.append('file', payload.file);
+          if (payload.descrizione) fd.append('descrizione', payload.descrizione);
+          const { data } = await api.post<DocumentoFE>(
+            `${endpoint}${payload.originaleId}/copia-lettura/`,
+            fd,
+          );
+          this.documenti.unshift(data);
+          return true;
+        } catch (e: unknown) {
+          this.errore = messaggioErrore(e, 'Caricamento della copia non riuscito');
+          return false;
+        } finally {
+          this.uploading = false;
         }
       },
 
@@ -207,6 +248,7 @@ function creaDocumentiStore(
           descrizione?: string;
           contract?: number | null;
           visibile_inquilini?: boolean;
+          esponibile?: boolean;
           data_scadenza?: string | null;
         },
       ): Promise<boolean> {
@@ -220,6 +262,12 @@ function creaDocumentiStore(
           this.errore = messaggioErrore(e, 'Errore aggiornamento documento');
           return false;
         }
+      },
+
+      /** Spunta «esponibile» (solo documenti proprietà): togliendola i link
+       *  già mandati smettono di servire quel file — revoca a grana fine. */
+      async impostaEsponibile(id: number, esponibile: boolean): Promise<boolean> {
+        return this.aggiorna(id, { esponibile });
       },
 
       /** Cambia la visibilità agli inquilini (solo documenti proprietà). */

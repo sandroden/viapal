@@ -74,6 +74,8 @@
         <div class="vp-immobile__pila">
           <ContrattiPannello ref="contrattiPannello" :puo-modificare="puoModificare" />
           <DocumentiProprietaPannello :puo-modificare="puoModificare" />
+          <CopieLetturaPannello :puo-modificare="puoModificare" />
+          <LinkLetturaPannello :puo-modificare="puoModificare" />
           <ModelliDocumentoPannello :puo-modificare="puoModificare" />
         </div>
       </q-tab-panel>
@@ -136,6 +138,8 @@ import DatiImmobilePannello from 'components/impostazioni/DatiImmobilePannello.v
 import StanzePannello from 'components/impostazioni/StanzePannello.vue';
 import ContrattiPannello from 'components/impostazioni/ContrattiPannello.vue';
 import DocumentiProprietaPannello from 'components/impostazioni/DocumentiProprietaPannello.vue';
+import CopieLetturaPannello from 'components/impostazioni/CopieLetturaPannello.vue';
+import LinkLetturaPannello from 'components/impostazioni/LinkLetturaPannello.vue';
 import ModelliDocumentoPannello from 'components/documenti/ModelliDocumentoPannello.vue';
 import UtenzeCasaPannello from 'components/impostazioni/UtenzeCasaPannello.vue';
 import QuoteCondominioPannello from 'components/impostazioni/QuoteCondominioPannello.vue';

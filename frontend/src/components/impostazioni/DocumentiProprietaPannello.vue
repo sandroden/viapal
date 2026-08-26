@@ -48,11 +48,42 @@
               }}
             </q-tooltip>
           </button>
+          <!-- Le regole di convivenza non nominano nessuno: non hanno
+               bisogno di una copia oscurata, basta dire che si possono
+               mandare fuori. -->
+          <button
+            v-if="puoModificare"
+            type="button"
+            class="vp-badge imm-esp"
+            :class="d.esponibile ? 'imm-esp--on' : 'imm-esp--off'"
+            :aria-pressed="!!d.esponibile"
+            :aria-label="`Esponibilità di ${d.tipo_display}`"
+            :data-testid="`esponibile-doc-${d.id}`"
+            @click="cambiaEsponibile(d)"
+          >
+            <VpIcon name="link" :size="13" />
+            {{ d.esponibile ? 'Nei link' : 'Fuori dai link' }}
+            <q-tooltip>
+              {{
+                d.esponibile
+                  ? 'Può stare in un link di lettura — clicca per escluderlo'
+                  : 'Fuori dai link di lettura — clicca per renderlo esponibile'
+              }}
+            </q-tooltip>
+          </button>
           <BtnIcona
             icona="open"
             :etichetta="`Apri ${d.tipo_display}`"
             tooltip="Apri"
             @click="apri(d)"
+          />
+          <BtnIcona
+            v-if="puoModificare"
+            icona="doc"
+            :etichetta="`Copia per la lettura di ${d.tipo_display}`"
+            tooltip="Copia per la lettura (versione oscurata)"
+            :data-testid="`copia-lettura-${d.id}`"
+            @click="copiaLettura(d)"
           />
           <BtnIcona
             v-if="puoModificare"
@@ -92,6 +123,8 @@
     :tipi="tipi"
     :contratti="contratti"
   />
+
+  <CopiaLetturaDialog v-model="copiaAperta" :originale="originalePerCopia" />
 </template>
 
 <script setup lang="ts">
@@ -111,6 +144,7 @@ import TileIcona from './ui/TileIcona.vue';
 import BtnIcona from './ui/BtnIcona.vue';
 import CaricaDocumentiSheet from './CaricaDocumentiSheet.vue';
 import ModificaDocumentoDialog from './ModificaDocumentoDialog.vue';
+import CopiaLetturaDialog from './CopiaLetturaDialog.vue';
 
 defineProps<{ puoModificare: boolean }>();
 
@@ -122,10 +156,16 @@ const tipi = TIPI_DOCUMENTO_PROPRIETA;
 const sheetAperto = ref(false);
 const modificaAperta = ref(false);
 const inModifica = ref<DocumentoFE | null>(null);
+const copiaAperta = ref(false);
+const originalePerCopia = ref<DocumentoFE | null>(null);
 
 /** Le carte di un contratto vivono sulla riga del contratto: qui restano
- *  solo quelle della casa, che non appartengono a nessuno di essi. */
-const documentiCasa = computed(() => store.documenti.filter((d) => !d.contract));
+ *  solo quelle della casa, che non appartengono a nessuno di essi. Le copie
+ *  per la lettura hanno una sezione loro: l'archivio ufficiale resta quello
+ *  che è. */
+const documentiCasa = computed(() =>
+  store.documenti.filter((d) => !d.contract && !d.copia_di),
+);
 
 const contratti = ref<{ id: number; nome: string; data_decorrenza: string }[]>([]);
 
@@ -182,6 +222,26 @@ function modifica(d: DocumentoFE) {
   modificaAperta.value = true;
 }
 
+function copiaLettura(d: DocumentoFE) {
+  originalePerCopia.value = d;
+  copiaAperta.value = true;
+}
+
+async function cambiaEsponibile(d: DocumentoFE) {
+  const nuova = !d.esponibile;
+  const ok = await store.impostaEsponibile(d.id, nuova);
+  if (!ok) {
+    $q.notify({ type: 'negative', message: store.errore ?? 'Aggiornamento non riuscito.' });
+    return;
+  }
+  $q.notify({
+    type: 'positive',
+    message: nuova
+      ? 'Ora può stare in un link di lettura.'
+      : 'Fuori dai link: quelli già mandati non lo servono più.',
+  });
+}
+
 async function cambiaVisibilita(d: DocumentoFE) {
   const nuova = !d.visibile_inquilini;
   const ok = await store.impostaVisibilita(d.id, nuova);
@@ -235,6 +295,23 @@ function conferma(d: DocumentoFE) {
 .imm-vis--off {
   background: var(--vp-paper-2);
   color: var(--vp-ink-3);
+}
+.imm-esp {
+  border: none;
+  cursor: pointer;
+  gap: 5px;
+}
+.imm-esp--on {
+  background: var(--vp-terra-soft);
+  color: var(--vp-terra-deep);
+}
+.imm-esp--off {
+  background: var(--vp-paper-2);
+  color: var(--vp-ink-3);
+}
+.imm-esp:focus-visible {
+  outline: 2px solid var(--vp-terra);
+  outline-offset: 1px;
 }
 .imm-vis:focus-visible {
   outline: 2px solid var(--vp-terra);
