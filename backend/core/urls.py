@@ -4,6 +4,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import RedirectView
+from properties.og import galleria_og
 
 from core.media_private import media_private_view
 
@@ -31,6 +32,11 @@ urlpatterns = [
     path('api/auth/', include('accounts.urls')),
     path('api/v1/', include(api_v1_patterns)),
     path('accounts/', include('allauth.urls')),
+    # Galleria pubblica: la pagina è della SPA, ma passa da Django perché
+    # i crawler social (WhatsApp, Facebook…) non eseguono JS e senza meta
+    # tag server-side il link condiviso resta un URL nudo.
+    path('g/<slug:slug>', galleria_og, name='galleria-og'),
+    path('g/<slug:slug>/', galleria_og),
     # Media riservati: sempre via Django con controllo permessi (dev e prod).
     path('media-private/<path:path>', media_private_view, name='media-private'),
     path('', RedirectView.as_view(url='/admin/', permanent=False)),

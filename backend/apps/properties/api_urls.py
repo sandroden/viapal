@@ -4,13 +4,14 @@ URL router per le API dell'app properties.
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
+from properties.og import og_image
 from properties.views import (
     ContractViewSet,
     DocumentShareViewSet,
     DocumentTemplateViewSet,
     GalleryAreaViewSet,
-    InformativaPrivacyView,
     GalleryImageViewSet,
+    InformativaPrivacyView,
     OwnerBankAccountViewSet,
     OwnerProfileViewSet,
     PropertyDocumentViewSet,
@@ -50,6 +51,12 @@ urlpatterns = [
         "public/galleria/<slug:slug>/",
         PublicGalleryView.as_view(),
         name="public-gallery",
+    ),
+    # Anteprima social: sotto /api/ perché il reverse proxy ci instrada già.
+    path(
+        "public/og-image/<slug:slug>.jpg",
+        og_image,
+        name="public-og-image",
     ),
     path(
         "public/documenti/<str:token>/",

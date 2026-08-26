@@ -33,6 +33,11 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'SAMEORIGIN'  # consente l'anteprima PDF (iframe) nel frontend
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+# Anteprime social (/g/<slug>): l'index.html della SPA si prende dal
+# container del frontend. Alias di rete esplicito (docker-compose.yml): sulla
+# rete `web`, condivisa con gli altri progetti, il nome `quasar` è ambiguo.
+SPA_INDEX_URL = os.environ.get('SPA_INDEX_URL', 'http://viapal-quasar/')
+
 # Database via env (DATABASE_URL non parsata: usiamo singoli campi)
 DATABASES = {
     'default': {

@@ -282,6 +282,11 @@ ADMIN_TOOLS_APP_INDEX_DASHBOARD = 'core.dashboard.ViapalAppIndexDashboard'
 # operare su produzione pensando di essere in locale.
 ENVIRONMENT = os.environ.get('ENV') or 'dev'
 
+# index.html della SPA, da cui la vista /g/<slug> parte per iniettare i meta
+# Open Graph dell'annuncio (properties/og.py). Vuoto = ripiego su una pagina
+# minimale con i soli meta: i crawler funzionano comunque.
+SPA_INDEX_URL = os.environ.get('SPA_INDEX_URL', '')
+
 # CSS theming admin: di default quello "pulito" (produzione).
 # dev.py / staging.py lo sovrascrivono con una variante colorata.
 ADMIN_TOOLS_THEMING_CSS = 'viapal/admin/dashboard.css'

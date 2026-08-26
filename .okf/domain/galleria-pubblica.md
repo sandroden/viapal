@@ -99,6 +99,52 @@ editabile), **riordino** con frecce laterali `‹ ›` (scelta deliberata vs dra
 celle a span variabile dei formati e verificabile). **Lightbox** navigabile (frecce, tasti
 ← → Esc, contatore, didascalia); scope = la sezione da cui si apre.
 
+# Anteprime social (Open Graph)
+
+Condividere `/g/<slug>` su WhatsApp, Facebook o Telegram mostrava un URL
+nudo: quei crawler **non eseguono JavaScript**, e l'`index.html` della SPA
+non ha meta tag. Perciò `/g/` **non è più servito da nginx ma da Django**
+(label Traefik nel `docker-compose.yml`, proxy `/g/` in `quasar.config.ts`
+per il dev): `properties/og.py` scarica l'`index.html` dal frontend
+(`SPA_INDEX_URL`, cache 60") e vi inietta titolo e meta prima di `</head>`.
+Il `<title>` originale viene sostituito, il resto della pagina è intatto —
+la SPA parte come sempre.
+
+- **Ripiego**: se il frontend non risponde (o `SPA_INDEX_URL` è vuoto, come
+  nei test) la vista rende una pagina minimale con i soli meta: i crawler
+  funzionano comunque. Slug sconosciuto → 404 **con** l'HTML della SPA, così
+  il visitatore legge "Galleria non disponibile" e non l'errore di Django.
+- **`SPA_INDEX_URL`**: in prod `http://viapal-quasar/` — alias di rete
+  esplicito, perché sulla rete `web` condivisa col resto del server il nome
+  di servizio `quasar` appartiene a una decina di progetti. In dev punta al
+  dev server `:9020` (vuoto sotto pytest: niente rete nei test).
+  **In deploy l'alias si applica solo ricreando il container**: serve
+  `docker compose up -d quasar django`, non il solo `django`. Se l'alias non
+  c'è il guasto è silenzioso — le anteprime social continuano a funzionare e
+  solo chi apre il link vede la pagina di ripiego. Verifica in un colpo:
+  `curl -s https://viapal.e-den.it/g/viapal | grep -c '/assets/'` — l'index
+  vero ha i link agli asset, la pagina minimale no.
+- **L'immagine non può essere la foto**: dal ridimensionamento lato client le
+  foto sono **WebP**, che WhatsApp non renderizza. `og_image`
+  (`/api/v1/public/og-image/<slug>.jpg`) ne deriva un **JPEG 1200×630**
+  (ritaglio centrale, q78, ~250 KB: sopra i ~300 KB WhatsApp lascia perdere)
+  e lo tiene in cache in `media/og/`. L'URL porta l'impronta del file
+  sorgente (`?v=…`): Facebook ricorda uno scrape per settimane, cambiare
+  foto deve cambiare l'URL. Sta sotto `/api/` per non aggiungere regole di
+  routing.
+- **Un link per camera**: `/g/<slug>?stanza=<id>` dà titolo, descrizione e
+  foto della singola camera. Query e non fragment: `#room-3` il server non lo
+  vedrebbe mai. `og:url` **deve** riportare il parametro, altrimenti i social
+  deduplicano i cinque link e mostrano tutti la stessa card. Il frontend usa
+  il parametro per scorrere alla sezione e darle un lampo di colore.
+- **Service worker**: `/g/` resta fuori dalla denylist. I crawler non hanno
+  SW; a un umano che ritorna, l'index dalla cache (senza meta iniettati) non
+  toglie nulla.
+- **Verifica**: `curl -s http://localhost:8020/g/<slug> | grep og:` e aprire
+  il JPEG generato — la card si valuta guardandola. Dopo un cambio di foto in
+  produzione, forzare il re-scrape con il Debugger di Facebook o
+  `@WebpageBot` di Telegram.
+
 # Note operative
 
 - `/media` è servito pubblicamente (dev `static()`, prod Traefik→Django) — le foto galleria

@@ -107,6 +107,15 @@ export default defineConfig((/* ctx */) => {
         '/media': {
           target: 'http://localhost:8020',
           changeOrigin: true
+        },
+        // La galleria pubblica passa da Django anche in dev: è lui a
+        // iniettare i meta Open Graph nell'index.html (che si riprende da
+        // questo stesso dev server). Stesso percorso della produzione.
+        '/g/': {
+          // changeOrigin false: Django deve vedere l'Host :9020, così gli
+          // URL assoluti dei meta tag sono quelli che il visitatore usa.
+          target: 'http://localhost:8020',
+          changeOrigin: false
         }
       }
     },

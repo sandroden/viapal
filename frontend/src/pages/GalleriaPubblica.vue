@@ -213,6 +213,17 @@
               dense
               @update:model-value="(v) => setRoom(r, 'disponibile', v)"
             />
+            <q-btn
+              v-if="canEdit && !isUnitaIntera && stanzaDisponibile(r)"
+              flat
+              dense
+              no-caps
+              size="sm"
+              icon="link"
+              label="Copia link"
+              title="Link diretto a questa camera: chi lo riceve la vede subito, e l'anteprima social è la sua foto"
+              @click="copiaLinkStanza(r)"
+            />
           </div>
 
           <p class="room-desc">
@@ -414,8 +425,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useQuasar } from 'quasar';
 import { storeToRefs } from 'pinia';
 import {
   useGalleriaStore,
@@ -432,6 +444,7 @@ import ImageSlot from 'components/ImageSlot.vue';
 import EditableText from 'components/EditableText.vue';
 import ScaricaFotoDialog from 'components/ScaricaFotoDialog.vue';
 
+const $q = useQuasar();
 const route = useRoute();
 const router = useRouter();
 const store = useGalleriaStore();
@@ -657,6 +670,34 @@ async function load() {
   const slug = route.params.slug as string;
   await store.fetchPublic(slug);
   if (!auth.loaded) await auth.fetchMe();
+  await vaiAllaStanzaRichiesta();
+}
+
+// Link della singola camera, quello da mandare a chi cerca *quella*
+// stanza: l'anteprima social che ne esce è la sua foto (backend og.py).
+async function copiaLinkStanza(r: { id: number; nome: string }) {
+  const url = `${window.location.origin}/g/${route.params.slug as string}?stanza=${r.id}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    $q.notify({ type: 'positive', message: `Link di «${r.nome}» copiato`, caption: url });
+  } catch {
+    $q.notify({ type: 'warning', message: 'Copia non riuscita', caption: url, timeout: 8000 });
+  }
+}
+
+// `?stanza=<id>` è il link della singola camera: un URL diverso per ognuna
+// (e quindi un'anteprima social diversa, vedi backend properties/og.py).
+// Qui serve solo a mostrare subito la camera di cui si parla. Query e non
+// fragment perché l'ancora `#room-N` il server non la vedrebbe mai.
+async function vaiAllaStanzaRichiesta() {
+  const id = route.query.stanza;
+  if (!id) return;
+  await nextTick();
+  const sezione = document.getElementById(`room-${String(id)}`);
+  if (!sezione) return;
+  sezione.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  sezione.classList.add('room--evidenziata');
+  setTimeout(() => sezione.classList.remove('room--evidenziata'), 2400);
 }
 
 onMounted(() => {
@@ -748,6 +789,16 @@ watch(() => route.params.slug, load);
 .room-free { font-size: 12.5px; color: var(--vp-sage-deep); background: var(--vp-sage-soft); padding: 4px 12px; border-radius: 999px; }
 .room-unavail { font-size: 12px; font-weight: 600; color: var(--vp-clay); background: var(--vp-clay-soft); padding: 4px 12px; border-radius: 999px; display: flex; align-items: center; gap: 6px; }
 .room.is-unavail .room-name { color: var(--vp-ink-3); }
+/* Camera raggiunta da un link diretto (?stanza=N): un lampo per dire
+   "è questa", poi la classe viene tolta. */
+.room--evidenziata {
+  animation: room-lampo 2.4s ease-out;
+  scroll-margin-top: 80px;
+}
+@keyframes room-lampo {
+  0%, 60% { background: var(--vp-sage-soft); }
+  100% { background: transparent; }
+}
 .room-desc { color: var(--vp-ink-2); font-size: 14.5px; max-width: 640px; margin: 8px 0 20px; }
 .room-edit-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 13px; color: var(--vp-ink-3); }
 .room-edit-lbl { font-size: 12px; }

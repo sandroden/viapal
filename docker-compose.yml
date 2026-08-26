@@ -1,7 +1,9 @@
 # Stack di produzione Viapal sul server Docker di Sandro.
 # Reverse proxy esterno: Traefik (rete `web` external).
 # Routing per path: Traefik smista /admin, /static, /media, /api, /accounts
-# al container `django`; il resto va a `quasar`.
+# al container `django`; il resto va a `quasar`. Anche `/g/` (galleria
+# pubblica) va a Django: serve l'index.html della SPA con i meta Open
+# Graph dell'annuncio, che i crawler social non saprebbero ricavare.
 #
 # Postgres gira sull'HOST (non in Docker): il container raggiunge l'host
 # via `host.docker.internal` grazie a `extra_hosts: host-gateway`.
@@ -42,7 +44,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=web"
-      - "traefik.http.routers.viapal-django.rule=Host(`${HOST:-viapal.e-den.it}`) && PathPrefix(`/admin`, `/static`, `/media`, `/media-private`, `/api`, `/accounts`)"
+      - "traefik.http.routers.viapal-django.rule=Host(`${HOST:-viapal.e-den.it}`) && PathPrefix(`/admin`, `/static`, `/media`, `/media-private`, `/api`, `/accounts`, `/g/`)"
       - "traefik.http.routers.viapal-django.entrypoints=web-secured"
       - "traefik.http.routers.viapal-django.tls=true"
       - "traefik.http.routers.viapal-django.tls.certresolver=leresolver"
@@ -89,7 +91,12 @@ services:
     volumes:
       - ./logs/nginx:/var/log/nginx
     networks:
-      - web
+      web:
+        # Alias esplicito: `web` è condivisa con gli altri progetti del
+        # server, dove il nome di servizio `quasar` è tutt'altro che unico.
+        # Django ci prende l'index.html della SPA (SPA_INDEX_URL).
+        aliases:
+          - viapal-quasar
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=web"

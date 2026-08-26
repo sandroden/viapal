@@ -1,5 +1,6 @@
 # Development settings — usato quando ENV=dev
 import os
+import sys
 
 DEBUG = True
 
@@ -59,3 +60,9 @@ ADMIN_TOOLS_THEMING_CSS = 'viapal/admin/dashboard-dev.css'
 # Solo per dev locale: in prod le chiavi vere stanno in local.py/env.
 VAPID_PRIVATE_KEY = 'NeorFWlxM460J_EtdK41xkj9oGyXRVkRU19GvR4U0kY'
 VAPID_PUBLIC_KEY = 'BLyx_0qljdfIrfEEPW1GGZimi-7A16tkjnJRKGa4mciQblUg9fb2DEkAPbzuR9XWymSp3h_bgq1rqjW1mjjgnpw'
+
+
+# Anteprime social (/g/<slug>): l'index.html arriva dal dev server Quasar,
+# così il percorso dev è lo stesso della produzione. Nei test resta vuoto —
+# niente richieste di rete, e la vista usa la sua pagina minimale.
+SPA_INDEX_URL = '' if 'pytest' in sys.modules else 'http://localhost:9020/'
