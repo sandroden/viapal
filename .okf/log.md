@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-08-26
+* **Creation**: `domain/link-lettura.md` — link di lettura a token (`DocumentShare`/`ShareItem`), `PropertyDocument.copia_di` + `esponibile`. Due scostamenti dal piano da ricordare: `copia_di` è `PROTECT` e non `SET_NULL` (con `SET_NULL`, eliminando l'originale, la copia oscurata diventerebbe un documento ufficiale) e l'anteprima markdown passa da un endpoint invece che da un renderer JS. Invariante: l'esponibilità si ricontrolla al momento di servire, non solo quando si compone.
 * **Maintain**: `domain/fascicolo-documenti.md` — sezione "L'ambito è nel tipo": contratto/side letter/registrazione richiedono `contract` (`TIPI_CONTRATTUALI` + `valida_ambito()` in `clean()` e nel serializer), nuovo tipo `regole_convivenza`, PATCH JSON per staccare il contratto, dialog «Modifica documento» (prima l'unico modo di correggere era ricaricare, da cui i doppioni casa/contratto), avvisi nel foglio di caricamento, etichetta del chip non più il nome file (la querystring firmata la rendeva illeggibile). Command `sistema_documenti_immobile` con le due diagnosi di coda.
 * **Maintain**: `models/properties.md` — `PropertyDocument`: `contract` in tabella e distinzione carte-di-contratto / carte-della-casa.
 * **Maintain**: `domain/fascicolo-documenti.md` — `collega_assegnazioni_contratto`: le occupazioni senza contratto rendevano invisibili agli inquilini le carte di contratto (in prod nessuna delle 28 lo aveva). Collega quelle dalla decorrenza in poi, si ferma sui casi a cavallo.

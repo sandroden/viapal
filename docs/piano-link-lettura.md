@@ -1,7 +1,16 @@
 # Piano: link di lettura dei documenti (pagina pubblica a token)
 
-> Stato al 2026-08-26: **approvato, non ancora implementato**. Nessun punto
-> aperto. Prossimo passo: Fase 1 (backend) della Parte 7.
+> Stato al 2026-08-26: **fasi 1–3 implementate** (backend, FE gestione, pagina
+> pubblica). Restano la **fase 4** (variante anonima dell'atto di subentro) e
+> la **fase 5** (caricare le copie oscurate vere e comporre il primo
+> pacchetto), che dipende da file che l'applicazione non produce.
+>
+> Due scostamenti dal piano, decisi in corso d'opera:
+> - **`copia_di` è `PROTECT`, non `SET_NULL`** — vedi Parte 3, nota in fondo;
+> - **l'anteprima del markdown passa da un endpoint**, non da un renderer JS
+>   nel browser: due renderer significherebbero un'anteprima che mente;
+> - **tre dei quattro filtri di lista sono client-side** — vedi la nota
+>   sotto la tabella nella Parte 4.
 
 Mandare a un inquilino in arrivo un link, senza account, che apra i documenti
 da leggere prima della firma, **senza i dati personali di chi ha firmato prima**.
@@ -165,7 +174,7 @@ link — che per un chiarimento è probabilmente giusto.
 Su `PropertyDocument`, due campi nuovi:
 
 ```python
-copia_di = FK("self", SET_NULL, null=True, blank=True,
+copia_di = FK("self", PROTECT, null=True, blank=True,
               related_name="copie_lettura",
               verbose_name="copia per la lettura di",
               help_text="Versione priva dei dati personali di terzi. "
@@ -173,6 +182,13 @@ copia_di = FK("self", SET_NULL, null=True, blank=True,
 esponibile = BooleanField(default=False,
               verbose_name="esponibile in un link di lettura")
 ```
+
+`PROTECT` e non `SET_NULL`, come diceva la prima stesura: azzerando
+`copia_di` — eliminando l'originale — la copia oscurata resterebbe in
+tabella **senza più il marchio di copia**, e finirebbe in «Altri documenti»
+e, se visibile agli inquilini, nella loro pagina. È l'esito esatto che il
+campo esiste per impedire. Eliminare un originale che ha copie ora dà 409
+con l'elenco di cosa lo trattiene.
 
 `properties/models/share.py`:
 
@@ -250,6 +266,13 @@ Liste della gestione, da filtrare tutte e tre:
 L'ultima riga è quella da non dimenticare: una copia oscurata non deve
 comparire nella pagina di chi ha già l'originale.
 
+**Come è stato fatto**: solo la riga dell'inquilino è un filtro di queryset.
+Le altre tre restano client-side — il FE carica i documenti dell'immobile in
+una lista sola e la separa sul campo `copia_di`, com'era già per la
+distinzione contratto / «Altri documenti». Aggiungere un parametro
+`copia_di__isnull` avrebbe voluto dire toccare ogni chiamante esistente per
+un filtro che il client fa comunque.
+
 **Serving**: una view sorella di `core/media_private.py`, non un ramo dentro
 `_RESOLVERS`. Quella vista ha una dottrina sola — «autorizzazione dal record
 che possiede il file, utente autenticato» — e chiude con
@@ -289,14 +312,18 @@ indicizzabile, non revocabile.
 
 # Parte 7 — Ordine di lavoro
 
-1. Backend: `copia_di` + `esponibile`, filtri delle quattro liste, modelli
+1. ✅ Backend: `copia_di` + `esponibile`, filtri delle quattro liste, modelli
    share, markdown sanitizzato, endpoint, test.
-2. FE gestione: «Copie per la lettura», compositore, copia link, revoca.
-3. FE pagina pubblica.
-4. Generatore: variante `anonimo` dell'atto di subentro (`OMISSIS` sui campi
+2. ✅ FE gestione: «Copie per la lettura», compositore, copia link, revoca.
+3. ✅ FE pagina pubblica.
+4. ⬜ Generatore: variante `anonimo` dell'atto di subentro (`OMISSIS` sui campi
    dell'uscente), che produce direttamente una copia esponibile.
-5. Dati: caricare le due copie oscurate, spuntare le regole di convivenza,
+5. ⬜ Dati: caricare le due copie oscurate, spuntare le regole di convivenza,
    comporre il primo pacchetto.
+
+In produzione basta `migrate` (properties `0038`): i due campi nuovi hanno
+default, le due tabelle nuove nascono vuote. L'immagine va ricostruita —
+`markdown` e `nh3` sono dipendenze nuove.
 
 # Decisioni chiuse
 
