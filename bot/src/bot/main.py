@@ -18,6 +18,7 @@ from .classifier import analizza
 from .composer import componi
 from .config import carica
 from .notifier import Notifier
+from .report import scrivi as scrivi_report
 from .scraper import MarkupCambiato, raccogli
 from .storage import Archivio
 
@@ -32,6 +33,7 @@ def giro(
     percorso_db: str,
     dry_run: bool = False,
     ignora_orario: bool = False,
+    percorso_report: str = "~/.viapal-bot/prova.html",
 ) -> int:
     cfg = carica(percorso_config)   # riletto a ogni giro: è così che si toglie
                                     # dal giro una stanza appena affittata
@@ -75,6 +77,7 @@ def giro(
     client = anthropic.Anthropic()
     gia_contattati = archivio.autori_gia_contattati()
     trovati = 0
+    lead, scartati = [], []   # solo per il rapporto della prova
 
     for p in post:
         try:
@@ -89,7 +92,9 @@ def giro(
         if not analisi.match or gia_scritto:
             if gia_scritto:
                 log.info("%s: già contattato, salto", p.author_name)
-            if not dry_run:
+            if dry_run:
+                scartati.append({"post": p, "analisi": analisi})
+            else:
                 archivio.registra(p, analisi.model_dump(), matched=analisi.match)
             continue
 
@@ -97,13 +102,17 @@ def giro(
         if dry_run:
             # La prova non tocca il database: altrimenti i lead che vedi qui
             # risulterebbero "già visti" e non ti arriverebbero mai su Telegram.
-            print(f"\n=== {p.author_name} — {analisi.motivo}")
-            print(f"[pubblico] {messaggi.commento_pubblico}")
-            print(f"[privato]  {messaggi.privato}")
+            lead.append({"post": p, "analisi": analisi, "messaggi": messaggi})
+            log.info("lead: %s — %s", p.author_name, analisi.motivo)
         else:
             notifier.lead(p, analisi, messaggi)
             archivio.registra(p, analisi.model_dump(), matched=True, notificato=True)
         trovati += 1
+
+    if dry_run:
+        percorso = scrivi_report(percorso_report, lead, scartati)
+        log.info("rapporto: %s", percorso)
+        print(f"\n→ apri file://{percorso}")
 
     log.info("giro concluso: %d post nuovi, %d lead", len(post), trovati)
     return 0
@@ -119,6 +128,10 @@ def main() -> int:
         help="stampa i messaggi invece di notificarli, e non segna nulla come inviato",
     )
     parser.add_argument(
+        "--report", default="~/.viapal-bot/prova.html",
+        help="dove scrivere il rapporto HTML della prova",
+    )
+    parser.add_argument(
         "--ignora-orario", action="store_true",
         help="gira anche fuori da active_hours (per le prove a mano)",
     )
@@ -131,7 +144,11 @@ def main() -> int:
         datefmt="%H:%M:%S",
     )
     return giro(
-        args.config, args.db, dry_run=args.dry_run, ignora_orario=args.ignora_orario
+        args.config,
+        args.db,
+        dry_run=args.dry_run,
+        ignora_orario=args.ignora_orario,
+        percorso_report=args.report,
     )
 
 

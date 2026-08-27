@@ -50,9 +50,7 @@ def raccogli(
     non a filtrare (la deduplica vera la fa il database).
     """
     browser.apri(URL_GRUPPO.format(group_id=group_id))
-    time.sleep(5)  # il primo rendering del feed non è immediato
-
-    _verifica_feed(browser)
+    _attendi_post(browser)
 
     raccolti: dict[str, Post] = {}
     visti_di_fila = 0
@@ -94,13 +92,31 @@ def raccogli(
     return list(raccolti.values())
 
 
-def _verifica_feed(browser: Browser) -> None:
+def _attendi_post(browser: Browser, tentativi: int = 12) -> None:
+    """Aspetta che il feed contenga post veri, non solo i contenitori vuoti.
+
+    Un `sleep` fisso non basta: quanto ci mette Facebook a popolare il feed
+    varia parecchio, e partire troppo presto significa raccogliere un post o
+    due e credere che il gruppo sia fermo. Uno scroll ogni tanto aiuta, perché
+    è il segnale che innesca il caricamento.
+    """
     import json
 
-    diagnosi = json.loads(browser.valuta(DIAGNOSI_JS))
-    log.info("feed: %s", diagnosi)
-    if not diagnosi.get("feed"):
-        raise MarkupCambiato(
-            f"div[role=\"feed\"] non trovato su {diagnosi.get('url')} — "
-            "markup cambiato, oppure Facebook ha chiesto un checkpoint di sicurezza"
-        )
+    for tentativo in range(tentativi):
+        time.sleep(2)
+        diagnosi = json.loads(browser.valuta(DIAGNOSI_JS))
+        if diagnosi.get("con_post"):
+            log.info("feed pronto dopo %.0fs: %s", (tentativo + 1) * 2, diagnosi)
+            return
+        if not diagnosi.get("feed"):
+            raise MarkupCambiato(
+                f"div[role=\"feed\"] non trovato su {diagnosi.get('url')} — "
+                "markup cambiato, oppure Facebook ha chiesto un checkpoint"
+            )
+        if tentativo % 3 == 2:
+            browser.scorri(600)
+
+    raise MarkupCambiato(
+        f"il feed è rimasto vuoto dopo {tentativi * 2}s: {diagnosi} — "
+        "controlla in headed se Facebook sta chiedendo una verifica"
+    )

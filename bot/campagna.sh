@@ -17,7 +17,7 @@ USO
 COMANDI
     login       apre Facebook in finestra vera: ti logghi a mano e chiudi
     stato       dice se la sessione regge ancora (a freddo, come nel loop)
-    prova       un giro a secco: stampa i messaggi invece di notificarli
+    prova       un giro a secco: scrive un rapporto HTML e lo apre nel browser
     loop        il giro vero ogni 20-30 minuti, finché non lo fermi
     azzera      cancella il database di campagna (fine campagna / ripartenza)
     pulisci     cancella dalla chat Telegram i messaggi mandati dal bot (max 48h)
@@ -62,7 +62,15 @@ stato() {
     fi
 }
 
-prova() { chiudi_browser; uv run python -m bot.main --once --dry-run --ignora-orario -v; }
+prova() {
+    chiudi_browser
+    local report="${BOT_REPORT:-$HOME/.viapal-bot/prova.html}"
+    uv run python -m bot.main --once --dry-run --ignora-orario --report "$report" -v
+    # apre il rapporto nel browser di sistema, se c'è una sessione grafica
+    [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open >/dev/null \
+        && xdg-open "$report" >/dev/null 2>&1 &
+    true
+}
 
 loop() {
     chiudi_browser
