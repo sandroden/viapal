@@ -25,16 +25,30 @@ Tre trappole verificate sul campo, da NON dimenticare alla prossima campagna:
    nel markup attuale marca i COMMENTI, non i post. Un commento "cerco stanza"
    sotto un post "offro casa" farebbe classificare male il post.
 
-4. IL PERMALINK SPESSO NON C'È. Il 27/08 alle 2 di notte ogni post aveva il suo
-   a[href*="/posts/"]; alle 10 del mattino, sugli stessi post, quel link era
-   sparito e il timestamp puntava a un href relativo `?__cft__[0]=...` che
-   Facebook risolve solo al click. Nel mezzo non era cambiato niente da parte
-   nostra. Quindi il permalink si prende quando c'è, ma non ci si costruisce
-   sopra: l'identità del post la fa un'impronta di autore + testo (scraper.py),
-   e il link della notifica ricade sul profilo dell'autore — che per scrivere
-   in privato è anche più utile del post.
+4. IL PERMALINK C'È SOLO SUI POST CHE HANNO COMMENTI. Non è una stranezza del
+   rendering, è come è fatto il markup: il link a[href*="/posts/"] è il link di
+   un COMMENTO, non dell'orario. Un commento dev'essere indirizzabile ("post X,
+   commento Y") e quindi porta con sé l'id del post; il link dell'orario invece
+   è un href relativo `?__cft__[0]=...` che Facebook risolve in JavaScript al
+   click, e nel DOM non contiene l'id.
+
+   Misurato il 27/08 su 41 post: 13 con commenti avevano tutti il permalink,
+   28 senza commenti non ne aveva nessuno. Correlazione perfetta, zero
+   eccezioni, e stabile fra due giri consecutivi (nessun post "si alterna").
+
+   Conseguenze, per non riprovare quello che non funziona:
+   - non dipende dal ritmo di lettura. Provati e tutti a ~40%: due letture per
+     passo, pause di 2,5s fra le letture, scroll più corto del viewport, pausa
+     di 7s dopo ogni scroll, ripasso del feed all'indietro.
+   - non si recupera col click: sui post senza commenti, cliccare il link
+     dell'orario non naviga da nessuna parte, né con element.click() né col
+     mouse simulato da Playwright.
+   - c'è un rovescio utile: i post senza commenti sono i più FRESCHI, cioè i
+     lead migliori. Per quelli il permalink non ci sarà mai, ed è il motivo per
+     cui la notifica poggia su m.me/<author_id> — che c'è sempre.
+
    Gli annunci Marketplace condivisi nel gruppo (a[href*="/commerce/listing/"])
-   non hanno mai avuto un /posts/: sono sempre offerte, mai richieste.
+   sono sempre offerte, mai richieste: si scartano prima dell'LLM.
 
 `innerText` viene preso grezzo e ripulito in Python (vedi pulizia.py): meno
 codice dentro il browser significa meno codice da riscrivere quando si rompe,

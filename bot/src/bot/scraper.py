@@ -98,25 +98,10 @@ def raccogli(
                 continue
             precedente = raccolti.get(post_id)
             if precedente:
-                # Il permalink può comparire dopo, quando lo scroll fa idratare
-                # il post: se nel frattempo c'è, si prende, anche a testo
-                # invariato. Costa nulla, ma non aspettarsi molto.
-                #
-                # Il 27/08 ho provato a farlo salire sopra il ~40%, senza
-                # riuscirci. Per non rifare il giro alla prossima campagna:
-                #   lettura singola, scroll 1200 ....... 40%  (16/40)
-                #   due letture per passo .............. 40%  (16/40)
-                #   pausa 2,5s fra le due letture ...... 40%  (16/40)
-                #   scroll 500px (sotto il viewport) ... 37%  (13/35)
-                #   pausa 7s dopo ogni scroll .......... 37%  (10/27)
-                #   ripasso del feed all'indietro ...... 40%  (16/40)
-                # E non è nemmeno recuperabile aprendo il post: sui post che non
-                # hanno il permalink, cliccare il link dell'orario non porta da
-                # nessuna parte — né con element.click() né col mouse simulato
-                # da Playwright. L'URL resta quello del feed.
-                # Non dipende dal ritmo con cui si legge: Facebook lo espone su
-                # una frazione dei post e basta. L'author_id invece c'è sempre,
-                # ed è per questo che il flusso poggia su Messenger.
+                # Se il permalink compare — qualcuno ha commentato fra un
+                # passaggio e l'altro — si prende. Vedi estrazione.py: quel link
+                # è il link di un commento, quindi i post senza commenti non
+                # l'avranno mai, per quanto si aspetti.
                 if grezzo["permalink"] and precedente.permalink_e_del_profilo:
                     precedente.permalink = grezzo["permalink"]
                     precedente.permalink_e_del_profilo = False
