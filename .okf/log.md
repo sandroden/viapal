@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-08-27
+* **Creation**: `domain/lead-ricerca-inquilini.md` — i lead del bot Facebook depositati su viapal e lavorati da `/p/cerca-inquilini`. L'invariante che regge tutto: due metà con proprietari diversi (campi del bot riscritti a ogni upsert, lavorazione umana mai toccata), garantita da due serializer distinti e non dalla buona educazione del payload. Chiave `(property, post_id)` e non `post_id` globale: due immobili sullo stesso gruppo devono poter lavorare lo stesso post. Push best-effort con coda `pushed_at`: Telegram resta il canale primario e il server può stare giù senza perdite. "Chiudi campagna" cancella i dati di terzi anche sul server, speculare al `.db` del bot.
+
 ## 2026-08-26
 * **Maintain**: `domain/link-lettura.md` — «Tutto si raggiunge da dove si compone»: il dialog «Aggiungi un documento» offre le tre strade (select, «Esponi e aggiungi», «Genera e aggiungi»). Regola imparata due volte sullo stesso punto — prima la spunta stava solo in «Altri documenti» e il fac-simile solo nella sua sezione.
 * **Maintain**: `domain/link-lettura.md` — le due forme del testo si distinguono per **dove finiscono**, non per cosa dicono: «Nota su un allegato» prometteva una nota per ciascun allegato ed è diventata «Testo fra gli allegati». Chi cerca «il testo» ha in mente la premessa.
