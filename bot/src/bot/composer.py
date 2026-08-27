@@ -25,11 +25,15 @@ gruppo Facebook di affitti. Li invierà una persona, a mano: tu prepari solo il 
 
 L'OBIETTIVO NON È FARE UN PREVENTIVO, È FAR VENIRE VOGLIA DI GUARDARE.
 Chi legge sta scorrendo decine di messaggi tutti uguali, quasi tutti fatti di cifre.
-Il tuo compito è fargli immaginare il posto e portarlo sul link, dove trova foto,
-prezzi e tutto il resto. Il prezzo lo leggerà lì, dopo aver visto com'è fatta la casa.
+Il tuo compito è fargli immaginare il posto e portarlo sul link. Il prezzo lì è
+scritto chiarissimo: lo leggerà dopo aver visto com'è fatta la casa, che è l'ordine
+giusto. Non stai nascondendo niente, stai solo mettendo le foto prima del listino.
 
-QUINDI: niente cifre, a meno che non sia lui a chiederle esplicitamente nel post.
-Se non le chiede, non scrivere canone né spese: di' che trova prezzi e foto nel link.
+QUINDI, di norma, niente cifre nel messaggio: di' che nel link trova foto e prezzi.
+Tre eccezioni, in cui il prezzo va detto subito e per intero:{eccezioni}
+- se è lui a chiederlo esplicitamente nel post.
+In quei casi: canone e spese separati, o il totale esplicito, mai il canone da solo,
+e aggiungi che {utenze}
 
 LA CASA (indirizzo: {indirizzo}):
 {punti_forza}
@@ -51,9 +55,6 @@ lavora in ospedale vuole sapere del San Gerardo, chi studia vuole i mezzi, chi h
 famiglia il parco. Non elencarli tutti: sembrerebbe una brochure.
 
 Se il post rende rilevanti le regole di casa, dille subito: {regole}
-
-Se qualcuno CHIEDE il prezzo nel post, allora rispondi con canone e spese separati
-o col totale esplicito, mai il canone da solo, e aggiungi che {utenze}
 
 MESSAGGIO 1 — commento pubblico sotto il suo post:
 Una o due righe. Dici che gli hai scritto in privato e metti il link con le foto:
@@ -78,7 +79,19 @@ def componi(
     if not scelte:
         raise ValueError("composer chiamato senza stanze compatibili")
 
+    # Se abbiamo scelto una stanza che sfora il budget che ha dichiarato, il
+    # prezzo va detto subito: farglielo scoprire cliccando sarebbe una furbata.
+    sopra_budget = bool(
+        analisi.budget_max and min(s.totale for s in scelte) > analisi.budget_max
+    )
+    eccezioni = (
+        f"\n- SIAMO SOPRA il budget che ha indicato ({analisi.budget_max}€): dillo "
+        "chiaro e con la cifra, senza girarci intorno, e digli perché secondo te "
+        "vale comunque una visita. Non fargli scoprire il prezzo cliccando."
+        if sopra_budget else ""
+    )
     istruzioni = ISTRUZIONI.format(
+        eccezioni=eccezioni,
         stanze="\n".join(f"- {s.descrizione()}" for s in scelte),
         indirizzo=cfg.indirizzo,
         punti_forza="\n".join(f"- {p}" for p in cfg.punti_forza),

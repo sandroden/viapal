@@ -42,13 +42,36 @@ def test_una_stanza_affittata_sparisce_anche_se_il_modello_la_propone():
     assert analisi.stanze_compatibili == ["camera-3"]
 
 
-def test_senza_stanze_valide_il_match_decade():
+def test_sopra_il_budget_si_prova_lo_stesso_con_la_piu_economica():
+    """Molti scrivono una cifra prima di sapere quanto costa Monza, e la alzano
+    quando vedono la casa. Scartarli a priori è un lead perso."""
     cfg = carica(ESEMPIO)
     analisi = analizza(
-        _client(_analisi(stanze_compatibili=["camera-fantasma"])), cfg, FintoPost()
+        _client(_analisi(budget_max=400, stanze_compatibili=[])), cfg, FintoPost()
+    )
+    assert analisi.match is True
+    assert analisi.stanze_compatibili == ["camera-3"]   # totale 550, la più bassa
+    assert "sopra il budget" in analisi.motivo
+
+
+def test_un_budget_dichiarato_rigido_invece_scarta():
+    cfg = carica(ESEMPIO)
+    analisi = analizza(
+        _client(_analisi(budget_max=400, budget_tassativo=True, stanze_compatibili=[])),
+        cfg, FintoPost(),
     )
     assert analisi.match is False
-    assert "nessuna stanza libera compatibile" in analisi.motivo
+    assert "rigido" in analisi.motivo
+
+
+def test_chi_ha_un_animale_non_riceve_niente():
+    """Non è una preferenza: in casa non sono ammessi, e scrivergli è tempo
+    perso per tutti e due."""
+    cfg = carica(ESEMPIO)
+    analisi = analizza(_client(_analisi(animali=True)), cfg, FintoPost())
+    assert analisi.match is False
+    assert analisi.stanze_compatibili == []
+    assert "animale" in analisi.motivo
 
 
 def test_un_post_troncato_avverte_il_modello():

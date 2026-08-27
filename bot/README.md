@@ -44,6 +44,29 @@ Prezzo e spese condominiali sono campi separati, e `nota_utenze` dice cosa resta
 fuori dal totale. Serve a impedire al composer di scrivere "tutto incluso", che
 sarebbe un preventivo falso.
 
+## Come decide
+
+Il messaggio non fa un preventivo: fa venire voglia di guardare. I prezzi stanno
+nell'annuncio, scritti chiari — il link li porta, e chi clicca li legge *dopo*
+aver visto com'è fatta la casa. Non si nasconde niente, si mette solo la foto
+prima del listino.
+
+Il materiale con cui incuriosire sta in `[casa]` nel TOML, ed è l'unico che il
+composer ha il permesso di usare: se una cosa non è scritta lì, non la può dire.
+Sono i fatti veri presi dall'annuncio Facebook e dai testi della galleria.
+
+Il prezzo però va detto subito in due casi: quando lo chiede lui nel post, e
+quando la stanza costa più del budget che ha indicato. Farglielo scoprire
+cliccando sarebbe una furbata.
+
+Sul budget il filtro è morbido di proposito: chi scrive 450€ spesso non sa ancora
+quanto costi Monza, e alza il tiro quando vede la casa. Si scrive lo stesso, con
+la stanza più economica e dicendo di quanto siamo sopra. Scarta solo chi dichiara
+il budget come limite rigido ("massimo", "non posso superare").
+
+Chi dichiara di avere un animale invece non riceve niente: in casa non sono
+ammessi, e scrivergli sarebbe tempo perso per tutti e due.
+
 ## Le tre trappole trovate sul campo
 
 Verificate il 2026-08-27, con agent-browser 0.27.0. Sono documentate anche in
