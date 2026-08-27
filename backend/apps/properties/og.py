@@ -42,16 +42,19 @@ CACHE_INDEX = "og:index-spa"
 CACHE_INDEX_TTL = 60
 
 # Misura piena della card (rapporto 1.91:1 di Facebook) e le riduzioni a cui
-# si ripiega quando la foto non sta nel budget di peso: i proxy delle chat
-# scaricano un'anteprima solo se è leggera, e una card mostrata a 500-600 px
-# non perde nulla di visibile a 1000 px di larghezza.
+# si ripiega quando la foto sfonda il tetto di peso. Il tetto è una rete di
+# sicurezza contro le foto patologiche, non una politica di risparmio: le
+# anteprime pesanti si caricano male sui client mobili, ma nessuno degrada
+# l'immagine principale per un guadagno che non si vede. (Che Messenger non
+# mostri l'anteprima nelle chat cifrate non dipende da questo: lì i meta non
+# vengono proprio letti — mostra il dominio e basta, titolo compreso.)
 OG_LARGHEZZA = 1200
 OG_ALTEZZA = 630
-OG_PESO_MAX = 150 * 1024
+OG_PESO_MAX = 250 * 1024
 OG_VARIANTI = [(1200, 78), (1200, 70), (1000, 78), (1000, 70), (800, 75), (600, 75)]
 # Cambiando i parametri di resa cambia anche l'impronta, altrimenti l'URL
 # resterebbe lo stesso e i client servirebbero la versione vecchia.
-OG_RESA = "2"
+OG_RESA = "3"
 
 
 # ── Testi ────────────────────────────────────────────────────────────────

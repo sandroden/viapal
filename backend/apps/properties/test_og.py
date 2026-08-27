@@ -11,6 +11,7 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image
 
+from properties import og
 from properties.models import GalleryImage, Property, Room
 
 
@@ -18,6 +19,12 @@ def _foto(nome="stanza.webp", colore=(120, 160, 90), formato="WEBP", dimensioni=
     buffer = io.BytesIO()
     Image.new("RGB", dimensioni, colore).save(buffer, formato)
     return SimpleUploadedFile(nome, buffer.getvalue(), content_type=f"image/{formato.lower()}")
+
+
+@pytest.fixture(autouse=True)
+def cartella_anteprime(settings, tmp_path):
+    """Le anteprime derivate non finiscono nella media/ del progetto."""
+    settings.MEDIA_ROOT = str(tmp_path)
 
 
 @pytest.fixture
@@ -147,10 +154,13 @@ class TestImmagineOG:
         img = Image.open(io.BytesIO(b"".join(risposta.streaming_content)))
         assert img.size == (1200, 630)
 
-    def test_una_foto_pesante_viene_rimpicciolita_e_dichiarata(self, client, db):
-        # Rumore puro: incomprimibile, come il fogliame che a 1200x630 non
-        # sta nel budget. L'anteprima deve scendere di misura, e i meta
-        # devono dichiarare quella vera (se non combacia, FB la scarta).
+    def test_una_foto_pesante_viene_rimpicciolita_e_dichiarata(self, client, db, monkeypatch):
+        # Il tetto vero è generoso: qui si abbassa per provare il
+        # meccanismo, non il numero. Rumore puro perché è incomprimibile,
+        # come il fogliame che a piena misura sfonda il budget. L'anteprima
+        # deve scendere di misura, e i meta devono dichiarare quella vera
+        # (se non combacia con il file, Facebook la scarta).
+        monkeypatch.setattr(og, "OG_PESO_MAX", 60 * 1024)
         rumore = Image.frombytes("RGB", (2000, 1200), os.urandom(2000 * 1200 * 3))
         buffer = io.BytesIO()
         rumore.save(buffer, "JPEG", quality=92)
@@ -162,7 +172,7 @@ class TestImmagineOG:
         risposta = client.get(f"/api/v1/public/og-image/{pesante.slug}.jpg")
         dati = b"".join(risposta.streaming_content)
         img = Image.open(io.BytesIO(dati))
-        assert len(dati) <= 150 * 1024, f"anteprima da {len(dati) // 1024} KB"
+        assert len(dati) <= og.OG_PESO_MAX, f"anteprima da {len(dati) // 1024} KB"
         assert img.width < 1200, "una foto pesante deve scendere di misura"
 
         html = client.get(f"/g/{pesante.slug}").content.decode()

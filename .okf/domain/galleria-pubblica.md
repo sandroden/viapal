@@ -128,10 +128,12 @@ la SPA parte come sempre.
   foto sono **WebP**, che WhatsApp non renderizza. `og_image`
   (`/api/v1/public/og-image/<slug>.jpg`) ne deriva un **JPEG in 1.91:1**
   (ritaglio centrale) e lo tiene in cache in `media/og/`. La misura piena è
-  1200×630, ma vale un **budget di peso di 150 KB** (`OG_VARIANTI`): i proxy
-  delle chat scaricano l'anteprima solo se è leggera, e un soggetto ad alta
-  entropia (fogliame) a 1200×630 non ci sta — la hero di Viapal scende a
-  1000×525, le foto delle camere restano piene. Passare a **WebP non
+  1200×630, con un **tetto di peso di 250 KB** (`OG_VARIANTI`) che scala la
+  misura solo per le foto patologiche: rete di sicurezza, non politica di
+  risparmio. **Messenger nelle chat cifrate non c'entra**: lì i meta non
+  vengono letti affatto — mostra il dominio e basta, titolo compreso, e
+  l'immagine della camera (84 KB) non viene nemmeno richiesta. Post,
+  commenti, gruppi e WhatsApp funzionano. Passare a **WebP non
   aiuterebbe**: misurato su quella hero pareggia il JPEG (la sorgente è già
   compressa) e WhatsApp non lo mostrerebbe. Le dimensioni nei meta sono
   quelle **effettive** del file, non le nominali: se non combaciano Facebook
