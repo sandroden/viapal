@@ -8,6 +8,7 @@ group_id = "2262271623946575"          # AFFITTI Monza e Brianza - CERCO/OFFRO
 poll_interval_minutes = 25
 active_hours = [8, 23]
 scroll_stop_after_seen = 10
+max_scroll = 45          # quanto in giù andare nel feed: ~45 basta per 2-3 giorni di post
 headed = false                          # true se Facebook comincia a chiedere verifiche
 profilo_browser = "~/.viapal-bot/fb-profile"
 # UA della sessione con cui è stato fatto il login, per non presentarsi come un
@@ -15,8 +16,12 @@ profilo_browser = "~/.viapal-bot/fb-profile"
 #   agent-browser --profile ~/.viapal-bot/fb-profile eval 'navigator.userAgent'
 user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
 
+# Classificare un post è meccanico: un modello piccolo basta e costa un quinto.
+# Scrivere il messaggio no, lì serve orecchio. Le classificazioni sono decine
+# di volte più numerose delle scritture, quindi è lì che sta quasi tutto il conto.
 [llm]
-modello = "claude-opus-5"
+classifier = "claude-haiku-4-5"
+composer = "claude-opus-5"
 
 [[stanze]]
 id = "camera-3"

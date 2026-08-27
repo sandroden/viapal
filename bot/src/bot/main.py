@@ -61,6 +61,7 @@ def giro(
             cfg.group_id,
             gia_visti=archivio.id_visti(),
             stop_dopo_visti=cfg.scroll_stop_after_seen,
+            max_scroll=cfg.max_scroll,
         )
     except MarkupCambiato as exc:
         log.error("estrazione a vuoto: %s", exc)

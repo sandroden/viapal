@@ -73,6 +73,27 @@ Serve che Monza o un comune della lista sia nominato davvero.
 Chi dichiara di avere un animale invece non riceve niente: in casa non sono
 ammessi, e scrivergli sarebbe tempo perso per tutti e due.
 
+## Quanto costa
+
+Serve credito sull'**API** di Anthropic: l'abbonamento Claude (Pro o Max) copre
+claude.ai e Claude Code, cioè l'uso interattivo, e non vale qui. Sono due prodotti
+con billing separato, e non c'è un ponte fra i due.
+
+Con i numeri di un giro reale (50 post letti, 6 lead), tenendo la
+classificazione su Haiku e la scrittura su Opus:
+
+| | |
+|---|---|
+| primo giro della campagna | ~$0.20 |
+| giro successivo (solo post nuovi) | ~$0.03 |
+| giornata di loop (15 ore, ogni 25 min) | ~$1 |
+| campagna di 10 giorni | **~$10** |
+
+Su Opus per tutto sarebbe circa quattro volte tanto, senza migliorare le
+notifiche: quello che cambia davvero è il modello del `composer`, e quello è
+già su Opus. Se le classificazioni cominciano a sbagliare, `classifier` nel
+TOML si alza a `claude-sonnet-5` e si ricontrolla con `./campagna.sh prova`.
+
 ## Le tre trappole trovate sul campo
 
 Verificate il 2026-08-27, con agent-browser 0.27.0. Sono documentate anche in

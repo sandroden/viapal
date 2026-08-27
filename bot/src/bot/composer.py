@@ -108,7 +108,7 @@ def componi(
         f"da={analisi.disponibile_da}, durata={analisi.durata}"
     )
     risposta = client.messages.parse(
-        model=cfg.modello,
+        model=cfg.modello_composer,
         max_tokens=2000,
         system=istruzioni,
         messages=[{"role": "user", "content": contesto}],

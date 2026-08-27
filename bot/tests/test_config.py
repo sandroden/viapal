@@ -40,3 +40,11 @@ def test_l_id_e_marcato_come_interno():
 def test_esiste_la_nota_sulle_utenze():
     """Senza questa, il composer scrive "tutto incluso" e mente sul preventivo."""
     assert "utenze" in carica(ESEMPIO).nota_utenze.lower()
+
+
+def test_i_due_modelli_sono_separati():
+    """Classificare è meccanico, scrivere no: tenerli sullo stesso modello
+    significa pagare il composer per ogni post letto."""
+    cfg = carica(ESEMPIO)
+    assert cfg.modello_classifier != cfg.modello_composer
+    assert "haiku" in cfg.modello_classifier

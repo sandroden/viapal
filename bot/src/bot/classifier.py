@@ -114,7 +114,7 @@ def analizza(client: anthropic.Anthropic, cfg: Config, post) -> AnalisiPost:
         nota_troncato=NOTA_TRONCATO if getattr(post, "troncato", False) else "",
     )
     risposta = client.messages.parse(
-        model=cfg.modello,
+        model=cfg.modello_classifier,
         max_tokens=2000,
         system=istruzioni,
         messages=[{"role": "user", "content": f"POST:\n\n{post.text}"}],

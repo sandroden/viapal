@@ -42,6 +42,7 @@ class Config:
     poll_interval_minutes: int
     active_hours: tuple[int, int]
     scroll_stop_after_seen: int
+    max_scroll: int
     headed: bool
     profilo_browser: str
     user_agent: str | None
@@ -58,7 +59,8 @@ class Config:
     escludi_tipologie: tuple[str, ...]
     telegram_token: str
     telegram_chat_id: str
-    modello: str
+    modello_classifier: str
+    modello_composer: str
 
     @property
     def stanze_libere(self) -> tuple[Stanza, ...]:
@@ -75,6 +77,7 @@ def carica(percorso: str | Path) -> Config:
         poll_interval_minutes=int(fb.get("poll_interval_minutes", 25)),
         active_hours=tuple(fb.get("active_hours", [8, 23])),
         scroll_stop_after_seen=int(fb.get("scroll_stop_after_seen", 10)),
+        max_scroll=int(fb.get("max_scroll", 45)),
         headed=bool(fb.get("headed", False)),
         profilo_browser=str(fb.get("profilo_browser", "~/.viapal-bot/fb-profile")),
         user_agent=fb.get("user_agent") or None,
@@ -107,5 +110,9 @@ def carica(percorso: str | Path) -> Config:
         escludi_tipologie=tuple(matching.get("escludi_tipologie", [])),
         telegram_token=tg["bot_token"],
         telegram_chat_id=str(tg["chat_id"]),
-        modello=dati.get("llm", {}).get("modello", "claude-opus-5"),
+        # Classificare è meccanico e va bene un modello piccolo; scrivere un
+        # messaggio che non suoni un'agenzia no. Separarli taglia il conto di
+        # quasi tutto, perché le classificazioni sono cento volte le scritture.
+        modello_classifier=dati.get("llm", {}).get("classifier", "claude-haiku-4-5"),
+        modello_composer=dati.get("llm", {}).get("composer", "claude-opus-5"),
     )
