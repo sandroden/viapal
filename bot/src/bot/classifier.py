@@ -52,8 +52,23 @@ STANZE LIBERE (le uniche che possiamo proporre):
 {stanze}
 
 ZONE ACCETTABILI: {zone}
-Le stanze sono a Monza: chi cerca in un comune limitrofo o "a Monza e dintorni" va \
-tenuto. Chi cerca in una città lontana (Milano città, Como, Bergamo...) va scartato.
+
+Il criterio NON è la distanza, è il prezzo di mercato. Monza costa più dei comuni
+intorno: chi cerca dove si paga meno (Lesmo, Limbiate, Bovisio, Cesano Maderno,
+Seregno, Desio...) ha in testa cifre più basse delle nostre, e proporgli una stanza
+a Monza significa competere con un mercato diverso. Non è un buon contatto, anche
+se sulla mappa è a dieci chilometri.
+
+Quindi: va tenuto chi nomina Monza — da sola, insieme ad altri comuni, o come
+"Monza e dintorni" — e chi cerca in uno dei comuni in lista. Va scartato chi nomina
+solo comuni fuori lista, e chi cerca in una città lontana (Milano città, Como,
+Bergamo). Se non dichiara nessuna zona, non scartarlo per questo.
+
+ATTENZIONE, la zona è l'ECCEZIONE alla regola 6 sul dubbio: le formule vaghe
+attaccate a un comune fuori lista ("Lesmo o vicinanze", "Seregno e dintorni",
+"zone ben collegate") NON bastano a tenerlo. Chi scrive così ha in testa i prezzi
+di quel comune, non quelli di Monza. Serve che Monza o un comune della lista sia
+nominato davvero.
 
 REGOLE DI MATCHING — applicale in quest'ordine:
 

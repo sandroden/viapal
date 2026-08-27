@@ -96,3 +96,14 @@ def test_il_prompt_elenca_solo_le_stanze_libere():
     assert "camera-3" in istruzioni
     # e il totale, non il solo canone: è il numero da confrontare col budget
     assert "550" in istruzioni
+
+
+def test_il_prompt_spiega_perche_certe_zone_sono_fuori():
+    """La lista da sola non basta: senza il criterio (Monza costa più dei comuni
+    intorno) il modello ragiona in chilometri e tiene i lead sbagliati."""
+    cfg = carica(ESEMPIO)
+    client = _client(_analisi())
+    analizza(client, cfg, FintoPost())
+    istruzioni = client.messages.parse.call_args.kwargs["system"]
+    assert "prezzo di mercato" in istruzioni
+    assert "Villasanta" in istruzioni      # la lista arriva comunque

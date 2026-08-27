@@ -71,6 +71,10 @@ punti_forza = [
 regole = "In casa non si fuma e non sono ammessi animali."
 
 [matching]
+# Il criterio non è la distanza, è il prezzo di mercato: Monza costa più dei
+# comuni intorno, e chi cerca dove si paga meno (Lesmo, Seregno, Desio,
+# Limbiate...) ha in testa cifre più basse delle nostre. Proporgli una stanza a
+# Monza è competere con un mercato diverso, anche se sulla mappa è a 10 km.
 zone_accettate = [
     "Monza", "Villasanta", "Brugherio", "Vedano al Lambro", "Lissone",
     "Muggiò", "Concorezzo", "Biassono", "Sesto San Giovanni", "Cinisello Balsamo",

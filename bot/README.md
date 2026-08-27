@@ -64,6 +64,12 @@ quanto costi Monza, e alza il tiro quando vede la casa. Si scrive lo stesso, con
 la stanza più economica e dicendo di quanto siamo sopra. Scarta solo chi dichiara
 il budget come limite rigido ("massimo", "non posso superare").
 
+Sulla zona il criterio non è la distanza ma il **prezzo di mercato**: Monza costa
+più dei comuni intorno, e chi cerca dove si paga meno ha in testa cifre più basse.
+È l'unico punto in cui il dubbio non premia il lead: "Lesmo o vicinanze ben
+collegate" viene scartato, perché chi scrive così ragiona sui prezzi di Lesmo.
+Serve che Monza o un comune della lista sia nominato davvero.
+
 Chi dichiara di avere un animale invece non riceve niente: in casa non sono
 ammessi, e scrivergli sarebbe tempo perso per tutti e due.
 
