@@ -24,6 +24,7 @@ api_v1_patterns = [
     path("", include("billing.dashboard_urls")),
     path("", include("accounting.api_urls")),
     path("", include("notifications.api_urls")),
+    path("", include("leads.api_urls")),
 ]
 
 urlpatterns = [
