@@ -48,6 +48,10 @@ class Post:
     author_id: str | None = field(default=None)
     troncato: bool = field(default=False)
     permalink_e_del_profilo: bool = field(default=False)
+    # Il gruppo in cui il post è stato trovato lo sa lo scraper — è quello che
+    # sta scorrendo — e non si ricava dal permalink, che spesso manca. Serve a
+    # viapal, e servirà quando i gruppi monitorati saranno più d'uno.
+    group_id: str = field(default="")
 
     @property
     def link_messenger(self) -> str | None:
@@ -112,6 +116,8 @@ def raccogli(
     if not raccolti and not gia_visti:
         raise MarkupCambiato("nessun post estratto al primo giro")
 
+    for p in raccolti.values():
+        p.group_id = group_id
     senza = sum(1 for p in raccolti.values() if p.permalink_e_del_profilo)
     log.info("raccolti %d post nuovi (%d senza permalink)", len(raccolti), senza)
     return list(raccolti.values())

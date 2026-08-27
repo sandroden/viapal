@@ -253,6 +253,9 @@ def _campi_post(voce: dict) -> dict:
         "author_id": voce.get("author_id"),
         "text": voce.get("text", ""),
         "permalink_e_del_profilo": voce.get("permalink_e_del_profilo", False),
+        # `--estrai` lo scrive nel JSON (asdict): senza rileggerlo qui, il
+        # giro che passa da Claude Code perderebbe per strada il gruppo.
+        "group_id": voce.get("group_id", ""),
     }
 
 
