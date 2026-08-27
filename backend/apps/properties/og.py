@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import urllib.request
+from collections import namedtuple
 from io import BytesIO
 
 from django.conf import settings
@@ -40,8 +41,17 @@ logger = logging.getLogger("viapal.og")
 CACHE_INDEX = "og:index-spa"
 CACHE_INDEX_TTL = 60
 
+# Misura piena della card (rapporto 1.91:1 di Facebook) e le riduzioni a cui
+# si ripiega quando la foto non sta nel budget di peso: i proxy delle chat
+# scaricano un'anteprima solo se è leggera, e una card mostrata a 500-600 px
+# non perde nulla di visibile a 1000 px di larghezza.
 OG_LARGHEZZA = 1200
 OG_ALTEZZA = 630
+OG_PESO_MAX = 150 * 1024
+OG_VARIANTI = [(1200, 78), (1200, 70), (1000, 78), (1000, 70), (800, 75), (600, 75)]
+# Cambiando i parametri di resa cambia anche l'impronta, altrimenti l'URL
+# resterebbe lo stesso e i client servirebbero la versione vecchia.
+OG_RESA = "2"
 
 
 # ── Testi ────────────────────────────────────────────────────────────────
@@ -144,7 +154,7 @@ def _impronta(filefield):
     Facebook tiene in cache lo scrape per settimane: senza un URL nuovo
     l'anteprima resterebbe la vecchia foto.
     """
-    pezzi = [filefield.name]
+    pezzi = [filefield.name, OG_RESA]
     try:
         pezzi.append(str(filefield.size))
     except Exception:  # noqa: BLE001 - storage remoto muto: basta il nome
@@ -153,10 +163,15 @@ def _impronta(filefield):
 
 
 def _deriva_jpeg(filefield):
-    """JPEG 1200x630 (ritaglio centrale) dalla foto sorgente."""
+    """JPEG in rapporto 1.91:1 dalla foto sorgente, entro il budget di peso.
+
+    Si parte dalla misura piena e si scende solo quanto serve: una foto
+    ordinaria resta a 1200x630, una difficile da comprimere (fogliame,
+    tessiture fini) viene rimpicciolita finché non rientra. Ritorna i byte
+    e le dimensioni effettive, che i meta devono dichiarare per davvero.
+    """
     with filefield.open("rb") as fp:
-        img = Image.open(fp)
-        img = ImageOps.exif_transpose(img)
+        img = ImageOps.exif_transpose(Image.open(fp))
         if img.mode in ("RGBA", "LA", "P"):
             img = img.convert("RGBA")
             fondo = Image.new("RGB", img.size, (255, 255, 255))
@@ -164,10 +179,19 @@ def _deriva_jpeg(filefield):
             img = fondo
         else:
             img = img.convert("RGB")
-        img = ImageOps.fit(img, (OG_LARGHEZZA, OG_ALTEZZA), method=Image.LANCZOS)
-        buffer = BytesIO()
-        img.save(buffer, "JPEG", quality=78, optimize=True, progressive=True)
-    return buffer.getvalue()
+
+        ultimo = None
+        for larghezza, qualita in OG_VARIANTI:
+            misura = (larghezza, round(larghezza * OG_ALTEZZA / OG_LARGHEZZA))
+            buffer = BytesIO()
+            ImageOps.fit(img, misura, method=Image.LANCZOS).save(
+                buffer, "JPEG", quality=qualita, optimize=True, progressive=True
+            )
+            ultimo = (buffer.getvalue(), misura)
+            if len(ultimo[0]) <= OG_PESO_MAX:
+                return ultimo
+    # Nessuna variante rientra: si tiene la più piccola, meglio di niente.
+    return ultimo
 
 
 def _percorso_cache(slug, impronta):
@@ -176,38 +200,60 @@ def _percorso_cache(slug, impronta):
     return os.path.join(cartella, f"{slug}-{impronta}.jpg")
 
 
-def _url_immagine(request, prop, room, filefield):
+Anteprima = namedtuple("Anteprima", "percorso larghezza altezza impronta")
+
+
+def _anteprima(prop, room):
+    """Anteprima pronta su disco, generandola alla prima richiesta.
+
+    La misura effettiva torna al chiamante perché i meta devono dichiarare
+    quella vera: se `og:image:width` non corrisponde al file, Facebook
+    scarta l'immagine. ``None`` se non c'è una foto o non è elaborabile —
+    i meta semplicemente non parleranno di immagini.
+    """
+    filefield = _sorgente(prop, room)
     if filefield is None:
         return None
+    impronta = _impronta(filefield)
+    percorso = _percorso_cache(prop.slug, impronta)
+    if os.path.exists(percorso):
+        try:
+            with Image.open(percorso) as img:
+                return Anteprima(percorso, *img.size, impronta)
+        except Exception:  # noqa: BLE001 - cache illeggibile: si rifà
+            logger.warning("Anteprima OG in cache illeggibile: %s", percorso)
+            os.remove(percorso)
+    try:
+        dati, (larghezza, altezza) = _deriva_jpeg(filefield)
+    except Exception:
+        logger.exception("Anteprima OG non derivabile da %s", filefield.name)
+        return None
+    temporaneo = f"{percorso}.{os.getpid()}"
+    with open(temporaneo, "wb") as fp:
+        fp.write(dati)
+    os.replace(temporaneo, percorso)
+    return Anteprima(percorso, larghezza, altezza, impronta)
+
+
+def _url_immagine(request, prop, room, anteprima):
+    if anteprima is None:
+        return None
     url = reverse("public-og-image", kwargs={"slug": prop.slug})
-    query = f"?v={_impronta(filefield)}"
+    query = f"?v={anteprima.impronta}"
     if room is not None:
         query += f"&stanza={room.pk}"
     return request.build_absolute_uri(url + query)
 
 
 def og_image(request, slug):
-    """JPEG 1200x630 dell'anteprima, derivato e messo in cache su disco."""
+    """L'anteprima in JPEG, derivata dalla foto e messa in cache su disco."""
     prop = get_object_or_404(Property.objects.filter(pubblica=True), slug=slug)
-    room = _stanza_richiesta(prop, request)
-    filefield = _sorgente(prop, room)
-    if filefield is None:
+    anteprima = _anteprima(prop, _stanza_richiesta(prop, request))
+    if anteprima is None:
         raise Http404("Nessuna foto da cui derivare l'anteprima.")
 
-    percorso = _percorso_cache(slug, _impronta(filefield))
-    if not os.path.exists(percorso):
-        try:
-            dati = _deriva_jpeg(filefield)
-        except Exception:
-            logger.exception("Anteprima OG non derivabile da %s", filefield.name)
-            raise Http404("Foto non elaborabile.")
-        temporaneo = f"{percorso}.{os.getpid()}"
-        with open(temporaneo, "wb") as fp:
-            fp.write(dati)
-        os.replace(temporaneo, percorso)
-
     # FileResponse chiude lui il file quando ha finito di servirlo.
-    risposta = FileResponse(open(percorso, "rb"), content_type="image/jpeg")  # noqa: SIM115
+    risposta = FileResponse(open(anteprima.percorso, "rb"), content_type="image/jpeg")  # noqa: SIM115
     # L'URL contiene l'impronta del sorgente: il contenuto non cambia mai.
     risposta["Cache-Control"] = "public, max-age=31536000, immutable"
     return risposta
@@ -241,8 +287,8 @@ def _meta(request, prop, room):
     titolo = _titolo(prop, room)
     descrizione = _descrizione(prop, room)
     url_pagina = request.build_absolute_uri()
-    filefield = _sorgente(prop, room)
-    url_immagine = _url_immagine(request, prop, room, filefield)
+    anteprima = _anteprima(prop, room)
+    url_immagine = _url_immagine(request, prop, room, anteprima)
 
     tag = [
         f"<title>{escape(titolo)}</title>",
@@ -260,8 +306,8 @@ def _meta(request, prop, room):
             f'<meta property="og:image" content="{escape(url_immagine)}">',
             f'<meta property="og:image:secure_url" content="{escape(url_immagine)}">',
             '<meta property="og:image:type" content="image/jpeg">',
-            f'<meta property="og:image:width" content="{OG_LARGHEZZA}">',
-            f'<meta property="og:image:height" content="{OG_ALTEZZA}">',
+            f'<meta property="og:image:width" content="{anteprima.larghezza}">',
+            f'<meta property="og:image:height" content="{anteprima.altezza}">',
             f'<meta property="og:image:alt" content="{escape(titolo)}">',
             '<meta name="twitter:card" content="summary_large_image">',
         ]

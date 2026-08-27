@@ -126,9 +126,17 @@ la SPA parte come sempre.
   vero ha i link agli asset, la pagina minimale no.
 - **L'immagine non può essere la foto**: dal ridimensionamento lato client le
   foto sono **WebP**, che WhatsApp non renderizza. `og_image`
-  (`/api/v1/public/og-image/<slug>.jpg`) ne deriva un **JPEG 1200×630**
-  (ritaglio centrale, q78, ~250 KB: sopra i ~300 KB WhatsApp lascia perdere)
-  e lo tiene in cache in `media/og/`. L'URL porta l'impronta del file
+  (`/api/v1/public/og-image/<slug>.jpg`) ne deriva un **JPEG in 1.91:1**
+  (ritaglio centrale) e lo tiene in cache in `media/og/`. La misura piena è
+  1200×630, ma vale un **budget di peso di 150 KB** (`OG_VARIANTI`): i proxy
+  delle chat scaricano l'anteprima solo se è leggera, e un soggetto ad alta
+  entropia (fogliame) a 1200×630 non ci sta — la hero di Viapal scende a
+  1000×525, le foto delle camere restano piene. Passare a **WebP non
+  aiuterebbe**: misurato su quella hero pareggia il JPEG (la sorgente è già
+  compressa) e WhatsApp non lo mostrerebbe. Le dimensioni nei meta sono
+  quelle **effettive** del file, non le nominali: se non combaciano Facebook
+  scarta l'immagine. `OG_RESA` entra nell'impronta, così cambiare i parametri
+  di resa cambia l'URL (altrimenti i client terrebbero la versione vecchia). L'URL porta l'impronta del file
   sorgente (`?v=…`): Facebook ricorda uno scrape per settimane, cambiare
   foto deve cambiare l'URL. Sta sotto `/api/` per non aggiungere regole di
   routing.

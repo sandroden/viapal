@@ -5,6 +5,7 @@ di WhatsApp & co. leggono, e il JPEG che ne deriva.
 """
 
 import io
+import os
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -145,6 +146,28 @@ class TestImmagineOG:
         assert risposta.status_code == 200
         img = Image.open(io.BytesIO(b"".join(risposta.streaming_content)))
         assert img.size == (1200, 630)
+
+    def test_una_foto_pesante_viene_rimpicciolita_e_dichiarata(self, client, db):
+        # Rumore puro: incomprimibile, come il fogliame che a 1200x630 non
+        # sta nel budget. L'anteprima deve scendere di misura, e i meta
+        # devono dichiarare quella vera (se non combacia, FB la scarta).
+        rumore = Image.frombytes("RGB", (2000, 1200), os.urandom(2000 * 1200 * 3))
+        buffer = io.BytesIO()
+        rumore.save(buffer, "JPEG", quality=92)
+        pesante = Property.objects.create(nome="Foto pesante", pubblica=True, slug="pesante")
+        pesante.foto_hero.save(
+            "rumore.jpg", SimpleUploadedFile("rumore.jpg", buffer.getvalue()), save=True
+        )
+
+        risposta = client.get(f"/api/v1/public/og-image/{pesante.slug}.jpg")
+        dati = b"".join(risposta.streaming_content)
+        img = Image.open(io.BytesIO(dati))
+        assert len(dati) <= 150 * 1024, f"anteprima da {len(dati) // 1024} KB"
+        assert img.width < 1200, "una foto pesante deve scendere di misura"
+
+        html = client.get(f"/g/{pesante.slug}").content.decode()
+        assert _meta(html, "og:image:width") == str(img.width)
+        assert _meta(html, "og:image:height") == str(img.height)
 
     def test_immobile_senza_foto_non_ha_anteprima(self, client, db):
         nudo = Property.objects.create(nome="Senza foto", pubblica=True, slug="senza-foto")
