@@ -60,8 +60,12 @@ class Browser:
         return self._esegui("eval", js)
 
     def scorri(self, pixel: int = 1200) -> None:
-        """Scroll nativo (rotella). Quello via JS non muove il feed di Facebook."""
-        self._esegui("scroll", "down", str(pixel))
+        """Scroll nativo (rotella). Quello via JS non muove il feed di Facebook.
+
+        Pixel negativi risalgono: serve al ripasso che recupera i permalink.
+        """
+        verso = "up" if pixel < 0 else "down"
+        self._esegui("scroll", verso, str(abs(pixel)))
 
     def chiudi(self) -> None:
         subprocess.run(["agent-browser", "close"], capture_output=True, timeout=30)

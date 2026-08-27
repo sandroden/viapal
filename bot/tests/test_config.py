@@ -48,3 +48,11 @@ def test_i_due_modelli_sono_separati():
     cfg = carica(ESEMPIO)
     assert cfg.modello_classifier != cfg.modello_composer
     assert "haiku" in cfg.modello_classifier
+
+
+def test_quello_che_non_abbiamo_e_dichiarato():
+    """Chi chiede il bagno privato resta un lead, ma deve saperlo dal primo
+    messaggio, non alla visita."""
+    cfg = carica(ESEMPIO)
+    assert "bagn" in cfg.non_abbiamo.lower()
+    assert "condivis" in " ".join(cfg.punti_forza).lower()

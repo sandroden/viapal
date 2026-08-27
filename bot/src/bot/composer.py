@@ -56,6 +56,12 @@ famiglia il parco. Non elencarli tutti: sembrerebbe una brochure.
 
 Se il post rende rilevanti le regole di casa, dille subito: {regole}
 
+Se chiede qualcosa che non abbiamo — tipicamente il bagno privato — DILLO nella
+prima o seconda riga, con naturalezza e senza scusarti: {non_abbiamo}
+Poi vai avanti con quello che invece c'è. Non è un no: è per non fargli perdere
+tempo, e chi scrive "bagno privato o monolocale" spesso ripiega volentieri.
+Quello che non devi fare è tacerlo e lasciare che lo scopra alla visita.
+
 MESSAGGIO 1 — commento pubblico sotto il suo post:
 Una o due righe. Dici che gli hai scritto in privato e metti il link con le foto:
 {galleria}
@@ -96,6 +102,7 @@ def componi(
         indirizzo=cfg.indirizzo,
         punti_forza="\n".join(f"- {p}" for p in cfg.punti_forza),
         regole=cfg.regole,
+        non_abbiamo=cfg.non_abbiamo,
         galleria=cfg.link_galleria,
         annuncio=cfg.link_post_fb,
         utenze=cfg.nota_utenze,

@@ -109,6 +109,11 @@ def raccogli(
                 #   pausa 2,5s fra le due letture ...... 40%  (16/40)
                 #   scroll 500px (sotto il viewport) ... 37%  (13/35)
                 #   pausa 7s dopo ogni scroll .......... 37%  (10/27)
+                #   ripasso del feed all'indietro ...... 40%  (16/40)
+                # E non è nemmeno recuperabile aprendo il post: sui post che non
+                # hanno il permalink, cliccare il link dell'orario non porta da
+                # nessuna parte — né con element.click() né col mouse simulato
+                # da Playwright. L'URL resta quello del feed.
                 # Non dipende dal ritmo con cui si legge: Facebook lo espone su
                 # una frazione dei post e basta. L'author_id invece c'è sempre,
                 # ed è per questo che il flusso poggia su Messenger.

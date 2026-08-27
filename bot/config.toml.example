@@ -65,7 +65,7 @@ punti_forza = [
     "a 200 metri dall'entrata del Parco di Monza e 500 dalla Villa Reale",
     "10 minuti a piedi dall'ospedale San Gerardo",
     "stanze ampie e luminose, a uso singolo",
-    "appartamento grande e arredato, 180 mq con 5 stanze e due bagni",
+    "appartamento grande e arredato, 180 mq con 5 stanze e due bagni condivisi",
     "secondo piano di uno stabile signorile e tranquillo, con giardino e portineria",
     "ampia cucina full optional, grande soggiorno luminoso, balcone e due ripostigli",
     "fermata del bus a 4 minuti a piedi, linee per la stazione e per Sesto San Giovanni",
@@ -74,6 +74,9 @@ punti_forza = [
 ]
 # Citate solo se il post le rende rilevanti (chi ha un cane, chi fuma).
 regole = "In casa non si fuma e non sono ammessi animali."
+# Cose che qualcuno chiede e noi non abbiamo: il composer deve dirle subito,
+# non lasciarle scoprire alla visita.
+non_abbiamo = "il bagno in camera: i due bagni sono condivisi fra tutti"
 
 [matching]
 # Il criterio non è la distanza, è il prezzo di mercato: Monza costa più dei

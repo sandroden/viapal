@@ -54,6 +54,7 @@ class Config:
     indirizzo: str
     punti_forza: tuple[str, ...]
     regole: str
+    non_abbiamo: str
     firma: str
     zone_accettate: tuple[str, ...]
     escludi_tipologie: tuple[str, ...]
@@ -106,6 +107,7 @@ def carica(percorso: str | Path) -> Config:
         indirizzo=casa.get("indirizzo", ""),
         punti_forza=tuple(casa.get("punti_forza", [])),
         regole=casa.get("regole", ""),
+        non_abbiamo=casa.get("non_abbiamo", ""),
         zone_accettate=tuple(matching.get("zone_accettate", [])),
         escludi_tipologie=tuple(matching.get("escludi_tipologie", [])),
         telegram_token=tg["bot_token"],
