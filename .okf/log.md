@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-08-27
+* **Creation**: `domain/lead-ricerca-inquilini.md` — i lead del bot Facebook depositati su viapal e lavorati da `/p/cerca-inquilini`. L'invariante che regge tutto: due metà con proprietari diversi (campi del bot riscritti a ogni upsert, lavorazione umana mai toccata), garantita da due serializer distinti e non dalla buona educazione del payload. Chiave `(property, post_id)` e non `post_id` globale: due immobili sullo stesso gruppo devono poter lavorare lo stesso post. Push best-effort con coda `pushed_at`: Telegram resta il canale primario e il server può stare giù senza perdite. "Chiudi campagna" cancella i dati di terzi anche sul server, speculare al `.db` del bot.
 * **Maintain**: `domain/galleria-pubblica.md` — contatti dell'annuncio in `testi_pubblici` (telefono/email/nota, editabili in-place, link `tel:`/`mailto:`); il CTA "Richiedi informazioni" e la pill Contatti compaiono solo se un recapito è compilato; footer non promette più un modulo di contatto.
 
 ## 2026-08-26

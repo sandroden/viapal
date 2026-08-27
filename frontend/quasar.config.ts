@@ -3,6 +3,11 @@
 
 import { defineConfig } from '#q-app/wrappers';
 
+// Il backend di sviluppo è :8020 (porta dedicata al progetto). Un worktree
+// parallelo — dove si sviluppa una feature mentre il server principale gira —
+// ne usa un'altra: VIAPAL_BACKEND_PORT la sposta senza toccare il file.
+const backendUrl = `http://localhost:${process.env.VIAPAL_BACKEND_PORT ?? 8020}`;
+
 export default defineConfig((/* ctx */) => {
   return {
     // https://v2.quasar.dev/quasar-cli-vite/prefetch-feature
@@ -89,23 +94,23 @@ export default defineConfig((/* ctx */) => {
       open: false, // niente apertura browser automatica
       proxy: {
         '/api': {
-          target: 'http://localhost:8020',
+          target: backendUrl,
           changeOrigin: true
         },
         '/admin': {
-          target: 'http://localhost:8020',
+          target: backendUrl,
           changeOrigin: true
         },
         '/static': {
-          target: 'http://localhost:8020',
+          target: backendUrl,
           changeOrigin: true
         },
         '/media-private': {
-          target: 'http://localhost:8020',
+          target: backendUrl,
           changeOrigin: true
         },
         '/media': {
-          target: 'http://localhost:8020',
+          target: backendUrl,
           changeOrigin: true
         },
         // La galleria pubblica passa da Django anche in dev: è lui a
@@ -114,7 +119,7 @@ export default defineConfig((/* ctx */) => {
         '/g/': {
           // changeOrigin false: Django deve vedere l'Host :9020, così gli
           // URL assoluti dei meta tag sono quelli che il visitatore usa.
-          target: 'http://localhost:8020',
+          target: backendUrl,
           changeOrigin: false
         }
       }

@@ -22,23 +22,23 @@ ALLOWED_HOSTS = ['*']
 # Iframe stessa-origine permessi (per l'anteprima PDF nel frontend via proxy)
 X_FRAME_OPTIONS = 'SAMEORIGIN'
 
-# Frontend Quasar dev su :9020
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:9020',
-    'http://127.0.0.1:9020',
-    'http://viapal.local:9020',
-    'http://localhost:9200',
-    'http://127.0.0.1:9200',
+# Frontend Quasar dev su :9020. Un worktree parallelo — dove si sviluppa una
+# feature mentre il server principale gira — usa un'altra porta: la si dichiara
+# con VIAPAL_FRONTEND_PORT invece di aggiungerla qui a mano.
+_PORTE_FRONTEND = ['9020', '9200']
+if (_extra := os.environ.get('VIAPAL_FRONTEND_PORT')):
+    _PORTE_FRONTEND.append(_extra)
+
+_ORIGINI_DEV = [
+    f'http://{host}:{porta}'
+    for porta in _PORTE_FRONTEND
+    for host in ('localhost', '127.0.0.1', 'viapal.local')
 ]
 
+CSRF_TRUSTED_ORIGINS = list(_ORIGINI_DEV)
+
 # CORS per dev cross-origin (Quasar :9020 -> Django :8020)
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:9020',
-    'http://127.0.0.1:9020',
-    'http://viapal.local:9020',
-    'http://localhost:9200',
-    'http://127.0.0.1:9200',
-]
+CORS_ALLOWED_ORIGINS = list(_ORIGINI_DEV)
 CORS_ALLOW_CREDENTIALS = True
 
 # Cookie session: SameSite=Lax in dev (stesso host localhost), no Secure
