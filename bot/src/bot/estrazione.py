@@ -8,9 +8,10 @@ Com'è fatto il feed (rilevato il 2026-08-27, Facebook web desktop, it_IT):
   div[role="feed"]                <- unico, contiene tutti i post
     └── div                       <- UN post per figlio diretto
           └── a[href*="/user/"]   <- autore (il primo con testo è il nome)
-          └── a[href*="/posts/"]  <- permalink, QUANDO C'È (vedi trappola 4)
+          └── a[href^="?"]        <- orario, con l'href MASCHERATO (trappola 4)
+          └── a[href*="/posts/"]  <- permalink: orario smascherato o link commento
 
-Tre trappole verificate sul campo, da NON dimenticare alla prossima campagna:
+Quattro trappole verificate sul campo, da NON dimenticare alla prossima campagna:
 
 1. IL FEED È VIRTUALIZZATO. Facebook svuota il contenuto dei post lontani dal
    viewport lasciando il div come guscio vuoto. Non si può scrollare fino in
@@ -20,32 +21,40 @@ Tre trappole verificate sul campo, da NON dimenticare alla prossima campagna:
 2. LO SCROLL VIA JS NON FUNZIONA. `window.scrollBy`/`scrollTo` non muovono la
    pagina in questo stato: il loop girerebbe a vuoto sempre sulla stessa
    schermata. Va usato lo scroll nativo di agent-browser (rotella vera).
+   Della stessa famiglia: lo scrollIntoView di Playwright (`hover <sel>`,
+   `scrollintoview <sel>`) dichiara successo ma NON porta l'elemento nel
+   viewport — il mouse finisce su un altro punto della pagina.
 
 3. div[role="article"] NON È IL SELETTORE GIUSTO, malgrado sia quello ovvio:
    nel markup attuale marca i COMMENTI, non i post. Un commento "cerco stanza"
    sotto un post "offro casa" farebbe classificare male il post.
 
-4. IL PERMALINK C'È SOLO SUI POST CHE HANNO COMMENTI. Non è una stranezza del
-   rendering, è come è fatto il markup: il link a[href*="/posts/"] è il link di
-   un COMMENTO, non dell'orario. Un commento dev'essere indirizzabile ("post X,
-   commento Y") e quindi porta con sé l'id del post; il link dell'orario invece
-   è un href relativo `?__cft__[0]=...` che Facebook risolve in JavaScript al
-   click, e nel DOM non contiene l'id.
+4. IL PERMALINK NASCE MASCHERATO, E SI SMASCHERA COL MOUSE. L'href dell'orario
+   è `?__cft__[0]=…` (token opaco, l'id del post NON c'è) e Facebook lo
+   riscrive pieno — `/groups/<gid>/posts/<id>/?__cft__…` — solo quando il
+   mouse ci passa sopra con un evento TRUSTED. È il motivo per cui "da
+   browser funziona": il mouse dell'utente smaschera senza che se ne accorga.
+   Validato il 27/08 su feed caricato da zero: sola discesa 70%, discesa più
+   ripasso in risalita 11/11 post col permalink (8 via hover, 3 via commento).
 
-   Misurato il 27/08 su 41 post: 13 con commenti avevano tutti il permalink,
-   28 senza commenti non ne aveva nessuno. Correlazione perfetta, zero
-   eccezioni, e stabile fra due giri consecutivi (nessun post "si alterna").
-
-   Conseguenze, per non riprovare quello che non funziona:
-   - non dipende dal ritmo di lettura. Provati e tutti a ~40%: due letture per
-     passo, pause di 2,5s fra le letture, scroll più corto del viewport, pausa
-     di 7s dopo ogni scroll, ripasso del feed all'indietro.
-   - non si recupera col click: sui post senza commenti, cliccare il link
-     dell'orario non naviga da nessuna parte, né con element.click() né col
-     mouse simulato da Playwright.
-   - c'è un rovescio utile: i post senza commenti sono i più FRESCHI, cioè i
-     lead migliori. Per quelli il permalink non ci sarà mai, ed è il motivo per
-     cui la notifica poggia su m.me/<author_id> — che c'è sempre.
+   Le regole del gioco, misurate una a una:
+   - servono eventi VERI (mouse CDP): `dispatchEvent` di mouseover/mouseenter/
+     pointerover/focus non fa nulla, Facebook controlla `isTrusted`.
+   - lo smascheramento PERSISTE sul nodo anche quando il mouse se ne va, ma la
+     virtualizzazione ricrea i nodi evicted RIMASCHERATI: lo sweep va rifatto
+     a ogni passo, la raccolta accumula (scraper.py).
+   - smascherato, l'orario è il primo `a[href*="/posts/"]` del post (viene
+     prima dei commenti nel DOM): RACCOLTA_POST_JS lo trova da sé.
+   - i post CON commenti hanno comunque il permalink gratis: il link di un
+     commento porta l'id del post (`…/posts/<id>/?comment_id=…`).
+   - nei post con foto compare `set=pcb.<id>`: per i post di persone coincide
+     con l'id del post, ma per pagine/cross-post punta al post ORIGINALE della
+     pagina (2 divergenti su 3 misurati). NON usarlo come fallback: un link
+     sbagliato è peggio di uno assente.
+   - niente React fiber: Comet non attacca `__reactFiber$`/`__reactProps$` ai
+     nodi (solo `__reactHandles$`/`__reactListeners$`, sterili). Vicolo cieco.
+   - cliccare l'orario mascherato non naviga (né element.click() né mouse
+     simulato): non insistere per quella strada, e comunque non serve.
 
    Gli annunci Marketplace condivisi nel gruppo (a[href*="/commerce/listing/"])
    sono sempre offerte, mai richieste: si scartano prima dell'LLM.
@@ -56,7 +65,7 @@ e la pulizia resta testabile senza aprire Chrome.
 """
 
 # Raccoglie i post attualmente renderizzati nel DOM. Va richiamato a ogni passo
-# di scroll; la deduplica per post_id è a carico del chiamante.
+# di scroll; la deduplica per impronta è a carico del chiamante.
 RACCOLTA_POST_JS = r"""
 (() => {
   const out = [];
@@ -70,7 +79,7 @@ RACCOLTA_POST_JS = r"""
     const id = permalink ? permalink.href.match(/\/posts\/(\d+)/) : null;
 
     out.push({
-      post_id: id ? id[1] : null,                   // spesso null: vedi trappola 4
+      post_id: id ? id[1] : null,                   // null finché l'orario è mascherato
       permalink: permalink ? permalink.href.split('?')[0] : null,
       author_name: autore ? autore.innerText.trim() : null,
       author_url: autore ? autore.href.split('?')[0] : null,
@@ -85,9 +94,34 @@ RACCOLTA_POST_JS = r"""
 })()
 """
 
+# Coordinate (nel viewport) degli orari ancora mascherati: il chiamante ci
+# porta il mouse sopra (Browser.muovi_mouse) e Facebook riempie l'href.
+# Al più due anchor per post: il primo `a[href^="?"]` è quasi sempre l'orario,
+# il secondo copre gli ordinamenti strani; se sfuggono, riprovano il passo
+# dopo o il ripasso.
+ORARI_MASCHERATI_JS = r"""
+(() => {
+  const out = [];
+  for (const nodo of document.querySelectorAll('div[role="feed"] > div')) {
+    if ((nodo.innerText || '').length < 80) continue;
+    if (nodo.querySelector('a[href*="/posts/"]')) continue;   // già leggibile
+    let presi = 0;
+    for (const a of nodo.querySelectorAll('a[href^="?"]')) {
+      const r = a.getBoundingClientRect();
+      const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);
+      // sotto ~100px c'è l'header sticky di Facebook: il mouse colpirebbe quello
+      if (y < 100 || y > window.innerHeight - 15 || r.width < 4) continue;
+      out.push({x: x, y: y});
+      if (++presi >= 2) break;
+    }
+  }
+  return out;
+})()
+"""
+
 # Sonda di salute: se torna feed=false il markup è cambiato davvero.
 # `con_testo` conta i contenitori popolati, NON quelli col permalink: il
-# permalink va e viene (trappola 4) e non dice niente sullo stato del feed.
+# permalink arriva con lo sweep del mouse e non dice niente sullo stato del feed.
 DIAGNOSI_JS = r"""
 JSON.stringify({
   feed: !!document.querySelector('div[role="feed"]'),

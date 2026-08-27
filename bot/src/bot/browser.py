@@ -1,7 +1,9 @@
 """Wrapper minimo su agent-browser (CLI). Solo lettura: apre, scrolla, legge.
 
 Non esiste nessuna funzione che clicchi, scriva o invii — è una scelta, non
-una dimenticanza: vedi i non-obiettivi in spec.md.
+una dimenticanza: vedi i non-obiettivi in spec.md. Il mouse si muove soltanto
+(`muovi_mouse`): passare sopra un link non è un'azione, e serve a far scrivere
+a Facebook l'href vero dell'orario (vedi estrazione.py).
 """
 from __future__ import annotations
 
@@ -59,13 +61,23 @@ class Browser:
     def valuta(self, js: str):
         return self._esegui("eval", js)
 
-    def scorri(self, pixel: int = 1200) -> None:
+    def scorri(self, pixel: int = 600) -> None:
         """Scroll nativo (rotella). Quello via JS non muove il feed di Facebook.
 
         Pixel negativi risalgono: serve al ripasso che recupera i permalink.
         """
         verso = "up" if pixel < 0 else "down"
         self._esegui("scroll", verso, str(abs(pixel)))
+
+    def muovi_mouse(self, x: int, y: int) -> None:
+        """Porta il mouse su coordinate del viewport: un hover con evento trusted.
+
+        NON usare `hover <selettore>`: dichiara successo ma manca il bersaglio,
+        perché lo scrollIntoView di Playwright non muove questo feed (stessa
+        famiglia della trappola dello scroll JS). Prima si porta l'elemento nel
+        viewport con la rotella, poi il mouse sulle coordinate correnti.
+        """
+        self._esegui("mouse", "move", str(int(x)), str(int(y)))
 
     def chiudi(self) -> None:
         subprocess.run(["agent-browser", "close"], capture_output=True, timeout=30)
