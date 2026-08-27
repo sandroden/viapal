@@ -78,7 +78,7 @@ def test_upsert_crea_il_lead(api, immobile, bot_user):
     api.force_authenticate(bot_user)
     r = api.post(URL_UPSERT, {"leads": [_payload()]}, format="json")
     assert r.status_code == 200, r.data
-    assert r.data == {"creati": 1, "aggiornati": 0}
+    assert r.data == {"creati": 1, "aggiornati": 0, "scartati": []}
     lead = Lead.objects.get(post_id="fb-1")
     assert lead.property == immobile
     assert lead.stato == Lead.Stato.NUOVO
@@ -89,7 +89,7 @@ def test_upsert_e_idempotente(api, immobile, bot_user):
     api.force_authenticate(bot_user)
     api.post(URL_UPSERT, {"leads": [_payload()]}, format="json")
     r = api.post(URL_UPSERT, {"leads": [_payload()]}, format="json")
-    assert r.data == {"creati": 0, "aggiornati": 1}
+    assert r.data == {"creati": 0, "aggiornati": 1, "scartati": []}
     assert Lead.objects.count() == 1
 
 
@@ -129,6 +129,26 @@ def test_upsert_ignora_i_campi_umani_nel_payload(api, immobile, bot_user, bruna)
     assert lead.stato == Lead.Stato.NUOVO
     assert lead.note == ""
     assert lead.preso_da is None
+
+
+def test_una_riga_storta_non_blocca_le_altre(api, immobile, bot_user):
+    """Il bot ritenta sempre lo stesso blocco: se una riga malformata lo
+    facesse rifiutare tutto, la coda resterebbe ferma su quella riga per
+    sempre e i lead buoni non arriverebbero mai."""
+    api.force_authenticate(bot_user)
+    r = api.post(
+        URL_UPSERT,
+        {"leads": [
+            _payload("buono-1"),
+            _payload("rotto", permalink="non-e-un-url"),
+            _payload("buono-2"),
+        ]},
+        format="json",
+    )
+    assert r.status_code == 200
+    assert r.data["creati"] == 2
+    assert [s["post_id"] for s in r.data["scartati"]] == ["rotto"]
+    assert set(Lead.objects.values_list("post_id", flat=True)) == {"buono-1", "buono-2"}
 
 
 def test_upsert_rifiuta_estranei(api, immobile, db):
@@ -262,6 +282,19 @@ def test_chiudi_campagna_vuole_la_conferma(api, immobile, sandro):
     api.force_authenticate(sandro)
     r = api.post(f"{URL}chiudi-campagna/", {}, format="json", HTTP_X_PROPERTY_ID=immobile.pk)
     assert r.status_code == 400
+    assert Lead.objects.count() == 1
+
+
+def test_chiudi_campagna_solo_ai_proprietari(api, immobile, bot_user):
+    """Il gestore (e l'utente del bot, che ha la password in chiaro nel TOML)
+    non deve poter buttare via le note e la presa in carico degli altri."""
+    _lead(immobile)
+    api.force_authenticate(bot_user)   # ruolo gestore
+    r = api.post(
+        f"{URL}chiudi-campagna/", {"conferma": True}, format="json",
+        HTTP_X_PROPERTY_ID=immobile.pk,
+    )
+    assert r.status_code == 403
     assert Lead.objects.count() == 1
 
 

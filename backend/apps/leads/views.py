@@ -15,13 +15,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 
-from accounts.permissions import IsPropertyMember
+from accounts.permissions import IsPropertyMember, IsPropertyProprietario
 from billing.views import BillingPagination
 from properties.context import get_request_property
 
 from .models import Lead
 from .serializers import (
     CAMPI_BOT,
+    LeadBotSerializer,
     LeadBulkUpsertSerializer,
     LeadLavorazioneSerializer,
     LeadSerializer,
@@ -41,6 +42,15 @@ class LeadViewSet(ModelViewSet):
     # Niente POST/DELETE sulle risorse: i lead li crea il bot e li cancella
     # la chiusura di campagna. Il POST serve solo alle action qui sotto.
     http_method_names = ["get", "patch", "post", "head", "options"]
+
+    def get_permissions(self):
+        # Cancellare la campagna butta via anche le note e la presa in carico
+        # degli altri, e non c'è cestino: è una decisione da proprietario, non
+        # da chiunque abbia accesso all'immobile (l'utente del bot compreso,
+        # che ha la password in chiaro nel TOML sul portatile).
+        if self.action == "chiudi_campagna":
+            return [IsPropertyProprietario()]
+        return super().get_permissions()
 
     def get_serializer_class(self):
         if self.action == "partial_update":
@@ -168,13 +178,24 @@ class LeadBulkUpsertView(APIView):
     authentication_classes = [SessionAuthentication, BasicAuthentication]
 
     def post(self, request):
-        serializer = LeadBulkUpsertSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        involucro = LeadBulkUpsertSerializer(data=request.data)
+        involucro.is_valid(raise_exception=True)
         prop = get_request_property(request)
 
         creati = aggiornati = 0
+        scartati = []
         with transaction.atomic():
-            for dati in serializer.validated_data["leads"]:
+            for grezzo in involucro.validated_data["leads"]:
+                riga = LeadBotSerializer(data=grezzo)
+                if not riga.is_valid():
+                    # Una riga storta non deve bloccare le altre: il bot
+                    # ritenta sempre lo stesso blocco, e rifiutarlo tutto
+                    # fermerebbe la coda per sempre su quel lead.
+                    scartati.append(
+                        {"post_id": grezzo.get("post_id", ""), "errori": riga.errors}
+                    )
+                    continue
+                dati = riga.validated_data
                 valori = {c: dati.get(c, "") for c in CAMPI_BOT if c in dati}
                 _lead, nuovo = Lead.objects.update_or_create(
                     property=prop,
@@ -184,6 +205,6 @@ class LeadBulkUpsertView(APIView):
                 creati += nuovo
                 aggiornati += not nuovo
         return Response(
-            {"creati": creati, "aggiornati": aggiornati},
+            {"creati": creati, "aggiornati": aggiornati, "scartati": scartati},
             status=status.HTTP_200_OK,
         )

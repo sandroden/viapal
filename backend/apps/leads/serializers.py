@@ -36,20 +36,15 @@ class LeadBotSerializer(serializers.ModelSerializer):
 
 
 class LeadBulkUpsertSerializer(serializers.Serializer):
-    """Payload del bot: la lista dei lead di un giro."""
+    """Involucro del payload. La lista resta grezza di proposito.
 
-    leads = LeadBotSerializer(many=True)
+    Con ``LeadBotSerializer(many=True)`` una riga malformata farebbe fallire
+    l'intero blocco, e la coda del bot — che ritenta sempre lo stesso blocco —
+    resterebbe ferma per sempre su quella riga. Le righe si validano una per
+    una nella view: quella rotta si scarta e si segnala, le altre passano.
+    """
 
-    def validate_leads(self, valore):
-        if not valore:
-            raise serializers.ValidationError("Nessun lead da caricare.")
-        visti = set()
-        for lead in valore:
-            pid = lead["post_id"]
-            if pid in visti:
-                raise serializers.ValidationError(f"post_id ripetuto nel payload: {pid}")
-            visti.add(pid)
-        return valore
+    leads = serializers.ListField(child=serializers.DictField(), allow_empty=False)
 
 
 class LeadSerializer(serializers.ModelSerializer):

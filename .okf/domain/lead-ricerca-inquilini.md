@@ -58,7 +58,17 @@ ognuno con la propria presa in carico.
   serve a evitare: due messaggi alla stessa persona.
 - `POST /leads/<id>/rilascia/` — solo chi l'ha preso (o superuser).
 - `GET /leads/riepilogo/` — conteggi per stato e gruppi presenti.
-- `POST /leads/chiudi-campagna/` — vedi sotto.
+- `POST /leads/chiudi-campagna/` — **`IsPropertyProprietario`**, non membro
+  qualsiasi: cancellare butta via anche le note e la presa in carico degli
+  altri, e l'utente del bot ha la password in chiaro nel TOML. Vedi sotto.
+
+L'utente del bot dev'essere **membro dell'immobile** (`PropertyMembership`), non
+solo del gruppo `proprietari`: senza, ogni giro prende 403 e la coda si ferma
+in silenzio fino all'avviso dei dieci lead fermi.
+
+L'upsert valida **riga per riga**: una riga malformata viene scartata e
+segnalata in `scartati`, le altre passano. Rifiutare l'intero blocco fermerebbe
+per sempre la coda del bot, che ritenta sempre lo stesso blocco.
 
 # Push dal bot: best-effort, mai bloccante
 

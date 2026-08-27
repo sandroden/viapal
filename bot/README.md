@@ -159,6 +159,21 @@ password = "…"
 property_id = 1
 ```
 
+**L'utente dev'essere membro di quell'immobile** (`PropertyMembership`, ruolo
+gestore o proprietario): il gruppo `proprietari` da solo non basta. Senza
+membership ogni giro prende 403, i lead restano in coda e non lo scopri finché
+non arriva l'avviso dei dieci fermi. Si controlla dall'admin, in
+*Property memberships*, o con `manage.py shell`:
+
+```python
+from properties.models import PropertyMembership
+PropertyMembership.objects.filter(user__username="bot").values("property__nome", "ruolo")
+```
+
+Chiudere la campagna, invece, resta ai **proprietari**: l'utente del bot ha la
+password in chiaro nel TOML, e cancellare i lead butta via anche le note e la
+presa in carico degli altri.
+
 Senza la sezione il push è spento e il bot fa esattamente quello che faceva
 prima. Le regole del meccanismo:
 
