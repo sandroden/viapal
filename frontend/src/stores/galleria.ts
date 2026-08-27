@@ -55,6 +55,12 @@ export interface TestiPubblici {
   hero_titolo?: string;
   hero_indirizzo?: string;
   planimetria_nota?: string;
+  // Recapiti dell'annuncio: chi risponde ai curiosi. Scritti dalla pagina
+  // stessa in modifica, non configurati altrove: se restano vuoti la
+  // sezione contatti (e il bottone che ci porta) non compaiono.
+  contatto_telefono?: string;
+  contatto_email?: string;
+  contatti_nota?: string;
   facts?: FactsPubblici;
   posizione?: PosizionePubblica;
 }

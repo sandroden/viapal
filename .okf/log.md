@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-08-27
+* **Maintain**: `domain/galleria-pubblica.md` — contatti dell'annuncio in `testi_pubblici` (telefono/email/nota, editabili in-place, link `tel:`/`mailto:`); il CTA "Richiedi informazioni" e la pill Contatti compaiono solo se un recapito è compilato; footer non promette più un modulo di contatto.
+
 ## 2026-08-26
 * **Maintain**: `domain/link-lettura.md` — «Tutto si raggiunge da dove si compone»: il dialog «Aggiungi un documento» offre le tre strade (select, «Esponi e aggiungi», «Genera e aggiungi»). Regola imparata due volte sullo stesso punto — prima la spunta stava solo in «Altri documenti» e il fac-simile solo nella sua sezione.
 * **Maintain**: `domain/link-lettura.md` — le due forme del testo si distinguono per **dove finiscono**, non per cosa dicono: «Nota su un allegato» prometteva una nota per ciascun allegato ed è diventata «Testo fra gli allegati». Chi cerca «il testo» ha in mente la premessa.

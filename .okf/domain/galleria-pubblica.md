@@ -21,7 +21,8 @@ Estende [properties](/models/properties.md):
 
 - **`Property`**: `slug` (URL pubblico), `pubblica` (toggle), immagini singleton
   `foto_hero`/`foto_planimetria`/`foto_mappa`, `testi_pubblici` (JSONField: hero, `facts`
-  mq/camere/bagni/letti, `posizione` indirizzo/mezzi/parcheggio/regole). Slug auto in
+  mq/camere/bagni/letti, `posizione` indirizzo/mezzi/parcheggio/regole,
+  `contatto_telefono`/`contatto_email`/`contatti_nota`). Slug auto in
   `save()`; migration 0015 popola gli esistenti.
 - **`Room`** (= **oggetto d'affitto**, la camera): campi d'annuncio espliciti `colore`,
   `descrizione`, `disponibile`, `libera_dal`, `prezzo_mensile`, `pubblica` — **indipendenti**
@@ -98,6 +99,21 @@ Per ogni foto in edit: controlli **formato** (3 pulsanti crop), **didascalia** (
 editabile), **riordino** con frecce laterali `‹ ›` (scelta deliberata vs drag: robusta con le
 celle a span variabile dei formati e verificabile). **Lightbox** navigabile (frecce, tasti
 ← → Esc, contatore, didascalia); scope = la sezione da cui si apre.
+
+**Contatti dell'annuncio**: il CTA "Richiedi informazioni" della hero portava a
+`#posizione` e non offriva alcun modo di farsi vivi (il footer prometteva pure un
+"modulo di contatto" mai esistito). I recapiti stanno in `testi_pubblici`
+(`contatto_telefono`, `contatto_email`, `contatti_nota` per orari e tempi di
+risposta) e si scrivono **dalla pagina in modifica**, come ogni altro testo: niente
+campi di modello, niente migration, nessuna configurazione altrove. Chi guarda
+trova telefono ed email come link `tel:`/`mailto:` (il numero si mostra come è stato
+scritto, l'href tiene solo cifre e prefisso; il `mailto:` precompila l'oggetto col
+titolo dell'annuncio). **Se non è compilato nulla la sezione non esiste**, e con
+essa spariscono il CTA e la pill "Contatti": meglio nessun bottone che un bottone
+morto. In modifica invece la sezione c'è sempre, altrimenti non ci sarebbe modo di
+scrivere i recapiti la prima volta. Nessun modulo di contatto lato server: i
+recapiti sono nel payload pubblico (sono fatti per essere pubblici), non c'è invio
+email dall'annuncio.
 
 # Anteprime social (Open Graph)
 

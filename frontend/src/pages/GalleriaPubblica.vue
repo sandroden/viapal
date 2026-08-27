@@ -95,7 +95,11 @@
           </div>
         </div>
         <div class="hero-cta">
-          <a href="#posizione" class="vp-btn vp-btn--primary">Richiedi informazioni</a>
+          <a
+            v-if="haContatti || editMode"
+            href="#contatti"
+            class="vp-btn vp-btn--primary"
+          >Richiedi informazioni</a>
         </div>
       </section>
 
@@ -117,6 +121,7 @@
             :href="`#area-${a.id}`"
           >{{ a.nome }}</a>
           <a class="pill" href="#posizione">Posizione</a>
+          <a v-if="haContatti || editMode" class="pill" href="#contatti">Contatti</a>
         </div>
       </nav>
 
@@ -386,10 +391,74 @@
             </div>
           </div>
         </section>
+
+        <!-- Contatti -->
+        <!-- Recapiti dell'annuncio. In modifica la sezione c'è sempre (altrimenti
+             non ci sarebbe modo di scriverli la prima volta); in pubblico compare
+             solo quando almeno un recapito è stato compilato, e i valori sono
+             link cliccabili invece che testo da ricopiare a mano. -->
+        <section v-if="haContatti || editMode" class="block" id="contatti">
+          <div class="block-head">
+            <div>
+              <div class="block-eyebrow">Contatti</div>
+              <h2 class="block-title">Richiedi informazioni</h2>
+              <div v-if="t('contatti_nota') || editMode" class="block-sub">
+                <EditableText
+                  :value="t('contatti_nota')"
+                  :editable="editMode"
+                  textarea
+                  title="Nota sui contatti"
+                  @save="(v) => setTesto('contatti_nota', v)"
+                >
+                  {{ t('contatti_nota', editMode ? 'Aggiungi una nota (orari, tempi di risposta)…' : '') }}
+                </EditableText>
+              </div>
+            </div>
+          </div>
+          <div class="contatti-grid">
+            <div v-if="contattoTelefono || editMode" class="info-card">
+              <div class="info-ic"><q-icon name="call" size="18px" /></div>
+              <div class="info-body">
+                <h4>Telefono</h4>
+                <p>
+                  <EditableText
+                    v-if="editMode"
+                    :value="contattoTelefono"
+                    editable
+                    title="Telefono"
+                    @save="(v) => setTesto('contatto_telefono', v)"
+                  >
+                    {{ contattoTelefono || 'Aggiungi numero…' }}
+                  </EditableText>
+                  <a v-else class="contatto-link" :href="telHref">{{ contattoTelefono }}</a>
+                </p>
+              </div>
+            </div>
+            <div v-if="contattoEmail || editMode" class="info-card">
+              <div class="info-ic"><q-icon name="mail" size="18px" /></div>
+              <div class="info-body">
+                <h4>Email</h4>
+                <p>
+                  <EditableText
+                    v-if="editMode"
+                    :value="contattoEmail"
+                    editable
+                    title="Email"
+                    @save="(v) => setTesto('contatto_email', v)"
+                  >
+                    {{ contattoEmail || 'Aggiungi indirizzo…' }}
+                  </EditableText>
+                  <a v-else class="contatto-link" :href="mailtoHref">{{ contattoEmail }}</a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
       <footer class="gal-footer">
-        Pagina pubblica · nessun accesso richiesto — per candidarti scrivi tramite il modulo di contatto.
+        Pagina pubblica · nessun accesso richiesto<template v-if="haContatti">
+          — per candidarti scrivi o telefona ai recapiti qui sopra</template>.
         <router-link to="/privacy" class="gal-footer-link">Privacy e cookie</router-link>
       </footer>
 
@@ -527,6 +596,20 @@ const facts = computed<FactsPubblici>(
 const posizione = computed<PosizionePubblica>(
   () => g.value?.testi_pubblici?.posizione ?? {},
 );
+
+// --- Contatti -------------------------------------------------------------
+// Il numero si mostra come l'ha scritto chi pubblica ("339 123 45 67"), ma
+// l'href vuole solo cifre e prefisso, altrimenti il telefono non compone.
+const contattoTelefono = computed(() => t('contatto_telefono').trim());
+const contattoEmail = computed(() => t('contatto_email').trim());
+const haContatti = computed(() => !!(contattoTelefono.value || contattoEmail.value));
+const telHref = computed(() => `tel:${contattoTelefono.value.replace(/[^\d+]/g, '')}`);
+const mailtoHref = computed(() => {
+  const oggetto = encodeURIComponent(
+    `Informazioni · ${t('hero_titolo', g.value?.nome ?? '')}`,
+  );
+  return `mailto:${contattoEmail.value}?subject=${oggetto}`;
+});
 
 function t(key: string, fallback = ''): string {
   const v = (g.value?.testi_pubblici as Record<string, unknown>)?.[key];
@@ -866,6 +949,9 @@ watch(() => route.params.slug, load);
 .info-ic { width: 36px; height: 36px; border-radius: 10px; background: var(--vp-paper-2); color: var(--vp-terra); display: flex; align-items: center; justify-content: center; flex: none; }
 .info-body h4 { margin: 0 0 3px; font-size: 14.5px; font-weight: 600; }
 .info-body p { margin: 0; font-size: 13.5px; color: var(--vp-ink-2); line-height: 1.5; }
+.contatti-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.contatto-link { color: var(--vp-terra-deep); font-weight: 600; font-size: 15px; text-decoration: none; }
+.contatto-link:hover { text-decoration: underline; }
 .chiprow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .chip { font-size: 12px; padding: 5px 10px; border-radius: 999px; background: var(--vp-paper-2); color: var(--vp-ink-2); }
 
