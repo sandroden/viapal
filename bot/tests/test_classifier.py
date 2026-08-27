@@ -107,3 +107,27 @@ def test_il_prompt_spiega_perche_certe_zone_sono_fuori():
     istruzioni = client.messages.parse.call_args.kwargs["system"]
     assert "prezzo di mercato" in istruzioni
     assert "Villasanta" in istruzioni      # la lista arriva comunque
+
+
+def test_una_coppia_non_sta_in_una_stanza_singola():
+    """Le stanze si affittano a uso singolo: marito e moglie non sono un lead."""
+    cfg = carica(ESEMPIO)
+    analisi = analizza(_client(_analisi(persone_per_stanza=2)), cfg, FintoPost())
+    assert analisi.match is False
+    assert "uso singolo" in analisi.motivo
+    assert analisi.stanze_compatibili == []
+
+
+def test_chi_cerca_per_una_persona_sola_passa():
+    cfg = carica(ESEMPIO)
+    analisi = analizza(_client(_analisi(persone_per_stanza=1)), cfg, FintoPost())
+    assert analisi.match is True
+
+
+def test_la_soglia_deriva_dal_tipo_delle_stanze(tmp_path):
+    """Se un giorno compare una doppia, la regola si allarga da sola."""
+    testo = ESEMPIO.read_text().replace('tipo = "singola"', 'tipo = "doppia"', 1)
+    f = tmp_path / "c.toml"
+    f.write_text(testo)
+    analisi = analizza(_client(_analisi(persone_per_stanza=2)), carica(f), FintoPost())
+    assert analisi.match is True

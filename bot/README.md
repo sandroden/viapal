@@ -70,6 +70,13 @@ più dei comuni intorno, e chi cerca dove si paga meno ha in testa cifre più ba
 collegate" viene scartato, perché chi scrive così ragiona sui prezzi di Lesmo.
 Serve che Monza o un comune della lista sia nominato davvero.
 
+Le stanze sono a uso singolo, quindi chi cerca per due — marito e moglie,
+fidanzati, due amiche che vogliono stare insieme — viene scartato. La soglia non
+è scritta a mano: deriva dal `tipo` delle stanze libere nel TOML, così il giorno
+che ne compare una doppia la regola si allarga da sé. Attenzione alla differenza
+fra "cerco per mio figlio" (una persona, va tenuto) e "per me e mio figlio" (due,
+salvo che vogliano due stanze separate — che noi possiamo dare).
+
 Chi dichiara di avere un animale invece non riceve niente: in casa non sono
 ammessi, e scrivergli sarebbe tempo perso per tutti e due.
 

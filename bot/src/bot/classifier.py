@@ -37,6 +37,11 @@ class AnalisiPost(BaseModel):
     animali: bool = Field(
         default=False, description="Vero se dichiara di avere un animale"
     )
+    persone_per_stanza: int = Field(
+        default=1,
+        description="Quante persone dormirebbero nella stessa stanza "
+        "(2 per una coppia; 1 se cercano stanze separate)",
+    )
     match: bool
     stanze_compatibili: list[str] = Field(
         default_factory=list, description="id delle stanze libere che reggono i vincoli"
@@ -79,10 +84,19 @@ Monolocali, bilocali e appartamenti interi vanno esclusi: non abbiamo niente da 
 proporre. ATTENZIONE: chi scrive "monolocale o stanza" va TENUTO — una stanza gliela \
 possiamo dare.
 3. Zona incompatibile → match = false.
-4. ANIMALI: se dichiara di avere un cane, un gatto o un altro animale, animali = true \
+4. USO SINGOLO: le stanze si affittano a una persona per stanza. Chi cerca per
+due — marito e moglie, fidanzati, "io e il mio compagno", due amiche che vogliono
+stare insieme — non va bene: persone_per_stanza = 2 e match = false. Attenzione,
+non confondere:
+   - "cerco per mio figlio", "per mia sorella" → è UNA persona, va tenuto;
+   - "cerco per me e mio figlio" → sono due, ma se vogliono DUE stanze separate
+     allora persone_per_stanza = 1 e va tenuto (di stanze ne abbiamo tre);
+   - chi non dice quante persone sono → dai per scontato che sia una sola.
+
+5. ANIMALI: se dichiara di avere un cane, un gatto o un altro animale, animali = true \
 e match = false. In casa non sono ammessi: non è negoziabile e non ha senso scrivergli. \
 Se l'animale è solo ipotetico o non è chiaro, animali = false e vai avanti.
-5. Sul BUDGET non essere rigido. Molti scrivono una cifra prima di essersi resi conto \
+6. Sul BUDGET non essere rigido. Molti scrivono una cifra prima di essersi resi conto \
 di quanto costa Monza, e la alzano quando vedono la casa. Quindi:
    - metti in stanze_compatibili le stanze il cui TOTALE (canone + spese) sta entro il \
      budget dichiarato;
@@ -91,7 +105,7 @@ di quanto costa Monza, e la alzano quando vedono la casa. Quindi:
    - l'unica eccezione è chi dichiara il budget come limite RIGIDO ("massimo", "non \
      posso superare", "tassativo", "oltre non vado"): allora budget_tassativo = true, \
      e se nessuna stanza ci sta match = false.
-6. In caso di dubbio genuino, match = true e segnala il dubbio nel motivo: una \
+7. In caso di dubbio genuino, match = true e segnala il dubbio nel motivo: una \
 notifica da scartare costa dieci secondi, un lead perso costa un mese di sfitto.
 
 Il campo `motivo` è una riga in italiano che spiega la decisione a chi legge la \
@@ -132,6 +146,19 @@ def analizza(client: anthropic.Anthropic, cfg: Config, post) -> AnalisiPost:
 
     # Reti di sicurezza: quello che segue non deve dipendere dal fatto che il
     # modello abbia seguito il prompt.
+
+    # Una coppia in una stanza sola non è proponibile se abbiamo solo singole.
+    # La regola non è scritta a mano: deriva dal tipo delle stanze libere, così
+    # il giorno che ne compare una doppia si adegua da sé.
+    posti_max = max((2 if s.tipo != "singola" else 1) for s in cfg.stanze_libere)
+    if analisi.persone_per_stanza > posti_max:
+        analisi.match = False
+        analisi.motivo = (
+            f"{analisi.motivo} [in {analisi.persone_per_stanza} nella stessa stanza: "
+            "le nostre sono a uso singolo]"
+        )
+        analisi.stanze_compatibili = []
+        return analisi
 
     # Gli animali non sono ammessi e non è una preferenza: se lo dichiara, si
     # chiude qui, senza notifica.
