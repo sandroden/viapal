@@ -24,6 +24,21 @@ CREATE TABLE IF NOT EXISTS posts (
 CREATE INDEX IF NOT EXISTS idx_author ON posts(author_url);
 """
 
+# Colonne aggiunte dopo il primo giro di campagna. Si applicano una per volta
+# ignorando l'errore "duplicate column": è la migrazione più semplice che
+# funziona su un file che si cancella a fine campagna.
+COLONNE_TARDIVE = (
+    # I due messaggi composti servono al push: senza, il ritenta di un giro
+    # successivo non avrebbe più il testo da mandare.
+    ("commento", "TEXT"),
+    ("privato", "TEXT"),
+    ("group_id", "TEXT"),
+    ("group_label", "TEXT"),
+    ("link_messenger", "TEXT"),
+    # NULL = ancora da mandare a viapal. È tutta la coda che serve.
+    ("pushed_at", "TIMESTAMP"),
+)
+
 
 class Archivio:
     def __init__(self, percorso: str | Path):
@@ -31,6 +46,11 @@ class Archivio:
         self.percorso.parent.mkdir(parents=True, exist_ok=True)
         with self._conn() as c:
             c.executescript(SCHEMA)
+            for nome, tipo in COLONNE_TARDIVE:
+                try:
+                    c.execute(f"ALTER TABLE posts ADD COLUMN {nome} {tipo}")
+                except sqlite3.OperationalError:
+                    pass   # colonna già presente
 
     @contextmanager
     def _conn(self):
@@ -58,12 +78,16 @@ class Archivio:
                 )
             }
 
-    def registra(self, post, analisi=None, matched=False, notificato=False) -> None:
+    def registra(
+        self, post, analisi=None, matched=False, notificato=False, messaggi=None
+    ) -> None:
         with self._conn() as c:
             c.execute(
                 "INSERT OR REPLACE INTO posts "
                 "(post_id, author_name, author_url, text, permalink, seen_at, "
-                " analysis, matched, notified_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                " analysis, matched, notified_at, commento, privato, "
+                " group_id, group_label, link_messenger) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     post.post_id,
                     post.author_name,
@@ -74,7 +98,34 @@ class Archivio:
                     json.dumps(analisi, ensure_ascii=False) if analisi else None,
                     matched,
                     datetime.now(timezone.utc).isoformat() if notificato else None,
+                    getattr(messaggi, "commento_pubblico", None),
+                    getattr(messaggi, "privato", None),
+                    getattr(post, "group_id", None),
+                    getattr(post, "group_label", None),
+                    getattr(post, "link_messenger", None),
                 ),
+            )
+
+    def da_pushare(self) -> list[dict]:
+        """I lead che viapal non ha ancora ricevuto.
+
+        Solo i match: la pagina serve a lavorare i contatti, non a rivedere il
+        classificatore — e meno dati di terzi finiscono sul server, meglio è.
+        Un lead resta qui finché il push non riesce, quindi il server può
+        essere spento per un giorno intero senza che si perda nulla.
+        """
+        with self._conn() as c:
+            righe = c.execute(
+                "SELECT * FROM posts WHERE matched AND pushed_at IS NULL"
+            ).fetchall()
+        return [dict(r) for r in righe]
+
+    def segna_pushati(self, post_ids) -> None:
+        ora = datetime.now(timezone.utc).isoformat()
+        with self._conn() as c:
+            c.executemany(
+                "UPDATE posts SET pushed_at = ? WHERE post_id = ?",
+                [(ora, pid) for pid in post_ids],
             )
 
     def statistiche(self) -> dict:

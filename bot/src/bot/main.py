@@ -17,6 +17,7 @@ from types import SimpleNamespace
 
 import anthropic
 
+from .api_push import ApiViapal, spedisci_coda
 from .browser import Browser, ErroreBrowser
 from .classifier import analizza
 from .composer import componi
@@ -30,6 +31,16 @@ log = logging.getLogger("bot")
 
 PERCORSO_CONFIG = os.environ.get("BOT_CONFIG", "~/.viapal-bot/config.toml")
 PERCORSO_DB = os.environ.get("BOT_DB", "~/.viapal-bot/campagna.db")
+
+
+def _api_viapal(cfg):
+    """Il client viapal, o None se in configurazione non c'è la sezione [api].
+
+    Senza, il bot funziona esattamente come prima: Telegram e basta.
+    """
+    if not cfg.push_attivo:
+        return None
+    return ApiViapal(cfg.api_base_url, cfg.api_user, cfg.api_password, cfg.api_property_id)
 
 
 def giro(
@@ -116,13 +127,20 @@ def giro(
             log.info("lead: %s — %s", p.author_name, analisi.motivo)
         else:
             notifier.lead(p, analisi, messaggi)
-            archivio.registra(p, analisi.model_dump(), matched=True, notificato=True)
+            archivio.registra(
+                p, analisi.model_dump(), matched=True, notificato=True, messaggi=messaggi
+            )
         trovati += 1
 
     if dry_run:
         percorso = scrivi_report(percorso_report, lead, scartati)
         log.info("rapporto: %s", percorso)
         print(f"\n→ apri file://{percorso}")
+
+    # Dopo le notifiche: se il server è giù la coda resta piena e il prossimo
+    # giro ci riprova, ma il lead su Telegram è già arrivato comunque.
+    if not dry_run:
+        spedisci_coda(_api_viapal(cfg), archivio, notifier)
 
     log.info("giro concluso: %d post nuovi, %d lead", len(post), trovati)
     return 0
@@ -205,8 +223,18 @@ def notifica(percorso_config: str, percorso_db: str, sorgente: str) -> int:
                 commento_pubblico=voce["commento_pubblico"], privato=voce["privato"]
             ),
         )
-        archivio.registra(post, vars(analisi), matched=True, notificato=True)
+        archivio.registra(
+            post,
+            vars(analisi),
+            matched=True,
+            notificato=True,
+            messaggi=SimpleNamespace(
+                commento_pubblico=voce["commento_pubblico"], privato=voce["privato"]
+            ),
+        )
         inviati += 1
+
+    spedisci_coda(_api_viapal(cfg), archivio, notifier)
 
     scarti = len(dati.get("scartati", []))
     log.info("notificati %d lead, registrati %d scarti", inviati, scarti)

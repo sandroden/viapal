@@ -144,6 +144,38 @@ mentre si scrolla, e la quota non cambia né leggendo due volte per passo né
 allungando le pause (misurato). L'`author_id`, invece, c'è sempre — per questo
 il flusso poggia su Messenger e non sul post.
 
+## Lavorare in due: i lead su viapal
+
+Telegram avvisa chi ha il telefono in mano, ma non dice a nessun altro che a
+quella persona hai già scritto. Con la sezione `[api]` nel TOML ogni lead
+finisce anche su viapal, nella pagina **Cerca inquilini** (`/p/cerca-inquilini`),
+dove si vede chi l'ha preso in carico, a che punto è e le note.
+
+```toml
+[api]
+base_url = "https://viapal.e-den.it"
+user = "bot"                 # un account viapal membro dell'immobile
+password = "…"
+property_id = 1
+```
+
+Senza la sezione il push è spento e il bot fa esattamente quello che faceva
+prima. Le regole del meccanismo:
+
+- **Telegram resta il canale primario.** Se viapal non risponde il giro non si
+  ferma: il lead è già arrivato sul telefono.
+- **Niente si perde.** Un lead non ancora arrivato resta in coda in SQLite
+  (`pushed_at IS NULL`) e riparte al giro dopo. Il server può stare spento una
+  giornata; l'endpoint è idempotente, ripetere non duplica.
+- **Il bot non sovrascrive il lavoro delle persone.** Ripassando sullo stesso
+  post aggiorna testo e analisi, ma non tocca stato, presa in carico e note.
+- **Vanno solo i lead buoni**, non gli scarti: la pagina serve a contattare,
+  non a rivedere il classificatore (per quello c'è il rapporto di `prova`).
+
+A campagna chiusa si cancella **anche la copia sul server**: dal menu della
+pagina, "Chiudi la campagna". È la stessa pulizia che `./campagna.sh azzera` fa
+sul portatile, e vale lo stesso motivo — sono dati di altre persone.
+
 ## Le tre trappole trovate sul campo
 
 Verificate il 2026-08-27, con agent-browser 0.27.0. Sono documentate anche in
@@ -194,7 +226,8 @@ probabile che il CLI sia cambiato. Questa versione gira su **0.27.0**.
 | `classifier.py` | una chiamata per post: cerca/offre, tipo, budget, match |
 | `composer.py` | i due messaggi, con il divieto di inventare dettagli |
 | `notifier.py` | Telegram, testi in blocchi copiabili con un tap |
-| `storage.py` | SQLite di campagna: dedup su post e su autore |
+| `storage.py` | SQLite di campagna: dedup su post e su autore, coda del push |
+| `api_push.py` | deposita i lead su viapal, best-effort e ritentabile |
 
 ## Test
 

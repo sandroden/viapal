@@ -92,3 +92,14 @@ escludi_tipologie = ["monolocale", "bilocale", "appartamento"]
 [telegram]
 bot_token = "METTI-QUI-IL-TOKEN"
 chat_id = "METTI-QUI-IL-CHAT-ID"   # lo ricavi da https://api.telegram.org/bot<TOKEN>/getUpdates dopo aver scritto al bot
+
+# Push dei lead su viapal, per lavorarli in due dalla pagina
+# /p/cerca-inquilini invece che solo da Telegram. Togli la sezione (o
+# lascia base_url vuoto) e il bot torna a notificare e basta.
+# L'utente è un account viapal membro dell'immobile: va bene il proprio,
+# meglio uno dedicato al bot.
+[api]
+base_url = "https://viapal.e-den.it"   # in locale: http://localhost:8020
+user = "bot"
+password = "METTI-QUI-LA-PASSWORD"
+property_id = 1                        # l'immobile di cui si affittano le stanze

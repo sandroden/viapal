@@ -62,6 +62,15 @@ class Config:
     telegram_chat_id: str
     modello_classifier: str
     modello_composer: str
+    # Push dei lead su viapal: assente = disattivato, il bot resta com'era.
+    api_base_url: str = ""
+    api_user: str = ""
+    api_password: str = ""
+    api_property_id: str = ""
+
+    @property
+    def push_attivo(self) -> bool:
+        return bool(self.api_base_url and self.api_user and self.api_property_id)
 
     @property
     def stanze_libere(self) -> tuple[Stanza, ...]:
@@ -73,6 +82,7 @@ def carica(percorso: str | Path) -> Config:
     fb, contatto = dati["facebook"], dati["contatto"]
     casa = dati.get("casa", {})
     matching, tg = dati["matching"], dati["telegram"]
+    api = dati.get("api", {})
     return Config(
         group_id=str(fb["group_id"]),
         poll_interval_minutes=int(fb.get("poll_interval_minutes", 25)),
@@ -117,4 +127,8 @@ def carica(percorso: str | Path) -> Config:
         # quasi tutto, perché le classificazioni sono cento volte le scritture.
         modello_classifier=dati.get("llm", {}).get("classifier", "claude-haiku-4-5"),
         modello_composer=dati.get("llm", {}).get("composer", "claude-opus-5"),
+        api_base_url=api.get("base_url", ""),
+        api_user=api.get("user", ""),
+        api_password=api.get("password", ""),
+        api_property_id=str(api.get("property_id", "")),
     )
