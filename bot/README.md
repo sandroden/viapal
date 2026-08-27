@@ -73,7 +73,31 @@ Serve che Monza o un comune della lista sia nominato davvero.
 Chi dichiara di avere un animale invece non riceve niente: in casa non sono
 ammessi, e scrivergli sarebbe tempo perso per tutti e due.
 
-## Quanto costa
+## Due modi di farlo girare
+
+**Con Claude Code** (`/loop 25m /affitti`) — la classificazione e la scrittura
+le fa Claude dentro la sessione, quindi rientrano nell'abbonamento e non costano
+API. Il Python fa solo scraping, dedup e notifiche:
+
+```bash
+uv run python -m bot.main --estrai   /tmp/affitti-post.json   # post nuovi in JSON
+uv run python -m bot.main --notifica /tmp/affitti-lead.json   # notifiche + registrazione
+```
+
+Lo slash command sta in `bot/comandi/affitti.md` e si attiva con un symlink
+(`.claude/` è ignorato da git, quindi il comando è versionato qui e collegato lì):
+
+```bash
+ln -sf ../../bot/comandi/affitti.md .claude/commands/affitti.md
+```
+
+Non ripete le regole: dice di leggerle da `classifier.py` e `composer.py`, così
+le due modalità non possono divergere.
+
+**Da solo** (`./campagna.sh loop`) — chiama l'API e non ha bisogno di nessuno
+davanti. Costa (vedi sotto), ma gira anche di notte e mentre fai altro.
+
+## Quanto costa (solo per la modalità autonoma)
 
 Serve credito sull'**API** di Anthropic: l'abbonamento Claude (Pro o Max) copre
 claude.ai e Claude Code, cioè l'uso interattivo, e non vale qui. Sono due prodotti

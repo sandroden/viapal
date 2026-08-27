@@ -6,9 +6,12 @@ giorni acceso e poi in cantina.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
+from dataclasses import asdict
+from pathlib import Path
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -125,9 +128,113 @@ def giro(
     return 0
 
 
+def estrai(percorso_config: str, percorso_db: str, destinazione: str) -> int:
+    """Raccoglie i post nuovi in un JSON, senza chiamare nessun modello.
+
+    È la metà del lavoro che non ha bisogno dell'API. Serve a far classificare i
+    post da Claude Code — che sta nell'abbonamento — invece che a consumo:
+    Claude legge questo file, decide, e riconsegna i lead a `--notifica`.
+    """
+    cfg = carica(percorso_config)
+    archivio = Archivio(percorso_db)
+    browser = Browser(
+        profilo=cfg.profilo_browser, headed=cfg.headed, user_agent=cfg.user_agent
+    )
+    post = raccogli(
+        browser,
+        cfg.group_id,
+        gia_visti=archivio.id_visti(),
+        stop_dopo_visti=cfg.scroll_stop_after_seen,
+        max_scroll=cfg.max_scroll,
+    )
+    gia_contattati = archivio.autori_gia_contattati()
+    da_leggere = [
+        asdict(p) for p in post if not (p.author_url and p.author_url in gia_contattati)
+    ]
+    percorso = Path(destinazione).expanduser()
+    percorso.parent.mkdir(parents=True, exist_ok=True)
+    percorso.write_text(
+        json.dumps(
+            {
+                "stanze": [asdict(s) for s in cfg.stanze_libere],
+                "zone_accettate": list(cfg.zone_accettate),
+                "post": da_leggere,
+            },
+            ensure_ascii=False,
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
+    log.info("%d post nuovi scritti in %s", len(da_leggere), percorso)
+    print(f"{len(da_leggere)} post nuovi da leggere → {percorso}")
+    return 0
+
+
+def notifica(percorso_config: str, percorso_db: str, sorgente: str) -> int:
+    """Manda le notifiche partendo da un JSON di lead già classificati e scritti.
+
+    Formato: {"lead": [...], "scartati": [...]}. Gli scartati vanno passati
+    anche loro, altrimenti al giro dopo ricompaiono come nuovi.
+    """
+    cfg = carica(percorso_config)
+    archivio = Archivio(percorso_db)
+    notifier = Notifier(cfg.telegram_token, cfg.telegram_chat_id)
+    dati = json.loads(Path(sorgente).expanduser().read_text(encoding="utf-8"))
+
+    for voce in dati.get("scartati", []):
+        archivio.registra(
+            SimpleNamespace(**_campi_post(voce)),
+            {"motivo": voce.get("motivo", "")},
+            matched=False,
+        )
+
+    inviati = 0
+    for voce in dati.get("lead", []):
+        post = SimpleNamespace(**_campi_post(voce))
+        analisi = SimpleNamespace(
+            zona=voce.get("zona"),
+            budget_max=voce.get("budget_max"),
+            disponibile_da=voce.get("disponibile_da"),
+            stanze_compatibili=voce.get("stanze_compatibili", []),
+            motivo=voce.get("motivo", ""),
+        )
+        notifier.lead(
+            post,
+            analisi,
+            SimpleNamespace(
+                commento_pubblico=voce["commento_pubblico"], privato=voce["privato"]
+            ),
+        )
+        archivio.registra(post, vars(analisi), matched=True, notificato=True)
+        inviati += 1
+
+    scarti = len(dati.get("scartati", []))
+    log.info("notificati %d lead, registrati %d scarti", inviati, scarti)
+    print(f"{inviati} notifiche inviate, {scarti} scarti registrati")
+    return 0
+
+
+def _campi_post(voce: dict) -> dict:
+    return {
+        "post_id": voce["post_id"],
+        "permalink": voce.get("permalink", ""),
+        "author_name": voce.get("author_name"),
+        "author_url": voce.get("author_url"),
+        "text": voce.get("text", ""),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Bot di monitoraggio affitti Monza")
     parser.add_argument("--once", action="store_true", help="un solo giro (default)")
+    parser.add_argument(
+        "--estrai", metavar="FILE",
+        help="scrive i post nuovi in JSON senza classificarli (per Claude Code)",
+    )
+    parser.add_argument(
+        "--notifica", metavar="FILE",
+        help="manda le notifiche da un JSON di lead già classificati e scritti",
+    )
     parser.add_argument("--config", default=PERCORSO_CONFIG)
     parser.add_argument("--db", default=PERCORSO_DB)
     parser.add_argument(
@@ -150,6 +257,10 @@ def main() -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
+    if args.estrai:
+        return estrai(args.config, args.db, args.estrai)
+    if args.notifica:
+        return notifica(args.config, args.db, args.notifica)
     return giro(
         args.config,
         args.db,
