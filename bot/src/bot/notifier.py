@@ -72,3 +72,28 @@ class Notifier:
 
     def riepilogo(self, testo: str) -> None:
         self._invia(_esc(testo))
+
+    def svuota_chat(self, fino_a: int = 400) -> int:
+        """Cancella i messaggi che il bot ha mandato in questa chat.
+
+        Telegram non offre un "svuota tutto": si cancella un messaggio per volta
+        e solo entro 48 ore dall'invio. Gli id sono progressivi nella chat, quindi
+        si prova tutto il range e si ignorano i buchi — i messaggi tuoi il bot non
+        li può toccare, quindi non c'è nulla da rovinare.
+
+        Per la roba più vecchia di 48 ore non c'è API: si svuota la chat dal
+        telefono (menu della chat → Elimina chat).
+        """
+        url = f"https://api.telegram.org/bot{self.token}/deleteMessage"
+        cancellati = 0
+        with httpx.Client(timeout=15) as http:
+            for message_id in range(1, fino_a + 1):
+                try:
+                    esito = http.post(
+                        url, json={"chat_id": self.chat_id, "message_id": message_id}
+                    )
+                except httpx.HTTPError:
+                    continue
+                if esito.status_code == 200 and esito.json().get("ok"):
+                    cancellati += 1
+        return cancellati

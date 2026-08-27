@@ -89,17 +89,20 @@ def giro(
         if not analisi.match or gia_scritto:
             if gia_scritto:
                 log.info("%s: già contattato, salto", p.author_name)
-            archivio.registra(p, analisi.model_dump(), matched=analisi.match)
+            if not dry_run:
+                archivio.registra(p, analisi.model_dump(), matched=analisi.match)
             continue
 
         messaggi = componi(client, cfg, p, analisi)
         if dry_run:
+            # La prova non tocca il database: altrimenti i lead che vedi qui
+            # risulterebbero "già visti" e non ti arriverebbero mai su Telegram.
             print(f"\n=== {p.author_name} — {analisi.motivo}")
             print(f"[pubblico] {messaggi.commento_pubblico}")
             print(f"[privato]  {messaggi.privato}")
         else:
             notifier.lead(p, analisi, messaggi)
-        archivio.registra(p, analisi.model_dump(), matched=True, notificato=not dry_run)
+            archivio.registra(p, analisi.model_dump(), matched=True, notificato=True)
         trovati += 1
 
     log.info("giro concluso: %d post nuovi, %d lead", len(post), trovati)

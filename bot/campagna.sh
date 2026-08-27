@@ -20,6 +20,7 @@ COMANDI
     prova       un giro a secco: stampa i messaggi invece di notificarli
     loop        il giro vero ogni 20-30 minuti, finché non lo fermi
     azzera      cancella il database di campagna (fine campagna / ripartenza)
+    pulisci     cancella dalla chat Telegram i messaggi mandati dal bot (max 48h)
     -h          questo testo
 
 ORDINE DI UNA CAMPAGNA NUOVA
@@ -74,6 +75,19 @@ loop() {
     done
 }
 
+pulisci_telegram() {
+    uv run python -c "
+import sys; sys.path.insert(0, 'src')
+from bot.config import carica
+from bot.notifier import Notifier
+c = carica('$CONFIG')
+n = Notifier(c.telegram_token, c.telegram_chat_id)
+print(f'cancellati {n.svuota_chat()} messaggi')
+print('quelli più vecchi di 48 ore non si possono cancellare via API:')
+print('svuota la chat dal telefono (menu della chat -> Elimina chat).')
+"
+}
+
 azzera() {
     rm -f "$DB"
     echo "database di campagna cancellato: $DB"
@@ -85,6 +99,7 @@ case "${1:--h}" in
     prova)  prova ;;
     loop)   loop ;;
     azzera) azzera ;;
+    pulisci) pulisci_telegram ;;
     -h|--help|aiuto) aiuto ;;
     *) echo "comando sconosciuto: $1"; echo; aiuto; exit 1 ;;
 esac
