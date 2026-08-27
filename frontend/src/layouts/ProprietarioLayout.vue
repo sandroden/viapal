@@ -177,6 +177,7 @@ const sezioniMenu = computed<SezioneMenu[]>(() => {
       label: 'Inquilini',
       voci: [
         { to: '/p/inquilini', label: 'Inquilini', icon: 'group' },
+        { to: '/p/cerca-inquilini', label: 'Cerca inquilini', icon: 'person_search' },
         { to: '/p/ritardi', label: 'Ritardi', icon: 'warning_amber' },
         { to: '/p/notifiche', label: 'Notifiche addebiti', icon: 'mark_email_read' },
         { to: '/p/utenze', label: 'Utenze', icon: 'bolt' },
