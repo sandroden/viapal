@@ -1,0 +1,7 @@
+*.db
+config.toml
+# post veri di persone identificabili: non finiscono nel repo (GDPR)
+fixtures/
+__pycache__/
+.venv/
+.pytest_cache/

@@ -1,0 +1,24 @@
+[project]
+name = "viapal-bot"
+version = "0.1.0"
+description = "Monitoraggio del gruppo Facebook affitti Monza/Brianza"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.40",
+    "httpx>=0.27",
+    "pydantic>=2.9",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bot"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

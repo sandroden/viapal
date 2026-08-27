@@ -1,0 +1,63 @@
+# Copia in ~/.viapal-bot/config.toml e riempi.
+# Sta FUORI dal repo: contiene token e numero di telefono.
+# Viene riletto a ogni giro del loop: per togliere dal giro una stanza appena
+# affittata basta mettere libera = false e salvare. Niente riavvii.
+
+[facebook]
+group_id = "2262271623946575"          # AFFITTI Monza e Brianza - CERCO/OFFRO
+poll_interval_minutes = 25
+active_hours = [8, 23]
+scroll_stop_after_seen = 10
+headed = false                          # true se Facebook comincia a chiedere verifiche
+profilo_browser = "~/.viapal-bot/fb-profile"
+# UA della sessione con cui è stato fatto il login, per non presentarsi come un
+# dispositivo diverso passando in headless. Verificala con:
+#   agent-browser --profile ~/.viapal-bot/fb-profile eval 'navigator.userAgent'
+user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+
+[llm]
+modello = "claude-opus-5"
+
+[[stanze]]
+id = "camera-3"
+libera = true
+tipo = "singola"
+prezzo = 470
+spese_condominio = 80
+disponibile_da = "4 settembre"
+
+[[stanze]]
+id = "camera-4"
+libera = true
+tipo = "singola"
+prezzo = 500
+spese_condominio = 80
+disponibile_da = "13 settembre"
+
+[[stanze]]
+id = "camera-5"
+libera = true
+tipo = "singola"
+prezzo = 490
+spese_condominio = 80
+disponibile_da = "4 settembre"
+
+[contatto]
+link_galleria = "https://viapal.e-den.it/g/viapal"
+link_post_fb = "https://www.facebook.com/groups/2262271623946575/posts/3481154118724980/"
+cellulare = "335 838 9194"
+# Cosa NON è compreso nel totale canone+condominio. Serve a impedire che il
+# composer scriva "tutto incluso": sarebbe un preventivo falso.
+nota_utenze = "le utenze (luce, gas, acqua, rifiuti) sono a parte e si dividono fra gli inquilini in base ai consumi."
+firma = "Sandro"
+
+[matching]
+zone_accettate = [
+    "Monza", "Villasanta", "Brugherio", "Vedano al Lambro", "Lissone",
+    "Muggiò", "Concorezzo", "Biassono", "Sesto San Giovanni", "Cinisello Balsamo",
+]
+escludi_tipologie = ["monolocale", "bilocale", "appartamento"]
+
+[telegram]
+bot_token = "METTI-QUI-IL-TOKEN"
+chat_id = "METTI-QUI-IL-CHAT-ID"   # lo ricavi da https://api.telegram.org/bot<TOKEN>/getUpdates dopo aver scritto al bot
