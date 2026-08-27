@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 from datetime import datetime
+from types import SimpleNamespace
 
 import anthropic
 
@@ -84,6 +85,11 @@ def giro(
             analisi = analizza(client, cfg, p)
         except Exception as exc:                      # noqa: BLE001
             log.exception("classificazione fallita su %s: %s", p.post_id, exc)
+            if dry_run:
+                # nel rapporto va segnalato: potrebbe essere un lead perso
+                scartati.append(
+                    {"post": p, "analisi": SimpleNamespace(motivo=f"⚠ classificazione fallita: {exc}")}
+                )
             continue
 
         # Dedup secondaria: a chi abbiamo già scritto non si riscrive, anche se

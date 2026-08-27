@@ -6,8 +6,10 @@ ogni passo e si accumula. Vedi estrazione.py per il dettaglio.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import random
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -35,6 +37,20 @@ class Post:
     author_url: str | None
     text: str
     troncato: bool = field(default=False)
+    permalink_e_del_profilo: bool = field(default=False)
+
+
+def _impronta(author_url: str | None, testo: str) -> str:
+    """Identità del post quando Facebook non espone il permalink.
+
+    Serve solo a non riproporre lo stesso post due volte nella stessa campagna,
+    quindi non deve essere l'id vero: basta che sia stabile fra un giro e
+    l'altro. Il testo viene normalizzato perché il conteggio dei commenti e
+    delle reazioni cambia da un'ora all'altra sullo stesso identico post.
+    """
+    testo_stabile = re.sub(r"\d+", "", testo)[:400].casefold()
+    seme = f"{author_url or ''}|{' '.join(testo_stabile.split())}"
+    return "h" + hashlib.sha1(seme.encode()).hexdigest()[:16]
 
 
 def raccogli(
@@ -57,10 +73,14 @@ def raccogli(
 
     for giro in range(max_scroll):
         for grezzo in browser.valuta(RACCOLTA_POST_JS) or []:
-            post_id = grezzo["post_id"]
+            if grezzo.get("marketplace"):
+                continue        # annuncio Marketplace: è sempre un'offerta
             testo = pulisci(grezzo["raw"])
             if len(testo) < 40:
                 continue
+            # Il permalink spesso non c'è (vedi estrazione.py, trappola 4):
+            # in quel caso l'identità la fa un'impronta di autore + testo.
+            post_id = grezzo["post_id"] or _impronta(grezzo["author_url"], testo)
             if post_id in gia_visti:
                 visti_di_fila += 1
                 continue
@@ -69,13 +89,17 @@ def raccogli(
             if precedente and len(precedente.text) >= len(testo):
                 continue
             visti_di_fila = 0
+            # Senza permalink si ripiega sul profilo dell'autore: per scrivere
+            # in privato è anche più utile del post.
+            permalink = grezzo["permalink"] or grezzo["author_url"] or ""
             raccolti[post_id] = Post(
                 post_id=post_id,
-                permalink=grezzo["permalink"],
+                permalink=permalink,
                 author_name=grezzo["author_name"],
                 author_url=grezzo["author_url"],
                 text=testo,
                 troncato=e_troncato(testo),
+                permalink_e_del_profilo=not grezzo["permalink"],
             )
 
         if visti_di_fila >= stop_dopo_visti:
@@ -105,7 +129,7 @@ def _attendi_post(browser: Browser, tentativi: int = 12) -> None:
     for tentativo in range(tentativi):
         time.sleep(2)
         diagnosi = json.loads(browser.valuta(DIAGNOSI_JS))
-        if diagnosi.get("con_post"):
+        if diagnosi.get("con_testo"):
             log.info("feed pronto dopo %.0fs: %s", (tentativo + 1) * 2, diagnosi)
             return
         if not diagnosi.get("feed"):

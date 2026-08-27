@@ -122,6 +122,13 @@ def analizza(client: anthropic.Anthropic, cfg: Config, post) -> AnalisiPost:
         output_config={"effort": "low"},
     )
     analisi = risposta.parsed_output
+    if analisi is None:
+        # Capita di rado (il modello non produce output valido). Non è fatale:
+        # chi chiama salta il post e va avanti, ma deve saperlo.
+        raise ValueError(
+            f"il modello non ha restituito un'analisi valida "
+            f"(stop_reason={risposta.stop_reason})"
+        )
 
     # Reti di sicurezza: quello che segue non deve dipendere dal fatto che il
     # modello abbia seguito il prompt.
