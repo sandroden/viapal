@@ -50,6 +50,9 @@ class Config:
     link_post_fb: str
     cellulare: str
     nota_utenze: str
+    indirizzo: str
+    punti_forza: tuple[str, ...]
+    regole: str
     firma: str
     zone_accettate: tuple[str, ...]
     escludi_tipologie: tuple[str, ...]
@@ -65,6 +68,7 @@ class Config:
 def carica(percorso: str | Path) -> Config:
     dati = tomllib.loads(Path(percorso).expanduser().read_text(encoding="utf-8"))
     fb, contatto = dati["facebook"], dati["contatto"]
+    casa = dati.get("casa", {})
     matching, tg = dati["matching"], dati["telegram"]
     return Config(
         group_id=str(fb["group_id"]),
@@ -91,10 +95,14 @@ def carica(percorso: str | Path) -> Config:
         cellulare=contatto["cellulare"],
         nota_utenze=contatto.get(
             "nota_utenze",
-            "le utenze (luce, gas, acqua, rifiuti) sono a parte e si dividono fra gli "
+            "il riscaldamento è già compreso nelle spese condominiali; le altre "
+            "utenze (luce, gas, acqua, rifiuti) sono a parte e si dividono fra gli "
             "inquilini in base ai consumi.",
         ),
         firma=contatto.get("firma", ""),
+        indirizzo=casa.get("indirizzo", ""),
+        punti_forza=tuple(casa.get("punti_forza", [])),
+        regole=casa.get("regole", ""),
         zone_accettate=tuple(matching.get("zone_accettate", [])),
         escludi_tipologie=tuple(matching.get("escludi_tipologie", [])),
         telegram_token=tg["bot_token"],

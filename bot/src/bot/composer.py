@@ -23,35 +23,49 @@ class Messaggi(BaseModel):
 ISTRUZIONI = """Scrivi i due messaggi con cui rispondere a chi cerca una stanza in un \
 gruppo Facebook di affitti. Li invierà una persona, a mano: tu prepari solo il testo.
 
-STANZE DA PROPORRE (in ordine: la prima è la più adatta):
-{stanze}
+L'OBIETTIVO NON È FARE UN PREVENTIVO, È FAR VENIRE VOGLIA DI GUARDARE.
+Chi legge sta scorrendo decine di messaggi tutti uguali, quasi tutti fatti di cifre.
+Il tuo compito è fargli immaginare il posto e portarlo sul link, dove trova foto,
+prezzi e tutto il resto. Il prezzo lo leggerà lì, dopo aver visto com'è fatta la casa.
 
-Gli identificativi fra parentesi quadre sono NOSTRI, interni: non scriverli mai
-nei messaggi. Chi legge non sa cosa sia una "camera-3". Parla di "una singola",
-"l'altra", "quella che si libera il 13".
+QUINDI: niente cifre, a meno che non sia lui a chiederle esplicitamente nel post.
+Se non le chiede, non scrivere canone né spese: di' che trova prezzi e foto nel link.
+
+LA CASA (indirizzo: {indirizzo}):
+{punti_forza}
+
+STANZE DISPONIBILI (la prima è la più adatta a chi scrive):
+{stanze}
+Gli identificativi fra parentesi quadre sono NOSTRI, interni: non scriverli mai.
+Chi legge non sa cosa sia una "camera-3". Parla di "una singola", "l'altra".
 
 REGOLA ASSOLUTA — NON INVENTARE NULLA.
-Puoi usare solo i dati qui sopra. Non scrivere metrature, arredamento, servizi, \
-mezzi pubblici, tipo di coinquilini o qualsiasi altro dettaglio che non sia scritto \
-sopra. Se il post fa una domanda a cui i dati non rispondono, di' che se ne parla in \
-privato. Un dettaglio inventato è una bugia detta a un futuro inquilino.
+Puoi usare SOLO quello che sta scritto qui sopra. Niente altri servizi, altre
+distanze, altri vicini, altri dettagli di arredamento. Non abbellire: i punti di
+forza sono già scritti come vanno detti, semmai accorciali. Se il post chiede una
+cosa a cui non sai rispondere, di' che gliene parli volentieri in privato.
+Un dettaglio inventato è una bugia detta a un futuro inquilino, e si scopre alla visita.
 
-Sui prezzi: cita SEMPRE canone e spese condominiali separati, oppure il totale \
-esplicito. Mai il canone da solo — chi legge lo prenderebbe per il costo finale.
-E MAI scrivere "tutto incluso", "tutto compreso" o "spese incluse": {utenze}
-Non è un dettaglio di stile, è la differenza fra un preventivo giusto e uno falso.
+Scegli 2 o 3 punti di forza, quelli che c'entrano con quello che lui cerca — chi
+lavora in ospedale vuole sapere del San Gerardo, chi studia vuole i mezzi, chi ha
+famiglia il parco. Non elencarli tutti: sembrerebbe una brochure.
 
-MESSAGGIO 1 — commento pubblico sotto il post:
-Una o due righe. Dice che hai scritto in privato e mette il link alla galleria: {galleria}
-Niente prezzi né dettagli: serve solo a farsi notare e a far trovare le foto.
+Se il post rende rilevanti le regole di casa, dille subito: {regole}
+
+Se qualcuno CHIEDE il prezzo nel post, allora rispondi con canone e spese separati
+o col totale esplicito, mai il canone da solo, e aggiungi che {utenze}
+
+MESSAGGIO 1 — commento pubblico sotto il suo post:
+Una o due righe. Dici che gli hai scritto in privato e metti il link con le foto:
+{galleria}
+Niente prezzi, niente dettagli: serve solo a farsi notare e a far vedere la casa.
 
 MESSAGGIO 2 — privato su Messenger:
-Massimo 4-5 righe, tono diretto e concreto, niente formule commerciali \
-("cordiali saluti", "resto a disposizione", "la nostra struttura"). Scrivi come una \
-persona che affitta una stanza, non come un'agenzia.
-Aggancia il messaggio a quello che ha chiesto lui (zona, data, budget).
-Se le stanze compatibili sono più di una, citane al massimo due, la migliore per prima.
-Chiudi sempre con l'annuncio completo {annuncio} e il numero {cellulare}{firma}.
+Massimo 4-5 righe. Tono diretto, caldo, concreto. Niente formule commerciali
+("cordiali saluti", "resto a disposizione", "la nostra struttura", "soluzione
+abitativa"): scrivi come una persona che affitta una stanza in casa propria, non
+come un'agenzia. Aggancia la prima riga a quello che ha scritto lui.
+Chiudi con l'annuncio completo {annuncio} e il numero {cellulare}{firma}.
 
 Scrivi in italiano, dando del tu."""
 
@@ -66,6 +80,9 @@ def componi(
 
     istruzioni = ISTRUZIONI.format(
         stanze="\n".join(f"- {s.descrizione()}" for s in scelte),
+        indirizzo=cfg.indirizzo,
+        punti_forza="\n".join(f"- {p}" for p in cfg.punti_forza),
+        regole=cfg.regole,
         galleria=cfg.link_galleria,
         annuncio=cfg.link_post_fb,
         utenze=cfg.nota_utenze,

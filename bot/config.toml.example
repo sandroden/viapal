@@ -48,8 +48,27 @@ link_post_fb = "https://www.facebook.com/groups/2262271623946575/posts/348115411
 cellulare = "335 838 9194"
 # Cosa NON è compreso nel totale canone+condominio. Serve a impedire che il
 # composer scriva "tutto incluso": sarebbe un preventivo falso.
-nota_utenze = "le utenze (luce, gas, acqua, rifiuti) sono a parte e si dividono fra gli inquilini in base ai consumi."
+nota_utenze = "il riscaldamento è già compreso nelle spese condominiali; le altre utenze (luce, gas, acqua, rifiuti) sono a parte e si dividono fra gli inquilini in base ai consumi."
 firma = "Sandro"
+
+# Materiale VERO da cui il composer pesca per incuriosire. Se una cosa non è
+# scritta qui, il bot non la può dire: è l'unico argine all'invenzione.
+# Ricavato dal post dell'annuncio su Facebook e dai testi della galleria.
+[casa]
+indirizzo = "Via Palestrina, Monza — zona parco"
+punti_forza = [
+    "a 200 metri dall'entrata del Parco di Monza e 500 dalla Villa Reale",
+    "10 minuti a piedi dall'ospedale San Gerardo",
+    "stanze ampie e luminose, a uso singolo",
+    "appartamento grande e arredato, 180 mq con 5 stanze e due bagni",
+    "secondo piano di uno stabile signorile e tranquillo, con giardino e portineria",
+    "ampia cucina full optional, grande soggiorno luminoso, balcone e due ripostigli",
+    "fermata del bus a 4 minuti a piedi, linee per la stazione e per Sesto San Giovanni",
+    "bar, farmacia e un Iper molto fornito a 5 minuti a piedi",
+    "parcheggio libero su strada e garage per bici e moto",
+]
+# Citate solo se il post le rende rilevanti (chi ha un cane, chi fuma).
+regole = "In casa non si fuma e non sono ammessi animali."
 
 [matching]
 zone_accettate = [
