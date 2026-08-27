@@ -138,6 +138,12 @@ link: l'app mobile non lo gestisce e ricade sulla pagina del gruppo. Era il
 motivo per cui certi "apri il post" finivano nel posto sbagliato, e più sul
 telefono che sul desktop.
 
+Il permalink si ottiene per **circa il 40% dei post** e non è un difetto
+rimediabile da qui: Facebook lo espone solo sui post che idrata del tutto
+mentre si scrolla, e la quota non cambia né leggendo due volte per passo né
+allungando le pause (misurato). L'`author_id`, invece, c'è sempre — per questo
+il flusso poggia su Messenger e non sul post.
+
 ## Le tre trappole trovate sul campo
 
 Verificate il 2026-08-27, con agent-browser 0.27.0. Sono documentate anche in

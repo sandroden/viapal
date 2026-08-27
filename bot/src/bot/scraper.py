@@ -97,9 +97,17 @@ def raccogli(
                 visti_di_fila += 1
                 continue
             precedente = raccolti.get(post_id)
-            # scrollando, un post può ricomparire più espanso: si tiene il più lungo
-            if precedente and len(precedente.text) >= len(testo):
-                continue
+            if precedente:
+                # Il permalink può comparire dopo, quando lo scroll fa idratare
+                # il post: se nel frattempo c'è, si prende, anche a testo
+                # invariato. Non basta a recuperarli tutti (misurato: ~40% dei
+                # post ce l'ha, e né una seconda lettura per passo né pause più
+                # lunghe cambiano quella quota), ma costa nulla.
+                if grezzo["permalink"] and precedente.permalink_e_del_profilo:
+                    precedente.permalink = grezzo["permalink"]
+                    precedente.permalink_e_del_profilo = False
+                if len(precedente.text) >= len(testo):
+                    continue
             visti_di_fila = 0
             # Senza permalink si ripiega sul profilo dell'autore: per scrivere
             # in privato è anche più utile del post.
