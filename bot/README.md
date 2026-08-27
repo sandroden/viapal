@@ -125,6 +125,19 @@ notifiche: quello che cambia davvero è il modello del `composer`, e quello è
 già su Opus. Se le classificazioni cominciano a sbagliare, `classifier` nel
 TOML si alza a `claude-sonnet-5` e si ricontrolla con `./campagna.sh prova`.
 
+## I link della notifica
+
+Ogni lead porta due link, in quest'ordine:
+
+1. **scrivi a <nome>** → `m.me/<id autore>`, che apre la conversazione Messenger.
+   È il primo perché è lì che va incollato il messaggio privato.
+2. **apri il post** → solo quando abbiamo il permalink vero.
+
+Il profilo dentro al gruppo (`/groups/<gid>/user/<uid>/`) **non** si usa come
+link: l'app mobile non lo gestisce e ricade sulla pagina del gruppo. Era il
+motivo per cui certi "apri il post" finivano nel posto sbagliato, e più sul
+telefono che sul desktop.
+
 ## Le tre trappole trovate sul campo
 
 Verificate il 2026-08-27, con agent-browser 0.27.0. Sono documentate anche in

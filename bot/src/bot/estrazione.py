@@ -60,6 +60,8 @@ RACCOLTA_POST_JS = r"""
       permalink: permalink ? permalink.href.split('?')[0] : null,
       author_name: autore ? autore.innerText.trim() : null,
       author_url: autore ? autore.href.split('?')[0] : null,
+      // l'id numerico apre la chat Messenger diretta: m.me/<id> (vedi notifier)
+      author_id: autore ? (autore.href.match(/\/user\/(\d+)/) || [])[1] ?? null : null,
       // gli annunci Marketplace sono sempre offerte: si scartano prima dell'LLM
       marketplace: !!nodo.querySelector('a[href*="/commerce/listing/"]'),
       raw: raw,

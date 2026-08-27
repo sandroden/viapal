@@ -119,8 +119,19 @@ def _card(voce: dict) -> str:
         <div class="etichetta"><span>privato su Messenger</span><button>copia</button></div>
         <div class="testo">{_e(messaggi.privato)}</div>
       </div>
-      <a href="{_e(post.permalink)}" target="_blank" rel="noopener">apri il post su Facebook →</a>
+      {_link_html(post)}
     </article>"""
+
+
+def _link_html(post) -> str:
+    voci = []
+    messenger = getattr(post, "link_messenger", None)
+    if messenger:
+        nome = _e(post.author_name or "questa persona")
+        voci.append(f'<a href="{messenger}" target="_blank" rel="noopener">scrivi a {nome} →</a>')
+    if post.permalink and not getattr(post, "permalink_e_del_profilo", False):
+        voci.append(f'<a href="{_e(post.permalink)}" target="_blank" rel="noopener">apri il post →</a>')
+    return " &middot; ".join(voci)
 
 
 def _riga_scarto(voce: dict) -> str:

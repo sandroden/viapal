@@ -36,8 +36,20 @@ class Post:
     author_name: str | None
     author_url: str | None
     text: str
+    author_id: str | None = field(default=None)
     troncato: bool = field(default=False)
     permalink_e_del_profilo: bool = field(default=False)
+
+    @property
+    def link_messenger(self) -> str | None:
+        """Apre la conversazione con questa persona.
+
+        È il link giusto per il flusso: il messaggio privato va incollato lì.
+        Il profilo dentro il gruppo (/groups/<gid>/user/<uid>/) invece l'app
+        mobile non lo gestisce e ricade sul gruppo — era il motivo per cui
+        certi link "apri il post" finivano sulla pagina sbagliata.
+        """
+        return f"https://m.me/{self.author_id}" if self.author_id else None
 
 
 def _impronta(author_url: str | None, testo: str) -> str:
@@ -98,6 +110,7 @@ def raccogli(
                 author_name=grezzo["author_name"],
                 author_url=grezzo["author_url"],
                 text=testo,
+                author_id=grezzo.get("author_id"),
                 troncato=e_troncato(testo),
                 permalink_e_del_profilo=not grezzo["permalink"],
             )

@@ -23,7 +23,7 @@ from .composer import componi
 from .config import carica
 from .notifier import Notifier
 from .report import scrivi as scrivi_report
-from .scraper import MarkupCambiato, raccogli
+from .scraper import MarkupCambiato, Post, raccogli
 from .storage import Archivio
 
 log = logging.getLogger("bot")
@@ -183,14 +183,14 @@ def notifica(percorso_config: str, percorso_db: str, sorgente: str) -> int:
 
     for voce in dati.get("scartati", []):
         archivio.registra(
-            SimpleNamespace(**_campi_post(voce)),
+            Post(**_campi_post(voce)),
             {"motivo": voce.get("motivo", "")},
             matched=False,
         )
 
     inviati = 0
     for voce in dati.get("lead", []):
-        post = SimpleNamespace(**_campi_post(voce))
+        post = Post(**_campi_post(voce))
         analisi = SimpleNamespace(
             zona=voce.get("zona"),
             budget_max=voce.get("budget_max"),
@@ -215,12 +215,16 @@ def notifica(percorso_config: str, percorso_db: str, sorgente: str) -> int:
 
 
 def _campi_post(voce: dict) -> dict:
+    """Ricostruisce un Post vero, non un SimpleNamespace: serve la property
+    link_messenger, che è quella che porta il tap dritto in chat."""
     return {
         "post_id": voce["post_id"],
         "permalink": voce.get("permalink", ""),
         "author_name": voce.get("author_name"),
         "author_url": voce.get("author_url"),
+        "author_id": voce.get("author_id"),
         "text": voce.get("text", ""),
+        "permalink_e_del_profilo": voce.get("permalink_e_del_profilo", False),
     }
 
 

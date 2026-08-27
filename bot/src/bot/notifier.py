@@ -24,6 +24,23 @@ def _esc(testo: str) -> str:
     return "".join("\\" + c if c in DA_SCAPPARE else c for c in str(testo))
 
 
+def _link(post) -> str:
+    """I due link della notifica, nell'ordine in cui servono.
+
+    Prima Messenger — è lì che si incolla il privato — poi il post, ma solo se
+    è davvero il permalink del post: senza, il fallback aprirebbe il gruppo, e
+    sul cellulare succedeva anche col profilo dentro al gruppo.
+    """
+    voci = []
+    messenger = getattr(post, "link_messenger", None)
+    if messenger:
+        nome = post.author_name or "questa persona"
+        voci.append(f"[scrivi a {_esc(nome)}]({messenger})")
+    if post.permalink and not getattr(post, "permalink_e_del_profilo", False):
+        voci.append(f"[apri il post]({post.permalink})")
+    return " · ".join(voci) if voci else ""
+
+
 class Notifier:
     def __init__(self, token: str, chat_id: str):
         self.token, self.chat_id = token, chat_id
@@ -57,7 +74,7 @@ class Notifier:
             f"➡️ {_esc(', '.join(analisi.stanze_compatibili))}\n"
             f"_{_esc(analisi.motivo)}_\n\n"
             f"{_esc(estratto)}\n\n"
-            f"[apri il post]({post.permalink})\n\n"
+            f"{_link(post)}\n\n"
             "*1\\. commento sotto il post:*\n"
             f"```\n{messaggi.commento_pubblico}\n```\n"
             "*2\\. privato su Messenger:*\n"

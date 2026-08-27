@@ -46,7 +46,8 @@ Scrivi `/tmp/affitti-lead.json` in questa forma:
   "lead": [
     {
       "post_id": "...", "permalink": "...", "author_name": "...",
-      "author_url": "...", "text": "...",
+      "author_url": "...", "author_id": "...", "text": "...",
+      "permalink_e_del_profilo": false,
       "zona": "Monza", "budget_max": 600, "disponibile_da": "settembre",
       "stanze_compatibili": ["camera-3"],
       "motivo": "una riga sul perché, la leggerà sul telefono",
@@ -58,6 +59,10 @@ Scrivi `/tmp/affitti-lead.json` in questa forma:
   ]
 }
 ```
+
+Ricopia i campi dal JSON di partenza senza modificarli — in particolare
+`author_id` e `permalink_e_del_profilo`, da cui dipendono i link della notifica:
+`author_id` diventa il tap che apre la chat Messenger con quella persona.
 
 Gli **scartati vanno inclusi tutti**, con post_id e author_url: è quello che
 impedisce di rileggerli al giro dopo. Ometterli fa ricominciare da capo ogni
