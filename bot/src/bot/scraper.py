@@ -100,9 +100,18 @@ def raccogli(
             if precedente:
                 # Il permalink può comparire dopo, quando lo scroll fa idratare
                 # il post: se nel frattempo c'è, si prende, anche a testo
-                # invariato. Non basta a recuperarli tutti (misurato: ~40% dei
-                # post ce l'ha, e né una seconda lettura per passo né pause più
-                # lunghe cambiano quella quota), ma costa nulla.
+                # invariato. Costa nulla, ma non aspettarsi molto.
+                #
+                # Il 27/08 ho provato a farlo salire sopra il ~40%, senza
+                # riuscirci. Per non rifare il giro alla prossima campagna:
+                #   lettura singola, scroll 1200 ....... 40%  (16/40)
+                #   due letture per passo .............. 40%  (16/40)
+                #   pausa 2,5s fra le due letture ...... 40%  (16/40)
+                #   scroll 500px (sotto il viewport) ... 37%  (13/35)
+                #   pausa 7s dopo ogni scroll .......... 37%  (10/27)
+                # Non dipende dal ritmo con cui si legge: Facebook lo espone su
+                # una frazione dei post e basta. L'author_id invece c'è sempre,
+                # ed è per questo che il flusso poggia su Messenger.
                 if grezzo["permalink"] and precedente.permalink_e_del_profilo:
                     precedente.permalink = grezzo["permalink"]
                     precedente.permalink_e_del_profilo = False
