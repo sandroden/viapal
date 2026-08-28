@@ -161,6 +161,14 @@
           />
         </div>
 
+        <!-- La nota è scritta a mano ed è l'unica cosa che il bot non sa:
+             va letta scorrendo la lista. Nel tooltip non esisteva, perché su
+             telefono non c'è il passaggio del dito sopra. -->
+        <button v-if="lead.note" class="vp-lead__nota" @click="apriNote(lead)">
+          <q-icon name="sticky_note_2" size="15px" />
+          <span class="vp-lead__nota-testo" data-testid="lead-nota">{{ lead.note }}</span>
+        </button>
+
         <div class="vp-lead__piede">
           <q-btn
             v-if="!lead.preso_da"
@@ -201,9 +209,15 @@
             class="vp-lead__stato"
             @update:model-value="(s: StatoLead) => cambiaStato(lead, s)"
           />
-          <q-btn flat dense round icon="sticky_note_2" @click="apriNote(lead)">
-            <q-badge v-if="lead.note" floating rounded color="secondary" />
-            <q-tooltip>{{ lead.note || 'Aggiungi una nota' }}</q-tooltip>
+          <q-btn
+            flat
+            dense
+            round
+            :icon="lead.note ? 'edit_note' : 'sticky_note_2'"
+            :aria-label="lead.note ? 'Modifica la nota' : 'Aggiungi una nota'"
+            @click="apriNote(lead)"
+          >
+            <q-tooltip>{{ lead.note ? 'Modifica la nota' : 'Aggiungi una nota' }}</q-tooltip>
           </q-btn>
         </div>
       </article>
@@ -521,6 +535,39 @@ function chiediChiusura() {
   font-size: var(--vp-text-xs);
   color: var(--vp-terra);
   cursor: pointer;
+}
+
+/* La nota è un foglietto attaccato sopra: si vede senza aprire nulla, e
+   toccandolo si modifica. */
+.vp-lead__nota {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 0;
+  border-left: 3px solid var(--vp-honey);
+  border-radius: var(--vp-r-sm);
+  background: var(--vp-honey-soft);
+  color: var(--vp-ink-2);
+  font-family: inherit;
+  font-size: var(--vp-text-sm);
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+.vp-lead__nota .q-icon {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.vp-lead__nota-testo {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
 }
 
 .vp-lead__bottoni {
