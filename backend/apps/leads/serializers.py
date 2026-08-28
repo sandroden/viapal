@@ -76,6 +76,7 @@ class LeadSerializer(serializers.ModelSerializer):
             "preso_at",
             "contattato_at",
             "note",
+            "foto",
             "created_at",
         )
         read_only_fields = fields
@@ -95,7 +96,7 @@ class LeadLavorazioneSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lead
-        fields = ("stato", "note")
+        fields = ("stato", "note", "foto")
 
     def update(self, instance, validated_data):
         from django.utils import timezone

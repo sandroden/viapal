@@ -84,6 +84,13 @@
       >
         <div class="vp-lead__riga1">
           <div class="vp-lead__chi">
+            <!-- In mezzo a decine di annunci la faccia è quello che si
+                 ricorda: il nome, spesso, no. -->
+            <LeadFotina
+              :foto="lead.foto"
+              :nome="lead.author_name"
+              @cambia="(f: string) => cambiaFoto(lead, f)"
+            />
             <span class="vp-lead__nome">{{ lead.author_name || 'Anonimo' }}</span>
             <!-- Il "da contattare" non porta badge: la card pulita è quella
                  ancora da lavorare, e il colore segnala solo ciò che è stato
@@ -275,6 +282,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { Dialog, Notify } from 'quasar';
 import { useLeadsStore, STATI, type Lead, type StatoLead } from 'src/stores/leads';
+import LeadFotina from 'components/leads/LeadFotina.vue';
 import { useAuthStore } from 'src/stores/auth';
 
 const store = useLeadsStore();
@@ -391,6 +399,11 @@ async function cambiaStato(lead: Lead, stato: StatoLead) {
       ],
     });
   }
+}
+
+async function cambiaFoto(lead: Lead, foto: string) {
+  const esito = await store.salvaFoto(lead, foto);
+  if (!esito.ok) Notify.create({ type: 'warning', message: esito.messaggio ?? '' });
 }
 
 // --- note ---------------------------------------------------------------
@@ -526,6 +539,7 @@ function chiediChiusura() {
 .vp-lead__badge {
   flex-shrink: 0;
 }
+
 .vp-lead__badge--contattato {
   background: var(--vp-cream);
   color: var(--vp-status-declared-fg);

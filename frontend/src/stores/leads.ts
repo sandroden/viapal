@@ -36,6 +36,8 @@ export interface Lead {
   preso_at: string | null;
   contattato_at: string | null;
   note: string;
+  /** Francobollo incollato a mano: data URI, non un URL a un file. */
+  foto: string;
   created_at: string;
 }
 
@@ -123,6 +125,17 @@ export const useLeadsStore = defineStore('leads', {
       const { data } = await api.patch<Lead>(`${ENDPOINT}${lead.id}/`, { note });
       this._aggiorna(data);
       return data;
+    },
+
+    /** La fotina del profilo, o stringa vuota per toglierla. */
+    async salvaFoto(lead: Lead, foto: string): Promise<{ ok: boolean; messaggio?: string }> {
+      try {
+        const { data } = await api.patch<Lead>(`${ENDPOINT}${lead.id}/`, { foto });
+        this._aggiorna(data);
+        return { ok: true };
+      } catch (e: unknown) {
+        return { ok: false, messaggio: messaggioErrore(e, 'Foto non salvata') };
+      }
     },
 
     /** «Lo contatto io». Il 409 non è un errore da nascondere: è l'altro che

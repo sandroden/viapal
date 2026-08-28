@@ -10,7 +10,7 @@ rompere:
 
 * i campi **del bot** (testo, autore, permalink, analisi, messaggi proposti)
   vengono riscritti a ogni upsert dello stesso post;
-* i campi **di lavorazione** (stato, preso_da, note) sono degli umani e
+* i campi **di lavorazione** (stato, preso_da, note, foto) sono degli umani e
   l'upsert non li tocca mai — altrimenti il secondo passaggio dello scraper
   sullo stesso post azzererebbe il flag di chi ha già scritto alla persona.
 
@@ -18,9 +18,36 @@ La separazione è realizzata da due serializer distinti (``serializers.py``):
 quello del bot non sa nemmeno nominare i campi umani, e viceversa.
 """
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from properties.models import TimestampedModel
+
+# Un francobollo da 128px in WebP sta in pochi KB; il tetto è largo dieci
+# volte tanto e serve solo a impedire che il campo diventi un deposito di file.
+FOTO_MAX_CARATTERI = 100_000
+FOTO_PREFISSI = (
+    "data:image/webp;base64,",
+    "data:image/jpeg;base64,",
+    "data:image/png;base64,",
+)
+
+
+def valida_fotina(valore):
+    """La fotina è un data URI, non un file e non un link a un CDN altrui.
+
+    Il ridimensionamento avviene nel browser, ma un PATCH arriva anche da
+    curl: senza questo controllo il campo sarebbe un TextField illimitato
+    scrivibile da chiunque abbia accesso all'immobile.
+    """
+    if not valore:
+        return
+    if not valore.startswith(FOTO_PREFISSI):
+        raise ValidationError(
+            "La foto dev'essere un'immagine incollata (data URI webp, jpeg o png)."
+        )
+    if len(valore) > FOTO_MAX_CARATTERI:
+        raise ValidationError("La foto è troppo grande: serve un francobollo, non un file.")
 
 
 class Lead(TimestampedModel):
@@ -117,6 +144,17 @@ class Lead(TimestampedModel):
     preso_at = models.DateTimeField(null=True, blank=True, verbose_name="preso in carico il")
     contattato_at = models.DateTimeField(null=True, blank=True, verbose_name="contattato il")
     note = models.TextField(blank=True, verbose_name="note")
+    foto = models.TextField(
+        blank=True,
+        validators=[valida_fotina],
+        verbose_name="fotina",
+        help_text=(
+            "Ritaglio del profilo, incollato a mano per riconoscere la persona "
+            "in mezzo agli annunci. Sta nella tabella e non su disco di "
+            "proposito: la chiusura campagna cancella i lead in blocco, e un "
+            "file su storage sopravviverebbe alla cancellazione promessa."
+        ),
+    )
 
     class Meta:
         verbose_name = "lead"
