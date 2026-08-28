@@ -38,7 +38,9 @@ class Stanza:
 
 @dataclass(frozen=True)
 class Config:
-    group_id: str
+    # I gruppi da leggere, in ordine. Uno solo è il caso normale; più d'uno
+    # serve quando lo stesso annuncio si pesca in bacini diversi.
+    gruppi: tuple[str, ...]
     poll_interval_minutes: int
     active_hours: tuple[int, int]
     scroll_stop_after_seen: int
@@ -77,6 +79,20 @@ class Config:
         return tuple(s for s in self.stanze if s.libera)
 
 
+def _gruppi(fb: dict) -> tuple[str, ...]:
+    """`gruppi = [...]` è la forma buona; `group_id` singolo resta valido.
+
+    Tenere il vecchio nome evita che una config non ancora migrata smetta di
+    leggere il gruppo storico proprio mentre se ne aggiunge un altro.
+    """
+    elenco = [str(g) for g in fb.get("gruppi", []) if str(g).strip()]
+    if not elenco and fb.get("group_id"):
+        elenco = [str(fb["group_id"])]
+    if not elenco:
+        raise KeyError("serve facebook.gruppi (o il vecchio facebook.group_id)")
+    return tuple(dict.fromkeys(elenco))   # senza doppioni, ordine tenuto
+
+
 def carica(percorso: str | Path) -> Config:
     dati = tomllib.loads(Path(percorso).expanduser().read_text(encoding="utf-8"))
     fb, contatto = dati["facebook"], dati["contatto"]
@@ -84,7 +100,7 @@ def carica(percorso: str | Path) -> Config:
     matching, tg = dati["matching"], dati["telegram"]
     api = dati.get("api", {})
     return Config(
-        group_id=str(fb["group_id"]),
+        gruppi=_gruppi(fb),
         poll_interval_minutes=int(fb.get("poll_interval_minutes", 25)),
         active_hours=tuple(fb.get("active_hours", [8, 23])),
         scroll_stop_after_seen=int(fb.get("scroll_stop_after_seen", 10)),

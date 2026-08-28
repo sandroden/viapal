@@ -4,7 +4,12 @@
 # affittata basta mettere libera = false e salvare. Niente riavvii.
 
 [facebook]
-group_id = "2262271623946575"          # AFFITTI Monza e Brianza - CERCO/OFFRO
+# I gruppi da leggere, in ordine. Uno vale l'altro: i post finiscono
+# nello stesso mucchio e chi posta in due gruppi viene contattato una volta sola.
+# Ogni gruppo in più raddoppia il tempo di scroll del giro.
+gruppi = [
+    "2262271623946575",   # AFFITTI Monza e Brianza - CERCO/OFFRO
+]
 poll_interval_minutes = 25
 active_hours = [8, 23]
 scroll_stop_after_seen = 10

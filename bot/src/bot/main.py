@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import os
 import sys
 from dataclasses import asdict
@@ -43,6 +44,74 @@ def _api_viapal(cfg):
     return ApiViapal(cfg.api_base_url, cfg.api_user, cfg.api_password, cfg.api_property_id)
 
 
+def _raccogli_dai_gruppi(
+    browser: Browser, cfg, gia_visti: set[str]
+) -> tuple[list, list[tuple[str, str]]]:
+    """Scorre i gruppi uno dopo l'altro; ritorna i post e i gruppi muti.
+
+    `gia_visti` è condiviso apposta — è il database — ma questo rende cieco il
+    controllo di `raccogli`, che grida solo quando l'archivio è vuoto. Da qui
+    in poi il gruppo che non dà niente va segnalato a mano: zero post e "non
+    sono iscritto a quel gruppo" si somigliano troppo.
+    """
+    post, falliti = [], []
+    for gid in cfg.gruppi:
+        try:
+            trovati = raccogli(
+                browser,
+                gid,
+                gia_visti=gia_visti,
+                stop_dopo_visti=cfg.scroll_stop_after_seen,
+                max_scroll=cfg.max_scroll,
+            )
+        except MarkupCambiato as exc:
+            log.error("gruppo %s: estrazione a vuoto: %s", gid, exc)
+            falliti.append((gid, str(exc)))
+            continue
+        log.info("gruppo %s: %d post nuovi", gid, len(trovati))
+        if not trovati:
+            falliti.append((gid, "nessun post"))
+        post.extend(trovati)
+    return post, falliti
+
+
+def identita(author_url: str | None, author_id: str | None = None, testo: str = "") -> str:
+    """Chi è la persona, a prescindere dal gruppo in cui ha scritto.
+
+    `author_url` porta dentro il gruppo — `/groups/<gid>/user/<uid>/` — quindi
+    la stessa persona ha due URL diversi nei due gruppi e il confronto per URL
+    la lascia passare due volte. L'uid invece è lo stesso ovunque: si prende da
+    `author_id`, e se manca si sfila dall'URL (lo storico in archivio è tutto
+    così). Per chi posta in anonimo non resta che il testo.
+    """
+    if author_id:
+        return f"id:{author_id}"
+    trovato = re.search(r"/user/(\d+)", author_url or "")
+    if trovato:
+        return f"id:{trovato.group(1)}"
+    if author_url:
+        return author_url
+    return "t:" + " ".join(re.sub(r"\d+", "", testo)[:400].casefold().split())
+
+
+def _da_leggere(post: list, gia_contattati: set[str]) -> list:
+    """Toglie chi è già stato contattato e i doppioni dentro lo stesso giro.
+
+    Lo stesso annuncio pubblicato in due gruppi arriva due volte: senza questo
+    filtro la persona riceverebbe due notifiche e due lead su viapal.
+    """
+    noti = {identita(u) for u in gia_contattati}
+    fuori, ids = [], set()
+    for p in post:
+        chi = identita(p.author_url, getattr(p, "author_id", None), p.text)
+        if p.post_id in ids or chi in noti:
+            continue
+        ids.add(p.post_id)
+        noti.add(chi)
+        fuori.append(p)
+    return fuori
+
+
 def giro(
     percorso_config: str,
     percorso_db: str,
@@ -70,28 +139,26 @@ def giro(
     )
 
     try:
-        post = raccogli(
-            browser,
-            cfg.group_id,
-            gia_visti=archivio.id_visti(),
-            stop_dopo_visti=cfg.scroll_stop_after_seen,
-            max_scroll=cfg.max_scroll,
-        )
-    except MarkupCambiato as exc:
-        log.error("estrazione a vuoto: %s", exc)
-        notifier.allarme(
-            f"Nessun post estratto: {exc}\n"
-            "Controlla il JS in estrazione.py, oppure apri il browser in headed: "
-            "Facebook potrebbe aver chiesto una verifica."
-        )
-        return 1
+        post, falliti = _raccogli_dai_gruppi(browser, cfg, archivio.id_visti())
     except ErroreBrowser as exc:
         log.error("browser: %s", exc)
         notifier.allarme(f"agent-browser non risponde: {exc}")
         return 1
 
+    if falliti:
+        # Un gruppo rotto non deve fermare gli altri, ma nemmeno passare in
+        # silenzio: senza allarme somiglia a un gruppo semplicemente tranquillo.
+        notifier.allarme(
+            "Gruppi che non hanno dato nulla: "
+            + ", ".join(f"{gid} ({motivo})" for gid, motivo in falliti)
+            + "\nControlla di essere iscritto, o apri il browser in headed: "
+            "Facebook potrebbe aver chiesto una verifica."
+        )
+        if len(falliti) == len(cfg.gruppi):
+            return 1
+
     client = anthropic.Anthropic()
-    gia_contattati = archivio.autori_gia_contattati()
+    gia_contattati = {identita(u) for u in archivio.autori_gia_contattati()}
     trovati = 0
     lead, scartati = [], []   # solo per il rapporto della prova
 
@@ -109,7 +176,7 @@ def giro(
 
         # Dedup secondaria: a chi abbiamo già scritto non si riscrive, anche se
         # ripubblica l'annuncio con un post nuovo.
-        gia_scritto = p.author_url and p.author_url in gia_contattati
+        gia_scritto = identita(p.author_url, p.author_id, p.text) in gia_contattati
         if not analisi.match or gia_scritto:
             if gia_scritto:
                 log.info("%s: già contattato, salto", p.author_name)
@@ -130,6 +197,9 @@ def giro(
             archivio.registra(
                 p, analisi.model_dump(), matched=True, notificato=True, messaggi=messaggi
             )
+            # Chi posta lo stesso annuncio in due gruppi arriva qui due volte
+            # nello stesso giro: senza questo si prende due messaggi.
+            gia_contattati.add(identita(p.author_url, p.author_id, p.text))
         trovati += 1
 
     if dry_run:
@@ -158,17 +228,10 @@ def estrai(percorso_config: str, percorso_db: str, destinazione: str) -> int:
     browser = Browser(
         profilo=cfg.profilo_browser, headed=cfg.headed, user_agent=cfg.user_agent
     )
-    post = raccogli(
-        browser,
-        cfg.group_id,
-        gia_visti=archivio.id_visti(),
-        stop_dopo_visti=cfg.scroll_stop_after_seen,
-        max_scroll=cfg.max_scroll,
-    )
-    gia_contattati = archivio.autori_gia_contattati()
-    da_leggere = [
-        asdict(p) for p in post if not (p.author_url and p.author_url in gia_contattati)
-    ]
+    post, falliti = _raccogli_dai_gruppi(browser, cfg, archivio.id_visti())
+    for gid, motivo in falliti:
+        print(f"⚠ gruppo {gid}: {motivo} — controlla di essere iscritto a quel gruppo")
+    da_leggere = [asdict(p) for p in _da_leggere(post, archivio.autori_gia_contattati())]
     percorso = Path(destinazione).expanduser()
     percorso.parent.mkdir(parents=True, exist_ok=True)
     percorso.write_text(

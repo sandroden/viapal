@@ -75,12 +75,39 @@
         v-for="lead in leadVisibili"
         :key="lead.id"
         class="vp-card vp-lead__card"
-        :class="{ 'vp-lead__card--altrui': altrui(lead) }"
+        :class="[
+          `vp-lead__card--st-${lead.stato}`,
+          { 'vp-lead__card--mio': mio(lead), 'vp-lead__card--altrui': altrui(lead) },
+        ]"
+        :data-stato="lead.stato"
         data-testid="lead-card"
       >
         <div class="vp-lead__riga1">
           <div class="vp-lead__chi">
             <span class="vp-lead__nome">{{ lead.author_name || 'Anonimo' }}</span>
+            <!-- Il "da contattare" non porta badge: la card pulita è quella
+                 ancora da lavorare, e il colore segnala solo ciò che è stato
+                 fatto. -->
+            <span
+              v-if="lead.stato !== 'nuovo'"
+              class="vp-badge vp-lead__badge"
+              :class="`vp-lead__badge--${lead.stato}`"
+              data-testid="lead-stato"
+            >
+              <q-icon :name="statoIcona(lead.stato)" size="14px" />
+              {{ lead.stato_display }}
+            </span>
+            <!-- Chi ci sta scrivendo è l'informazione che evita il doppio
+                 messaggio: sta in testa, non in fondo alla card. -->
+            <span
+              v-if="lead.preso_da"
+              class="vp-badge vp-lead__preso"
+              :class="mio(lead) ? 'vp-lead__preso--io' : 'vp-lead__preso--altrui'"
+              data-testid="lead-preso"
+            >
+              <q-icon name="person" size="14px" />
+              {{ mio(lead) ? 'lo contatti tu' : lead.preso_da_nome }}
+            </span>
           </div>
           <span class="vp-lead__quando">{{ quando(lead.seen_at) }}</span>
         </div>
@@ -161,6 +188,14 @@
           />
         </div>
 
+        <!-- La nota è scritta a mano ed è l'unica cosa che il bot non sa:
+             va letta scorrendo la lista. Nel tooltip non esisteva, perché su
+             telefono non c'è il passaggio del dito sopra. -->
+        <button v-if="lead.note" class="vp-lead__nota" @click="apriNote(lead)">
+          <q-icon name="sticky_note_2" size="15px" />
+          <span class="vp-lead__nota-testo" data-testid="lead-nota">{{ lead.note }}</span>
+        </button>
+
         <div class="vp-lead__piede">
           <q-btn
             v-if="!lead.preso_da"
@@ -172,21 +207,16 @@
             label="Lo contatto io"
             @click="prendi(lead)"
           />
-          <template v-else>
-            <span class="vp-lead__preso" :class="{ 'vp-lead__preso--io': mio(lead) }">
-              <q-icon name="person" size="16px" />
-              {{ mio(lead) ? 'lo contatti tu' : lead.preso_da_nome }}
-            </span>
-            <q-btn
-              v-if="mio(lead)"
-              flat
-              dense
-              no-caps
-              size="sm"
-              label="lascia"
-              @click="rilascia(lead)"
-            />
-          </template>
+          <q-btn
+            v-else-if="mio(lead)"
+            flat
+            dense
+            no-caps
+            size="sm"
+            icon="undo"
+            label="lascia ad altri"
+            @click="rilascia(lead)"
+          />
 
           <q-space />
 
@@ -201,9 +231,15 @@
             class="vp-lead__stato"
             @update:model-value="(s: StatoLead) => cambiaStato(lead, s)"
           />
-          <q-btn flat dense round icon="sticky_note_2" @click="apriNote(lead)">
-            <q-badge v-if="lead.note" floating rounded color="secondary" />
-            <q-tooltip>{{ lead.note || 'Aggiungi una nota' }}</q-tooltip>
+          <q-btn
+            flat
+            dense
+            round
+            :icon="lead.note ? 'edit_note' : 'sticky_note_2'"
+            :aria-label="lead.note ? 'Modifica la nota' : 'Aggiungi una nota'"
+            @click="apriNote(lead)"
+          >
+            <q-tooltip>{{ lead.note ? 'Modifica la nota' : 'Aggiungi una nota' }}</q-tooltip>
           </q-btn>
         </div>
       </article>
@@ -259,6 +295,19 @@ const opzioniStato = computed(() => [
 ]);
 
 const opzioniStatoSelect = STATI.map((s) => ({ value: s.value, label: s.label }));
+
+const ICONE = Object.fromEntries(STATI.map((s) => [s.value, s.icona])) as Record<
+  StatoLead,
+  string
+>;
+const ETICHETTE = Object.fromEntries(STATI.map((s) => [s.value, s.label])) as Record<
+  StatoLead,
+  string
+>;
+
+function statoIcona(stato: StatoLead): string {
+  return ICONE[stato] ?? 'help';
+}
 
 function etichettaConto(testo: string, n?: number): string {
   return n ? `${testo} (${n})` : testo;
@@ -329,9 +378,18 @@ async function cambiaStato(lead: Lead, stato: StatoLead) {
   await store.cambiaStato(lead, stato);
   await store.fetchRiepilogo();
   // Con un filtro attivo, il lead appena cambiato non appartiene più
-  // all'elenco che si sta guardando: si toglie da solo.
+  // all'elenco che si sta guardando: si toglie da solo. Sparire e basta però
+  // sembra un errore: si dice dov'è andato, e si offre di andarci.
   if (filtroStato.value && filtroStato.value !== stato) {
     store.leads = store.leads.filter((l) => l.id !== lead.id);
+    Notify.create({
+      type: 'positive',
+      icon: statoIcona(stato),
+      message: `${lead.author_name || 'Contatto'}: ${ETICHETTE[stato]}`,
+      actions: [
+        { label: 'vedi', color: 'white', handler: () => (filtroStato.value = stato) },
+      ],
+    });
   }
 }
 
@@ -436,12 +494,82 @@ function chiediChiusura() {
 
 .vp-lead__card {
   padding: 16px;
+  transition: background 0.2s;
 }
-/* Preso da un altro: resta leggibile, ma si vede da lontano che non è roba
-   tua — la fascia sul bordo si nota anche scorrendo in fretta. */
+
+/* Due segnali che non si pestano i piedi: la fascia sul bordo dice *chi* ci
+   lavora, il fondo della card dice *a che punto è*. Se si contendessero lo
+   stesso canale, l'ultimo scritto cancellerebbe l'altro. */
+.vp-lead__card--mio {
+  border-left: 3px solid var(--vp-sage);
+}
 .vp-lead__card--altrui {
-  background: var(--vp-paper-2);
   border-left: 3px solid var(--vp-ink-4);
+}
+
+/* "Da contattare" non ha colore: la card pulita è il lavoro che resta. */
+.vp-lead__card--st-contattato {
+  background: var(--vp-status-declared-bg);
+}
+.vp-lead__card--st-risposto {
+  background: var(--vp-status-ok-bg);
+}
+.vp-lead__card--st-scartato {
+  background: var(--vp-paper-2);
+  opacity: 0.6;
+}
+.vp-lead__card--st-scartato .vp-lead__nome {
+  text-decoration: line-through;
+  text-decoration-color: var(--vp-ink-4);
+}
+
+.vp-lead__badge {
+  flex-shrink: 0;
+}
+.vp-lead__badge--contattato {
+  background: var(--vp-cream);
+  color: var(--vp-status-declared-fg);
+}
+.vp-lead__badge--risposto {
+  background: var(--vp-cream);
+  color: var(--vp-status-ok-fg);
+}
+.vp-lead__badge--scartato {
+  background: var(--vp-paper-3);
+  color: var(--vp-ink-2);
+}
+
+/* La nota è un foglietto attaccato sopra: si vede senza aprire nulla, e
+   toccandolo si modifica. */
+.vp-lead__nota {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 0;
+  border-left: 3px solid var(--vp-honey);
+  border-radius: var(--vp-r-sm);
+  background: var(--vp-honey-soft);
+  color: var(--vp-ink-2);
+  font-family: inherit;
+  font-size: var(--vp-text-sm);
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+.vp-lead__nota .q-icon {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.vp-lead__nota-testo {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
 }
 
 .vp-lead__riga1 {
@@ -453,7 +581,8 @@ function chiediChiusura() {
 .vp-lead__chi {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
   min-width: 0;
 }
 .vp-lead__nome {
@@ -540,15 +669,15 @@ function chiediChiusura() {
   border-top: 1px solid var(--vp-paper-3);
 }
 .vp-lead__preso {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--vp-text-sm);
-  color: var(--vp-ink-3);
+  flex-shrink: 0;
 }
 .vp-lead__preso--io {
+  background: var(--vp-sage-soft);
   color: var(--vp-sage-deep);
-  font-weight: 500;
+}
+.vp-lead__preso--altrui {
+  background: var(--vp-paper-3);
+  color: var(--vp-ink-2);
 }
 .vp-lead__stato {
   min-width: 148px;

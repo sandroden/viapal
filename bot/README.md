@@ -1,8 +1,11 @@
-# Bot affitti — gruppo Facebook Monza/Brianza
+# Bot affitti — gruppi Facebook Monza/Brianza
 
-Legge il gruppo *AFFITTI Monza e Brianza — CERCO/OFFRO*, riconosce chi cerca una
+Legge i gruppi elencati in `facebook.gruppi` (di base *AFFITTI Monza e Brianza —
+CERCO/OFFRO*), riconosce chi cerca una
 stanza compatibile con quelle libere e manda su Telegram una notifica con i due
-messaggi già scritti, pronti da copiare.
+messaggi già scritti, pronti da copiare. Chi pubblica lo stesso annuncio in due
+gruppi viene contattato una volta sola; ogni gruppo in più allunga il giro di
+altrettanto scroll.
 
 **Non invia niente.** Prepara i testi; l'invio è tuo, a mano. Nel codice non
 esiste nessuna funzione di invio, nemmeno disattivata — è il vincolo che tiene

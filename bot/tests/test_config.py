@@ -7,7 +7,7 @@ ESEMPIO = Path(__file__).parent.parent / "config.toml.example"
 
 def test_il_file_di_esempio_si_carica():
     cfg = carica(ESEMPIO)
-    assert cfg.group_id == "2262271623946575"
+    assert cfg.gruppi == ("2262271623946575",)
     assert len(cfg.stanze_libere) == 3
 
 
@@ -56,3 +56,23 @@ def test_quello_che_non_abbiamo_e_dichiarato():
     cfg = carica(ESEMPIO)
     assert "bagn" in cfg.non_abbiamo.lower()
     assert "condivis" in " ".join(cfg.punti_forza).lower()
+
+
+def test_il_vecchio_group_id_singolo_vale_ancora(tmp_path):
+    """Una config non ancora migrata non deve smettere di leggere il gruppo
+    storico proprio mentre se ne aggiunge un altro."""
+    f = tmp_path / "c.toml"
+    f.write_text(ESEMPIO.read_text().replace(
+        'gruppi = [\n    "2262271623946575",   # AFFITTI Monza e Brianza - CERCO/OFFRO\n]',
+        'group_id = "2262271623946575"',
+    ))
+    assert carica(f).gruppi == ("2262271623946575",)
+
+
+def test_i_gruppi_ripetuti_si_leggono_una_volta_sola(tmp_path):
+    f = tmp_path / "c.toml"
+    f.write_text(ESEMPIO.read_text().replace(
+        '"2262271623946575",   # AFFITTI Monza e Brianza - CERCO/OFFRO',
+        '"2262271623946575", "99", "2262271623946575",',
+    ))
+    assert carica(f).gruppi == ("2262271623946575", "99")
