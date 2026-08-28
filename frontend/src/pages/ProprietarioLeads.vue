@@ -267,7 +267,10 @@
             autogrow
             autofocus
             placeholder="Ha risposto, viene a vedere giovedì…"
+            @keydown.ctrl.enter.prevent="salvaNote"
+            @keydown.meta.enter.prevent="salvaNote"
           />
+          <div class="vp-lead__scorciatoia">Ctrl-Invio per salvare</div>
         </q-card-section>
         <q-card-actions align="right">
           <q-btn flat no-caps label="Annulla" v-close-popup />
@@ -540,6 +543,12 @@ function chiediChiusura() {
   flex-shrink: 0;
 }
 
+.vp-lead__scorciatoia {
+  margin-top: 6px;
+  font-size: var(--vp-text-xs);
+  color: var(--vp-ink-3);
+  text-align: right;
+}
 .vp-lead__badge--contattato {
   background: var(--vp-cream);
   color: var(--vp-status-declared-fg);
