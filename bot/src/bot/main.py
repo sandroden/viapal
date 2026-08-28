@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import os
 import sys
 from dataclasses import asdict
@@ -74,19 +75,39 @@ def _raccogli_dai_gruppi(
     return post, falliti
 
 
+def identita(author_url: str | None, author_id: str | None = None, testo: str = "") -> str:
+    """Chi è la persona, a prescindere dal gruppo in cui ha scritto.
+
+    `author_url` porta dentro il gruppo — `/groups/<gid>/user/<uid>/` — quindi
+    la stessa persona ha due URL diversi nei due gruppi e il confronto per URL
+    la lascia passare due volte. L'uid invece è lo stesso ovunque: si prende da
+    `author_id`, e se manca si sfila dall'URL (lo storico in archivio è tutto
+    così). Per chi posta in anonimo non resta che il testo.
+    """
+    if author_id:
+        return f"id:{author_id}"
+    trovato = re.search(r"/user/(\d+)", author_url or "")
+    if trovato:
+        return f"id:{trovato.group(1)}"
+    if author_url:
+        return author_url
+    return "t:" + " ".join(re.sub(r"\d+", "", testo)[:400].casefold().split())
+
+
 def _da_leggere(post: list, gia_contattati: set[str]) -> list:
     """Toglie chi è già stato contattato e i doppioni dentro lo stesso giro.
 
     Lo stesso annuncio pubblicato in due gruppi arriva due volte: senza questo
     filtro la persona riceverebbe due notifiche e due lead su viapal.
     """
-    fuori, autori, ids = [], set(gia_contattati), set()
+    noti = {identita(u) for u in gia_contattati}
+    fuori, ids = [], set()
     for p in post:
-        if p.post_id in ids or (p.author_url and p.author_url in autori):
+        chi = identita(p.author_url, getattr(p, "author_id", None), p.text)
+        if p.post_id in ids or chi in noti:
             continue
         ids.add(p.post_id)
-        if p.author_url:
-            autori.add(p.author_url)
+        noti.add(chi)
         fuori.append(p)
     return fuori
 
@@ -137,7 +158,7 @@ def giro(
             return 1
 
     client = anthropic.Anthropic()
-    gia_contattati = archivio.autori_gia_contattati()
+    gia_contattati = {identita(u) for u in archivio.autori_gia_contattati()}
     trovati = 0
     lead, scartati = [], []   # solo per il rapporto della prova
 
@@ -155,7 +176,7 @@ def giro(
 
         # Dedup secondaria: a chi abbiamo già scritto non si riscrive, anche se
         # ripubblica l'annuncio con un post nuovo.
-        gia_scritto = p.author_url and p.author_url in gia_contattati
+        gia_scritto = identita(p.author_url, p.author_id, p.text) in gia_contattati
         if not analisi.match or gia_scritto:
             if gia_scritto:
                 log.info("%s: già contattato, salto", p.author_name)
@@ -178,8 +199,7 @@ def giro(
             )
             # Chi posta lo stesso annuncio in due gruppi arriva qui due volte
             # nello stesso giro: senza questo si prende due messaggi.
-            if p.author_url:
-                gia_contattati.add(p.author_url)
+            gia_contattati.add(identita(p.author_url, p.author_id, p.text))
         trovati += 1
 
     if dry_run:
