@@ -45,11 +45,21 @@ export interface RiepilogoLead {
   gruppi: { id: string; nome: string }[];
 }
 
-export const STATI: { value: StatoLead; label: string; colore: string }[] = [
-  { value: 'nuovo', label: 'Da contattare', colore: 'primary' },
-  { value: 'contattato', label: 'Contattato', colore: 'info' },
-  { value: 'risposto', label: 'Ha risposto', colore: 'positive' },
-  { value: 'scartato', label: 'Scartato', colore: 'grey' },
+/** Come si presenta uno stato: etichetta, colore Quasar per i controlli, e
+ *  l'aspetto che ha sulla card (`tono` = suffisso della classe, `icona`).
+ *  Sta qui e non nella pagina perché la card e i filtri devono dire la stessa
+ *  cosa con gli stessi colori. */
+export const STATI: {
+  value: StatoLead;
+  label: string;
+  colore: string;
+  tono: string;
+  icona: string;
+}[] = [
+  { value: 'nuovo', label: 'Da contattare', colore: 'primary', tono: 'nuovo', icona: 'schedule' },
+  { value: 'contattato', label: 'Contattato', colore: 'info', tono: 'contattato', icona: 'send' },
+  { value: 'risposto', label: 'Ha risposto', colore: 'positive', tono: 'risposto', icona: 'forum' },
+  { value: 'scartato', label: 'Scartato', colore: 'grey', tono: 'scartato', icona: 'block' },
 ];
 
 interface State {
