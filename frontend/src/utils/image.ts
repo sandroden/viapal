@@ -79,6 +79,47 @@ export async function resizeImageFile(
   }
 }
 
+/**
+ * Ritaglia al centro e riduce a un quadrato di `lato` px, restituendo un
+ * data URI (WebP, fallback JPEG) invece di un File.
+ *
+ * Serve per le fotine dei lead, che non finiscono su disco ma dentro una
+ * colonna: la campagna si chiude cancellando i lead in blocco, e un file su
+ * storage sopravviverebbe a quella cancellazione. Il default di 256px è il
+ * doppio dei 60 CSS a cui si mostra: su uno schermo denso (2x, e i 4k lo
+ * sono) una sorgente più piccola si vede impastata. Restano pochi KB, meno
+ * di quanto pesi la riga di testo del post.
+ *
+ * Ritorna null se il browser non sa decodificare l'immagine: chi chiama lo
+ * dice all'utente, invece di far sparire l'operazione in silenzio.
+ */
+export async function imageToSquareDataUrl(
+  file: File,
+  lato = 256,
+  qualita = 0.8,
+): Promise<string | null> {
+  try {
+    const img = await caricaImmagine(file);
+    const canvas = document.createElement('canvas');
+    canvas.width = lato;
+    canvas.height = lato;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Ritaglio quadrato centrale: le foto di profilo sono già dei ritratti,
+    // e lo schiacciamento renderebbe le facce irriconoscibili.
+    const min = Math.min(img.naturalWidth, img.naturalHeight);
+    const sx = (img.naturalWidth - min) / 2;
+    const sy = (img.naturalHeight - min) / 2;
+    ctx.drawImage(img, sx, sy, min, min, 0, 0, lato, lato);
+
+    const mime = supportaWebp() ? 'image/webp' : 'image/jpeg';
+    return canvas.toDataURL(mime, qualita);
+  } catch {
+    return null;
+  }
+}
+
 /** Salva un Blob già in memoria con il nome indicato. */
 export function scaricaBlob(blob: Blob, filename: string): void {
   const objectUrl = URL.createObjectURL(blob);

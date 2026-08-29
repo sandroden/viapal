@@ -223,6 +223,53 @@ def test_contattato_at_non_si_sposta(api, immobile, sandro):
     assert lead.contattato_at == primo
 
 
+# --- fotina ----------------------------------------------------------------
+
+FOTINA = "data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4H"
+
+
+def test_fotina_si_incolla_e_il_bot_non_la_cancella(api, immobile, sandro, bot_user):
+    """La foto è un campo umano: il giro successivo dello scraper la trova
+    ancora lì, come le note e la presa in carico."""
+    lead = _lead(immobile)
+    api.force_authenticate(sandro)
+    r = api.patch(
+        f"{URL}{lead.pk}/", {"foto": FOTINA}, format="json", HTTP_X_PROPERTY_ID=immobile.pk
+    )
+    assert r.status_code == 200, r.data
+    assert r.data["foto"] == FOTINA
+
+    api.force_authenticate(bot_user)
+    api.post(URL_UPSERT, {"leads": [_payload()]}, format="json")
+    lead.refresh_from_db()
+    assert lead.foto == FOTINA
+
+
+def test_fotina_rifiuta_quello_che_non_e_unimmagine(api, immobile, sandro):
+    """Il ridimensionamento sta nel browser, la garanzia no: un PATCH arriva
+    anche da curl, e il campo non deve diventare un deposito."""
+    lead = _lead(immobile)
+    api.force_authenticate(sandro)
+    kw = {"format": "json", "HTTP_X_PROPERTY_ID": immobile.pk}
+    r = api.patch(f"{URL}{lead.pk}/", {"foto": "https://esempio.it/faccia.jpg"}, **kw)
+    assert r.status_code == 400
+    r = api.patch(f"{URL}{lead.pk}/", {"foto": "data:image/webp;base64," + "A" * 100_000}, **kw)
+    assert r.status_code == 400
+    lead.refresh_from_db()
+    assert lead.foto == ""
+
+
+def test_fotina_si_toglie_con_la_stringa_vuota(api, immobile, sandro):
+    lead = _lead(immobile)
+    lead.foto = FOTINA
+    lead.save()
+    api.force_authenticate(sandro)
+    r = api.patch(f"{URL}{lead.pk}/", {"foto": ""}, format="json", HTTP_X_PROPERTY_ID=immobile.pk)
+    assert r.status_code == 200, r.data
+    lead.refresh_from_db()
+    assert lead.foto == ""
+
+
 # --- presa in carico -------------------------------------------------------
 
 
