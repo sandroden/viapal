@@ -1392,6 +1392,7 @@ class UtilityChargePeriodAdmin(ModalEditMixin, JumboModelAdmin):
         ("Totali (verità contabile)", {
             "fields": (
                 "tot_luce", "tot_gas", "tot_tari", "tot_altro",
+                "quota_esclusa_tari", "motivo_esclusione_tari",
                 "giorni_totali", "nota_calcolo",
             ),
         }),

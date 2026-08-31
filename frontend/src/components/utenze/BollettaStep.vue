@@ -20,17 +20,21 @@ const props = withDefaults(
     readonly?: boolean; // vista inquilino: niente upload
     // Totale delle quote escluse dalla ripartizione (a carico proprietà).
     totaleEscluso?: number;
+    // La card TARI accetta la modifica della quota esclusa del periodo
+    // (falso su un periodo già emesso: gli addebiti sono la verità).
+    tariEditabile?: boolean;
     // Vista inquilino: la SUA quota del mese. Mostrata in cima allo step come
     // sintesi sticky ("quanto pago"); su mobile rimpiazza lo strip terracotta.
     miaQuota?: { importo: number; giorni: number } | null;
   }>(),
-  { readonly: false, totaleEscluso: 0, miaQuota: null },
+  { readonly: false, totaleEscluso: 0, tariEditabile: false, miaQuota: null },
 );
 const meseCap = computed(() => meseCapitalize(props.periodo.mese));
 const emit = defineEmits<{
   upload: [tipo?: string];
   'view-pdf': [v: { url: string; title: string }];
   edit: [id: number];
+  'edit-tari': [];
 }>();
 
 const incompleto = computed(() => props.periodo.stato === 'incompleto');
@@ -150,6 +154,14 @@ const mancanti = computed(() => props.mancantiTipi.length);
             class="edit-btn"
             title="Modifica importo e quota esclusa"
             @click="emit('edit', b.id)"
+          >
+            <VpIcon name="edit" :size="14" color="var(--vp-ink-3)" />
+          </button>
+          <button
+            v-else-if="!readonly && tariEditabile && b.tipo === 'TARI'"
+            class="edit-btn"
+            title="Quota TARI a carico della proprietà (posti sfitti)"
+            @click="emit('edit-tari')"
           >
             <VpIcon name="edit" :size="14" color="var(--vp-ink-3)" />
           </button>

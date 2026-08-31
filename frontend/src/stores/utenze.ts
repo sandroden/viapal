@@ -18,6 +18,9 @@ export interface PeriodFE {
   tot_tari: string;
   tot_altro: string;
   giorni_totali: number;
+  /** Quota di TARI a carico della proprietà (es. posti sfitti), non ripartita. */
+  quota_esclusa_tari?: string;
+  motivo_esclusione_tari?: string;
 }
 
 export interface Completezza {
@@ -49,7 +52,8 @@ export interface QuotaInquilino {
 }
 
 export interface EsclusioneFE {
-  bill_id: number;
+  /** null = esclusione TARI del periodo (non viene da una bolletta). */
+  bill_id: number | null;
   prodotto: string;
   motivo: string;
   quota_esclusa: number | string;
@@ -240,6 +244,29 @@ export const useUtenzeStore = defineStore('utenze', {
         return data;
       } catch (e: unknown) {
         this.errore = messaggioErrore(e, 'Errore salvataggio bolletta');
+        return null;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    /** Quota di TARI a carico proprietà per il periodo corrente (posti sfitti). */
+    async salvaEsclusioneTari(
+      quotaEsclusa: string,
+      motivo: string,
+    ): Promise<PeriodFE | null> {
+      if (!this.period) return null;
+      this.loading = true;
+      this.errore = null;
+      try {
+        const { data } = await api.post<{ period: PeriodFE; tari_lorda: string }>(
+          `/api/v1/utility-periods/${this.period.id}/esclusione-tari/`,
+          { quota_esclusa: quotaEsclusa, motivo },
+        );
+        this.period = data.period;
+        return data.period;
+      } catch (e: unknown) {
+        this.errore = messaggioErrore(e, 'Errore salvataggio esclusione TARI');
         return null;
       } finally {
         this.loading = false;

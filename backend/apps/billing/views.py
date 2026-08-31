@@ -5,7 +5,7 @@ I tre endpoint storici (rent-payments, utility-charges, extra-charges)
 ora si appoggiano al modello unico Receivable filtrando per causale.
 """
 import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.db.models import F, Q, Sum
@@ -642,6 +642,66 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
 
         risultato["period"] = self.get_serializer(period).data
         return Response(risultato)
+
+    @action(detail=True, methods=["post"], url_path="esclusione-tari")
+    def esclusione_tari(self, request, pk=None):
+        """Imposta la quota di TARI a carico della proprietà per il periodo.
+
+        Body JSON: ``{"quota_esclusa": "12.00", "motivo": "Stanza 3 sfitta"}``.
+
+        È l'equivalente della ``quota_esclusa`` delle bollette, ma sul mese:
+        lo sfitto è un fatto mensile (una stanza vuota a marzo, piena ad
+        aprile), quindi il valore vive sul periodo e non sul costo annuale.
+
+        Su un periodo già emesso la modifica è ammessa — come per le bollette
+        — ma **non tocca i Receivable già creati**: restano la verità
+        contabile finché non si rigenera il periodo. Il frontend lo dice
+        esplicitamente dopo il salvataggio.
+        """
+        from billing.calc.utility import _raccoglie_voci_annual
+
+        period = self.get_object()
+
+        grezzo = request.data.get("quota_esclusa", 0)
+        try:
+            quota = Decimal(str(grezzo if grezzo not in ("", None) else 0))
+        except (InvalidOperation, ValueError):
+            return Response(
+                {"quota_esclusa": "Valore non numerico."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if quota < 0:
+            return Response(
+                {"quota_esclusa": "La quota esclusa non può essere negativa."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Tetto: la TARI lorda del mese. Non è un campo del periodo ma un
+        # calcolo (importo annuale / 12 × mesi coperti), quindi il controllo
+        # sta qui e non nel clean() del modello.
+        tari_lorda = _raccoglie_voci_annual(
+            period.property_id, period.periodo_da, period.periodo_a
+        ).get("tari", Decimal("0.00"))
+        if quota > tari_lorda:
+            return Response(
+                {
+                    "quota_esclusa": "La quota esclusa non può superare la TARI "
+                    f"del periodo ({tari_lorda:.2f} €)."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        period.quota_esclusa_tari = quota
+        period.motivo_esclusione_tari = (
+            (request.data.get("motivo") or "")[:200] if quota > 0 else ""
+        )
+        period.save(update_fields=["quota_esclusa_tari", "motivo_esclusione_tari"])
+        return Response(
+            {
+                "period": self.get_serializer(period).data,
+                "tari_lorda": tari_lorda.quantize(Decimal("0.01")),
+            }
+        )
 
     @action(detail=True, methods=["post"], url_path="invia-avvisi")
     def invia_avvisi(self, request, pk=None):

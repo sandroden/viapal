@@ -131,7 +131,7 @@ def _frase_esclusioni(totale_escluso, motivi: list[str]) -> str:
     if not totale_escluso:
         return ""
     frase = (
-        f"Dal totale delle bollette sono già stati esclusi {_eur(totale_escluso)} € "
+        f"Dal totale delle utenze sono già stati esclusi {_eur(totale_escluso)} € "
         "a carico della proprietà"
     )
     if motivi:

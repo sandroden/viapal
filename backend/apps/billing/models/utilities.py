@@ -341,6 +341,23 @@ class UtilityChargePeriod(TimestampedModel):
         verbose_name="giorni-persona totali",
         help_text="Somma dei giorni di presenza di tutti gli inquilini (denominatore della ripartizione).",
     )
+    quota_esclusa_tari = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        verbose_name="quota TARI esclusa",
+        help_text=(
+            "Parte della TARI del periodo NON ripartita sugli inquilini, a "
+            "carico della proprietà (es. la quota dei posti sfitti, che non "
+            "va scaricata su chi c'è)."
+        ),
+    )
+    motivo_esclusione_tari = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="motivo esclusione TARI",
+        help_text="Es. 'Stanza singola sfitta'.",
+    )
     nota_calcolo = models.TextField(
         blank=True,
         verbose_name="nota calcolo",
@@ -379,6 +396,13 @@ class UtilityChargePeriod(TimestampedModel):
         verbose_name = "periodo utenze"
         verbose_name_plural = "periodi utenze"
         ordering = ["-periodo_da"]
+
+    def clean(self):
+        super().clean()
+        if self.quota_esclusa_tari and self.quota_esclusa_tari < 0:
+            raise ValidationError(
+                {"quota_esclusa_tari": "La quota esclusa non può essere negativa."}
+            )
 
     def __str__(self):
         return f"Utenze {self.periodo_da} / {self.periodo_a} ({self.get_stato_display()})"

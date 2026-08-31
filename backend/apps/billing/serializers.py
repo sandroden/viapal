@@ -149,6 +149,8 @@ class UtilityChargePeriodSerializer(serializers.ModelSerializer):
             "tot_tari",
             "tot_altro",
             "giorni_totali",
+            "quota_esclusa_tari",
+            "motivo_esclusione_tari",
             "nota_calcolo",
         ]
 

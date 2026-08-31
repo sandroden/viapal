@@ -187,13 +187,23 @@ const bolletteView = computed<BollettaView[]>(() => {
     pdfUrl: mediaPath(b.file_pdf),
     letto: true,
   }));
-  const tari = num(d.totali_per_voce?.tari);
-  if (tari > 0 && !cards.some((c) => c.tipo === 'TARI')) {
+  // TARI: importo lordo del periodo, con la quota lasciata alla proprietà
+  // (posti sfitti) esposta come sulle bollette.
+  const esclusaTari = num(
+    (d.esclusioni ?? []).find((e) => e.prodotto === 'tari')?.quota_esclusa,
+  );
+  const tariNetta = num(d.totali_per_voce?.tari);
+  const tariLorda = tariNetta + esclusaTari;
+  if (tariLorda > 0 && !cards.some((c) => c.tipo === 'TARI')) {
     cards.push({
       id: null,
       tipo: 'TARI',
       fornitore: 'Comune (TARI)',
-      importo: tari,
+      importo: tariLorda,
+      esclusa: esclusaTari,
+      motivoEsclusione:
+        (d.esclusioni ?? []).find((e) => e.prodotto === 'tari')?.motivo ?? '',
+      netto: tariNetta,
       periodo: periodoView.value?.range ?? '',
       consumo: '—',
       riferimento: 'costo annuale ripartito',

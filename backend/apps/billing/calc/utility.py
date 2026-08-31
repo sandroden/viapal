@@ -389,13 +389,15 @@ def calcola_conguaglio_periodo(
         "diff_arrotondamento": Decimal,      # totale_periodo - somma(quote)
         "totale_escluso": Decimal,           # quote escluse (a carico proprietà) nel periodo
         "esclusioni": [{"bill_id", "prodotto", "motivo", "quota_esclusa"}, ...],
+                                             # bill_id None = esclusione TARI del periodo
         "arretrati": [{"bill_id", "prodotto", "periodo_da", "periodo_a",
                        "giorni", "importo"}, ...]   # quote retroattive (v3)
     }
 
     I totali per voce sono al netto delle quote escluse (importo_ripartibile
-    delle bollette): la parte esclusa resta a carico della proprietà e non
-    entra mai nelle quote inquilino.
+    delle bollette e ``period.quota_esclusa_tari`` per la TARI): la parte
+    esclusa resta a carico della proprietà e non entra mai nelle quote
+    inquilino.
     """
     from billing.models import UtilityChargePeriod
     from properties.models import RoomAssignment
@@ -452,6 +454,31 @@ def calcola_conguaglio_periodo(
         if voce in escluse_config:
             continue
         totali_per_voce[voce] = totali_per_voce.get(voce, Decimal("0.00")) + importo
+
+    # Quota TARI a carico proprietà (es. i posti che non siamo riusciti ad
+    # affittare: la loro fetta di TARI non si scarica su chi c'è). È un valore
+    # **del mese**, non dell'anno: lo sfitto cambia di mese in mese. Vale la
+    # stessa regola delle bollette — la parte esclusa resta alla proprietà,
+    # la riga resta visibile all'inquilino. Clamp difensivo: un valore
+    # rimasto in giro dopo che la TARI del mese è calata non deve mai
+    # produrre una voce negativa.
+    esclusa_tari = period.quota_esclusa_tari or Decimal("0")
+    tari_lorda = totali_per_voce.get("tari", Decimal("0.00"))
+    if esclusa_tari > 0 and tari_lorda > 0:
+        esclusa_tari = min(esclusa_tari, tari_lorda)
+        residuo = tari_lorda - esclusa_tari
+        if residuo > 0:
+            totali_per_voce["tari"] = residuo
+        else:
+            del totali_per_voce["tari"]
+        esclusioni.append(
+            {
+                "bill_id": None,
+                "prodotto": "tari",
+                "motivo": period.motivo_esclusione_tari,
+                "quota_esclusa": esclusa_tari,
+            }
+        )
     if not totali_per_voce:
         # Forzatura su un periodo davvero vuoto: niente da ripartire.
         return _skip("nessun_importo")

@@ -141,7 +141,8 @@ export interface BollettaView extends ScontrinoData {
   // tipo / fornitore / importo / periodo / consumo / riferimento da ScontrinoData
   pdfUrl?: string | null;
   letto?: boolean; // false = voce senza bolletta PDF (es. TARI, costo annuale)
-  id?: number | null; // null = voce sintetica (TARI), non editabile
+  id?: number | null; // null = voce sintetica (TARI): non è una bolletta,
+  // si modifica solo la quota esclusa del periodo
   esclusa?: number; // quota a carico proprietà, esclusa dalla ripartizione
   motivoEsclusione?: string;
   netto?: number; // importo - esclusa (da ripartire)
