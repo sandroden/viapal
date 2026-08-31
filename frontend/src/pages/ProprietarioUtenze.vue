@@ -42,6 +42,7 @@
       :voci="vociView"
       :totale="totaleView"
       :totale-escluso="totaleEscluso"
+      :tari-editabile="tariEditabile"
       :quote="quoteView"
       :mancanti-tipi="mancantiTipi"
       :escludi="escludi"
@@ -63,6 +64,7 @@
       @toggle-invio="onToggleInvio"
       @view-pdf="apriPdf"
       @edit="onEditBolletta"
+      @edit-tari="onEditTari"
     />
 
     <div v-else-if="tab === 'conguaglio'" class="vp-vuoto">
@@ -81,6 +83,18 @@
       :bolletta="bollettaInEdit"
       :salvando="store.loading"
       @salva="onSalvaBolletta"
+    />
+
+    <EsclusioneTariDialog
+      v-model="mostraEditTari"
+      :tari-lorda="tariLorda"
+      :quota-iniziale="esclusaTari"
+      :motivo-iniziale="motivoEsclusioneTari"
+      :presenti="quoteView.length"
+      :periodo-label="periodoCorrenteView?.label ?? ''"
+      :periodo-emesso="store.period?.stato === 'inviato'"
+      :salvando="store.loading"
+      @salva="onSalvaEsclusioneTari"
     />
 
     <!-- Dialog: carica bollette -->
@@ -137,6 +151,7 @@ import ConguaglioBollette from 'src/components/utenze/ConguaglioBollette.vue';
 import UtenzeAndamento from 'src/components/utenze/UtenzeAndamento.vue';
 import BolletteRiepilogo from 'src/components/utenze/BolletteRiepilogo.vue';
 import BollettaEditDialog from 'src/components/utenze/BollettaEditDialog.vue';
+import EsclusioneTariDialog from 'src/components/utenze/EsclusioneTariDialog.vue';
 import PdfDialog from 'src/components/PdfDialog.vue';
 import {
   prodottoToTipo,
@@ -260,6 +275,31 @@ const periodoCorrenteView = computed<PeriodoView | null>(() => {
   };
 });
 
+// ── TARI del periodo: lordo, quota a carico proprietà, netto ─────────
+// La quota esclusa arriva dall'anteprima (già applicata al calcolo); sul
+// periodo saltato — TARI interamente esclusa e nessuna bolletta — l'anteprima
+// non riporta esclusioni e si legge il valore salvato sul periodo.
+const esclusaTari = computed(() => {
+  const dallAnteprima = (store.anteprima?.esclusioni ?? []).find(
+    (e) => e.prodotto === 'tari',
+  );
+  if (dallAnteprima) return num(dallAnteprima.quota_esclusa);
+  return num(store.period?.quota_esclusa_tari);
+});
+
+const motivoEsclusioneTari = computed(
+  () => store.period?.motivo_esclusione_tari ?? '',
+);
+
+// Lordo = quello che resta da ripartire + quello che si è già escluso.
+const tariLorda = computed(
+  () => num(store.anteprima?.totali_per_voce?.tari) + esclusaTari.value,
+);
+
+// Modificabile come le bollette, anche a periodo emesso: lì il salvataggio
+// avvisa che gli addebiti già creati non si aggiornano da soli.
+const tariEditabile = computed(() => tariLorda.value > 0);
+
 // ── Bollette del periodo (card di dettaglio) ──────────────────────────
 const bolletteView = computed<BollettaView[]>(() => {
   const cards: BollettaView[] = store.bollettePeriodo.map((b) => ({
@@ -276,14 +316,16 @@ const bolletteView = computed<BollettaView[]>(() => {
     pdfUrl: mediaPath(b.file_pdf),
     letto: true,
   }));
-  const tari = num(store.anteprima?.totali_per_voce?.tari);
   const haTariCard = cards.some((c) => c.tipo === 'TARI');
-  if (tari > 0 && !haTariCard && store.period) {
+  if (tariLorda.value > 0 && !haTariCard && store.period) {
     cards.push({
       id: null,
       tipo: 'TARI',
       fornitore: 'Comune (TARI)',
-      importo: tari,
+      importo: tariLorda.value,
+      esclusa: esclusaTari.value,
+      motivoEsclusione: motivoEsclusioneTari.value,
+      netto: tariLorda.value - esclusaTari.value,
       periodo: rangePeriodo(store.period.periodo_da, store.period.periodo_a),
       consumo: '—',
       riferimento: 'costo annuale ripartito',
@@ -456,6 +498,34 @@ function onEditBolletta(id: number): void {
   bollettaInEdit.value = store.bollettePeriodo.find((b) => b.id === id) ?? null;
   if (!bollettaInEdit.value) return;
   mostraEditBolletta.value = true;
+}
+
+const mostraEditTari = ref(false);
+
+function onEditTari(): void {
+  mostraEditTari.value = true;
+}
+
+async function onSalvaEsclusioneTari(v: {
+  quota_esclusa: string;
+  motivo: string;
+}): Promise<void> {
+  const res = await store.salvaEsclusioneTari(v.quota_esclusa, v.motivo);
+  if (!res) {
+    $q.notify({ type: 'negative', message: store.errore ?? 'Errore salvataggio' });
+    return;
+  }
+  mostraEditTari.value = false;
+  $q.notify({ type: 'positive', message: 'Quota TARI aggiornata' });
+  if (store.period?.stato === 'inviato') {
+    $q.notify({
+      type: 'warning',
+      message:
+        'Periodo già emesso: gli addebiti esistenti non si aggiornano da soli.',
+      timeout: 6000,
+    });
+  }
+  await caricaDatiPeriodo();
 }
 
 async function onSalvaBolletta(v: {

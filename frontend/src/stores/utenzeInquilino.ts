@@ -28,7 +28,8 @@ export interface BollettaInquilinoFE {
 }
 
 export interface EsclusioneInquilinoFE {
-  bill_id: number;
+  /** null = esclusione TARI del periodo (non viene da una bolletta). */
+  bill_id: number | null;
   prodotto: string;
   motivo: string;
   quota_esclusa: number | string;

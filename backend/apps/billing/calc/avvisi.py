@@ -131,7 +131,7 @@ def _frase_esclusioni(totale_escluso, motivi: list[str]) -> str:
     if not totale_escluso:
         return ""
     frase = (
-        f"Dal totale delle bollette sono già stati esclusi {_eur(totale_escluso)} € "
+        f"Dal totale delle utenze sono già stati esclusi {_eur(totale_escluso)} € "
         "a carico della proprietà"
     )
     if motivi:
@@ -316,7 +316,13 @@ def _risultato_calcolo(period) -> dict:
     from billing.calc.utility import calcola_conguaglio_periodo
 
     try:
-        return calcola_conguaglio_periodo(period.id, persist=False)
+        # ``forza_senza_bollette``: se il periodo è stato emesso in
+        # ripartizione parziale (solo TARI, luce/gas intestate all'inquilino)
+        # il calcolo non forzato si fermerebbe e l'avviso perderebbe dettaglio
+        # per voce e nota sulle quote escluse. Qui non si persiste nulla.
+        return calcola_conguaglio_periodo(
+            period.id, persist=False, forza_senza_bollette=True
+        )
     except Exception:  # noqa: BLE001 — il dettaglio è opzionale
         return {}
 
