@@ -346,6 +346,49 @@ class TestVistaInquilinoTari:
         assert escl and escl[0]["motivo"] == "Stanza sfitta"
         assert Decimal(str(body["totali_per_voce"]["tari"])) == Decimal("40.00")
 
+    def test_periodo_solo_tari_resta_visibile_all_inquilino(self, immobile):
+        """Periodo emesso in ripartizione parziale: l'inquilino vede la TARI
+        e la quota lasciata alla proprietà, non una pagina vuota."""
+        tenant, _ = _assignment(immobile, "a", "Anna Bianchi")
+        _tari(immobile)
+        c = _client(immobile)
+        pid = _periodo(c)
+        c.post(
+            f"/api/v1/utility-periods/{pid}/esclusione-tari/",
+            {"quota_esclusa": "10.00", "motivo": "Stanza sfitta"},
+            format="json",
+        )
+        c.post(f"/api/v1/utility-periods/{pid}/emetti/", {"forza": True}, format="json")
+
+        ci = APIClient()
+        ci.force_authenticate(user=tenant.user)
+        body = ci.get(f"/api/v1/utenze-inquilino/{pid}/").json()
+        assert Decimal(str(body["totali_per_voce"]["tari"])) == Decimal("40.00")
+        assert Decimal(str(body["totale_escluso"])) == Decimal("10.00")
+        assert body["quote"]
+
+    def test_avviso_solo_tari_conserva_dettaglio_ed_esclusione(self, immobile):
+        """Periodo emesso in ripartizione parziale (solo TARI): l'avviso non
+        deve perdere né il dettaglio per voce né la nota sulle esclusioni."""
+        _assignment(immobile, "a", "Anna Bianchi")
+        _tari(immobile)
+        c = _client(immobile)
+        pid = _periodo(c)
+        c.post(
+            f"/api/v1/utility-periods/{pid}/esclusione-tari/",
+            {"quota_esclusa": "10.00", "motivo": "Stanza sfitta"},
+            format="json",
+        )
+        c.post(f"/api/v1/utility-periods/{pid}/emetti/", {"forza": True}, format="json")
+        resp = c.post(
+            f"/api/v1/utility-periods/{pid}/invia-avvisi/",
+            {"dry_run": True},
+            format="json",
+        )
+        avviso = resp.json()["avvisi"][0]
+        assert "TARI" in avviso["corpo"]
+        assert "esclusi 10,00 € a carico della proprietà" in avviso["corpo"]
+
     def test_avviso_email_cita_l_esclusione(self, immobile):
         _assignment(immobile, "a", "Anna Bianchi")
         _tari(immobile)

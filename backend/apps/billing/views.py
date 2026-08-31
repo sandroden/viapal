@@ -1990,7 +1990,13 @@ class UtenzeInquilinoView(APIView):
 
         from billing.calc.utility import calcola_conguaglio_periodo
 
-        ris = calcola_conguaglio_periodo(period.id, persist=False)
+        # ``forza_senza_bollette``: il periodo è già stato emesso, quindi qui
+        # si descrive ciò che è stato addebitato. Senza il flag un periodo
+        # emesso in ripartizione parziale (solo TARI, luce/gas intestate
+        # all'inquilino) tornerebbe vuoto e l'inquilino non vedrebbe nulla.
+        ris = calcola_conguaglio_periodo(
+            period.id, persist=False, forza_senza_bollette=True
+        )
 
         my_assignment_ids = set(
             Receivable.objects.filter(
