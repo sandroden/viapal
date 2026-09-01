@@ -10,6 +10,11 @@
 gruppi = [
     "2262271623946575",   # AFFITTI Monza e Brianza - CERCO/OFFRO
 ]
+# Gruppi in cui un commento con un link viene rifiutato (moderazione
+# automatica): lì il commento pubblico rimanda solo al privato, dove il link
+# c'è comunque. Stesso identificativo scritto in `gruppi` (numero o slug),
+# altrimenti la config non si carica.
+gruppi_senza_link = []
 poll_interval_minutes = 25
 active_hours = [8, 23]
 scroll_stop_after_seen = 10

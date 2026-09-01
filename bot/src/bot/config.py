@@ -69,10 +69,21 @@ class Config:
     api_user: str = ""
     api_password: str = ""
     api_property_id: str = ""
+    # Gruppi in cui un commento con un link viene rifiutato (o sparisce in
+    # moderazione): lì il commento pubblico si scrive senza, e rimanda al privato.
+    gruppi_senza_link: tuple[str, ...] = ()
 
     @property
     def push_attivo(self) -> bool:
         return bool(self.api_base_url and self.api_user and self.api_property_id)
+
+    def commento_senza_link(self, group_id: str | None) -> bool:
+        """Il commento pubblico per un post di questo gruppo va scritto senza link?
+
+        `group_id` è quello che lo scraper attacca al post, cioè l'identificativo
+        scritto in `gruppi` (numero o slug che sia): il confronto è su quello.
+        """
+        return bool(group_id) and group_id in self.gruppi_senza_link
 
     @property
     def stanze_libere(self) -> tuple[Stanza, ...]:
@@ -93,14 +104,37 @@ def _gruppi(fb: dict) -> tuple[str, ...]:
     return tuple(dict.fromkeys(elenco))   # senza doppioni, ordine tenuto
 
 
+def _gruppi_senza_link(fb: dict, gruppi: tuple[str, ...]) -> tuple[str, ...]:
+    """I gruppi in cui un commento con un link viene rifiutato.
+
+    Vanno scritti con lo STESSO identificativo usato in `gruppi` — è quello che
+    lo scraper attacca ai post — altrimenti la regola non aggancia niente e i
+    commenti escono col link come prima. Meglio non caricare la config che
+    accorgersene dal gruppo: lo stesso gruppo ha uno slug e un numero, e la
+    svista è facile.
+    """
+    elenco = tuple(dict.fromkeys(
+        str(g) for g in fb.get("gruppi_senza_link", []) if str(g).strip()
+    ))
+    ignoti = [g for g in elenco if g not in gruppi]
+    if ignoti:
+        raise ValueError(
+            f"facebook.gruppi_senza_link: {ignoti} non stanno in facebook.gruppi "
+            "(usa lo stesso identificativo, slug o numero che sia)"
+        )
+    return elenco
+
+
 def carica(percorso: str | Path) -> Config:
     dati = tomllib.loads(Path(percorso).expanduser().read_text(encoding="utf-8"))
     fb, contatto = dati["facebook"], dati["contatto"]
     casa = dati.get("casa", {})
     matching, tg = dati["matching"], dati["telegram"]
     api = dati.get("api", {})
+    gruppi = _gruppi(fb)
     return Config(
-        gruppi=_gruppi(fb),
+        gruppi=gruppi,
+        gruppi_senza_link=_gruppi_senza_link(fb, gruppi),
         poll_interval_minutes=int(fb.get("poll_interval_minutes", 25)),
         active_hours=tuple(fb.get("active_hours", [8, 23])),
         scroll_stop_after_seen=int(fb.get("scroll_stop_after_seen", 10)),

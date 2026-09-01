@@ -37,6 +37,12 @@ budget indicato non è tassativo salvo che lo dichiari rigido. I messaggi non
 fanno preventivi: incuriosiscono e portano al link, e possono usare solo i fatti
 in `[casa]` del TOML — niente inventato, mai.
 
+Se il post ha `"commento_senza_link": true`, quel gruppo **rifiuta i commenti
+che contengono un link**: il commento pubblico non deve contenere nessun URL,
+indirizzo web o nome di sito, e dice solo che hai scritto in privato e che lì
+trova le foto. Il privato resta com'è, col link. Il testo esatto della regola è
+`COMMENTO_SENZA_LINK` in `composer.py`.
+
 ## 3. Manda le notifiche
 
 Scrivi `/tmp/affitti-lead.json` in questa forma:
@@ -47,7 +53,7 @@ Scrivi `/tmp/affitti-lead.json` in questa forma:
     {
       "post_id": "...", "permalink": "...", "author_name": "...",
       "author_url": "...", "author_id": "...", "text": "...",
-      "permalink_e_del_profilo": false,
+      "permalink_e_del_profilo": false, "group_id": "...",
       "zona": "Monza", "budget_max": 600, "disponibile_da": "settembre",
       "stanze_compatibili": ["camera-3"],
       "motivo": "una riga sul perché, la leggerà sul telefono",
@@ -61,8 +67,9 @@ Scrivi `/tmp/affitti-lead.json` in questa forma:
 ```
 
 Ricopia i campi dal JSON di partenza senza modificarli — in particolare
-`author_id` e `permalink_e_del_profilo`, da cui dipendono i link della notifica:
-`author_id` diventa il tap che apre la chat Messenger con quella persona.
+`author_id` e `permalink_e_del_profilo`, da cui dipendono i link della notifica
+(`author_id` diventa il tap che apre la chat Messenger con quella persona), e
+`group_id`, da cui la notifica capisce che quel commento va senza link.
 
 Gli **scartati vanno inclusi tutti**, con post_id e author_url: è quello che
 impedisce di rileggerli al giro dopo. Ometterli fa ricominciare da capo ogni

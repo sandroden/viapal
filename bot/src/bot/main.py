@@ -193,7 +193,10 @@ def giro(
             lead.append({"post": p, "analisi": analisi, "messaggi": messaggi})
             log.info("lead: %s — %s", p.author_name, analisi.motivo)
         else:
-            notifier.lead(p, analisi, messaggi)
+            notifier.lead(
+                p, analisi, messaggi,
+                senza_link=cfg.commento_senza_link(getattr(p, "group_id", None)),
+            )
             archivio.registra(
                 p, analisi.model_dump(), matched=True, notificato=True, messaggi=messaggi
             )
@@ -231,7 +234,12 @@ def estrai(percorso_config: str, percorso_db: str, destinazione: str) -> int:
     post, falliti = _raccogli_dai_gruppi(browser, cfg, archivio.id_visti())
     for gid, motivo in falliti:
         print(f"⚠ gruppo {gid}: {motivo} — controlla di essere iscritto a quel gruppo")
-    da_leggere = [asdict(p) for p in _da_leggere(post, archivio.autori_gia_contattati())]
+    # Il flag sta sul post, non a parte in una lista di gruppi: chi legge il
+    # JSON (Claude) deve vederlo accanto al testo, senza incrociare niente.
+    da_leggere = [
+        {**asdict(p), "commento_senza_link": cfg.commento_senza_link(p.group_id)}
+        for p in _da_leggere(post, archivio.autori_gia_contattati())
+    ]
     percorso = Path(destinazione).expanduser()
     percorso.parent.mkdir(parents=True, exist_ok=True)
     percorso.write_text(
@@ -285,6 +293,7 @@ def notifica(percorso_config: str, percorso_db: str, sorgente: str) -> int:
             SimpleNamespace(
                 commento_pubblico=voce["commento_pubblico"], privato=voce["privato"]
             ),
+            senza_link=cfg.commento_senza_link(post.group_id),
         )
         archivio.registra(
             post,

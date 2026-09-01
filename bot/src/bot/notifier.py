@@ -6,6 +6,7 @@ contenuto. Il flusso è tap → apri il post → incolla → invia.
 from __future__ import annotations
 
 import logging
+import re
 
 import httpx
 
@@ -22,6 +23,15 @@ DA_SCAPPARE = r"_*[]()~`>#+-=|{}.!"
 
 def _esc(testo: str) -> str:
     return "".join("\\" + c if c in DA_SCAPPARE else c for c in str(testo))
+
+
+# Un URL con o senza schema, o un dominio seguito da un percorso: quello che
+# il filtro antilink di un gruppo prende per un link.
+_LINK = re.compile(r"https?://|www\.|[a-z0-9-]+\.[a-z]{2,}/", re.IGNORECASE)
+
+
+def contiene_link(testo: str) -> bool:
+    return bool(_LINK.search(testo or ""))
 
 
 def _link(post) -> str:
@@ -59,8 +69,24 @@ class Notifier:
         if risposta.status_code != 200:
             log.error("telegram: %s %s", risposta.status_code, risposta.text[:300])
 
-    def lead(self, post, analisi: AnalisiPost, messaggi: Messaggi) -> None:
+    def lead(
+        self, post, analisi: AnalisiPost, messaggi: Messaggi, senza_link: bool = False
+    ) -> None:
+        """`senza_link`: il gruppo rifiuta i commenti con un link. Si dice
+        nell'etichetta, così chi incolla non si chiede dove sia finito il
+        link, e se il commento ne contiene uno lo stesso si avvisa: passerebbe
+        dal telefono a un gruppo che lo butta via in silenzio."""
         estratto = post.text[:300] + ("…" if len(post.text) > 300 else "")
+        etichetta = "*1\\. commento sotto il post"
+        if senza_link:
+            etichetta += " " + _esc("(senza link: il gruppo li rifiuta)")
+        etichetta += ":*\n"
+        avviso = ""
+        if senza_link and contiene_link(messaggi.commento_pubblico):
+            avviso = "⚠️ " + _esc(
+                "il commento contiene un link, in questo gruppo non passerebbe: "
+                "toglilo prima di incollare"
+            ) + "\n"
         campi = [f"*{_esc(post.author_name or 'anonimo')}*"]
         if analisi.zona:
             campi.append(f"📍 {_esc(analisi.zona)}")
@@ -75,7 +101,7 @@ class Notifier:
             f"_{_esc(analisi.motivo)}_\n\n"
             f"{_esc(estratto)}\n\n"
             f"{_link(post)}\n\n"
-            "*1\\. commento sotto il post:*\n"
+            f"{etichetta}{avviso}"
             f"```\n{messaggi.commento_pubblico}\n```\n"
             "*2\\. privato su Messenger:*\n"
             f"```\n{messaggi.privato}\n```"

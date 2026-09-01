@@ -63,9 +63,7 @@ tempo, e chi scrive "bagno privato o monolocale" spesso ripiega volentieri.
 Quello che non devi fare è tacerlo e lasciare che lo scopra alla visita.
 
 MESSAGGIO 1 — commento pubblico sotto il suo post:
-Una o due righe. Dici che gli hai scritto in privato e metti il link con le foto:
-{galleria}
-Niente prezzi, niente dettagli: serve solo a farsi notare e a far vedere la casa.
+{commento_pubblico}
 
 MESSAGGIO 2 — privato su Messenger:
 Massimo 4-5 righe. Tono diretto, caldo, concreto. Niente formule commerciali
@@ -76,15 +74,25 @@ Chiudi con l'annuncio completo {annuncio} e il numero {cellulare}{firma}.
 
 Scrivi in italiano, dando del tu."""
 
+# Il blocco "MESSAGGIO 1" ha due versioni, scelte per gruppo: alcuni gruppi
+# rifiutano i commenti che contengono un link (moderazione automatica), e lì
+# il commento deve solo rimandare al privato — dove il link c'è comunque.
+# I gruppi sono in `facebook.gruppi_senza_link` nel TOML.
+COMMENTO_CON_LINK = """\
+Una o due righe. Dici che gli hai scritto in privato e metti il link con le foto:
+{galleria}
+Niente prezzi, niente dettagli: serve solo a farsi notare e a far vedere la casa."""
 
-def componi(
-    client: anthropic.Anthropic, cfg: Config, post, analisi: AnalisiPost
-) -> Messaggi:
-    per_id = {s.id: s for s in cfg.stanze_libere}
-    scelte = [per_id[i] for i in analisi.stanze_compatibili if i in per_id]
-    if not scelte:
-        raise ValueError("composer chiamato senza stanze compatibili")
+COMMENTO_SENZA_LINK = """\
+Una o due righe, SENZA NESSUN LINK, indirizzo web o nome di sito: in questo
+gruppo i commenti con un link vengono rifiutati e non compaiono. Dici che gli
+hai scritto in privato e che lì trova le foto della casa.
+Niente prezzi, niente dettagli: serve solo a farsi notare."""
 
+
+def istruzioni(cfg: Config, post, analisi: AnalisiPost, scelte) -> str:
+    """Il system prompt del composer per questo post. Separato da `componi`
+    perché si possa leggere (e testare) senza chiamare nessun modello."""
     # Se abbiamo scelto una stanza che sfora il budget che ha dichiarato, il
     # prezzo va detto subito: farglielo scoprire cliccando sarebbe una furbata.
     sopra_budget = bool(
@@ -96,19 +104,31 @@ def componi(
         "vale comunque una visita. Non fargli scoprire il prezzo cliccando."
         if sopra_budget else ""
     )
-    istruzioni = ISTRUZIONI.format(
+    senza_link = cfg.commento_senza_link(getattr(post, "group_id", None))
+    commento = COMMENTO_SENZA_LINK if senza_link else COMMENTO_CON_LINK
+    return ISTRUZIONI.format(
         eccezioni=eccezioni,
         stanze="\n".join(f"- {s.descrizione()}" for s in scelte),
         indirizzo=cfg.indirizzo,
         punti_forza="\n".join(f"- {p}" for p in cfg.punti_forza),
         regole=cfg.regole,
         non_abbiamo=cfg.non_abbiamo,
-        galleria=cfg.link_galleria,
+        commento_pubblico=commento.format(galleria=cfg.link_galleria),
         annuncio=cfg.link_post_fb,
         utenze=cfg.nota_utenze,
         cellulare=cfg.cellulare,
         firma=f", firmandoti {cfg.firma}" if cfg.firma else "",
     )
+
+
+def componi(
+    client: anthropic.Anthropic, cfg: Config, post, analisi: AnalisiPost
+) -> Messaggi:
+    per_id = {s.id: s for s in cfg.stanze_libere}
+    scelte = [per_id[i] for i in analisi.stanze_compatibili if i in per_id]
+    if not scelte:
+        raise ValueError("composer chiamato senza stanze compatibili")
+
     contesto = (
         f"POST DI CHI CERCA:\n{post.text}\n\n"
         f"COSA ABBIAMO CAPITO: zona={analisi.zona}, budget={analisi.budget_max}, "
@@ -117,7 +137,7 @@ def componi(
     risposta = client.messages.parse(
         model=cfg.modello_composer,
         max_tokens=2000,
-        system=istruzioni,
+        system=istruzioni(cfg, post, analisi, scelte),
         messages=[{"role": "user", "content": contesto}],
         output_format=Messaggi,
     )

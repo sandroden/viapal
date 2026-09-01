@@ -45,3 +45,47 @@ def test_senza_id_non_si_inventa_un_link():
 
     post = Post(post_id="1", permalink="", author_name=None, author_url=None, text="…")
     assert _link(post) == ""
+
+
+# --- gruppi che rifiutano i commenti con un link ------------------------------
+
+def _testo_notifica(senza_link: bool, commento: str) -> str:
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock, patch
+
+    from bot.notifier import Notifier
+    from bot.scraper import Post
+
+    post = Post(post_id="1", permalink="", author_name="Anna", author_url=None, text="…")
+    analisi = SimpleNamespace(
+        zona=None, budget_max=None, disponibile_da=None,
+        stanze_compatibili=["camera-3"], motivo="ok",
+    )
+    messaggi = SimpleNamespace(commento_pubblico=commento, privato="p")
+    with patch("bot.notifier.httpx.post", return_value=MagicMock(status_code=200)) as http:
+        Notifier("t", "c").lead(post, analisi, messaggi, senza_link=senza_link)
+    return http.call_args.kwargs["json"]["text"]
+
+
+def test_la_notifica_dice_quando_il_commento_va_senza_link():
+    testo = _testo_notifica(True, "Ciao, ti ho scritto in privato.")
+    assert "senza link" in testo
+    assert "⚠️" not in testo
+
+
+def test_avvisa_se_il_commento_ha_un_link_dove_non_passa():
+    """Passerebbe dal telefono a un gruppo che lo butta via in silenzio."""
+    testo = _testo_notifica(True, "Foto qui: https://viapal.e-den.it/g/viapal")
+    assert "⚠️" in testo and "non passerebbe" in testo
+
+
+def test_col_link_ammesso_niente_etichetta_ne_avviso():
+    testo = _testo_notifica(False, "Foto qui: https://viapal.e-den.it/g/viapal")
+    assert "senza link" not in testo and "⚠️" not in testo
+
+
+def test_contiene_link_riconosce_anche_gli_url_senza_schema():
+    from bot.notifier import contiene_link
+    assert contiene_link("le foto su viapal.e-den.it/g/viapal")
+    assert contiene_link("www.esempio.it")
+    assert not contiene_link("ti ho scritto in privato. A presto")

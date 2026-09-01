@@ -54,6 +54,13 @@ nell'annuncio, scritti chiari — il link li porta, e chi clicca li legge *dopo*
 aver visto com'è fatta la casa. Non si nasconde niente, si mette solo la foto
 prima del listino.
 
+Alcuni gruppi però rifiutano i commenti che contengono un link (moderazione
+automatica: il commento non compare, e nessuno lo dice). Si elencano in
+`facebook.gruppi_senza_link`, con lo stesso identificativo usato in `gruppi`,
+e lì il commento pubblico dice solo che si è scritto in privato: il link resta
+nel privato. La notifica lo segnala nell'etichetta del commento, e avvisa se il
+commento un link ce l'ha lo stesso.
+
 Il materiale con cui incuriosire sta in `[casa]` nel TOML, ed è l'unico che il
 composer ha il permesso di usare: se una cosa non è scritta lì, non la può dire.
 Sono i fatti veri presi dall'annuncio Facebook e dai testi della galleria.

@@ -76,3 +76,35 @@ def test_i_gruppi_ripetuti_si_leggono_una_volta_sola(tmp_path):
         '"2262271623946575", "99", "2262271623946575",',
     ))
     assert carica(f).gruppi == ("2262271623946575", "99")
+
+
+# --- gruppi che rifiutano i commenti con un link ------------------------------
+
+def _con_gruppi_senza_link(tmp_path, gruppi_senza_link):
+    f = tmp_path / "c.toml"
+    f.write_text(ESEMPIO.read_text().replace(
+        "gruppi_senza_link = []", f"gruppi_senza_link = {gruppi_senza_link!r}"
+    ))
+    return f
+
+
+def test_i_gruppi_senza_link_si_leggono_e_rispondono_per_gruppo(tmp_path):
+    cfg = carica(_con_gruppi_senza_link(tmp_path, ["2262271623946575"]))
+    assert cfg.gruppi_senza_link == ("2262271623946575",)
+    assert cfg.commento_senza_link("2262271623946575")
+    assert not cfg.commento_senza_link("")
+    assert not cfg.commento_senza_link(None)
+
+
+def test_di_default_nessun_gruppo_e_senza_link():
+    cfg = carica(ESEMPIO)
+    assert cfg.gruppi_senza_link == ()
+    assert not cfg.commento_senza_link("2262271623946575")
+
+
+def test_un_gruppo_senza_link_che_non_si_legge_ferma_il_caricamento(tmp_path):
+    """Lo stesso gruppo ha uno slug e un numero: scritto con l'altro, la regola
+    non aggancerebbe niente e i commenti uscirebbero col link come prima."""
+    import pytest
+    with pytest.raises(ValueError, match="1765622897069363"):
+        carica(_con_gruppi_senza_link(tmp_path, ["1765622897069363"]))

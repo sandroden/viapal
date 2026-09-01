@@ -147,3 +147,60 @@ def test_lo_stesso_post_ripescato_in_anonimo_non_raddoppia():
         FintoPost(post_id="2", author_url=None, author_id=None, text=testo + " · 7 commenti"),
     ]
     assert len(_da_leggere(doppio, set())) == 1
+
+
+# --- gruppi che rifiutano i commenti con un link ------------------------------
+
+def _config_con_gruppo_senza_link(tmp_path: Path) -> Path:
+    testo = (
+        ESEMPIO.read_text()
+        .replace("METTI-QUI-IL-CHAT-ID", "1")
+        .replace('"2262271623946575",   # AFFITTI Monza e Brianza - CERCO/OFFRO',
+                 '"2262271623946575", "muto",')
+        .replace("gruppi_senza_link = []", 'gruppi_senza_link = ["muto"]')
+    )
+    f = tmp_path / "c.toml"
+    f.write_text(testo)
+    return f
+
+
+def test_estrai_marca_i_post_dei_gruppi_senza_link(tmp_path):
+    """Il flag sta sul post: chi legge il JSON (Claude) non deve incrociare
+    liste di gruppi, deve vederlo accanto al testo."""
+    import json
+    from bot.main import estrai
+    from bot.scraper import Post
+
+    def finto_raccogli(browser, gid, **kw):
+        return [Post(
+            post_id=f"{gid}-1", permalink="", author_name="A",
+            author_url=f"https://fb.com/groups/{gid}/user/{gid}/",
+            text="x" * 50, author_id=gid, group_id=gid,
+        )]
+
+    uscita = tmp_path / "post.json"
+    with patch("bot.main.raccogli", side_effect=finto_raccogli), patch("bot.main.Browser"):
+        estrai(str(_config_con_gruppo_senza_link(tmp_path)), str(tmp_path / "t.db"), str(uscita))
+    per_gruppo = {
+        p["group_id"]: p["commento_senza_link"]
+        for p in json.loads(uscita.read_text())["post"]
+    }
+    assert per_gruppo == {"2262271623946575": False, "muto": True}
+
+
+def test_notifica_dice_al_notifier_quale_commento_va_senza_link(tmp_path):
+    import json
+    from bot.main import notifica
+
+    lead = {"lead": [
+        {"post_id": "1", "author_id": "1", "text": "x", "group_id": "muto",
+         "commento_pubblico": "ciao", "privato": "ciao"},
+        {"post_id": "2", "author_id": "2", "text": "x", "group_id": "2262271623946575",
+         "commento_pubblico": "ciao", "privato": "ciao"},
+    ], "scartati": []}
+    sorgente = tmp_path / "lead.json"
+    sorgente.write_text(json.dumps(lead))
+    with patch("bot.main.Notifier") as notifier, patch("bot.main.spedisci_coda"):
+        notifica(str(_config_con_gruppo_senza_link(tmp_path)), str(tmp_path / "t.db"), str(sorgente))
+    flag = [c.kwargs["senza_link"] for c in notifier.return_value.lead.call_args_list]
+    assert flag == [True, False]
