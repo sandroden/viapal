@@ -12,11 +12,17 @@ fai **tu**, non l'API: è il motivo per cui questo comando esiste al posto di
 cd bot && uv run python -m bot.main --estrai /tmp/affitti-post.json
 ```
 
+Lancialo **in primo piano**, con timeout di 10 minuti (600000): dura uno o
+due minuti. Non usare `run_in_background` né `TaskOutput`: in questa sessione
+i task in background vengono uccisi alla fine del turno, e `TaskOutput` è
+rimasto appeso per ore ignorando il suo timeout.
+
 Il file contiene le stanze libere, le zone accettate e i post nuovi (già
 deduplicati: chi è stato contattato o visto in un giro precedente non c'è).
 
 Se torna **0 post nuovi**, fermati qui e dillo in una riga. È il caso normale
-di un giro a vuoto, non un problema.
+di un giro a vuoto, non un problema (il segnalibro di lettura in quel caso
+avanza da solo, senza `--notifica`).
 
 Se il comando fallisce con un errore di feed vuoto o markup cambiato, **non
 insistere**: riferisci l'errore e fermati. Vuol dire che Facebook ha cambiato
@@ -78,6 +84,10 @@ volta.
 ```bash
 cd bot && uv run python -m bot.main --notifica /tmp/affitti-lead.json
 ```
+
+Va lanciato anche con zero lead: oltre a registrare gli scarti, conferma il
+segnalibro di lettura dei gruppi. Se salta, il giro dopo rilegge gli stessi
+post.
 
 ## 4. Riferisci
 
