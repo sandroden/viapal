@@ -30,3 +30,37 @@ def test_rivedere_lo_stesso_post_non_lo_duplica(tmp_path):
     a.registra(FintoPost("1"))
     a.registra(FintoPost("1"))
     assert a.statistiche()["totali"] == 1
+
+
+# --- il segnalibro di lettura per gruppo --------------------------------------
+
+def test_il_segnalibro_vale_solo_dopo_la_conferma(tmp_path):
+    """--estrai annota, --notifica conferma: se il giro muore in mezzo il giro
+    dopo riparte da dove si era davvero arrivati a gestire i post."""
+    from datetime import datetime
+    a = Archivio(tmp_path / "t.db")
+    assert a.ultima_ora("g") is None
+    a.segna_lettura("g", datetime(2026, 9, 2, 22, 16))
+    assert a.ultima_ora("g") is None
+    a.conferma_letture()
+    assert a.ultima_ora("g") == datetime(2026, 9, 2, 22, 16)
+
+
+def test_il_segnalibro_non_torna_indietro(tmp_path):
+    from datetime import datetime
+    a = Archivio(tmp_path / "t.db")
+    a.segna_lettura("g", datetime(2026, 9, 2, 22, 16))
+    a.conferma_letture()
+    a.segna_lettura("g", datetime(2026, 9, 2, 21, 0))
+    a.conferma_letture()
+    assert a.ultima_ora("g") == datetime(2026, 9, 2, 22, 16)
+
+
+def test_senza_ora_leggibile_il_segnalibro_resta_dov_era(tmp_path):
+    from datetime import datetime
+    a = Archivio(tmp_path / "t.db")
+    a.segna_lettura("g", datetime(2026, 9, 2, 22, 16))
+    a.conferma_letture()
+    a.segna_lettura("g", None)
+    a.conferma_letture()
+    assert a.ultima_ora("g") == datetime(2026, 9, 2, 22, 16)

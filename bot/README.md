@@ -201,6 +201,29 @@ A campagna chiusa si cancella **anche la copia sul server**: dal menu della
 pagina, "Chiudi la campagna". È la stessa pulizia che `./campagna.sh azzera` fa
 sul portatile, e vale lo stesso motivo — sono dati di altre persone.
 
+## Quando smette di scorrere
+
+Il feed è cronologico, quindi lo scraper non ha bisogno di riconoscere i post
+per sapere quando fermarsi: gli basta l'**ora**. Per ogni gruppo l'archivio
+tiene un segnalibro (l'ora del post più recente incontrato l'ultima volta) e
+la discesa si ferma appena incontra due post di fila non più recenti. L'ora la
+dà il tooltip che compare passando il mouse sull'orario — lo stesso passaggio
+che smaschera il permalink, quindi non costa niente in più — perché nel DOM il
+testo dell'orario è offuscato e per i post fuori dal viewport è proprio vuoto.
+
+Un giro a vuoto su quattro gruppi costa così un paio di minuti invece di
+dodici. Il vecchio criterio, "dieci post già visti di fila", resta come rete
+di sicurezza ma da solo non funzionava: l'archivio conosce i post per id, l'id
+compare solo dopo l'hover, e i post oltre il fondo del viewport sembravano
+tutti nuovi — la discesa andava avanti per 20-90 passi con tre post nuovi in
+cima.
+
+Il segnalibro avanza solo quando i post sono stati gestiti: `--estrai` lo
+annota in sospeso e `--notifica` lo conferma. Se il giro muore in mezzo, il
+giro dopo rilegge gli stessi post. `orizzonte_giorni` nel TOML (3 di base)
+limita il primo giro su un gruppo nuovo e la ripartenza dopo giorni di fermo:
+un post più vecchio di così non interessa, e vale come già visto.
+
 ## Le tre trappole trovate sul campo
 
 Verificate il 2026-08-27, con agent-browser 0.27.0. Sono documentate anche in
@@ -246,12 +269,12 @@ probabile che il CLI sia cambiato. Questa versione gira su **0.27.0**.
 |---|---|
 | `estrazione.py` | il JS che legge il DOM di Facebook — **il punto fragile** |
 | `browser.py` | wrapper su agent-browser, sola lettura |
-| `scraper.py` | scroll + accumulo, si ferma sui post già visti |
+| `scraper.py` | scroll + accumulo, si ferma all'ora dell'ultima lettura |
 | `pulizia.py` | ripulisce l'innerText, taglia i commenti |
 | `classifier.py` | una chiamata per post: cerca/offre, tipo, budget, match |
 | `composer.py` | i due messaggi, con il divieto di inventare dettagli |
 | `notifier.py` | Telegram, testi in blocchi copiabili con un tap |
-| `storage.py` | SQLite di campagna: dedup su post e su autore, coda del push |
+| `storage.py` | SQLite di campagna: dedup su post e su autore, segnalibro per gruppo, coda del push |
 | `api_push.py` | deposita i lead su viapal, best-effort e ritentabile |
 
 ## Test

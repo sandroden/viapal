@@ -13,7 +13,7 @@ import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import anthropic
@@ -45,32 +45,44 @@ def _api_viapal(cfg):
 
 
 def _raccogli_dai_gruppi(
-    browser: Browser, cfg, gia_visti: set[str]
+    browser: Browser, cfg, archivio: Archivio
 ) -> tuple[list, list[tuple[str, str]]]:
     """Scorre i gruppi uno dopo l'altro; ritorna i post e i gruppi muti.
 
-    `gia_visti` è condiviso apposta — è il database — ma questo rende cieco il
-    controllo di `raccogli`, che grida solo quando l'archivio è vuoto. Da qui
-    in poi il gruppo che non dà niente va segnalato a mano: zero post e "non
-    sono iscritto a quel gruppo" si somigliano troppo.
+    L'archivio dà a ogni gruppo il suo segnalibro (`ultima_ora`) e riceve
+    quello nuovo, in sospeso: lo conferma chi gestisce i post, cioè `giro` o
+    `--notifica`. I `gia_visti` sono condivisi apposta — sono il database — ma
+    questo rende cieco il controllo di `raccogli`, che grida solo quando
+    l'archivio è vuoto. Da qui in poi il gruppo che non dà niente va segnalato
+    a mano: zero post e "non sono iscritto a quel gruppo" si somigliano troppo.
     """
     post, falliti = [], []
+    gia_visti = archivio.id_visti()
+    orizzonte = (
+        datetime.now() - timedelta(days=cfg.orizzonte_giorni)
+        if cfg.orizzonte_giorni else None
+    )
     for gid in cfg.gruppi:
         try:
-            trovati = raccogli(
+            lettura = raccogli(
                 browser,
                 gid,
                 gia_visti=gia_visti,
                 stop_dopo_visti=cfg.scroll_stop_after_seen,
                 max_scroll=cfg.max_scroll,
+                ultima_ora=archivio.ultima_ora(gid),
+                orizzonte=orizzonte,
             )
         except MarkupCambiato as exc:
             log.error("gruppo %s: estrazione a vuoto: %s", gid, exc)
             falliti.append((gid, str(exc)))
             continue
-        log.info("gruppo %s: %d post nuovi", gid, len(trovati))
-        if not trovati:
-            falliti.append((gid, "nessun post"))
+        trovati = lettura.post
+        archivio.segna_lettura(gid, lettura.ultima_ora)
+        log.info("gruppo %s: %d post nuovi su %d letti", gid, len(trovati), lettura.letti)
+        if not lettura.letti:
+            # Zero post NUOVI è il giro normale; zero post nel feed no.
+            falliti.append((gid, "nessun post nel feed"))
         post.extend(trovati)
     return post, falliti
 
@@ -139,7 +151,7 @@ def giro(
     )
 
     try:
-        post, falliti = _raccogli_dai_gruppi(browser, cfg, archivio.id_visti())
+        post, falliti = _raccogli_dai_gruppi(browser, cfg, archivio)
     except ErroreBrowser as exc:
         log.error("browser: %s", exc)
         notifier.allarme(f"agent-browser non risponde: {exc}")
@@ -213,6 +225,7 @@ def giro(
     # Dopo le notifiche: se il server è giù la coda resta piena e il prossimo
     # giro ci riprova, ma il lead su Telegram è già arrivato comunque.
     if not dry_run:
+        archivio.conferma_letture()   # i post sono gestiti: il segnalibro avanza
         spedisci_coda(_api_viapal(cfg), archivio, notifier)
 
     log.info("giro concluso: %d post nuovi, %d lead", len(post), trovati)
@@ -231,7 +244,7 @@ def estrai(percorso_config: str, percorso_db: str, destinazione: str) -> int:
     browser = Browser(
         profilo=cfg.profilo_browser, headed=cfg.headed, user_agent=cfg.user_agent
     )
-    post, falliti = _raccogli_dai_gruppi(browser, cfg, archivio.id_visti())
+    post, falliti = _raccogli_dai_gruppi(browser, cfg, archivio)
     for gid, motivo in falliti:
         print(f"⚠ gruppo {gid}: {motivo} — controlla di essere iscritto a quel gruppo")
     # Il flag sta sul post, non a parte in una lista di gruppi: chi legge il
@@ -240,6 +253,11 @@ def estrai(percorso_config: str, percorso_db: str, destinazione: str) -> int:
         {**asdict(p), "commento_senza_link": cfg.commento_senza_link(p.group_id)}
         for p in _da_leggere(post, archivio.autori_gia_contattati())
     ]
+    if not da_leggere:
+        # Niente da consegnare a Claude, quindi niente che possa andare perso:
+        # il segnalibro avanza subito. Altrimenti lo conferma --notifica, e un
+        # giro a vuoto (che --notifica non lo chiama) lo lascerebbe fermo.
+        archivio.conferma_letture()
     percorso = Path(destinazione).expanduser()
     percorso.parent.mkdir(parents=True, exist_ok=True)
     percorso.write_text(
@@ -306,6 +324,9 @@ def notifica(percorso_config: str, percorso_db: str, sorgente: str) -> int:
         )
         inviati += 1
 
+    # Lead e scarti sono registrati: la lettura di --estrai diventa il
+    # segnalibro. Se questo passo salta, il giro dopo rilegge gli stessi post.
+    archivio.conferma_letture()
     spedisci_coda(_api_viapal(cfg), archivio, notifier)
 
     scarti = len(dati.get("scartati", []))

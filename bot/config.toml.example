@@ -18,7 +18,12 @@ gruppi_senza_link = []
 poll_interval_minutes = 25
 active_hours = [8, 23]
 scroll_stop_after_seen = 10
-max_scroll = 90          # quanto in giù andare nel feed, in passi da 600px: ~90 bastano per 2-3 giorni di post
+# Lo scroll si ferma da solo appena rivede post non più recenti dell'ultima
+# lettura (feed cronologico, ora letta dal tooltip): max_scroll è solo il tetto
+# di sicurezza. orizzonte_giorni limita il primo giro su un gruppo nuovo e la
+# ripartenza dopo giorni di fermo: un post più vecchio di così non interessa.
+max_scroll = 90          # tetto, in passi da 600px
+orizzonte_giorni = 3
 headed = false                          # true se Facebook comincia a chiedere verifiche
 profilo_browser = "~/.viapal-bot/fb-profile"
 # UA della sessione con cui è stato fatto il login, per non presentarsi come un

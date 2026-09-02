@@ -22,6 +22,16 @@ CREATE TABLE IF NOT EXISTS posts (
     notified_at  TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_author ON posts(author_url);
+-- Fin dove si è letto ogni gruppo: l'ora del post più recente incontrato.
+-- `in_sospeso` è la lettura dell'ultimo --estrai, che diventa `ultima_ora`
+-- solo quando --notifica conferma che quei post sono stati gestiti: se il
+-- giro muore a metà, il giro dopo riparte dal segnalibro vecchio e li rilegge.
+CREATE TABLE IF NOT EXISTS letture (
+    group_id     TEXT PRIMARY KEY,
+    ultima_ora   TEXT,
+    in_sospeso   TEXT,
+    letto_il     TIMESTAMP
+);
 """
 
 # Colonne aggiunte dopo il primo giro di campagna. Si applicano una per volta
@@ -65,6 +75,38 @@ class Archivio:
     def id_visti(self) -> set[str]:
         with self._conn() as c:
             return {r["post_id"] for r in c.execute("SELECT post_id FROM posts")}
+
+    def ultima_ora(self, group_id: str) -> datetime | None:
+        """L'ora del post più recente gestito in questo gruppo, o None al
+        primo giro. È il segnalibro a cui lo scraper si ferma."""
+        with self._conn() as c:
+            r = c.execute(
+                "SELECT ultima_ora FROM letture WHERE group_id = ?", (group_id,)
+            ).fetchone()
+        return datetime.fromisoformat(r["ultima_ora"]) if r and r["ultima_ora"] else None
+
+    def segna_lettura(self, group_id: str, ora: datetime | None) -> None:
+        """Annota fin dove si è letto, in sospeso: vale dopo `conferma_letture`."""
+        if ora is None:
+            return      # nessun post con l'ora leggibile: il segnalibro resta dov'era
+        with self._conn() as c:
+            c.execute(
+                "INSERT INTO letture (group_id, in_sospeso, letto_il) VALUES (?, ?, ?) "
+                "ON CONFLICT(group_id) DO UPDATE SET in_sospeso = excluded.in_sospeso, "
+                "letto_il = excluded.letto_il",
+                (group_id, ora.isoformat(timespec="minutes"),
+                 datetime.now(timezone.utc).isoformat()),
+            )
+
+    def conferma_letture(self) -> None:
+        """Le letture in sospeso diventano il segnalibro. Mai all'indietro:
+        una prova o un giro parziale non devono far rileggere il già letto."""
+        with self._conn() as c:
+            c.execute(
+                "UPDATE letture SET ultima_ora = CASE "
+                "WHEN ultima_ora IS NULL OR in_sospeso > ultima_ora THEN in_sospeso "
+                "ELSE ultima_ora END, in_sospeso = NULL WHERE in_sospeso IS NOT NULL"
+            )
 
     def autori_gia_contattati(self) -> set[str]:
         """Deduplica secondaria: chi ripubblica lo stesso annuncio dopo qualche

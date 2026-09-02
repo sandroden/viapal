@@ -1,10 +1,15 @@
 """Test del giro: quello che il dry-run deve e non deve toccare."""
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from bot.main import giro
+from bot.scraper import Lettura
 from bot.storage import Archivio
+
+GRUPPO_ESEMPIO = "2262271623946575"
+LETTO_FINO_A = datetime(2026, 9, 2, 22, 16)
 
 ESEMPIO = Path(__file__).parent.parent / "config.toml.example"
 
@@ -32,7 +37,7 @@ def _giro(tmp_path, dry_run: bool):
     analisi.model_dump.return_value = {}
     db = tmp_path / "t.db"
     with (
-        patch("bot.main.raccogli", return_value=[FintoPost()]),
+        patch("bot.main.raccogli", return_value=Lettura([FintoPost()], LETTO_FINO_A, letti=1)),
         patch("bot.main.Browser"),
         patch("bot.main.anthropic.Anthropic"),
         patch("bot.main.analizza", return_value=analisi),
@@ -48,12 +53,14 @@ def test_la_prova_non_sporca_il_database(tmp_path):
     e i lead visti in prova non arriverebbero mai su Telegram."""
     archivio, notifier = _giro(tmp_path, dry_run=True)
     assert archivio.id_visti() == set()
+    assert archivio.ultima_ora(GRUPPO_ESEMPIO) is None, "la prova non sposta il segnalibro"
     notifier.lead.assert_not_called()
 
 
 def test_il_giro_vero_registra_e_notifica(tmp_path):
     archivio, notifier = _giro(tmp_path, dry_run=False)
     assert archivio.id_visti() == {"111"}
+    assert archivio.ultima_ora(GRUPPO_ESEMPIO) == LETTO_FINO_A
     notifier.lead.assert_called_once()
 
 
@@ -64,31 +71,54 @@ class FintaConfig:
     gruppi: tuple
     scroll_stop_after_seen: int = 10
     max_scroll: int = 5
+    orizzonte_giorni: int = 3
 
 
-def test_ogni_gruppo_viene_letto_e_i_post_si_sommano():
+def test_ogni_gruppo_viene_letto_e_i_post_si_sommano(tmp_path):
     from bot.main import _raccogli_dai_gruppi
     letti = []
 
     def finto_raccogli(browser, gid, **kw):
         letti.append(gid)
-        return [FintoPost(post_id=f"{gid}-1")]
+        return Lettura([FintoPost(post_id=f"{gid}-1")], letti=5)
 
     with patch("bot.main.raccogli", side_effect=finto_raccogli):
-        post, falliti = _raccogli_dai_gruppi(None, FintaConfig(("a", "b")), set())
+        post, falliti = _raccogli_dai_gruppi(None, FintaConfig(("a", "b")), Archivio(tmp_path / "t.db"))
     assert letti == ["a", "b"]
     assert [p.post_id for p in post] == ["a-1", "b-1"]
     assert falliti == []
 
 
-def test_il_gruppo_muto_viene_segnalato():
-    """Con l'archivio pieno `raccogli` non grida più: zero post e "non sono
-    iscritto a quel gruppo" si somigliano troppo per lasciarli uguali."""
+def test_il_gruppo_muto_viene_segnalato(tmp_path):
+    """Con l'archivio pieno `raccogli` non grida più: un feed vuoto e "non sono
+    iscritto a quel gruppo" si somigliano troppo per lasciarli uguali. Zero
+    post NUOVI invece è il giro normale, e non va segnalato."""
     from bot.main import _raccogli_dai_gruppi
-    with patch("bot.main.raccogli", side_effect=[[FintoPost()], []]):
-        post, falliti = _raccogli_dai_gruppi(None, FintaConfig(("a", "b")), {"x"})
+    archivio = Archivio(tmp_path / "t.db")
+    archivio.registra(FintoPost(post_id="x"))
+    letture = [Lettura([FintoPost()], letti=4), Lettura([], letti=0), Lettura([], letti=6)]
+    with patch("bot.main.raccogli", side_effect=letture):
+        post, falliti = _raccogli_dai_gruppi(None, FintaConfig(("a", "b", "c")), archivio)
     assert len(post) == 1
     assert [gid for gid, _ in falliti] == ["b"]
+
+
+def test_ogni_gruppo_riparte_dal_suo_segnalibro(tmp_path):
+    """Il segnalibro è per gruppo: quello del gruppo storico non deve far
+    saltare i post del gruppo aggiunto ieri."""
+    from bot.main import _raccogli_dai_gruppi
+    archivio = Archivio(tmp_path / "t.db")
+    archivio.segna_lettura("a", LETTO_FINO_A)
+    archivio.conferma_letture()
+    segnalibri = {}
+
+    def finto_raccogli(browser, gid, **kw):
+        segnalibri[gid] = kw["ultima_ora"]
+        return Lettura([])
+
+    with patch("bot.main.raccogli", side_effect=finto_raccogli):
+        _raccogli_dai_gruppi(None, FintaConfig(("a", "b")), archivio)
+    assert segnalibri == {"a": LETTO_FINO_A, "b": None}
 
 
 def test_chi_posta_in_due_gruppi_si_legge_una_volta_sola():
@@ -172,11 +202,11 @@ def test_estrai_marca_i_post_dei_gruppi_senza_link(tmp_path):
     from bot.scraper import Post
 
     def finto_raccogli(browser, gid, **kw):
-        return [Post(
+        return Lettura([Post(
             post_id=f"{gid}-1", permalink="", author_name="A",
             author_url=f"https://fb.com/groups/{gid}/user/{gid}/",
             text="x" * 50, author_id=gid, group_id=gid,
-        )]
+        )])
 
     uscita = tmp_path / "post.json"
     with patch("bot.main.raccogli", side_effect=finto_raccogli), patch("bot.main.Browser"):
@@ -204,3 +234,46 @@ def test_notifica_dice_al_notifier_quale_commento_va_senza_link(tmp_path):
         notifica(str(_config_con_gruppo_senza_link(tmp_path)), str(tmp_path / "t.db"), str(sorgente))
     flag = [c.kwargs["senza_link"] for c in notifier.return_value.lead.call_args_list]
     assert flag == [True, False]
+
+
+# --- il segnalibro fra --estrai e --notifica ----------------------------------
+
+def _post_vero():
+    from bot.scraper import Post
+    return Post(post_id="111", permalink="", author_name="A", author_url="https://fb.com/u/1",
+                text="x" * 50, author_id="1", group_id=GRUPPO_ESEMPIO)
+
+
+def test_estrai_annota_il_segnalibro_e_notifica_lo_conferma(tmp_path):
+    """Se Claude non arriva a --notifica (giro ucciso), il giro dopo deve
+    rileggere gli stessi post: il segnalibro avanza solo alla conferma."""
+    import json
+    from bot.main import estrai, notifica
+
+    db = tmp_path / "t.db"
+    with (
+        patch("bot.main.raccogli", return_value=Lettura([_post_vero()], LETTO_FINO_A, letti=3)),
+        patch("bot.main.Browser"),
+    ):
+        estrai(str(_config_con_token(tmp_path)), str(db), str(tmp_path / "post.json"))
+    assert Archivio(db).ultima_ora(GRUPPO_ESEMPIO) is None
+
+    sorgente = tmp_path / "lead.json"
+    sorgente.write_text(json.dumps({"lead": [], "scartati": []}))
+    with patch("bot.main.Notifier"), patch("bot.main.spedisci_coda"):
+        notifica(str(_config_con_token(tmp_path)), str(db), str(sorgente))
+    assert Archivio(db).ultima_ora(GRUPPO_ESEMPIO) == LETTO_FINO_A
+
+
+def test_con_zero_post_estrai_conferma_da_solo_il_segnalibro(tmp_path):
+    """Il comando /affitti a zero post non chiama --notifica: senza questo il
+    segnalibro non avanzerebbe mai nei giri a vuoto, che sono la maggioranza."""
+    from bot.main import estrai
+
+    db = tmp_path / "t.db"
+    with (
+        patch("bot.main.raccogli", return_value=Lettura([], LETTO_FINO_A, letti=3)),
+        patch("bot.main.Browser"),
+    ):
+        estrai(str(_config_con_token(tmp_path)), str(db), str(tmp_path / "post.json"))
+    assert Archivio(db).ultima_ora(GRUPPO_ESEMPIO) == LETTO_FINO_A

@@ -72,6 +72,9 @@ class Config:
     # Gruppi in cui un commento con un link viene rifiutato (o sparisce in
     # moderazione): lì il commento pubblico si scrive senza, e rimanda al privato.
     gruppi_senza_link: tuple[str, ...] = ()
+    # Un post più vecchio di così non interessa: limita il primo giro su un
+    # gruppo nuovo e la ripartenza dopo giorni di fermo. 0 = nessun limite.
+    orizzonte_giorni: int = 3
 
     @property
     def push_attivo(self) -> bool:
@@ -139,6 +142,7 @@ def carica(percorso: str | Path) -> Config:
         active_hours=tuple(fb.get("active_hours", [8, 23])),
         scroll_stop_after_seen=int(fb.get("scroll_stop_after_seen", 10)),
         max_scroll=int(fb.get("max_scroll", 45)),
+        orizzonte_giorni=int(fb.get("orizzonte_giorni", 3)),
         headed=bool(fb.get("headed", False)),
         profilo_browser=str(fb.get("profilo_browser", "~/.viapal-bot/fb-profile")),
         user_agent=fb.get("user_agent") or None,
