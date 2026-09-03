@@ -17,6 +17,9 @@ export interface Expense {
   bolletta_numero?: string | null;
   bolletta_prodotto?: 'gas' | 'luce' | 'acqua' | null;
   bolletta_consumo?: string | number | null;
+  // Allegato caricato a mano (fattura/ricevuta): URL assoluto dal FileField.
+  // Per aprirlo si usa `file_pdf`, che è relativo e passa dal proxy.
+  allegato?: string | null;
   file_pdf?: string | null;
 }
 
@@ -70,6 +73,25 @@ export const useExpensesStore = defineStore('expenses', {
     async creaSpesa(payload: NuovaSpesa): Promise<Expense> {
       const { data } = await api.post<Expense>('/api/v1/expenses/', payload);
       this.expenses = [data, ...this.expenses];
+      return data;
+    },
+    _sostituisci(aggiornata: Expense) {
+      this.expenses = this.expenses.map((e) => (e.id === aggiornata.id ? aggiornata : e));
+    },
+    /** Carica (o sostituisce) la fattura di una spesa già registrata.
+     *  Multipart col solo file: il resto della spesa non si tocca. */
+    async caricaAllegato(id: number, file: File): Promise<Expense> {
+      const form = new FormData();
+      form.append('allegato', file);
+      const { data } = await api.patch<Expense>(`/api/v1/expenses/${id}/`, form);
+      this._sostituisci(data);
+      return data;
+    },
+    /** In JSON: `allegato: null` dice «togli il file», cosa che un campo
+     *  vuoto in multipart non saprebbe esprimere. */
+    async rimuoviAllegato(id: number): Promise<Expense> {
+      const { data } = await api.patch<Expense>(`/api/v1/expenses/${id}/`, { allegato: null });
+      this._sostituisci(data);
       return data;
     },
   },

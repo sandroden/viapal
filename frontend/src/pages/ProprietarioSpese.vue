@@ -127,12 +127,29 @@
             <q-td :props="props">{{ formattaData(props.row.data) }}</q-td>
           </template>
           <template #body-cell-pdf="props">
-            <q-td :props="props" class="text-center">
+            <q-td :props="props" class="text-center vp-p-spese__cella-allegato">
               <PdfIconButton
                 v-if="props.row.file_pdf"
                 :title="props.row.bolletta_numero || props.row.descrizione"
                 @click="apriPdf(props.row)"
               />
+              <!-- Le spese nate da una bolletta hanno già il PDF della bolletta:
+                   l'allegato manuale vale per tutte le altre. -->
+              <q-btn
+                v-if="!props.row.bolletta_id"
+                flat
+                round
+                dense
+                size="sm"
+                :color="props.row.allegato ? 'grey-7' : 'primary'"
+                :icon="props.row.allegato ? 'edit_document' : 'upload_file'"
+                :aria-label="props.row.allegato ? 'Sostituisci o rimuovi allegato' : 'Allega fattura'"
+                @click.stop="apriAllegato(props.row)"
+              >
+                <q-tooltip>
+                  {{ props.row.allegato ? 'Sostituisci o rimuovi allegato' : 'Allega fattura' }}
+                </q-tooltip>
+              </q-btn>
             </q-td>
           </template>
           <template #body-cell-importo="props">
@@ -149,6 +166,60 @@
       :url="pdfCorrente?.url ?? null"
       :title="pdfCorrente?.title ?? null"
     />
+
+    <!-- Dialog allega fattura a una spesa già registrata -->
+    <q-dialog v-model="dialogAllegatoAperto">
+      <q-card class="vp-p-spese__dialog">
+        <q-card-section>
+          <div class="vp-eyebrow">
+            {{ spesaAllegato?.allegato ? 'Sostituisci allegato' : 'Allega fattura' }}
+          </div>
+          <h2 class="vp-display vp-p-spese__dialog-titolo">{{ spesaAllegato?.descrizione }}</h2>
+          <div class="text-caption text-grey-7">
+            {{ spesaAllegato ? formattaData(spesaAllegato.data) : '' }} ·
+            <span class="vp-mono">{{ formattaEuro(toNumber(spesaAllegato?.importo)) }}</span>
+          </div>
+        </q-card-section>
+        <q-card-section>
+          <q-file
+            v-model="fileAllegato"
+            label="Fattura o ricevuta (PDF, JPG, PNG)"
+            accept=".pdf,.jpg,.jpeg,.png"
+            outlined
+            :error="!!errorOf('allegato')"
+            :error-message="errorOf('allegato')"
+          >
+            <template #prepend><q-icon name="attach_file" /></template>
+          </q-file>
+          <q-banner v-if="globalError" class="bg-red-1 text-red-9 q-mt-md" rounded>
+            {{ globalError }}
+          </q-banner>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn
+            v-if="spesaAllegato?.allegato"
+            flat
+            color="negative"
+            label="Rimuovi allegato"
+            no-caps
+            :loading="loadingAllegato"
+            @click="rimuoviAllegato"
+          />
+          <q-space />
+          <q-btn flat color="primary" label="Annulla" no-caps @click="dialogAllegatoAperto = false" />
+          <q-btn
+            unelevated
+            color="primary"
+            icon="cloud_upload"
+            :label="spesaAllegato?.allegato ? 'Sostituisci' : 'Carica'"
+            no-caps
+            :disable="!fileAllegato"
+            :loading="loadingAllegato"
+            @click="caricaAllegato"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
 
     <!-- Dialog aggiungi spesa -->
     <q-dialog v-model="dialogAperto" persistent>
@@ -196,6 +267,15 @@
               :error-message="errorOf('category')"
             />
             <q-input v-model="form.note" outlined type="textarea" label="Note" autogrow />
+            <q-file
+              v-model="fileNuovaSpesa"
+              label="Fattura o ricevuta (opzionale)"
+              accept=".pdf,.jpg,.jpeg,.png"
+              outlined
+              clearable
+            >
+              <template #prepend><q-icon name="attach_file" /></template>
+            </q-file>
 
             <q-separator />
             <div class="vp-p-spese__bt-sezione">
@@ -288,6 +368,7 @@ const { globalError, captureError, reset: resetErrors, errorOf } = useFormErrors
 
 const dialogAperto = ref(false);
 const loadingSalva = ref(false);
+const fileNuovaSpesa = ref<File | null>(null);
 
 const opzioniCategoria = computed(() => categoriesStore.categories);
 
@@ -344,7 +425,7 @@ const colonne: QTableProps['columns'] = [
   { name: 'category', label: 'Categoria', field: 'category_nome', align: 'left', sortable: true },
   { name: 'prodotto', label: 'Tipo', field: 'bolletta_prodotto', align: 'left' },
   { name: 'anticipata_da', label: 'Anticipata da', field: 'anticipata_da_nominativo', align: 'left' },
-  { name: 'pdf', label: 'PDF', field: 'file_pdf', align: 'center' },
+  { name: 'pdf', label: 'Allegato', field: 'file_pdf', align: 'center' },
   { name: 'importo', label: 'Importo', field: 'importo', align: 'right', sortable: true },
 ];
 
@@ -366,6 +447,49 @@ function apriPdf(row: Expense) {
     title: row.bolletta_numero || row.descrizione || 'Bolletta',
   };
   pdfDialogOpen.value = true;
+}
+
+// Allegato di una spesa esistente: la fattura di solito arriva dopo.
+const dialogAllegatoAperto = ref(false);
+const spesaAllegato = ref<Expense | null>(null);
+const fileAllegato = ref<File | null>(null);
+const loadingAllegato = ref(false);
+
+function apriAllegato(row: Expense) {
+  resetErrors();
+  spesaAllegato.value = row;
+  fileAllegato.value = null;
+  dialogAllegatoAperto.value = true;
+}
+
+async function caricaAllegato() {
+  if (!spesaAllegato.value || !fileAllegato.value) return;
+  resetErrors();
+  loadingAllegato.value = true;
+  try {
+    await store.caricaAllegato(spesaAllegato.value.id, fileAllegato.value);
+    Notify.create({ type: 'positive', message: 'Allegato caricato', icon: 'check_circle' });
+    dialogAllegatoAperto.value = false;
+  } catch (e: unknown) {
+    captureError(e, 'Caricamento non riuscito');
+  } finally {
+    loadingAllegato.value = false;
+  }
+}
+
+async function rimuoviAllegato() {
+  if (!spesaAllegato.value) return;
+  resetErrors();
+  loadingAllegato.value = true;
+  try {
+    await store.rimuoviAllegato(spesaAllegato.value.id);
+    Notify.create({ type: 'positive', message: 'Allegato rimosso', icon: 'check_circle' });
+    dialogAllegatoAperto.value = false;
+  } catch (e: unknown) {
+    captureError(e, 'Rimozione non riuscita');
+  } finally {
+    loadingAllegato.value = false;
+  }
 }
 
 const paginazione = { rowsPerPage: 25, sortBy: 'data', descending: true };
@@ -562,9 +686,27 @@ async function salva() {
       payload.bt_data = form.bt_data || form.data;
       payload.bt_descrizione = form.bt_descrizione || form.descrizione;
     }
-    await store.creaSpesa(payload);
-    Notify.create({ type: 'positive', message: 'Spesa salvata', icon: 'check_circle' });
+    const creata = await store.creaSpesa(payload);
+    // La spesa è salvata comunque: se l'allegato fallisce lo si ricarica
+    // dalla riga, senza rifare la spesa.
+    let allegatoFallito = false;
+    if (fileNuovaSpesa.value) {
+      try {
+        await store.caricaAllegato(creata.id, fileNuovaSpesa.value);
+      } catch {
+        allegatoFallito = true;
+      }
+    }
+    if (allegatoFallito) {
+      Notify.create({
+        type: 'warning',
+        message: "Spesa salvata, ma l'allegato non è stato caricato: riprova dalla riga della spesa.",
+      });
+    } else {
+      Notify.create({ type: 'positive', message: 'Spesa salvata', icon: 'check_circle' });
+    }
     dialogAperto.value = false;
+    fileNuovaSpesa.value = null;
     Object.assign(form, {
       data: new Date().toISOString().slice(0, 10),
       descrizione: '',
@@ -708,5 +850,8 @@ async function salva() {
 }
 .vp-mono {
   font-variant-numeric: tabular-nums;
+}
+.vp-p-spese__cella-allegato {
+  white-space: nowrap;
 }
 </style>
