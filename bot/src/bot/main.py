@@ -45,7 +45,7 @@ def _api_viapal(cfg):
 
 
 def _raccogli_dai_gruppi(
-    browser: Browser, cfg, archivio: Archivio
+    browser: Browser, cfg, archivio: Archivio, adesso: datetime | None = None
 ) -> tuple[list, list[tuple[str, str]]]:
     """Scorre i gruppi uno dopo l'altro; ritorna i post e i gruppi muti.
 
@@ -55,14 +55,34 @@ def _raccogli_dai_gruppi(
     questo rende cieco il controllo di `raccogli`, che grida solo quando
     l'archivio è vuoto. Da qui in poi il gruppo che non dà niente va segnalato
     a mano: zero post e "non sono iscritto a quel gruppo" si somigliano troppo.
+
+    Il segnalibro non si usa com'è: lo scroll scende `margine_segnalibro_ore`
+    più in basso, perché nei gruppi moderati un post compare all'approvazione
+    con l'ora in cui è stato scritto, cioè già sotto la linea di stop. E una
+    volta al giorno, da `passaggio_profondo_dalle` in poi, un gruppo per giro
+    si legge senza segnalibro per le ultime `passaggio_profondo_ore`: è la
+    rete per i post approvati con più ritardo del margine. Un gruppo per giro
+    e non l'orizzonte intero perché `--estrai` deve restare sotto il timeout
+    con cui lo lancia /affitti: sul gruppo grande tre giorni sono 7 minuti.
     """
     post, falliti = [], []
     gia_visti = archivio.id_visti()
+    adesso = adesso or datetime.now()
     orizzonte = (
-        datetime.now() - timedelta(days=cfg.orizzonte_giorni)
+        adesso - timedelta(days=cfg.orizzonte_giorni)
         if cfg.orizzonte_giorni else None
     )
+    profondo_fatto = False
     for gid in cfg.gruppi:
+        segnalibro = archivio.ultima_ora(gid)
+        orizzonte_gruppo = orizzonte
+        profondo = not profondo_fatto and _tocca_al_passaggio_profondo(cfg, archivio, gid, adesso)
+        if profondo:
+            log.info("gruppo %s: passaggio profondo del giorno, segnalibro ignorato", gid)
+            segnalibro = None
+            orizzonte_gruppo = _piu_recente(orizzonte, adesso - timedelta(hours=cfg.passaggio_profondo_ore))
+        elif segnalibro is not None:
+            segnalibro -= timedelta(hours=cfg.margine_segnalibro_ore)
         try:
             lettura = raccogli(
                 browser,
@@ -70,13 +90,18 @@ def _raccogli_dai_gruppi(
                 gia_visti=gia_visti,
                 stop_dopo_visti=cfg.scroll_stop_after_seen,
                 max_scroll=cfg.max_scroll,
-                ultima_ora=archivio.ultima_ora(gid),
-                orizzonte=orizzonte,
+                ultima_ora=segnalibro,
+                orizzonte=orizzonte_gruppo,
             )
         except MarkupCambiato as exc:
             log.error("gruppo %s: estrazione a vuoto: %s", gid, exc)
             falliti.append((gid, str(exc)))
             continue
+        if profondo:
+            # Subito, non in sospeso: se questo giro muore, il prossimo
+            # passaggio profondo è domani e l'orizzonte copre il buco.
+            archivio.segna_profondo(gid, adesso.date())
+            profondo_fatto = True
         trovati = lettura.post
         archivio.segna_lettura(gid, lettura.ultima_ora)
         log.info("gruppo %s: %d post nuovi su %d letti", gid, len(trovati), lettura.letti)
@@ -85,6 +110,18 @@ def _raccogli_dai_gruppi(
             falliti.append((gid, "nessun post nel feed"))
         post.extend(trovati)
     return post, falliti
+
+
+def _piu_recente(a: datetime | None, b: datetime | None) -> datetime | None:
+    return max((t for t in (a, b) if t is not None), default=None)
+
+
+def _tocca_al_passaggio_profondo(cfg, archivio: Archivio, gid: str, adesso: datetime) -> bool:
+    """Oggi, da `passaggio_profondo_dalle` in poi, e non ancora fatto oggi."""
+    dalle = cfg.passaggio_profondo_dalle
+    if dalle < 0 or adesso.hour < dalle:
+        return False
+    return archivio.profondo_fatto_il(gid) != adesso.date()
 
 
 def identita(author_url: str | None, author_id: str | None = None, testo: str = "") -> str:

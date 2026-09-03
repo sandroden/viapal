@@ -108,3 +108,18 @@ def test_un_gruppo_senza_link_che_non_si_legge_ferma_il_caricamento(tmp_path):
     import pytest
     with pytest.raises(ValueError, match="1765622897069363"):
         carica(_con_gruppi_senza_link(tmp_path, ["1765622897069363"]))
+
+
+def test_margine_e_passaggio_profondo_hanno_un_default(tmp_path):
+    """Le config reali scritte prima del 03/09 non li nominano: devono
+    accendersi da sole, non restare a zero."""
+    testo = ESEMPIO.read_text().replace("margine_segnalibro_ore = 6\n", "").replace(
+        "passaggio_profondo_dalle = 12\n", ""
+    ).replace("passaggio_profondo_ore = 36\n", "")
+    assert "margine_segnalibro_ore" not in testo
+    f = tmp_path / "c.toml"
+    f.write_text(testo)
+    cfg = carica(f)
+    assert cfg.margine_segnalibro_ore == 6
+    assert cfg.passaggio_profondo_dalle == 12
+    assert cfg.passaggio_profondo_ore == 36

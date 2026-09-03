@@ -131,6 +131,18 @@ def test_il_ripasso_risale_per_i_post_idratati_in_ritardo():
     assert any(px < 0 for px in finto.scrollate), "il ripasso risale il feed"
 
 
+def test_la_risalita_del_ripasso_ha_un_tetto():
+    """Un solo post senza permalink dopo 90 passi di discesa non deve costare
+    cinque minuti di risalita (misurato il 03/09 nel passaggio profondo)."""
+    finto = FintoBrowser([[SENZA]])
+
+    post = scraper.raccogli(finto, "9", gia_visti=set(), max_scroll=90).post
+
+    assert len(post) == 1 and post[0].permalink_e_del_profilo
+    risalite = [px for px in finto.scrollate if px < 0]
+    assert len(risalite) == scraper.PASSI_MAX_RIPASSO
+
+
 def test_l_id_arrivato_tardi_smaschera_anche_i_post_gia_in_database():
     """Raccolto id-less al passo 1, l'id vero al passo 2 rivela che il post è
     già in database: va TOLTO dai raccolti, o la persona viene ricontattata."""

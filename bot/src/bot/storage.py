@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 SCHEMA = """
@@ -48,6 +48,13 @@ COLONNE_TARDIVE = (
     # NULL = ancora da mandare a viapal. È tutta la coda che serve.
     ("pushed_at", "TIMESTAMP"),
 )
+COLONNE_TARDIVE_LETTURE = (
+    # Il giorno (YYYY-MM-DD) dell'ultimo passaggio profondo sul gruppo, quello
+    # che ignora il segnalibro e legge fino all'orizzonte. Si segna subito,
+    # non in sospeso: se il giro muore, il giro profondo dopo è domani, e
+    # l'orizzonte di tre giorni copre il buco.
+    ("profondo_il", "TEXT"),
+)
 
 
 class Archivio:
@@ -56,11 +63,12 @@ class Archivio:
         self.percorso.parent.mkdir(parents=True, exist_ok=True)
         with self._conn() as c:
             c.executescript(SCHEMA)
-            for nome, tipo in COLONNE_TARDIVE:
-                try:
-                    c.execute(f"ALTER TABLE posts ADD COLUMN {nome} {tipo}")
-                except sqlite3.OperationalError:
-                    pass   # colonna già presente
+            for tabella, colonne in (("posts", COLONNE_TARDIVE), ("letture", COLONNE_TARDIVE_LETTURE)):
+                for nome, tipo in colonne:
+                    try:
+                        c.execute(f"ALTER TABLE {tabella} ADD COLUMN {nome} {tipo}")
+                    except sqlite3.OperationalError:
+                        pass   # colonna già presente
 
     @contextmanager
     def _conn(self):
@@ -96,6 +104,23 @@ class Archivio:
                 "letto_il = excluded.letto_il",
                 (group_id, ora.isoformat(timespec="minutes"),
                  datetime.now(timezone.utc).isoformat()),
+            )
+
+    def profondo_fatto_il(self, group_id: str) -> date | None:
+        """Il giorno dell'ultimo passaggio profondo su questo gruppo, o None."""
+        with self._conn() as c:
+            r = c.execute(
+                "SELECT profondo_il FROM letture WHERE group_id = ?", (group_id,)
+            ).fetchone()
+        return date.fromisoformat(r["profondo_il"]) if r and r["profondo_il"] else None
+
+    def segna_profondo(self, group_id: str, giorno: date) -> None:
+        """Il passaggio profondo di oggi su questo gruppo è fatto."""
+        with self._conn() as c:
+            c.execute(
+                "INSERT INTO letture (group_id, profondo_il, letto_il) VALUES (?, ?, ?) "
+                "ON CONFLICT(group_id) DO UPDATE SET profondo_il = excluded.profondo_il",
+                (group_id, giorno.isoformat(), datetime.now(timezone.utc).isoformat()),
             )
 
     def conferma_letture(self) -> None:

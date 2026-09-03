@@ -232,6 +232,26 @@ giro dopo rilegge gli stessi post. `orizzonte_giorni` nel TOML (3 di base)
 limita il primo giro su un gruppo nuovo e la ripartenza dopo giorni di fermo:
 un post più vecchio di così non interessa, e vale come già visto.
 
+Il segnalibro da solo però perde post, ed è stato misurato (03/09: 7 su ~46
+in un giorno, rileggendo tutto alla vecchia maniera): nei gruppi moderati un
+post compare nel feed quando l'amministratore lo approva, ma porta l'ora in
+cui è stato scritto, spesso ore prima — e se quell'ora è già sotto la linea
+di stop non lo si vede mai. Due rimedi, entrambi nel TOML:
+
+- `margine_segnalibro_ore` (6): lo scroll si ferma qualche ora **sotto** il
+  segnalibro, non sopra. Costa qualche passo in più a giro.
+- `passaggio_profondo_dalle` (12): da quell'ora in poi, una volta al giorno,
+  ogni gruppo si legge senza segnalibro per le ultime
+  `passaggio_profondo_ore` (36), col vecchio criterio dei già visti. Un
+  gruppo per giro, quindi con quattro gruppi e il loop a 25 minuti si chiude
+  entro le 14. Non l'orizzonte intero: tre giorni sul gruppo grande sono 310
+  post e 7 minuti, e `--estrai` con tutti i gruppi deve restare sotto i dieci
+  minuti del timeout con cui lo lancia `/affitti`. `-1` lo spegne.
+
+Per rileggere tutto a mano, senza toccare il segnalibro vero: copia del DB con
+`UPDATE letture SET ultima_ora = NULL, in_sospeso = NULL`, poi `--estrai` con
+`--db` sulla copia. È quello che ha misurato la perdita.
+
 ## Le tre trappole trovate sul campo
 
 Verificate il 2026-08-27, con agent-browser 0.27.0. Sono documentate anche in

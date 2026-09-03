@@ -75,6 +75,20 @@ class Config:
     # Un post più vecchio di così non interessa: limita il primo giro su un
     # gruppo nuovo e la ripartenza dopo giorni di fermo. 0 = nessun limite.
     orizzonte_giorni: int = 3
+    # Lo scroll si ferma un po' SOTTO il segnalibro, non sopra: nei gruppi
+    # moderati un post compare nel feed quando viene approvato, ma mostra l'ora
+    # in cui è stato scritto — e se quell'ora è già sotto la linea di stop non
+    # lo si vede mai. Misurato il 03/09: 7 post su ~46 persi in un giorno.
+    margine_segnalibro_ore: int = 6
+    # Una volta al giorno, dall'ora indicata in poi, ogni gruppo si legge una
+    # volta fino all'orizzonte ignorando il segnalibro (un gruppo per giro, per
+    # restare sotto i dieci minuti): recupera i post approvati con più ritardo
+    # del margine. Sotto zero = mai.
+    passaggio_profondo_dalle: int = 12
+    # Quanto indietro guarda il passaggio profondo. Non l'orizzonte intero:
+    # sul gruppo grande tre giorni costano 7 minuti (misurato il 03/09, 310
+    # post), e --estrai deve restare sotto i dieci minuti con tutti i gruppi.
+    passaggio_profondo_ore: int = 36
 
     @property
     def push_attivo(self) -> bool:
@@ -143,6 +157,9 @@ def carica(percorso: str | Path) -> Config:
         scroll_stop_after_seen=int(fb.get("scroll_stop_after_seen", 10)),
         max_scroll=int(fb.get("max_scroll", 45)),
         orizzonte_giorni=int(fb.get("orizzonte_giorni", 3)),
+        margine_segnalibro_ore=int(fb.get("margine_segnalibro_ore", 6)),
+        passaggio_profondo_dalle=int(fb.get("passaggio_profondo_dalle", 12)),
+        passaggio_profondo_ore=int(fb.get("passaggio_profondo_ore", 36)),
         headed=bool(fb.get("headed", False)),
         profilo_browser=str(fb.get("profilo_browser", "~/.viapal-bot/fb-profile")),
         user_agent=fb.get("user_agent") or None,

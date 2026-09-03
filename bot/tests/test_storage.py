@@ -64,3 +64,30 @@ def test_senza_ora_leggibile_il_segnalibro_resta_dov_era(tmp_path):
     a.segna_lettura("g", None)
     a.conferma_letture()
     assert a.ultima_ora("g") == datetime(2026, 9, 2, 22, 16)
+
+
+def test_il_passaggio_profondo_si_segna_anche_senza_segnalibro(tmp_path):
+    """Il gruppo nuovo non ha ancora una riga in `letture`: la crea lui."""
+    from datetime import date, datetime
+    a = Archivio(tmp_path / "t.db")
+    assert a.profondo_fatto_il("g") is None
+    a.segna_profondo("g", date(2026, 9, 4))
+    assert a.profondo_fatto_il("g") == date(2026, 9, 4)
+    assert a.ultima_ora("g") is None
+    a.segna_lettura("g", datetime(2026, 9, 4, 12, 30))
+    a.conferma_letture()
+    assert a.profondo_fatto_il("g") == date(2026, 9, 4), "la lettura non cancella il giorno"
+
+
+def test_il_database_di_prima_riceve_la_colonna_del_passaggio_profondo(tmp_path):
+    """Il file di campagna esiste già: la colonna va aggiunta a caldo."""
+    import sqlite3
+    from datetime import date, datetime
+    db = tmp_path / "vecchio.db"
+    with sqlite3.connect(db) as c:
+        c.execute("CREATE TABLE letture (group_id TEXT PRIMARY KEY, ultima_ora TEXT, in_sospeso TEXT, letto_il TIMESTAMP)")
+        c.execute("INSERT INTO letture VALUES ('g', '2026-09-03T15:08', NULL, 'x')")
+    a = Archivio(db)
+    a.segna_profondo("g", date(2026, 9, 4))
+    assert a.profondo_fatto_il("g") == date(2026, 9, 4)
+    assert a.ultima_ora("g") == datetime(2026, 9, 3, 15, 8)

@@ -24,6 +24,15 @@ scroll_stop_after_seen = 10
 # ripartenza dopo giorni di fermo: un post più vecchio di così non interessa.
 max_scroll = 90          # tetto, in passi da 600px
 orizzonte_giorni = 3
+# Nei gruppi moderati un post compare quando l'amministratore lo approva, ma
+# porta l'ora in cui è stato scritto: se è già sotto la linea di stop non si
+# vede mai. Quindi lo scroll scende fino a qualche ora SOTTO il segnalibro, e
+# una volta al giorno (dall'ora indicata, un gruppo per giro) ogni gruppo si
+# rilegge per le ultime passaggio_profondo_ore ignorando il segnalibro.
+# passaggio_profondo_dalle = -1 lo spegne.
+margine_segnalibro_ore = 6
+passaggio_profondo_dalle = 12
+passaggio_profondo_ore = 36
 headed = false                          # true se Facebook comincia a chiedere verifiche
 profilo_browser = "~/.viapal-bot/fb-profile"
 # UA della sessione con cui è stato fatto il login, per non presentarsi come un

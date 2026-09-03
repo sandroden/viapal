@@ -72,6 +72,9 @@ class FintaConfig:
     scroll_stop_after_seen: int = 10
     max_scroll: int = 5
     orizzonte_giorni: int = 3
+    margine_segnalibro_ore: int = 6
+    passaggio_profondo_dalle: int = -1     # spento: si accende nel test apposta
+    passaggio_profondo_ore: int = 36
 
 
 def test_ogni_gruppo_viene_letto_e_i_post_si_sommano(tmp_path):
@@ -117,8 +120,95 @@ def test_ogni_gruppo_riparte_dal_suo_segnalibro(tmp_path):
         return Lettura([])
 
     with patch("bot.main.raccogli", side_effect=finto_raccogli):
-        _raccogli_dai_gruppi(None, FintaConfig(("a", "b")), archivio)
+        _raccogli_dai_gruppi(None, FintaConfig(("a", "b"), margine_segnalibro_ore=0), archivio)
     assert segnalibri == {"a": LETTO_FINO_A, "b": None}
+
+
+def test_lo_scroll_scende_qualche_ora_sotto_il_segnalibro(tmp_path):
+    """Nei gruppi moderati un post compare all'approvazione con l'ora in cui
+    è stato scritto: fermarsi esattamente al segnalibro lo perde per sempre
+    (7 su ~46 in un giorno, misurato il 03/09)."""
+    from datetime import timedelta
+    from bot.main import _raccogli_dai_gruppi
+    archivio = Archivio(tmp_path / "t.db")
+    archivio.segna_lettura("a", LETTO_FINO_A)
+    archivio.conferma_letture()
+    segnalibri = {}
+
+    def finto_raccogli(browser, gid, **kw):
+        segnalibri[gid] = kw["ultima_ora"]
+        return Lettura([])
+
+    with patch("bot.main.raccogli", side_effect=finto_raccogli):
+        _raccogli_dai_gruppi(None, FintaConfig(("a", "b"), margine_segnalibro_ore=6), archivio)
+    assert segnalibri == {"a": LETTO_FINO_A - timedelta(hours=6), "b": None}
+
+
+def _segnalibri_del_giro(cfg, archivio, adesso):
+    from bot.main import _raccogli_dai_gruppi
+    segnalibri = {}
+
+    def finto_raccogli(browser, gid, **kw):
+        segnalibri[gid] = kw["ultima_ora"]
+        return Lettura([])
+
+    with patch("bot.main.raccogli", side_effect=finto_raccogli):
+        _raccogli_dai_gruppi(None, cfg, archivio, adesso=adesso)
+    return segnalibri
+
+
+def test_il_passaggio_profondo_e_uno_al_giorno_e_un_gruppo_per_giro(tmp_path):
+    """Da mezzogiorno in poi ogni gruppo si legge una volta senza segnalibro,
+    ma uno solo per giro: un passaggio profondo costa minuti, e --estrai deve
+    restare sotto il timeout di /affitti. Il giorno dopo si ricomincia."""
+    archivio = Archivio(tmp_path / "t.db")
+    for gid in ("a", "b"):
+        archivio.segna_lettura(gid, LETTO_FINO_A)
+    archivio.conferma_letture()
+    cfg = FintaConfig(("a", "b"), margine_segnalibro_ore=0, passaggio_profondo_dalle=12)
+
+    mattina = datetime(2026, 9, 4, 11, 59)
+    assert _segnalibri_del_giro(cfg, archivio, mattina) == {"a": LETTO_FINO_A, "b": LETTO_FINO_A}
+
+    mezzogiorno = datetime(2026, 9, 4, 12, 5)
+    assert _segnalibri_del_giro(cfg, archivio, mezzogiorno) == {"a": None, "b": LETTO_FINO_A}
+    assert _segnalibri_del_giro(cfg, archivio, mezzogiorno) == {"a": LETTO_FINO_A, "b": None}
+    assert _segnalibri_del_giro(cfg, archivio, mezzogiorno) == {"a": LETTO_FINO_A, "b": LETTO_FINO_A}
+
+    domani = datetime(2026, 9, 5, 15, 0)
+    assert _segnalibri_del_giro(cfg, archivio, domani) == {"a": None, "b": LETTO_FINO_A}
+
+
+def test_il_passaggio_profondo_guarda_indietro_di_36_ore_non_di_3_giorni(tmp_path):
+    """Tre giorni sul gruppo grande sono 7 minuti: con gli altri gruppi
+    dietro si sfora il timeout di /affitti."""
+    from datetime import timedelta
+    from bot.main import _raccogli_dai_gruppi
+    archivio = Archivio(tmp_path / "t.db")
+    cfg = FintaConfig(("a", "b"), passaggio_profondo_dalle=12, orizzonte_giorni=3)
+    adesso = datetime(2026, 9, 4, 12, 5)
+    orizzonti = {}
+
+    def finto_raccogli(browser, gid, **kw):
+        orizzonti[gid] = kw["orizzonte"]
+        return Lettura([])
+
+    with patch("bot.main.raccogli", side_effect=finto_raccogli):
+        _raccogli_dai_gruppi(None, cfg, archivio, adesso=adesso)
+    assert orizzonti == {"a": adesso - timedelta(hours=36), "b": adesso - timedelta(days=3)}
+
+
+def test_il_passaggio_profondo_fallito_si_ritenta_al_giro_dopo(tmp_path):
+    from bot.main import _raccogli_dai_gruppi
+    from bot.scraper import MarkupCambiato
+    archivio = Archivio(tmp_path / "t.db")
+    cfg = FintaConfig(("a",), passaggio_profondo_dalle=12)
+    adesso = datetime(2026, 9, 4, 12, 5)
+    with patch("bot.main.raccogli", side_effect=MarkupCambiato("feed vuoto")):
+        _, falliti = _raccogli_dai_gruppi(None, cfg, archivio, adesso=adesso)
+    assert [g for g, _ in falliti] == ["a"]
+    assert archivio.profondo_fatto_il("a") is None
+    assert _segnalibri_del_giro(cfg, archivio, adesso) == {"a": None}
 
 
 def test_chi_posta_in_due_gruppi_si_legge_una_volta_sola():

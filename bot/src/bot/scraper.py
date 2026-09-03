@@ -40,6 +40,13 @@ URL_GRUPPO = "https://www.facebook.com/groups/{group_id}?sorting_setting=CHRONOL
 # della finestra: così ogni riga del nastro ci passa dentro almeno una volta.
 PASSO_SCROLL = 600
 PASSO_RIPASSO = 400
+# Tetto alla risalita del ripasso. Basta UN post rimasto senza permalink
+# perché la risalita rifaccia tutto il nastro: nel passaggio profondo (70
+# passi di discesa) sono 113 passi e 5 minuti, misurati il 03/09, per un
+# post che verrà notificato comunque col link del profilo. Ventiquattro
+# passi sono ~9600px, cioè le ultime 16 schermate di discesa: un giro
+# normale ci sta dentro per intero.
+PASSI_MAX_RIPASSO = 24
 
 # Quanti post di fila non più recenti dell'ultima lettura bastano per fermarsi.
 # Uno solo potrebbe essere un post tenuto in evidenza in cima; due di fila in
@@ -199,6 +206,16 @@ def raccogli(
         letti += len(grezzi)
         visti_di_fila = _integra(grezzi, raccolti, noti, visti_di_fila, orizzonte)
         ora_max = _piu_recente(ora_max, _ora_massima(grezzi))
+        if log.isEnabledFor(logging.DEBUG):
+            ore = [parse_ora(g.get("ora")) for g in grezzi]
+            con_ora = [o for o in ore if o is not None]
+            log.debug(
+                "giro %d: %d nel DOM, %d con ora (%s → %s), sequenza %s, raccolti %d, visti di fila %d",
+                giro, len(grezzi), len(con_ora),
+                _iso(min(con_ora)) if con_ora else "-", _iso(max(con_ora)) if con_ora else "-",
+                " ".join(o.strftime("%d/%H:%M") if o else "?" for o in ore),
+                len(raccolti), visti_di_fila,
+            )
         if visti_di_fila >= stop_dopo_visti:
             log.info("giro %d: %d post già visti di fila, mi fermo", giro, visti_di_fila)
             break
@@ -413,9 +430,10 @@ def _ripasso(
             return
         _passo(PASSO_SCROLL)
 
-    # Risalita fitta, fino in cima o finché non manca più niente.
+    # Risalita fitta, fino in cima o finché non manca più niente — ma non
+    # oltre il tetto: quel che resta senza permalink va col link del profilo.
     percorso = (passi + 3) * PASSO_SCROLL
-    for _ in range(percorso // PASSO_RIPASSO + 2):
+    for _ in range(min(percorso // PASSO_RIPASSO + 2, PASSI_MAX_RIPASSO)):
         if not _mancano():
             return
         _passo(-PASSO_RIPASSO)

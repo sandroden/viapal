@@ -12,7 +12,8 @@ cd bot && uv run python -m bot.main --estrai /tmp/affitti-post.json
 ```
 
 Lancialo **in primo piano**, con timeout di 10 minuti (600000): dura uno o
-due minuti. Non usare `run_in_background` né `TaskOutput`: in questa sessione
+due minuti, quattro o cinque nel primo giro dopo mezzogiorno, quando un
+gruppo per giro si rilegge per intero (passaggio profondo). Non usare `run_in_background` né `TaskOutput`: in questa sessione
 i task in background vengono uccisi alla fine del turno, e `TaskOutput` è
 rimasto appeso per ore ignorando il suo timeout.
 
