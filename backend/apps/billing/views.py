@@ -896,6 +896,7 @@ class UtilityBillViewSet(ModelViewSet):
         today = datetime.date.today()
         assignments = list(
             RoomAssignment.objects.filter(room__property=prop)
+            .exclude(rinunciata=True)
             .values("valid_from", "valid_to")
         )
 

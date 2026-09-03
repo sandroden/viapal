@@ -751,11 +751,12 @@ class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
     modal_edit_width = 1200
     list_display = (
         "tenant", "room", "valid_from", "valid_to",
-        "canone_mensile",
+        "canone_mensile", "rinunciata",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
     list_filter = (
         ("valid_to", admin.EmptyFieldListFilter),
+        "rinunciata",
     )
     search_fields = (
         "tenant__nominativo", "room__nome",
@@ -764,7 +765,7 @@ class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
         ("tenant", "room",
          "room__property__nome__icontains:immobile"),
         ("valid_from__gte:dal", "valid_from__lte:al",
-         "valid_to__isnull:occupazione chiusa"),
+         "valid_to__isnull:occupazione chiusa", "rinunciata"),
         ("valid_to__gte:fine dal", "valid_to__lte:fine al"),
         ("canone_mensile__gte:canone min", "canone_mensile__lte:canone max"),
         ("costo_cessione__isnull:senza costo cessione",
@@ -796,7 +797,10 @@ class RoomAssignmentAdmin(ModalEditMixin, JumboModelAdmin):
         )
     fieldsets = (
         ("Periodo", {
-            "fields": ("room", "tenant", "valid_from", "valid_to"),
+            "fields": (
+                "room", "tenant", "valid_from", "valid_to",
+                "rinunciata", "data_rinuncia",
+            ),
         }),
         ("Economico", {
             "fields": ("canone_mensile", "bank_account_affitto"),

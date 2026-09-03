@@ -736,7 +736,24 @@
                 <q-list separator dense>
                   <q-item v-for="a in situazione.assignments" :key="a.id">
                     <q-item-section>
-                      <q-item-label>{{ a.room_nome }}</q-item-label>
+                      <q-item-label>
+                        {{ a.room_nome }}
+                        <q-badge
+                          v-if="a.rinunciata"
+                          outline
+                          color="blue-grey-6"
+                          class="q-ml-xs"
+                          data-testid="badge-rinuncia"
+                        >
+                          rinuncia
+                          <q-tooltip v-if="a.data_rinuncia">
+                            Rinuncia comunicata il {{ formattaData(a.data_rinuncia) }}
+                          </q-tooltip>
+                          <q-tooltip v-else>
+                            Assegnazione mai perfezionata: l'inquilino non è mai entrato.
+                          </q-tooltip>
+                        </q-badge>
+                      </q-item-label>
                       <q-item-label caption>
                         {{ formattaData(a.valid_from) }} →
                         {{ a.valid_to ? formattaData(a.valid_to) : 'in corso' }}
@@ -747,7 +764,7 @@
                         · {{ a.contract_nome || 'nessun contratto' }}
                       </q-item-label>
                     </q-item-section>
-                    <q-item-section v-if="puoModificare && a.valid_to === null" side>
+                    <q-item-section v-if="puoModificare" side>
                       <div class="row items-center no-wrap q-gutter-xs">
                         <q-btn
                           flat
@@ -759,9 +776,10 @@
                           data-testid="apri-correggi-assignment"
                           @click="apriDialogCorreggi(a)"
                         >
-                          <q-tooltip>Correggi assegnazione</q-tooltip>
+                          <q-tooltip>Modifica assegnazione</q-tooltip>
                         </q-btn>
                         <q-btn
+                          v-if="a.valid_to === null && !a.rinunciata"
                           flat
                           dense
                           no-caps
@@ -905,16 +923,16 @@
       </q-card>
     </q-dialog>
 
-    <!-- Dialog correggi assegnazione -->
+    <!-- Dialog modifica assegnazione -->
     <q-dialog v-model="dialogCorreggi">
       <q-card style="width: 440px; max-width: 92vw">
         <q-card-section>
           <div class="vp-p-id__dialog-titolo">
-            Correggi {{ assignmentCorreggi?.room_nome ?? 'assegnazione' }}
+            Modifica {{ assignmentCorreggi?.room_nome ?? 'assegnazione' }}
           </div>
           <div class="vp-p-id__popup-nota">
-            Corregge l'assegnazione corrente e rigenera gli addebiti d'affitto
-            non ancora incassati. Gli addebiti con incassi già imputati non
+            Modifica l'assegnazione e rigenera gli addebiti d'affitto non
+            ancora incassati. Gli addebiti con incassi già imputati non
             vengono toccati.
           </div>
         </q-card-section>
@@ -937,6 +955,40 @@
             outlined
             dense
             data-testid="correggi-valid-from"
+          />
+          <!-- Data fine: chiude l'assegnazione senza subentrante (per il
+               subentro c'è il wizard Cessione). Vuota = ancora in corso, e
+               svuotarla riapre un'assegnazione chiusa per sbaglio. -->
+          <q-input
+            v-if="!formCorreggi.rinunciata"
+            v-model="formCorreggi.valid_to"
+            label="Data fine"
+            type="date"
+            outlined
+            dense
+            clearable
+            hint="Vuota: assegnazione ancora in corso."
+            data-testid="correggi-valid-to"
+          />
+          <!-- Rinuncia: l'assegnazione era servita solo ad agganciare il
+               deposito, l'inquilino non è mai entrato. La data di fine la
+               mette il backend (= data inizio): qui non si manda. -->
+          <q-toggle
+            v-model="formCorreggi.rinunciata"
+            label="Rinuncia (non è mai entrata)"
+            dense
+            data-testid="correggi-rinuncia"
+          />
+          <q-input
+            v-if="formCorreggi.rinunciata"
+            v-model="formCorreggi.data_rinuncia"
+            label="Data rinuncia"
+            type="date"
+            outlined
+            dense
+            clearable
+            hint="Il giorno in cui la rinuncia è stata comunicata, non la fine occupazione."
+            data-testid="correggi-data-rinuncia"
           />
           <!-- Il contratto non tocca gli addebiti: dice quali carte del
                contratto l'inquilino vede nella sua area. -->
@@ -1672,7 +1724,7 @@ async function eseguiCessione(): Promise<void> {
   }
 }
 
-// --- Correggi assegnazione (canone/data inizio + rigenerazione addebiti) ----
+// --- Modifica assegnazione (dati, chiusura, rinuncia + rigenerazione) ------
 
 interface EsitoRigenera {
   creati: number;
@@ -1690,10 +1742,17 @@ const erroreCorreggi = ref('');
 const formCorreggi = ref<{
   canone_mensile: string;
   valid_from: string;
+  /** null/'' = assegnazione ancora in corso. */
+  valid_to: string | null;
+  rinunciata: boolean;
+  data_rinuncia: string | null;
   contract: number | null;
 }>({
   canone_mensile: '',
   valid_from: '',
+  valid_to: null,
+  rinunciata: false,
+  data_rinuncia: null,
   contract: null,
 });
 
@@ -1719,6 +1778,9 @@ function apriDialogCorreggi(a: AssignmentRiga): void {
   formCorreggi.value = {
     canone_mensile: String(a.canone_mensile),
     valid_from: a.valid_from,
+    valid_to: a.valid_to ?? null,
+    rinunciata: Boolean(a.rinunciata),
+    data_rinuncia: a.data_rinuncia ?? null,
     contract: a.contract ?? null,
   };
   if (contratti.value.length === 0) void caricaContratti();
@@ -1732,7 +1794,7 @@ async function caricaContratti(): Promise<void> {
     );
     contratti.value = Array.isArray(data) ? data : (data.results ?? []);
   } catch {
-    // La correzione resta possibile anche senza l'elenco: il campo resta
+    // La modifica resta possibile anche senza l'elenco: il campo resta
     // vuoto e il PATCH non lo tocca.
   }
 }
@@ -1749,7 +1811,7 @@ function sintesiRigenera(esito: EsitoRigenera): string {
   if (esito.eliminati > 0) {
     parti.push(`${esito.eliminati} eliminat${esito.eliminati === 1 ? 'o' : 'i'}`);
   }
-  return `Assegnazione corretta: ${parti.join(', ')}.`;
+  return `Assegnazione aggiornata: ${parti.join(', ')}.`;
 }
 
 async function salvaCorrezione(): Promise<void> {
@@ -1766,10 +1828,10 @@ async function salvaCorrezione(): Promise<void> {
     return;
   }
   salvandoCorreggi.value = true;
+  // PATCH con i soli campi cambiati (idempotente: un nuovo click dopo un
+  // fallimento della rigenerazione lo ripete senza danni).
+  const payload: Record<string, string | number | boolean | null> = {};
   try {
-    // PATCH con i soli campi cambiati (idempotente: un nuovo click dopo un
-    // fallimento della rigenerazione lo ripete senza danni).
-    const payload: Record<string, string | number | null> = {};
     if (Number(f.canone_mensile) !== Number(a.canone_mensile)) {
       payload.canone_mensile = f.canone_mensile;
     }
@@ -1779,11 +1841,38 @@ async function salvaCorrezione(): Promise<void> {
     if ((f.contract ?? null) !== (a.contract ?? null)) {
       payload.contract = f.contract;
     }
+    // Rinuncia e data fine si escludono: con `rinunciata` il backend chiude
+    // da sé l'assegnazione (valid_to = valid_from), quindi valid_to non va
+    // mandato. Si spediscono sempre entrambi i campi del ramo attivo — non
+    // solo quelli cambiati — perché è l'arrivo di `rinunciata: true` a far
+    // ricalcolare valid_to anche quando cambia solo la data di inizio.
+    if (f.rinunciata) {
+      payload.rinunciata = true;
+      payload.data_rinuncia = f.data_rinuncia || null;
+    } else {
+      payload.rinunciata = false;
+      payload.valid_to = f.valid_to || null;
+    }
     if (Object.keys(payload).length > 0) {
       await api.patch(`/api/v1/room-assignments/${a.id}/`, payload);
     }
   } catch (e: unknown) {
-    erroreCorreggi.value = messaggioErrore(e, 'Correzione non riuscita.');
+    erroreCorreggi.value = messaggioErrore(e, 'Modifica non riuscita.');
+    salvandoCorreggi.value = false;
+    return;
+  }
+  // Rigenerare gli addebiti ha senso solo se è cambiato qualcosa che li
+  // determina. Attaccare un contratto a un'assegnazione del 2023 non deve
+  // rimettere mano ai suoi affitti.
+  const toccaAddebiti =
+    payload.canone_mensile !== undefined ||
+    payload.valid_from !== undefined ||
+    f.rinunciata !== Boolean(a.rinunciata) ||
+    (!f.rinunciata && (f.valid_to || null) !== (a.valid_to ?? null));
+  if (!toccaAddebiti) {
+    dialogCorreggi.value = false;
+    $q.notify({ type: 'positive', message: 'Assegnazione aggiornata.' });
+    await store.loadSituazione(tenantId.value, annoSelezionato.value, true);
     salvandoCorreggi.value = false;
     return;
   }
@@ -1796,7 +1885,7 @@ async function salvaCorrezione(): Promise<void> {
     await store.loadSituazione(tenantId.value, annoSelezionato.value, true);
   } catch (e: unknown) {
     erroreCorreggi.value =
-      'Correzione salvata, ma la rigenerazione degli addebiti non è riuscita: ' +
+      'Modifica salvata, ma la rigenerazione degli addebiti non è riuscita: ' +
       messaggioErrore(e, 'errore imprevisto.') +
       ' Riprova cliccando di nuovo Salva.';
   } finally {

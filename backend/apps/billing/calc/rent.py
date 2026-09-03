@@ -137,7 +137,13 @@ def genera_pagamenti_mese(
         valid_from__lte=ultimo_mese,
         valid_to__gte=primo_del_mese,
     )
-    assignments_qs = assignments_qs.distinct().select_related("tenant", "room")
+    # Le rinunce non hanno mai occupato la stanza: nessun canone, e nessuna
+    # quota condominio (che del canone è un addendo).
+    assignments_qs = (
+        assignments_qs.exclude(rinunciata=True)
+        .distinct()
+        .select_related("tenant", "room")
+    )
     if property is not None:
         assignments_qs = assignments_qs.filter(room__property=property)
     if tenant_id is not None:

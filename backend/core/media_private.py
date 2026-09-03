@@ -71,8 +71,10 @@ def _autorizza_documento_proprieta(user, path, property_ids):
     # Carta di un contratto: la vede solo chi ci sta dentro. Il filtro sta
     # anche nella lista API, ma qui è quello che conta — con l'URL in mano
     # si scaricherebbe comunque.
+    # Una rinuncia non è "starci dentro": chi non è mai entrato non vede le
+    # carte del contratto.
     return RoomAssignment.objects.filter(
-        tenant=profilo, contract_id=doc.contract_id
+        tenant=profilo, contract_id=doc.contract_id, rinunciata=False
     ).exists()
 
 

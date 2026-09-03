@@ -14,6 +14,12 @@ export interface AssignmentRiga {
   valid_to: string | null;
   canone_mensile: number;
   data_atto_cessione: string | null;
+  /** Assegnazione mai perfezionata: creata per agganciare il deposito, ma
+   *  l'inquilino non è mai entrato. Il backend le chiude subito
+   *  (valid_to = valid_from) e non contano come occupazione. */
+  rinunciata: boolean;
+  /** Giorno in cui la rinuncia è stata comunicata (non la fine occupazione). */
+  data_rinuncia: string | null;
 }
 
 export interface RentRiga {

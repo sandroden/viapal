@@ -498,7 +498,12 @@ def calcola_conguaglio_periodo(
         valid_from__lte=periodo_a,
         valid_to__gte=periodo_da,
     )
-    assignments_qs = assignments_qs.distinct().select_related("tenant")
+    # Le rinunce non hanno mai occupato la stanza: vanno tolte prima del
+    # conteggio dei giorni, altrimenti finirebbero anche nel denominatore
+    # `sum_giorni` diluendo la quota di tutti gli altri inquilini.
+    assignments_qs = (
+        assignments_qs.exclude(rinunciata=True).distinct().select_related("tenant")
+    )
 
     # --- Passo 3: giorni di presenza per assignment ---
     presenze: list[tuple] = []  # [(assignment, giorni_presenza)]

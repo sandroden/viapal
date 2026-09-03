@@ -601,6 +601,8 @@ class RoomAssignmentSerializer(serializers.ModelSerializer):
             "contract_nome",
             "valid_from",
             "valid_to",
+            "rinunciata",
+            "data_rinuncia",
             "canone_mensile",
             "bank_account_affitto",
             "costo_cessione",
@@ -608,6 +610,31 @@ class RoomAssignmentSerializer(serializers.ModelSerializer):
             "subentra_a",
             "note",
         ]
+
+    def validate(self, attrs):
+        """La rinuncia governa da sola la fine occupazione.
+
+        Chi marca una rinuncia manda il flag e la data in cui è stata
+        comunicata: la fine la mettiamo noi sul giorno dell'ingresso previsto,
+        perché in stanza non ci si è mai entrati. Togliendo il flag succede il
+        contrario — l'assegnazione torna aperta, a meno che il chiamante non
+        indichi una fine sua.
+        """
+        attrs = super().validate(attrs)
+        inst = self.instance
+        rinunciata = attrs.get("rinunciata", getattr(inst, "rinunciata", False))
+        valid_from = attrs.get("valid_from", getattr(inst, "valid_from", None))
+
+        if rinunciata:
+            if valid_from is not None:
+                attrs["valid_to"] = valid_from
+        else:
+            attrs["data_rinuncia"] = None
+            if "valid_to" not in attrs:
+                valid_to = getattr(inst, "valid_to", None)
+                if valid_to is not None and valid_to == valid_from:
+                    attrs["valid_to"] = None
+        return attrs
 
     def get_contract_nome(self, obj) -> str:
         """Etichetta del contratto come la vede l'utente (il nome, o le date

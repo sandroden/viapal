@@ -592,7 +592,15 @@ class Contract(TimestampedModel):
 
 
 class RoomAssignment(TimestampedModel):
-    """Periodo di occupazione di una stanza da parte di un inquilino."""
+    """Periodo di occupazione di una stanza da parte di un inquilino.
+
+    Sulla rinuncia l'autorità è il flag ``rinunciata``, non le date: sono i
+    calcolatori a saltarla, mentre ``valid_to = valid_from`` è solo la
+    scrittura leggibile della cosa (i conteggi giorni sono inclusivi, quindi
+    una durata "nulla" varrebbe comunque un giorno). L'allineamento della
+    fine lo fanno ``clean()`` e il serializer: chi salva con ``.save()``
+    diretto, saltando la validazione, resta responsabile di entrambi i campi.
+    """
 
     room = models.ForeignKey(
         Room,
@@ -627,6 +635,26 @@ class RoomAssignment(TimestampedModel):
         null=True,
         blank=True,
         verbose_name="fine occupazione",
+    )
+    rinunciata = models.BooleanField(
+        default=False,
+        verbose_name="rinuncia",
+        help_text=(
+            "L'occupazione non è mai iniziata: l'inquilino ha rinunciato prima "
+            "di entrare. L'assegnazione resta perché tiene agganciato il "
+            "deposito già versato, ma non produce alcun addebito (affitto, "
+            "utenze, TARI, quota condominio) e non occupa la stanza."
+        ),
+    )
+    data_rinuncia = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="data della rinuncia",
+        help_text=(
+            "Quando la rinuncia è stata comunicata. È un dato di cronaca: la "
+            "fine occupazione viene posta uguale all'inizio, perché in stanza "
+            "non ci si è mai entrati."
+        ),
     )
     canone_mensile = models.DecimalField(
         max_digits=10,
@@ -691,8 +719,16 @@ class RoomAssignment(TimestampedModel):
         constraints = [
             # Non è possibile avere two assignments sovrapposti per la stessa stanza.
             # Il vincolo viene anche verificato in clean() per messaggi d'errore chiari.
+            # Un'occupazione dura almeno un giorno, tranne quando è una
+            # rinuncia: lì `valid_to == valid_from` è la scrittura che dice
+            # "mai entrato" (i conteggi giorni sono inclusivi, quindi è il
+            # flag `rinunciata` a spegnere i calcoli, non la durata).
             models.CheckConstraint(
-                condition=models.Q(valid_to__isnull=True) | models.Q(valid_to__gt=models.F("valid_from")),
+                condition=(
+                    models.Q(valid_to__isnull=True)
+                    | models.Q(valid_to__gt=models.F("valid_from"))
+                    | models.Q(rinunciata=True, valid_to=models.F("valid_from"))
+                ),
                 name="room_assignment_valid_to_after_valid_from",
             )
         ]
@@ -703,7 +739,20 @@ class RoomAssignment(TimestampedModel):
 
     def clean(self):
         super().clean()
-        if self.valid_to and self.valid_to <= self.valid_from:
+        if self.rinunciata:
+            # La rinuncia chiude l'assegnazione sul giorno stesso dell'ingresso
+            # previsto: non c'è occupazione da rappresentare, solo il deposito
+            # da tenere agganciato.
+            self.valid_to = self.valid_from
+        elif self.data_rinuncia is not None:
+            raise ValidationError(
+                {"data_rinuncia": "La data della rinuncia vale solo su un'assegnazione marcata come rinuncia."}
+            )
+        if self.valid_to and self.valid_to < self.valid_from:
+            raise ValidationError(
+                {"valid_to": "La data di fine occupazione non può precedere la data di inizio."}
+            )
+        if self.valid_to and self.valid_to == self.valid_from and not self.rinunciata:
             raise ValidationError(
                 {"valid_to": "La data di fine occupazione deve essere successiva alla data di inizio."}
             )
@@ -764,7 +813,15 @@ class RoomAssignment(TimestampedModel):
         if not self.room_id or not self.valid_from:
             return
 
-        qs = RoomAssignment.objects.filter(room=self.room_id).exclude(pk=self.pk)
+        # Una rinuncia non ha mai occupato la stanza: non deve impedire di
+        # assegnarla ad altri, né da parte sua né subendola.
+        if self.rinunciata:
+            return
+        qs = (
+            RoomAssignment.objects.filter(room=self.room_id)
+            .exclude(pk=self.pk)
+            .exclude(rinunciata=True)
+        )
 
         # Un'assegnazione esistente si sovrappone se:
         # inizia prima della fine di questa E finisce dopo l'inizio di questa

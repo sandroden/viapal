@@ -24,9 +24,14 @@ def assegnazione_in_corso_q(oggi):
     ``billing.calc.posizione`` calcola ``assignment_attivo``, da cui discende
     il badge "ex inquilino" — se le due divergessero, la stessa persona
     risulterebbe uscita in una schermata e attiva in un'altra.
+
+    Le assegnazioni con ``rinunciata`` non contano mai: esistono solo per
+    tenere agganciato il deposito di chi non è mai entrato.
     """
-    return models.Q(valid_from__lte=oggi) & (
-        models.Q(valid_to__isnull=True) | models.Q(valid_to__gt=oggi)
+    return (
+        models.Q(valid_from__lte=oggi)
+        & models.Q(rinunciata=False)
+        & (models.Q(valid_to__isnull=True) | models.Q(valid_to__gt=oggi))
     )
 
 

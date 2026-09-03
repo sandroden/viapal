@@ -870,7 +870,7 @@ class ContoEconomicoView(APIView):
                 giorni_occupati = 0
                 for a in room.assignments.filter(
                     valid_from__lte=finestra_a,
-                ).exclude(valid_to__lt=finestra_da):
+                ).exclude(valid_to__lt=finestra_da).exclude(rinunciata=True):
                     da = max(a.valid_from, finestra_da)
                     a_fine = min(a.valid_to or finestra_a, finestra_a)
                     if a_fine >= da:
@@ -969,6 +969,10 @@ class TenantSituazioneView(APIView):
                 ),
                 "valid_from": a.valid_from.isoformat(),
                 "valid_to": a.valid_to.isoformat() if a.valid_to else None,
+                "rinunciata": a.rinunciata,
+                "data_rinuncia": a.data_rinuncia.isoformat()
+                if a.data_rinuncia
+                else None,
                 "canone_mensile": float(a.canone_mensile),
                 "data_atto_cessione": a.data_atto_cessione.isoformat()
                 if getattr(a, "data_atto_cessione", None)

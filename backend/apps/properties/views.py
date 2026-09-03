@@ -264,6 +264,7 @@ class TenantProfileViewSet(
                     Q(assignments__isnull=True)
                     | (
                         Q(assignments__valid_from__lte=fine)
+                        & Q(assignments__rinunciata=False)
                         & (
                             Q(assignments__valid_to__isnull=True)
                             | Q(assignments__valid_to__gt=inizio)
@@ -278,6 +279,7 @@ class TenantProfileViewSet(
         oggi = datetime.date.today()
         return qs.filter(
             assignments__valid_from__lte=oggi,
+            assignments__rinunciata=False,
         ).filter(
             Q(assignments__valid_to__isnull=True)
             | Q(assignments__valid_to__gt=oggi)
@@ -804,6 +806,7 @@ class RoomViewSet(ProtectedDestroyMixin, ModelViewSet):
         return Room.objects.filter(
             assignments__tenant__user=user,
             assignments__valid_from__lte=today,
+            assignments__rinunciata=False,
         ).filter(
             Q(assignments__valid_to__isnull=True) | Q(assignments__valid_to__gt=today)
         ).distinct()
@@ -944,6 +947,8 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
             contract=contract,
             valid_from=_val("valid_from"),
             valid_to=_val("valid_to"),
+            rinunciata=_val("rinunciata", False),
+            data_rinuncia=_val("data_rinuncia"),
             canone_mensile=_val("canone_mensile"),
             bank_account_affitto=conto,
             costo_cessione=_val("costo_cessione"),
@@ -1074,7 +1079,7 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
             raise ValidationError(
                 {"tenant": "L'inquilino appartiene a un altro immobile."}
             )
-        if tenant.assignments.filter(valid_to__isnull=True).exists():
+        if tenant.assignments.filter(valid_to__isnull=True, rinunciata=False).exists():
             raise ValidationError(
                 {"tenant": "L'inquilino ha già un'assegnazione in corso."}
             )

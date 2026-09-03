@@ -1651,3 +1651,71 @@ class TestQuotaEsclusa:
         assert ris["totali_per_voce"]["luce"] == Decimal("0.00")
         assert ris["totali_per_voce"]["gas"] == Decimal("80.00")
         assert ris["totale_escluso"] == Decimal("50.00")
+
+
+# ---------------------------------------------------------------------------
+# Rinuncia: non entra nel riparto, nemmeno come denominatore
+# ---------------------------------------------------------------------------
+
+
+class TestRinunciaFuoriDalRiparto:
+    """Un'assegnazione rinunciata nel periodo non deve cambiare nulla.
+
+    È il punto in cui l'errore sarebbe silenzioso: finendo nel denominatore
+    ``sum_giorni``, un inquilino mai entrato diluirebbe la quota di *tutti*
+    gli altri invece di produrre una riga di troppo che si nota.
+    """
+
+    @pytest.fixture
+    def setup_5_piu_rinuncia(
+        self, db, make_assignment, make_tenant, make_room, periodo_maggio,
+        supplier_luce, owner, immobile,
+    ):
+        assignments = [
+            make_assignment(
+                canone=Decimal("400.00"),
+                valid_from=datetime.date(2026, 5, 1),
+            )
+            for _ in range(5)
+        ]
+        RoomAssignment.objects.create(
+            room=make_room(),
+            tenant=make_tenant(nominativo="Rinunciataria"),
+            valid_from=datetime.date(2026, 5, 10),
+            valid_to=datetime.date(2026, 5, 10),
+            rinunciata=True,
+            data_rinuncia=datetime.date(2026, 5, 2),
+            canone_mensile=Decimal("400.00"),
+        )
+        UtilityBill.objects.create(
+            immobile=immobile,
+            supplier=supplier_luce,
+            numero_fattura="ENEL-TEST-RINUNCIA",
+            data_emissione=datetime.date(2026, 5, 15),
+            periodo_da=datetime.date(2026, 5, 1),
+            periodo_a=datetime.date(2026, 5, 31),
+            importo_totale=Decimal("250.00"),
+            pagata_da_owner=owner,
+        )
+        return assignments, periodo_maggio
+
+    def test_le_quote_restano_quelle_dei_cinque(self, setup_5_piu_rinuncia):
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        _, period = setup_5_piu_rinuncia
+        risultato = calcola_conguaglio_periodo(period.pk)
+
+        assert len(risultato["quote"]) == 5
+        for q in risultato["quote"]:
+            assert q["quota"] == Decimal("50.00"), (
+                f"La rinuncia ha diluito la quota di {q['tenant_nominativo']}: "
+                f"{q['quota']} invece di 50.00"
+            )
+
+    def test_il_denominatore_non_la_conta(self, setup_5_piu_rinuncia):
+        from billing.calc.utility import calcola_conguaglio_periodo
+
+        _, period = setup_5_piu_rinuncia
+        risultato = calcola_conguaglio_periodo(period.pk)
+
+        assert risultato["sum_giorni_presenza"] == 5 * 31

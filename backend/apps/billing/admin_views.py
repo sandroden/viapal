@@ -25,6 +25,7 @@ def _tenants_attivi_nel_mese(anno: int, mese: int, prop=None):
     ultimo = date(anno, mese, calendar.monthrange(anno, mese)[1])
     qs = TenantProfile.objects.filter(
         Q(assignments__valid_from__lte=ultimo)
+        & Q(assignments__rinunciata=False)
         & (
             Q(assignments__valid_to__isnull=True)
             | Q(assignments__valid_to__gte=primo)

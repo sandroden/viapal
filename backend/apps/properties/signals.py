@@ -85,7 +85,15 @@ def _crea_deposito_restituzione(tenant: TenantProfile) -> None:
     if esiste:
         return
 
-    ultimo = tenant.assignments.order_by("-valid_from", "-id").first()
+    # La restituzione appartiene all'ultima occupazione vera: una rinuncia
+    # successiva non deve rubarle l'aggancio. Se però l'inquilino ha *solo*
+    # rinunce, il deposito sta lì e lì resta.
+    ultimo = (
+        tenant.assignments.exclude(rinunciata=True)
+        .order_by("-valid_from", "-id")
+        .first()
+        or tenant.assignments.order_by("-valid_from", "-id").first()
+    )
     if ultimo is None:
         log.info(
             "Restituzione deposito prevista per tenant %s ma nessun "
@@ -134,6 +142,11 @@ def _crea_costo_cessione(assignment: RoomAssignment) -> None:
     Entrambi datati all'inizio occupazione (``valid_from``). Idempotente: una
     sola coppia per assignment; variazioni dell'importo NON rigenerano.
     """
+    if assignment.rinunciata:
+        # Nessun contratto è stato registrato: la registrazione si emette
+        # dopo l'ingresso reale, e qui l'ingresso non c'è mai stato.
+        return
+
     costo = assignment.costo_cessione
     if costo is None or costo <= Decimal("0"):
         return

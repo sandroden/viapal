@@ -216,6 +216,10 @@ interface AssignmentApi {
   room: number;
   valid_from: string;
   valid_to: string | null;
+  /** Assegnazione mai perfezionata (l'inquilino non è mai entrato): non
+   *  occupa la stanza, nemmeno per il giorno in cui risulta aperta. */
+  rinunciata: boolean;
+  data_rinuncia: string | null;
 }
 
 type CicloFatturazione = 'solare' | 'ingresso';
@@ -340,7 +344,10 @@ const ORIZZONTE_MESI = 2;
 function liberaDal(roomId: number): string | null | undefined {
   // undefined = occupata a tempo indeterminato; null = libera (mai occupata
   // o solo assegnazioni chiuse nel passato... la data la calcola il chiamante)
-  const delle = assignments.value.filter((a) => a.room === roomId);
+  // Le rinunce non sono occupazione: si scartano del tutto, altrimenti la
+  // stanza risulterebbe "libera dal giorno dopo la rinuncia" invece che
+  // semplicemente libera.
+  const delle = assignments.value.filter((a) => a.room === roomId && !a.rinunciata);
   if (delle.some((a) => a.valid_to === null)) return undefined;
   const fini = delle.map((a) => a.valid_to as string).sort();
   const ultimaFine = fini[fini.length - 1];
