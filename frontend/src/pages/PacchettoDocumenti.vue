@@ -16,7 +16,19 @@
 
     <article v-else-if="pacchetto" class="pk-foglio">
       <header class="pk-testata">
-        <div class="pk-testata__casa">{{ pacchetto.casa.nome }}</div>
+        <!-- Chi riceve il link non ha un account: il nome della casa è
+             solo un'insegna. Per un membro che apre il proprio link (per
+             controllarlo, o arrivando da un'email) è invece la via di
+             ritorno all'applicazione. -->
+        <router-link
+          v-if="auth.isAuthenticated"
+          :to="auth.homePath"
+          class="pk-testata__casa pk-testata__casa--link"
+          data-testid="torna-app"
+        >
+          {{ pacchetto.casa.nome }}
+        </router-link>
+        <div v-else class="pk-testata__casa">{{ pacchetto.casa.nome }}</div>
         <h1 class="pk-testata__titolo">Documenti per {{ pacchetto.destinatario }}</h1>
         <div v-if="pacchetto.casa.indirizzo" class="pk-testata__indirizzo">
           {{ pacchetto.casa.indirizzo }}
@@ -118,6 +130,7 @@
 import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { api } from 'boot/axios';
+import { useAuthStore } from 'stores/auth';
 
 interface VocePubblica {
   id: number;
@@ -134,6 +147,7 @@ interface Pacchetto {
 }
 
 const route = useRoute();
+const auth = useAuthStore();
 const token = String(route.params.token ?? '');
 
 const pacchetto = ref<Pacchetto | null>(null);
@@ -202,6 +216,16 @@ onMounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.09em;
   color: var(--vp-terra, #b4703f);
+}
+.pk-testata__casa--link {
+  display: inline-block;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+.pk-testata__casa--link:hover,
+.pk-testata__casa--link:focus-visible {
+  border-bottom-color: currentColor;
 }
 .pk-testata__titolo {
   font-family: var(--vp-serif, Georgia, serif);

@@ -197,6 +197,11 @@ generico).
   che sulla premessa. Montarlo solo su richiesta toglie la causa; uno
   `scrollTo(0,0)` dopo il caricamento avrebbe curato il sintomo. I testi fra
   gli allegati restano nel flusso: sono brevi.
+- Il nome della casa in testa alla pagina è un `router-link` alla home
+  (`auth.homePath`) **solo se c'è una sessione**: il guard chiama `fetchMe`
+  anche sulle rotte pubbliche, quindi la pagina sa chi guarda. Per il
+  destinatario resta un'insegna; per il membro che controlla il proprio
+  link è la via di ritorno.
 
 # Fuori dall'applicazione, per scelta
 
