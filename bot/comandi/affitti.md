@@ -2,97 +2,30 @@
 description: Un giro del bot affitti — legge il gruppo Facebook, classifica i post e notifica i lead su Telegram
 ---
 
-Fai un giro del bot affitti. La classificazione e la scrittura dei messaggi le
-fai **tu**, non l'API: è il motivo per cui questo comando esiste al posto di
-`./campagna.sh loop`.
+Fai un giro del bot affitti **delegandolo per intero a un subagente**. Questo
+comando gira in loop ogni 25 minuti nella stessa sessione: niente di quello che
+serve al giro (i post, i prompt, i messaggi composti) deve passare dal tuo
+contesto. Tu lanci l'agente e riporti la sua riga, nient'altro.
 
-## 1. Estrai i post
+Lancia **un solo** agente con lo strumento Agent, così:
 
-```bash
-cd bot && uv run python -m bot.main --estrai /tmp/affitti-post.json
-```
+- `subagent_type`: `general-purpose` (non `fork`: erediterebbe tutto il
+  contesto, che è esattamente quello che vogliamo evitare)
+- `model`: `sonnet` — classificare basterebbe Haiku, ma lo stesso agente
+  scrive anche i messaggi che Sandro manda a persone vere
+- `description`: `Giro bot affitti`
+- `prompt`:
 
-Lancialo **in primo piano**, con timeout di 10 minuti (600000): dura uno o
-due minuti. Non usare `run_in_background` né `TaskOutput`: in questa sessione
-i task in background vengono uccisi alla fine del turno, e `TaskOutput` è
-rimasto appeso per ore ignorando il suo timeout.
+> Leggi il file `bot/comandi/giro.md` con Read ed esegui la procedura che
+> descrive, alla lettera e per intero: estrazione, classificazione,
+> composizione, notifica. I file che nomina comandano sulle tue idee. La tua
+> risposta finale è una riga sola, come dice il passo 4.
 
-Il file contiene le stanze libere, le zone accettate e i post nuovi (già
-deduplicati: chi è stato contattato o visto in un giro precedente non c'è).
-
-Se torna **0 post nuovi**, fermati qui e dillo in una riga. È il caso normale
-di un giro a vuoto, non un problema (il segnalibro di lettura in quel caso
-avanza da solo, senza `--notifica`).
-
-Se il comando fallisce con un errore di feed vuoto o markup cambiato, **non
-insistere**: riferisci l'errore e fermati. Vuol dire che Facebook ha cambiato
-qualcosa e va guardato a mano.
-
-## 2. Classifica e componi
-
-Leggi il JSON e applica le regole. Le regole vere stanno nei prompt, che sono
-l'unica fonte: leggili prima di decidere, non andare a memoria.
-
-- classificazione → `bot/src/bot/classifier.py`, costante `ISTRUZIONI`
-- scrittura dei due messaggi → `bot/src/bot/composer.py`, costante `ISTRUZIONI`
-
-In sintesi, ma **i file comandano**: tieni chi cerca una stanza (o "monolocale o
-stanza") in zona compatibile; scarta chi offre, chi vuole solo appartamenti
-interi, chi cerca dove il mercato costa meno di Monza, e chi ha animali. Il
-budget indicato non è tassativo salvo che lo dichiari rigido. I messaggi non
-fanno preventivi: incuriosiscono e portano al link, e possono usare solo i fatti
-in `[casa]` del TOML — niente inventato, mai.
-
-Se il post ha `"commento_senza_link": true`, quel gruppo **rifiuta i commenti
-che contengono un link**: il commento pubblico non deve contenere nessun URL,
-indirizzo web o nome di sito, e dice solo che hai scritto in privato e che lì
-trova le foto. Il privato resta com'è, col link. Il testo esatto della regola è
-`COMMENTO_SENZA_LINK` in `composer.py`.
-
-## 3. Manda le notifiche
-
-Scrivi `/tmp/affitti-lead.json` in questa forma:
-
-```json
-{
-  "lead": [
-    {
-      "post_id": "...", "permalink": "...", "author_name": "...",
-      "author_url": "...", "author_id": "...", "text": "...",
-      "permalink_e_del_profilo": false, "group_id": "...",
-      "zona": "Monza", "budget_max": 600, "disponibile_da": "settembre",
-      "stanze_compatibili": ["camera-3"],
-      "motivo": "una riga sul perché, la leggerà sul telefono",
-      "commento_pubblico": "...", "privato": "..."
-    }
-  ],
-  "scartati": [
-    {"post_id": "...", "author_url": "...", "motivo": "offre, non cerca"}
-  ]
-}
-```
-
-Ricopia i campi dal JSON di partenza senza modificarli — in particolare
-`author_id` e `permalink_e_del_profilo`, da cui dipendono i link della notifica
-(`author_id` diventa il tap che apre la chat Messenger con quella persona), e
-`group_id`, da cui la notifica capisce che quel commento va senza link.
-
-Gli **scartati vanno inclusi tutti**, con post_id e author_url: è quello che
-impedisce di rileggerli al giro dopo. Ometterli fa ricominciare da capo ogni
-volta.
-
-```bash
-cd bot && uv run python -m bot.main --notifica /tmp/affitti-lead.json
-```
-
-Va lanciato anche con zero lead: oltre a registrare gli scarti, conferma il
-segnalibro di lettura dei gruppi. Se salta, il giro dopo rilegge gli stessi
-post.
-
-## 4. Riferisci
-
-Una riga sola: quanti post letti, quanti lead, i nomi. Niente altro — questo
-comando gira in loop ogni 25 minuti e l'output si accumula.
+Aspetta il risultato dell'agente: non lanciarne un secondo, non leggere tu
+`/tmp/affitti-post.json` né i prompt in `bot/src/bot/`, non rifare la
+classificazione. Quando la riga arriva, riferiscila così com'è; se l'agente
+è fallito, riferisci l'errore in una riga e fermati. Non insistere: se
+Facebook ha cambiato qualcosa va guardato a mano.
 
 Non mandare mai messaggi su Facebook e non commentare: il bot prepara i testi,
 li invia Sandro a mano.

@@ -108,8 +108,16 @@ Lo slash command sta in `bot/comandi/affitti.md` e si attiva con un symlink
 ln -sf ../../bot/comandi/affitti.md .claude/commands/affitti.md
 ```
 
-Non ripete le regole: dice di leggerle da `classifier.py` e `composer.py`, così
-le due modalità non possono divergere.
+Il comando non fa il giro: lo **delega a un subagente** (Sonnet) che esegue la
+procedura in `bot/comandi/giro.md` e torna con una riga. Serve a tenere
+leggera la sessione che gira in loop: post, prompt e messaggi composti stanno
+nel contesto usa-e-getta dell'agente, e nella sessione principale resta solo il
+rapporto. Senza, ogni giro caricava 8-15k token anche a vuoto e la sessione si
+riempiva in poche ore. Se le classificazioni reggono, il modello in
+`affitti.md` si può abbassare a `haiku`.
+
+La procedura non ripete le regole: dice di leggerle da `classifier.py` e
+`composer.py`, così le due modalità non possono divergere.
 
 **Da solo** (`./campagna.sh loop`) — chiama l'API e non ha bisogno di nessuno
 davanti. Costa (vedi sotto), ma gira anche di notte e mentre fai altro.
