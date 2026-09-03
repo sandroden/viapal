@@ -188,6 +188,15 @@ generico).
 - Pubblico: route `/d/:token`, `PublicLayout`, `PacchettoDocumenti.vue`.
   `/api` è già nella `navigateFallbackDenylist` del service worker, `/d/`
   no — ed è giusto così, è una rotta SPA.
+- **Gli allegati partono chiusi** (progressive disclosure): ogni PDF è un
+  espansore e l'`<object>` del visore esiste solo dopo il click (`v-if`,
+  non `v-show`). Due ragioni: un contratto di sette pagine aperto in mezzo
+  alla pagina scoraggia chi legge; e il visore PDF di Chrome, appena
+  montato, **prende il fuoco e trascina la pagina a metà** — con quattro
+  allegati aperti all'arrivo la pagina si apriva sull'ultimo caricato invece
+  che sulla premessa. Montarlo solo su richiesta toglie la causa; uno
+  `scrollTo(0,0)` dopo il caricamento avrebbe curato il sintomo. I testi fra
+  gli allegati restano nel flusso: sono brevi.
 
 # Fuori dall'applicazione, per scelta
 

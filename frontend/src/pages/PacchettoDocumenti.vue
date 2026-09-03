@@ -32,32 +32,76 @@
         />
       </header>
 
-      <section v-for="(v, i) in pacchetto.voci" :key="v.id" class="pk-voce">
-        <h2 class="pk-voce__titolo">
-          <span class="pk-voce__n">{{ i + 1 }}</span>
-          {{ v.titolo }}
-        </h2>
+      <section
+        v-for="(v, i) in pacchetto.voci"
+        :key="v.id"
+        class="pk-voce"
+        :class="{ 'pk-voce--doc': v.tipo === 'documento' }"
+      >
+        <!-- I chiarimenti stanno nel flusso: sono brevi e si leggono di
+             seguito. -->
+        <template v-if="v.tipo === 'testo'">
+          <h2 class="pk-voce__titolo">
+            <span class="pk-voce__n">{{ i + 1 }}</span>
+            {{ v.titolo }}
+          </h2>
+          <!-- eslint-disable-next-line vue/no-v-html -->
+          <div class="pk-md" v-html="v.corpo_html" />
+        </template>
 
-        <!-- I chiarimenti stanno nel flusso, gli allegati si aprono lì
-             dentro: una pagina sola, niente rimbalzi. -->
-        <!-- eslint-disable-next-line vue/no-v-html -->
-        <div v-if="v.tipo === 'testo'" class="pk-md" v-html="v.corpo_html" />
-
+        <!-- Gli allegati partono chiusi: un contratto di sette pagine
+             aperto in mezzo alla pagina scoraggia chi legge, e il visore
+             PDF del browser, appena montato, prende il fuoco e trascina la
+             pagina a metà. Il visore esiste (v-if) solo dopo il click. -->
         <template v-else>
-          <object
-            :data="urlFile(v.id)"
-            type="application/pdf"
-            class="pk-pdf"
-            :aria-label="v.titolo"
-          >
-            <div class="pk-pdf__fallback">
-              Il documento non si apre qui dentro.
-              <a :href="urlFile(v.id)" target="_blank" rel="noopener">Aprilo in una scheda</a>.
-            </div>
-          </object>
-          <a class="pk-apri" :href="urlFile(v.id)" target="_blank" rel="noopener">
-            Apri «{{ v.titolo }}» a schermo intero
-          </a>
+          <h2 class="pk-voce__titolo">
+            <button
+              type="button"
+              class="pk-voce__toggle"
+              :aria-expanded="aperte.has(v.id)"
+              :aria-controls="`pk-doc-${v.id}`"
+              :data-testid="`toggle-${v.id}`"
+              @click="alterna(v.id)"
+            >
+              <span class="pk-voce__n">{{ i + 1 }}</span>
+              <span class="pk-voce__testo">{{ v.titolo }}</span>
+              <span class="pk-voce__hint">{{ aperte.has(v.id) ? 'Chiudi' : 'Leggi' }}</span>
+              <svg
+                class="pk-voce__chevron"
+                :class="{ 'pk-voce__chevron--aperto': aperte.has(v.id) }"
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                aria-hidden="true"
+              >
+                <path
+                  d="M9 6l6 6-6 6"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </h2>
+
+          <div v-if="aperte.has(v.id)" :id="`pk-doc-${v.id}`" class="pk-voce__corpo">
+            <object
+              :data="urlFile(v.id)"
+              type="application/pdf"
+              class="pk-pdf"
+              :aria-label="v.titolo"
+            >
+              <div class="pk-pdf__fallback">
+                Il documento non si apre qui dentro.
+                <a :href="urlFile(v.id)" target="_blank" rel="noopener">Aprilo in una scheda</a>.
+              </div>
+            </object>
+            <a class="pk-apri" :href="urlFile(v.id)" target="_blank" rel="noopener">
+              Apri «{{ v.titolo }}» a schermo intero
+            </a>
+          </div>
         </template>
       </section>
 
@@ -94,6 +138,15 @@ const token = String(route.params.token ?? '');
 
 const pacchetto = ref<Pacchetto | null>(null);
 const stato = ref<'caricamento' | 'pronto' | 'assente'>('caricamento');
+/** Id delle voci documento aperte: tutte chiuse all'arrivo. */
+const aperte = ref(new Set<number>());
+
+function alterna(id: number) {
+  const s = new Set(aperte.value);
+  if (s.has(id)) s.delete(id);
+  else s.add(id);
+  aperte.value = s;
+}
 
 function urlFile(itemId: number): string {
   return `/api/v1/public/documenti/${token}/file/${itemId}/`;
@@ -176,6 +229,54 @@ onMounted(() => {
   display: flex;
   align-items: baseline;
   gap: 10px;
+}
+.pk-voce--doc {
+  margin-bottom: 14px;
+}
+.pk-voce__toggle {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--vp-paper-3, #e5ded4);
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  color: inherit;
+  transition: border-color 0.15s;
+}
+.pk-voce__toggle:hover,
+.pk-voce__toggle:focus-visible {
+  border-color: var(--vp-terra, #b4703f);
+}
+.pk-voce__toggle:focus-visible {
+  outline: 2px solid var(--vp-terra, #b4703f);
+  outline-offset: 2px;
+}
+.pk-voce__testo {
+  flex: 1;
+  min-width: 0;
+}
+.pk-voce__hint {
+  font-family: system-ui, sans-serif;
+  font-size: 12.5px;
+  color: var(--vp-terra, #b4703f);
+  flex-shrink: 0;
+}
+.pk-voce__chevron {
+  color: var(--vp-terra, #b4703f);
+  flex-shrink: 0;
+  transition: transform 0.18s;
+}
+.pk-voce__chevron--aperto {
+  transform: rotate(90deg);
+}
+.pk-voce__corpo {
+  margin-top: 10px;
 }
 .pk-voce__n {
   font-size: 12px;
