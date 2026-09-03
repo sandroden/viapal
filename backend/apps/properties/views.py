@@ -221,12 +221,35 @@ class TenantProfileViewSet(
         user = self.request.user
         # ``ha_assignment``: il frontend distingue i profili mai assegnati
         # (badge + azione "assegna" in lista). Exists → nessuna N+1.
+        from properties.models.tenant import assegnazione_in_corso_q
+
+        oggi_annot = datetime.date.today()
         qs = (
             TenantProfile.objects.select_related("user")
             .annotate(
                 ha_assignment=Exists(
                     RoomAssignment.objects.filter(tenant=OuterRef("pk"))
+                ),
+                # ``attivo``: occupa una stanza *oggi*. Il frontend ci filtra
+                # la lista senza rifare il giro all'API.
+                attivo=Exists(
+                    RoomAssignment.objects.filter(
+                        assegnazione_in_corso_q(oggi_annot), tenant=OuterRef("pk")
+                    )
+                ),
+                # ``ha_solo_rinunce``: ha assegnazioni, tutte rinunciate —
+                # cioè non è mai entrato. Badge in lista; chi ha rinunciato
+                # dopo un'occupazione vera non è questo caso.
+                ha_solo_rinunce=Exists(
+                    RoomAssignment.objects.filter(
+                        tenant=OuterRef("pk"), rinunciata=True
+                    )
                 )
+                & ~Exists(
+                    RoomAssignment.objects.filter(
+                        tenant=OuterRef("pk"), rinunciata=False
+                    )
+                ),
             )
             .order_by("nominativo")
         )
@@ -260,14 +283,22 @@ class TenantProfileViewSet(
                 # inquilino appena creato (es. prima-assegnazione fallita)
                 # deve restare visibile nella lista di default, non solo
                 # con "Mostra anche storici".
+                # Le rinunce restano: la lista dell'anno è di competenza,
+                # non di occupazione, e chi ha rinunciato lasciando una
+                # caparra è una posizione aperta da non perdere di vista.
                 return qs.filter(
                     Q(assignments__isnull=True)
                     | (
                         Q(assignments__valid_from__lte=fine)
-                        & Q(assignments__rinunciata=False)
                         & (
                             Q(assignments__valid_to__isnull=True)
                             | Q(assignments__valid_to__gt=inizio)
+                            # Una rinuncia dura un giorno solo: se cade il 1°
+                            # gennaio nessuna delle due sopra la prende.
+                            | Q(
+                                assignments__rinunciata=True,
+                                assignments__valid_from__year=anno,
+                            )
                         )
                     )
                 ).distinct()

@@ -9,6 +9,11 @@ export interface Tenant {
   telefono?: string | null;
   /** False per i profili creati e mai assegnati a una stanza. */
   ha_assignment?: boolean;
+  /** True se occupa una stanza *oggi*. */
+  attivo?: boolean;
+  /** True se ha assegnazioni ma sono tutte rinunce: non è mai entrato
+   *  (può però avere una caparra trattenuta). */
+  ha_solo_rinunce?: boolean;
   user?: number | null;
   data_nascita?: string | null;
   documento_tipo?: string | null;

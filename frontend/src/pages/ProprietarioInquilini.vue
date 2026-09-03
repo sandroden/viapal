@@ -24,7 +24,19 @@
           no-caps
           :to="{ name: 'p-da-incassare' }"
         />
-        <div v-if="!mostraTutti" class="vp-p-inq__nav-anno">
+        <q-btn-toggle
+          v-model="vista"
+          :options="opzioniVista"
+          dense
+          unelevated
+          no-caps
+          toggle-color="primary"
+          color="white"
+          text-color="primary"
+          class="vp-p-inq__vista"
+          data-testid="vista-inquilini"
+        />
+        <div v-if="vista === 'anno'" class="vp-p-inq__nav-anno">
           <q-btn
             flat
             round
@@ -52,13 +64,6 @@
             @click="annoSuccessivo"
           />
         </div>
-        <q-toggle
-          v-model="mostraTutti"
-          label="Mostra anche storici"
-          left-label
-          dense
-          color="primary"
-        />
       </div>
     </header>
 
@@ -83,6 +88,16 @@
             class="vp-p-inq__badge-senza"
             label="senza assegnazione"
           />
+          <q-badge
+            v-if="props.row.ha_solo_rinunce"
+            outline
+            color="blue-grey-6"
+            class="q-ml-xs"
+            data-testid="badge-rinuncia"
+          >
+            rinuncia
+            <q-tooltip>Non è mai entrato: assegnazione rinunciata</q-tooltip>
+          </q-badge>
         </q-td>
       </template>
       <template #body-cell-saldo="props">
@@ -233,8 +248,37 @@ function parseAnno(v: unknown): number {
   return annoCorrente;
 }
 
+// Tre viste al posto del vecchio toggle binario "Mostra anche storici".
+// - attivi: chi occupa una stanza *oggi* (default, il caso quotidiano);
+// - anno:   la vista di competenza per anno, col suo selettore;
+// - tutti:  l'anagrafica completa (ex "Mostra anche storici").
+type Vista = 'attivi' | 'anno' | 'tutti';
+
+const opzioniVista = [
+  { label: 'Attivi', value: 'attivi' },
+  { label: 'Anno', value: 'anno' },
+  { label: 'Tutti', value: 'tutti' },
+];
+
+/** Vista iniziale dalla query string, con retrocompatibilità sui vecchi
+ *  link: `?storici=1` apre "Tutti", `?anno=2025` apre "Anno" su quell'anno. */
+function parseVista(): Vista {
+  const v = Array.isArray(route.query.vista) ? route.query.vista[0] : route.query.vista;
+  if (v === 'attivi' || v === 'anno' || v === 'tutti') return v;
+  if (route.query.storici === '1') return 'tutti';
+  if (route.query.anno) return 'anno';
+  return 'attivi';
+}
+
 const annoSelezionato = ref<number>(parseAnno(route.query.anno));
-const mostraTutti = ref<boolean>(route.query.storici === '1');
+const vista = ref<Vista>(parseVista());
+
+// La vista "Attivi" riusa la lista dell'anno *corrente* (nessuna chiamata
+// nuova: così restano disponibili le colonne di saldo) e la filtra lato
+// client. Chi occupa una stanza oggi è per forza nella lista di quest'anno.
+const annoEffettivo = computed<number>(() =>
+  vista.value === 'attivi' ? annoCorrente : annoSelezionato.value,
+);
 
 const anniDisponibili = computed<number[]>(() => {
   const lista: number[] = [];
@@ -244,13 +288,15 @@ const anniDisponibili = computed<number[]>(() => {
 const puoIndietro = computed(() => annoSelezionato.value > annoMin);
 const puoAvanti = computed(() => annoSelezionato.value < annoCorrente);
 
-const righe = computed<Tenant[]>(() =>
-  mostraTutti.value ? store.tenants : store.tenantsAnno(annoSelezionato.value),
-);
+const righe = computed<Tenant[]>(() => {
+  if (vista.value === 'tutti') return store.tenants;
+  const lista = store.tenantsAnno(annoEffettivo.value);
+  return vista.value === 'attivi' ? lista.filter((t) => t.attivo === true) : lista;
+});
 const caricamento = computed<boolean>(() =>
-  mostraTutti.value
+  vista.value === 'tutti'
     ? store.loading
-    : Boolean(store.loadingAnno[annoSelezionato.value]),
+    : Boolean(store.loadingAnno[annoEffettivo.value]),
 );
 
 const colonne = computed<QTableProps['columns']>(() => [
@@ -259,7 +305,7 @@ const colonne = computed<QTableProps['columns']>(() => [
   { name: 'telefono', label: 'Telefono', field: 'telefono', align: 'left' },
   {
     name: 'saldo',
-    label: `Saldo ${annoSelezionato.value}`,
+    label: `Saldo ${annoEffettivo.value}`,
     field: 'saldo',
     align: 'right',
     sortable: true,
@@ -278,7 +324,7 @@ const colonne = computed<QTableProps['columns']>(() => [
 
 const colonneVisibili = computed<string[]>(() => {
   const v = ['nominativo', 'email', 'telefono'];
-  if (!mostraTutti.value) v.push('saldo');
+  if (vista.value !== 'tutti') v.push('saldo');
   v.push('saldo_totale', 'azioni');
   return v;
 });
@@ -293,9 +339,10 @@ function classeSaldo(s: number | null | undefined): string {
 const paginazione = { rowsPerPage: 25, sortBy: 'nominativo' };
 
 function aggiornaQuery(): void {
-  const q: Record<string, string> = {};
-  if (!mostraTutti.value) q.anno = String(annoSelezionato.value);
-  if (mostraTutti.value) q.storici = '1';
+  // `storici` resta solo in ingresso (vecchi link): in uscita scriviamo la
+  // vista, e l'anno soltanto dove ha senso sceglierlo.
+  const q: Record<string, string> = { vista: vista.value };
+  if (vista.value === 'anno') q.anno = String(annoSelezionato.value);
   void router.replace({ query: q });
 }
 
@@ -307,20 +354,12 @@ function annoSuccessivo() {
 }
 
 watch(
-  mostraTutti,
-  (v) => {
-    if (v) void store.fetchTenants(false, true);
-    aggiornaQuery();
-  },
-  { immediate: true },
-);
-
-watch(
-  annoSelezionato,
-  (a) => {
+  [vista, annoEffettivo],
+  () => {
     // force=true: rientrando in pagina dopo aver registrato pagamenti o
     // ribilanciato riconciliazioni vogliamo vedere subito i saldi nuovi.
-    void store.fetchTenantsAnno(a, true);
+    if (vista.value === 'tutti') void store.fetchTenants(false, true);
+    else void store.fetchTenantsAnno(annoEffettivo.value, true);
     aggiornaQuery();
   },
   { immediate: true },
@@ -328,7 +367,7 @@ watch(
 
 function apri(t: Tenant, tab: 'pagamenti' | 'profilo' = 'pagamenti') {
   const q: Record<string, string> = { tab };
-  if (!mostraTutti.value) q.anno = String(annoSelezionato.value);
+  if (vista.value !== 'tutti') q.anno = String(annoEffettivo.value);
   void router.push({
     name: 'p-inquilino-dettaglio',
     params: { id: t.id },
@@ -398,8 +437,8 @@ async function creaInquilino() {
     dialogNuovo.value = false;
     $q.notify({ type: 'positive', message: `Inquilino ${creato.nominativo} creato.` });
     // Ricarica le liste correnti (la vista attiva e l'eventuale "tutti").
-    void store.fetchTenantsAnno(annoSelezionato.value, true);
-    if (mostraTutti.value) void store.fetchTenants(false, true);
+    void store.fetchTenantsAnno(annoEffettivo.value, true);
+    if (vista.value === 'tutti') void store.fetchTenants(false, true);
     if (f.email.trim()) {
       proponiInvito(creato);
     } else {
@@ -479,6 +518,11 @@ async function impersona(t: Tenant) {
   align-items: center;
   gap: var(--vp-gap-4);
   flex-wrap: wrap;
+}
+.vp-p-inq__vista {
+  border: 1px solid var(--vp-paper-3);
+  border-radius: 4px;
+  overflow: hidden;
 }
 .vp-p-inq__nav-anno {
   display: flex;

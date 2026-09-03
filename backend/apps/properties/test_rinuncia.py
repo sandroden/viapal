@@ -13,6 +13,7 @@ Coprono:
 - l'inquilino non risulta fra gli attivi
 - il costo di cessione non viene generato
 - API: il flag governa da solo la fine occupazione, in entrambi i versi
+- liste: la rinuncia si vede in quella dell'anno, non fra gli attivi
 """
 import datetime
 from decimal import Decimal
@@ -325,3 +326,79 @@ class TestApiRinuncia:
         assert resp.status_code == 200
         assert resp.data["rinunciata"] is True
         assert resp.data["data_rinuncia"] == "2026-08-28"
+
+
+# ---------------------------------------------------------------------------
+# Liste: dove una rinuncia si deve vedere e dove no
+# ---------------------------------------------------------------------------
+
+
+class TestListeInquilini:
+    """La lista per anno è di competenza, quella "attivi" di occupazione.
+
+    Chi ha rinunciato lasciando una caparra è una posizione aperta: sparire
+    dall'elenco dell'anno lo renderebbe facile da dimenticare. Fra gli attivi
+    invece non ci sta, perché in stanza non c'è.
+    """
+
+    def test_la_rinuncia_compare_nella_lista_dell_anno(
+        self, client_proprietario, rinuncia
+    ):
+        resp = client_proprietario.get("/api/v1/tenants/", {"anno": 2026})
+        assert resp.status_code == 200
+        nomi = [t["nominativo"] for t in resp.data]
+        assert rinuncia.tenant.nominativo in nomi
+
+    def test_la_rinuncia_non_compare_fra_gli_attivi(
+        self, client_proprietario, rinuncia, stanza, make_tenant
+    ):
+        RoomAssignment.objects.create(
+            room=stanza,
+            tenant=make_tenant("Occupante"),
+            valid_from=datetime.date(2026, 1, 1),
+            canone_mensile=Decimal("500.00"),
+        )
+        resp = client_proprietario.get("/api/v1/tenants/", {"solo_attivi": 1})
+        assert resp.status_code == 200
+        nomi = [t["nominativo"] for t in resp.data]
+        assert rinuncia.tenant.nominativo not in nomi
+
+    def test_i_flag_distinguono_le_righe(
+        self, client_proprietario, rinuncia, stanza, make_tenant
+    ):
+        occupante = RoomAssignment.objects.create(
+            room=stanza,
+            tenant=make_tenant("Occupante"),
+            valid_from=datetime.date(2026, 1, 1),
+            canone_mensile=Decimal("500.00"),
+        ).tenant
+        resp = client_proprietario.get("/api/v1/tenants/", {"anno": 2026})
+        per_nome = {t["nominativo"]: t for t in resp.data}
+
+        riga_rinuncia = per_nome[rinuncia.tenant.nominativo]
+        assert riga_rinuncia["attivo"] is False
+        assert riga_rinuncia["ha_solo_rinunce"] is True
+
+        riga_occupante = per_nome[occupante.nominativo]
+        assert riga_occupante["attivo"] is True
+        assert riga_occupante["ha_solo_rinunce"] is False
+
+    def test_chi_ha_rinunciato_dopo_un_occupazione_vera_non_e_marcato(
+        self, db, client_proprietario, stanza, make_tenant
+    ):
+        """Il badge dice "non è mai entrato": vale solo per chi ha *solo* rinunce."""
+        t = make_tenant("Tornato indietro")
+        RoomAssignment.objects.create(
+            room=stanza, tenant=t,
+            valid_from=datetime.date(2025, 1, 1),
+            valid_to=datetime.date(2025, 12, 31),
+            canone_mensile=Decimal("500.00"),
+        )
+        RoomAssignment.objects.create(
+            room=stanza, tenant=t,
+            valid_from=INGRESSO, valid_to=INGRESSO,
+            rinunciata=True, canone_mensile=Decimal("500.00"),
+        )
+        resp = client_proprietario.get("/api/v1/tenants/", {"anno": 2026})
+        per_nome = {x["nominativo"]: x for x in resp.data}
+        assert per_nome[t.nominativo]["ha_solo_rinunce"] is False

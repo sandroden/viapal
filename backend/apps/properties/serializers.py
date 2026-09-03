@@ -126,6 +126,8 @@ class TenantProfileSerializer(serializers.ModelSerializer):
     saldo = serializers.SerializerMethodField()
     saldo_totale = serializers.SerializerMethodField()
     ha_assignment = serializers.SerializerMethodField()
+    attivo = serializers.SerializerMethodField()
+    ha_solo_rinunce = serializers.SerializerMethodField()
 
     class Meta:
         model = TenantProfile
@@ -135,6 +137,8 @@ class TenantProfileSerializer(serializers.ModelSerializer):
             "email",
             "nominativo",
             "ha_assignment",
+            "attivo",
+            "ha_solo_rinunce",
             "codice_fiscale",
             "telefono",
             "email_alt",
@@ -174,6 +178,30 @@ class TenantProfileSerializer(serializers.ModelSerializer):
         if annotato is not None:
             return bool(annotato)
         return obj.assignments.exists()
+
+    def get_attivo(self, obj) -> bool:
+        """True se occupa una stanza oggi. Annotato nella viewset."""
+        import datetime
+
+        from properties.models.tenant import assegnazione_in_corso_q
+
+        annotato = getattr(obj, "attivo", None)
+        if annotato is not None:
+            return bool(annotato)
+        return obj.assignments.filter(
+            assegnazione_in_corso_q(datetime.date.today())
+        ).exists()
+
+    def get_ha_solo_rinunce(self, obj) -> bool:
+        """True se ha assegnazioni e sono tutte rinunce: non è mai entrato,
+        ma può avere una caparra trattenuta."""
+        annotato = getattr(obj, "ha_solo_rinunce", None)
+        if annotato is not None:
+            return bool(annotato)
+        return (
+            obj.assignments.filter(rinunciata=True).exists()
+            and not obj.assignments.filter(rinunciata=False).exists()
+        )
 
 
 class TenantProfileWriteSerializer(serializers.ModelSerializer):
