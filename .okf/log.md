@@ -58,6 +58,10 @@
 * **Maintain**: `domain/galleria-pubblica.md` — wordmark cliccabile per l'utente loggato: ritorno a `/p/` sull'immobile della galleria (o `/i/` per l'inquilino).
 * **Maintain**: `domain/galleria-pubblica.md` — ridimensionamento client-side in `ImageSlot` (`utils/image.ts`, WebP ≤1920px, fallback su file non decodificabili) e dialog "Scarica foto" (selezione miniature; una foto = file singolo, più foto = ZIP store-only generato da `utils/zip.ts`).
 
+## 2026-09-03
+* **Maintain**: `domain/generazione-affitti.md` — rinuncia (`RoomAssignment.rinunciata`/`data_rinuncia`): l'autorità è il flag, non le date, perché i conteggi giorni sono inclusivi; esclusioni (affitti, utenze e denominatore `sum_giorni`, attivi, occupazione, overlap, costo cessione, carte del contratto) e liste asimmetriche (anno sì, attivi no). Dialog "Correggi assegnazione" → "Modifica assegnazione", con chiusura senza subentrante.
+* **Maintain**: `domain/deposito.md` — deposito di chi ha rinunciato: l'assegnazione resta per tenerlo agganciato; `deposito_da_restituire = 0` non vuol dire "trattengo"; `deposito_versato` è il pattuito, non l'incassato; il trattenuto non entra nel conto economico senza riclassificazione.
+
 ## 2026-07-24
 * **Creation**: `domain/unita-intera.md` — proprietà a unità intera (`Property.tipo_gestione` `stanze`/`unita_intera`, Room implicita "Appartamento", vincolo max-1, invariante un-solo-pagatore, degradazione utenze al 100%).
 * **Maintain**: `models/properties.md` (campo `tipo_gestione` su Property, Room = unità locata, vincolo Room implicita), `architecture/modello-dati.md` (Room come unità locata), indici `domain/` e root aggiornati.

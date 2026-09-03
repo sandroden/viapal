@@ -4,7 +4,7 @@ title: Deposito cauzionale
 description: Versamento e restituzione del deposito, con trigger da data prevista.
 resource: backend/apps/properties/models/tenant.py
 tags: [domain, deposito, billing]
-timestamp: 2026-07-23T00:00:00Z
+timestamp: 2026-09-03T00:00:00Z
 ---
 
 # Overview
@@ -61,6 +61,31 @@ riconciliate) e in simulazione uscita "Deposito pattuito / di cui
 incassato finora". Il ledger "Versamenti e imputazioni" include anche le
 allocazioni su DEPOSITO (il bonifico c'è stato davvero); righe, saldi e
 resti restano sul solo perimetro non-DEPOSITO.
+
+# Deposito di chi ha rinunciato
+
+Se l'inquilino versa (anche solo in parte) e poi rinuncia prima di entrare,
+l'assegnazione **resta**: è ciò che tiene la caparra attaccata a quella
+persona, e cancellarla non si può (`Receivable.assignment` è `PROTECT`). Si
+marca `rinunciata` — vedi [generazione affitti](/domain/generazione-affitti.md)
+— e il deposito continua ad agganciarsi lì.
+
+Due trappole verificate sul caso reale (settembre 2026, 490 € versati su 980
+pattuiti):
+
+- `deposito_da_restituire = 0` **non** significa "trattengo": lo zero è
+  trattato come "non valorizzato" e fa fallback su `deposito_versato`.
+  Trattenere = lasciare `data_restituzione_prevista` vuota, cioè non far
+  scattare il trigger;
+- `deposito_versato` è il **pattuito**, non l'incassato: con un versamento
+  parziale la restituzione proporrebbe il pattuito. Chiudendo la posizione
+  vanno allineati entrambi (Receivable e anagrafica), e lo stato del
+  Receivable **non** si riallinea da solo — `_riallinea_receivable` scatta
+  sulle allocazioni, non sul salvataggio dell'addebito.
+
+Un deposito trattenuto è di fatto un ricavo, ma la causale DEPOSITO è fuori
+da `CAUSALI_OPERATIVE`: per vederlo nel [conto economico](/domain/conto-economico.md)
+andrebbe riclassificato su `extra`. Nessun automatismo lo fa.
 
 # Restituzione
 
