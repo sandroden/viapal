@@ -475,7 +475,11 @@ class ExpenseSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        if attrs.get("crea_bank_transaction", True):
+        # Il movimento bancario contestuale esiste solo in creazione: in
+        # aggiornamento (es. PATCH del solo allegato) i campi bt_* non
+        # arrivano e non devono essere pretesi. Con partial=True DRF non
+        # applica i default, quindi il .get(…, True) qui sotto scatterebbe.
+        if self.instance is None and attrs.get("crea_bank_transaction", True):
             from properties.models import OwnerBankAccount
             account_id = attrs.get("bt_owner_account")
             if not account_id:

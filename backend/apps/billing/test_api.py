@@ -2923,3 +2923,101 @@ class TestRestituzioneDeposito:
     def test_tenant_inesistente_404(self, client_prop):
         resp = client_prop.get("/api/v1/tenants/99999/restituzione-deposito/")
         assert resp.status_code == 404
+
+
+class TestExpenseAllegato:
+    """La fattura arriva dopo: PATCH dell'allegato su una spesa già registrata.
+
+    Il campo esisteva già nel modello e nell'admin; qui si copre il percorso
+    API che il frontend usa (multipart col solo file, JSON per rimuoverlo) e
+    la regressione della validate che pretendeva il conto BT anche in
+    aggiornamento."""
+
+    PDF = b"%PDF-1.4 fattura di test"
+
+    @pytest.fixture(autouse=True)
+    def media_private_tmp(self, settings, tmp_path):
+        settings.MEDIA_PRIVATE_ROOT = str(tmp_path / "media-private")
+        settings.MEDIA_ROOT = str(tmp_path / "media")
+
+    @pytest.fixture
+    def spesa(self, db, immobile, owner_prop):
+        from billing.models import Expense, ExpenseCategory
+        cat = ExpenseCategory.objects.create(
+            property=immobile, nome="Manutenzione", codice="MAN"
+        )
+        return Expense.objects.create(
+            property=immobile,
+            data=datetime.date(2026, 8, 20),
+            category=cat,
+            importo=Decimal("80.00"),
+            descrizione="Idraulico",
+            anticipata_da_owner=owner_prop,
+        )
+
+    @staticmethod
+    def _url(spesa):
+        return f"/api/v1/expenses/{spesa.id}/"
+
+    def test_patch_allegato_multipart(self, client_prop, spesa):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        resp = client_prop.patch(
+            self._url(spesa),
+            {"allegato": SimpleUploadedFile(
+                "fattura.pdf", self.PDF, content_type="application/pdf"
+            )},
+            format="multipart",
+        )
+        assert resp.status_code == 200, resp.content
+        assert resp.data["file_pdf"].startswith("/media-private/spese/")
+        spesa.refresh_from_db()
+        assert spesa.allegato
+        with spesa.allegato.open("rb") as f:
+            assert f.read() == self.PDF
+        # Il resto della spesa non si tocca.
+        assert spesa.importo == Decimal("80.00")
+        assert spesa.descrizione == "Idraulico"
+
+    def test_patch_senza_campi_bt_non_pretende_il_conto(self, client_prop, spesa):
+        resp = client_prop.patch(
+            self._url(spesa), {"note": "fattura n. 12"}, format="json"
+        )
+        assert resp.status_code == 200, resp.content
+        assert resp.data["note"] == "fattura n. 12"
+
+    def test_patch_allegato_null_lo_rimuove(self, client_prop, spesa):
+        from django.core.files.base import ContentFile
+        spesa.allegato.save("fattura.pdf", ContentFile(self.PDF))
+        resp = client_prop.patch(
+            self._url(spesa), {"allegato": None}, format="json"
+        )
+        assert resp.status_code == 200, resp.content
+        assert resp.data["file_pdf"] is None
+        spesa.refresh_from_db()
+        assert not spesa.allegato
+
+    def test_estensione_non_ammessa_400(self, client_prop, spesa):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        resp = client_prop.patch(
+            self._url(spesa),
+            {"allegato": SimpleUploadedFile("virus.exe", b"MZ")},
+            format="multipart",
+        )
+        assert resp.status_code == 400, resp.content
+        assert "allegato" in resp.data
+
+    def test_bt_ignorata_in_aggiornamento(self, client_prop, spesa, owner_account):
+        from billing.models import BankTransaction
+        resp = client_prop.patch(
+            self._url(spesa),
+            {
+                "importo": "90.00",
+                "crea_bank_transaction": True,
+                "bt_owner_account": owner_account.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        assert not BankTransaction.objects.filter(owner_account=owner_account).exists()
+        spesa.refresh_from_db()
+        assert spesa.importo == Decimal("90.00")

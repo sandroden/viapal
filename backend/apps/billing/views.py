@@ -1190,7 +1190,12 @@ class ExpenseViewSet(ModelViewSet):
 
     def perform_update(self, serializer):
         prop = get_request_property(self.request)
-        self._valida_appartenenza_property(serializer.validated_data, prop)
+        validated = serializer.validated_data
+        # I campi write-only della BT contestuale valgono solo in creazione:
+        # tolti prima del save, così non finiscono in setattr sull'istanza.
+        for campo in ("crea_bank_transaction", "bt_owner_account", "bt_data", "bt_descrizione"):
+            validated.pop(campo, None)
+        self._valida_appartenenza_property(validated, prop)
         serializer.save()
 
 

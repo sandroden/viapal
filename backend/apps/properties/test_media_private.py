@@ -196,3 +196,49 @@ def test_bolletta_membro_e_inquilino_ok(bolletta_a, owner_a, tenant_a):
 def test_bolletta_estranei_negati(bolletta_a, owner_b, tenant_b):
     assert _get(owner_b, bolletta_a.file_pdf.url).status_code == 403
     assert _get(tenant_b.user, bolletta_a.file_pdf.url).status_code == 403
+
+
+# ── spese/ (Expense.allegato) ───────────────────────────────────────────────
+
+
+@pytest.fixture
+def spesa_a(immobile, owner_a):
+    from billing.models import Expense, ExpenseCategory
+    from properties.models import OwnerProfile
+
+    owner = OwnerProfile.objects.create(user=owner_a, nominativo="Owner A")
+    cat = ExpenseCategory.objects.create(
+        property=immobile, nome="Manutenzione", codice="MAN"
+    )
+    return Expense.objects.create(
+        property=immobile,
+        data=datetime.date(2026, 8, 20),
+        category=cat,
+        importo=Decimal("80.00"),
+        descrizione="Idraulico",
+        anticipata_da_owner=owner,
+        allegato=SimpleUploadedFile("fattura.pdf", PDF),
+    )
+
+
+def test_spesa_url_su_media_private(spesa_a):
+    assert spesa_a.allegato.url.startswith("/media-private/spese/")
+
+
+def test_spesa_membro_scarica(spesa_a, owner_a):
+    resp = _get(owner_a, spesa_a.allegato.url)
+    assert resp.status_code == 200
+    assert b"".join(resp.streaming_content) == PDF
+
+
+def test_spesa_inquilino_negato(spesa_a, tenant_a):
+    # Le fatture della casa non sono carte dell'inquilino.
+    assert _get(tenant_a.user, spesa_a.allegato.url).status_code == 403
+
+
+def test_spesa_membro_altra_property_negato(spesa_a, owner_b):
+    assert _get(owner_b, spesa_a.allegato.url).status_code == 403
+
+
+def test_spesa_superuser_scarica(spesa_a, superuser):
+    assert _get(superuser, spesa_a.allegato.url).status_code == 200
