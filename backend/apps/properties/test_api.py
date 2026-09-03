@@ -844,11 +844,22 @@ class TestPropertyDocumentViewSet:
 class TestPrimaAssegnazioneAPI:
     URL = "/api/v1/room-assignments/prima-assegnazione/"
 
+    @staticmethod
+    def _primo_del_mese():
+        """L'ingresso di default: il primo del mese **corrente**.
+
+        Non una data fissa. L'action genera i canoni dal mese di ingresso
+        fino a quello corrente, quindi un `valid_from` fisso produce un
+        addebito in più a ogni mese che passa: con "2026-08-01" i test hanno
+        retto fino al 31 agosto 2026 e si sono rotti il 1° settembre.
+        """
+        return datetime.date.today().replace(day=1)
+
     def _payload(self, tenant_id, room_id, **overrides):
         payload = {
             "tenant": tenant_id,
             "room": room_id,
-            "valid_from": "2026-08-01",
+            "valid_from": self._primo_del_mese().isoformat(),
             "canone_mensile": "450.00",
             "ciclo_fatturazione": "solare",
         }
@@ -886,8 +897,8 @@ class TestPrimaAssegnazioneAPI:
         assert tenant_2.ciclo_fatturazione == "solare"
         assert tenant_2.deposito_versato == Decimal("900.00")
 
-        # Primo addebito affitto: mese di ingresso (agosto, intero) generato
-        # contestualmente. valid_from 2026-08-01 → canone pieno, no pro-rata.
+        # Primo addebito affitto: il mese di ingresso, intero, generato
+        # contestualmente → canone pieno, nessun pro-rata.
         affitti = Receivable.objects.filter(
             assignment__tenant=tenant_2, causale=Receivable.Causale.AFFITTO
         )
@@ -947,7 +958,7 @@ class TestPrimaAssegnazioneAPI:
         rec = Receivable.objects.get(
             assignment__tenant=tenant_2, causale=Receivable.Causale.AFFITTO
         )
-        # Mese intero (2026-08-01): 450 canone + 70 quota specifica.
+        # Mese intero: 450 di canone + 70 di quota specifica.
         assert rec.importo_dovuto == Decimal("520.00")
 
     def test_rate_non_sommano_400_e_niente_creato(self, client_prop, tenant_2, room_2):
@@ -1017,7 +1028,7 @@ class TestPrimaAssegnazioneAPI:
         assert resp.json()["quota_condominio_creata"] is True
         rata = TenantCondominioRate.objects.get(tenant=tenant_2)
         assert rata.importo_mensile == Decimal("70.00")
-        assert rata.valid_from == datetime.date(2026, 8, 1)
+        assert rata.valid_from == self._primo_del_mese()
         assert rata.contract_id == contract.id
 
     def test_quota_uguale_alla_generica_non_crea_riga(
