@@ -24,7 +24,7 @@ utenze e spese. La logica sta nei concetti di [dominio](/domain/).
 | `UtilityChargePeriod` | `periodo_da`/`_a`, `criterio_ripartizione`, `stato`, `tot_luce/gas/tari/altro`, `giorni_totali`, `utility_bills` (M2M), `annual_utility_costs` (M2M), `data_invio`, `avvisi_inviati_at` | periodo di addebito utenze |
 | `Supplier` | `nome`, `tipo`, `partita_iva` | fornitore |
 | `ExpenseCategory` | `nome`, `codice`, `ripartibile_inquilini` | categoria spesa |
-| `Expense` | `data`, `category`, `importo`, `anticipata_da_owner`, `ripartibile_su_inquilini`, `is_straordinaria`, `riferimento_quota_owner` | spesa |
+| `Expense` | `data`, `category`, `importo`, `anticipata_da_owner`, `ripartibile_su_inquilini`, `is_straordinaria`, `riferimento_quota_owner`, `allegato` (media-private `spese/`, PDF/JPG/PNG ≤10 MB) | spesa; l'allegato è la fattura arrivata dopo, caricabile da /p/spese |
 | `TenantCondominioRate` | `property`, `tenant` (opz.), `contract` (opz., SET_NULL), `valid_from`/`_to`, `importo_mensile` | quota condominio a carico inquilino (data-driven); appartiene all'immobile, il contratto è solo il documento in cui è pattuita |
 
 # Vedi anche
