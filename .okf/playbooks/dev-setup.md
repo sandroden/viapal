@@ -3,8 +3,13 @@ type: Playbook
 title: Dev setup
 description: Avviare backend e frontend in locale (senza Docker).
 resource: justfile
+resources:
+  - justfile
+  - backend/core/settings/dev.py
+  - frontend/quasar.config.ts
+  - backend/apps/properties/management/commands/seed_demo.py
 tags: [playbook, dev, setup]
-timestamp: 2026-07-08T00:00:00Z
+timestamp: 2026-09-05T00:00:00Z
 ---
 
 # Prerequisiti
@@ -19,6 +24,8 @@ visuale). Postgres: cluster `dev` su porta 5434, db `viapal`, utente `sandro`
 # Backend
 cd backend && uv sync
 ENV=dev uv run python manage.py migrate
+# Dati e utenti demo (il migrate crea solo i gruppi)
+ENV=dev uv run python manage.py seed_demo   # --reset azzera le app di dominio
 # Frontend
 cd ../frontend && bun install
 # Tutto in parallelo
@@ -26,9 +33,22 @@ cd .. && just up
 ```
 
 - Backend admin: <http://localhost:8020/admin/> (`admin` / `admin`)
-- Frontend: <http://localhost:9020/login>
+- Frontend: <http://localhost:9020/login> (host alternativo `viapal.local:9020`)
+- I superuser hanno i link "→ App Viapal" (admin) e "Admin Django" (drawer
+  proprietario); il primo passa da `APP_BASE_URL`, perché in dev le due
+  porte sono diverse.
 
-# Utenti dev (creati al migrate)
+# Porte e worktree paralleli
+
+- `VIAPAL_BACKEND_PORT` sposta il target del proxy Quasar (default 8020),
+  `VIAPAL_FRONTEND_PORT` aggiunge un'origine CSRF/CORS fidata (default
+  9020, anche 9200): un secondo worktree parte senza toccare i file.
+- `VIAPAL_DB_NAME` sceglie un database (e quindi un test DB) distinto per
+  pytest in parallelo.
+- Il dev server Quasar proxa `/api`, `/admin`, `/static`, `/media-private`,
+  `/media` e `/g/` verso Django.
+
+# Utenti dev (creati da `seed_demo`, non dal migrate)
 
 | Username | Password | Ruolo |
 |---|---|---|
@@ -43,7 +63,15 @@ cd .. && just up
 
 # Email in dev (MailHog)
 
-SMTP catcher Docker su `:1025` (SMTP) e `:8025` (UI), configurato in `local.py`.
+SMTP catcher Docker su `:1025` (SMTP) e `:8025` (UI), configurato in `local.py`;
+`just mailhog` / `just mailhog-stop` lo avviano e fermano (container
+`viapal-mailhog`, auth-file in `~/.config/mailhog/auth.txt`).
+
+# Media di produzione in locale
+
+`jmb.core` `FallbackStorage`, configurato in `local.py` (`MEDIA_FALLBACK_S3_*`):
+legge prima dal filesystem locale e, se il file manca, dal proxy S3 read-only
+di prod. Spento sotto pytest. Non richiede di copiare la `media/`.
 
 # Vedi anche
 

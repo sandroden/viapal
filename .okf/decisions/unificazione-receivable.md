@@ -1,5 +1,6 @@
 ---
-type: Decision
+type: Architecture Decision
+status: active
 title: Unificazione in Receivable
 description: RentPayment + UtilityCharge + ExtraCharge fusi in un unico Receivable con causale.
 tags: [decision, receivable, refactor]

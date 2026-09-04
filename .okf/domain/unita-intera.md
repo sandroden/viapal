@@ -2,9 +2,15 @@
 type: Feature
 title: Proprietà a unità intera
 description: Property.tipo_gestione "unita_intera" reinterpreta Room come unità locata con un'unica Room implicita "Appartamento".
-resource: backend/apps/properties/
+resource: backend/apps/properties/models/property.py
+resources:
+  - backend/apps/properties/models/property.py
+  - backend/apps/properties/signals.py
+  - backend/apps/properties/views.py
+  - frontend/src/stores/properties.ts
+  - backend/apps/properties/test_unita_intera.py
 tags: [feature, properties, domain, multiproprieta]
-timestamp: 2026-07-24T00:00:00Z
+timestamp: 2026-09-05T00:00:00Z
 ---
 
 # Overview
@@ -55,6 +61,11 @@ assegnazione](generazione-affitti.md).
 **Un'unità intera = un solo pagatore intestatario.** Niente co-intestatari
 (fuori scope). La ripartizione utenze pro-rata degrada correttamente al pagatore
 unico (quota 100%): nessun ramo speciale nel [calcolo utenze](calcolo-utenze.md).
+
+Una `RoomAssignment` con `rinunciata=True` (dal 2026-09-03) non occupa l'unità
+né produce addebiti: vale anche qui, senza ramo dedicato — l'unità implicita
+torna assegnabile con una nuova prima-assegnazione, mentre l'assegnazione
+rinunciata resta a tenere agganciato il deposito.
 
 # Esposizione API
 

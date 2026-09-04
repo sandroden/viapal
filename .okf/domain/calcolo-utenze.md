@@ -3,8 +3,14 @@ type: Domain Logic
 title: Calcolo utenze
 description: Da bolletta a periodo di addebito con pro-rata giorni, pinning e invio avvisi.
 resource: backend/apps/billing/calc/utility.py
+resources:
+  - backend/apps/billing/calc/utility.py
+  - backend/apps/billing/calc/avvisi.py
+  - backend/apps/billing/models/utilities.py
+  - backend/apps/billing/views.py
+  - backend/apps/billing/management/commands/riparsa_bollette_pdf.py
 tags: [domain, utenze, utility, billing]
-timestamp: 2026-08-06T00:00:00Z
+timestamp: 2026-09-05T00:00:00Z
 ---
 
 # Overview
@@ -21,6 +27,11 @@ causale UTENZE. Codice: `billing/calc/utility.py`; avvisi: `billing/calc/avvisi.
 2. Ripartizione **pro-rata sui giorni** di intersezione tra il periodo di
    competenza della bolletta e la presenza dell'inquilino (`_giorni_intersezione`).
 3. Arrotondamento (`_arrotonda`) con ribaltamento dei resti.
+
+Le assegnazioni `rinunciata` (chi non è mai entrato, vedi
+[generazione affitti](/domain/generazione-affitti.md)) sono escluse **prima**
+del conteggio dei giorni: se entrassero nel denominatore `sum_giorni`
+diluirebbero in silenzio la quota di tutti gli altri (2026-09-03).
 
 # Configurazione utenze per immobile (2026-08-06)
 
@@ -80,6 +91,28 @@ pagato tutto → la differenza resta a suo carico senza scritture extra); le
 `{{esclusioni}}`/`{{esclusioni_html}}`). Edit dal FE: matita sulla card in
 `/p/utenze` (dialog `BollettaEditDialog`, PATCH `utility-bills/`); modificare
 una bolletta di un periodo già `inviato` NON ricalcola i Receivable (warning UI).
+
+# Quota TARI esclusa: i posti sfitti restano alla proprietà (2026-09-01)
+
+Come per le bollette, anche la TARI può avere una parte che non si ripartisce:
+la fetta dei posti che non si è riusciti ad affittare. Il valore sta sul
+**periodo** (`UtilityChargePeriod.quota_esclusa_tari` +
+`motivo_esclusione_tari`), non sull'`AnnualUtilityCost`, per due ragioni:
+
+- lo sfitto è un fatto **mensile** (una stanza vuota a marzo può essere piena
+  ad aprile);
+- la vista inquilino ricalcola il conguaglio al volo: solo un valore salvato
+  sul mese fa tornare gli stessi numeri anche a distanza di anni.
+
+Meccanica: `POST utility-periods/<id>/esclusione-tari/` (tetto = TARI lorda
+del mese); `calcola_conguaglio_periodo` sottrae la quota dalla voce `tari`
+prima della ripartizione, con clamp difensivo (mai una voce negativa: se la
+TARI del mese è calata sotto la quota, la voce sparisce) e aggiunge una riga
+in `esclusioni` con `bill_id=None`, quindi compare nell'avviso email e nella
+pagina dell'inquilino come le esclusioni delle bollette. Su un periodo già
+`inviato` la modifica è ammessa ma gli addebiti creati non si aggiornano da
+soli (il dialog `EsclusioneTariDialog` e la notifica lo dicono). Nel wizard la
+card TARI è editabile con aiuto al calcolo (n posti sfitti su m → quota).
 
 # Pinning: "una volta inviato non si tocca più"
 
@@ -161,6 +194,14 @@ allora ripartisce ciò che c'è (anche la sola TARI); un periodo davvero vuoto
 risponde comunque 400 (`skipped="nessun_importo"`) e resta bozza. Nel FE il
 bottone "Procedi comunque" (dialog di conferma) sblocca il wizard; un periodo
 già emesso in forma parziale viene riconosciuto e non ripropone il lucchetto.
+
+Corollario (2026-09-01): tutte le **ricostruzioni a posteriori** di un periodo
+emesso — il dettaglio nell'avviso (`avvisi._risultato_calcolo`) e la pagina
+utenze dell'inquilino (`UtenzeInquilinoView`) — chiamano il calcolo con
+`persist=False, forza_senza_bollette=True`. Senza il flag un periodo emesso
+solo-TARI tornava `skipped` e l'inquilino vedeva un periodo vuoto pur avendo
+l'addebito. Chi aggiunge una nuova lettura di un periodo emesso deve fare lo
+stesso: descrive ciò che è stato addebitato, non decide se addebitare.
 
 # Vedi anche
 

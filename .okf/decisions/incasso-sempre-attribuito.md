@@ -1,9 +1,16 @@
 ---
-type: Decision
+type: Invariant
 title: Incasso sempre attribuito
 description: Un addebito pagato deve dire chi ha incassato; l'unica strada per chiuderlo è registrare il movimento bancario.
+resource: backend/apps/billing/models/receivables.py
+resources:
+  - backend/apps/billing/models/receivables.py
+  - backend/apps/billing/signals.py
+  - backend/apps/billing/calc/incassi.py
+  - backend/apps/billing/views.py
+  - backend/apps/billing/management/commands/sana_incassi_senza_incassante.py
 tags: [decision, invariant, riconciliazione, saldi, api]
-timestamp: 2026-08-25T00:00:00Z
+timestamp: 2026-09-05T00:00:00Z
 ---
 
 # Invariante
@@ -18,6 +25,16 @@ Corollario di percorso: `incassato_da_owner` **non si scrive a mano**. Lo
 valorizza il signal di riallineamento a partire dal conto della
 `BankTransaction` allocata, quindi chiudere un addebito significa registrarne
 il movimento (`billing/calc/incassi.py: registra_incasso`).
+
+# Dove è imposta
+
+| Punto | Cosa fa |
+|-------|---------|
+| `Receivable.Meta.constraints` — `receivable_pagato_ha_incassante` | `CheckConstraint` `~Q(stato="pagato", incassato_da_owner__isnull=True)`: vale per ogni via di scrittura |
+| `Receivable.clean()` | stessa regola con errore di campo, per l'admin |
+| `signals._riallinea_receivable` | unico scrittore di `incassato_da_owner`: titolare del conto della BT allocata più recente; azzerato quando l'addebito torna non coperto |
+| `calc/incassi.registra_incasso` | l'unica strada per chiudere un addebito: BT sul conto dell'incassante + allocazione |
+| `views.conferma_pagato` | pretende `owner_account` e delega a `registra_incasso` |
 
 # Il buco che ha motivato il vincolo
 

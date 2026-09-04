@@ -3,6 +3,11 @@ type: Domain Logic
 title: Fascicolo documenti
 description: "Elenco dei documenti dell'inquilino con stati derivati (valido/in scadenza/scaduto), servito a inquilino e proprietario dallo stesso servizio. Nessun documento è obbligatorio e nessuna voce è vuota: compare solo ciò che esiste. Include chi vede le carte della casa, che dal 2026-08-06 dipendono dal contratto."
 resource: backend/apps/properties/fascicolo.py
+resources:
+  - backend/apps/properties/fascicolo.py
+  - backend/apps/properties/models/tenant.py
+  - frontend/src/components/documenti/FascicoloPannello.vue
+  - frontend/src/pages/InquilinoDocumenti.vue
 tags: [domain, documenti, inquilini, frontend]
 timestamp: 2026-08-06T00:00:00Z
 ---

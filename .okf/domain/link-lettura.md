@@ -3,6 +3,12 @@ type: Feature
 title: Link di lettura dei documenti
 description: Pacchetto di documenti aperto da un token, senza account, per chi deve ancora firmare; copie oscurate riusabili e chiarimenti in markdown.
 resource: backend/apps/properties/models/share.py
+resources:
+  - backend/apps/properties/models/share.py
+  - backend/apps/properties/models/property.py
+  - frontend/src/pages/PacchettoDocumenti.vue
+  - frontend/src/components/impostazioni/LinkLetturaPannello.vue
+  - frontend/src/components/impostazioni/CopieLetturaPannello.vue
 tags: [feature, public, documenti, privacy, token]
 timestamp: 2026-08-26T00:00:00Z
 ---

@@ -3,6 +3,11 @@ type: Domain Concept
 title: Conti bancari per immobile
 description: Il conto è unico e globale, ma dove è in uso è un dato esplicito; su questo poggia l'isolamento contabile fra immobili.
 resource: backend/apps/properties/models/owner.py
+resources:
+  - backend/apps/properties/models/owner.py
+  - backend/apps/properties/views.py
+  - backend/apps/billing/views.py
+  - backend/apps/properties/migrations/0036_ownerbankaccount_properties.py
 tags: [conti, multiproprieta, banca, isolamento]
 timestamp: 2026-08-07T00:00:00Z
 ---

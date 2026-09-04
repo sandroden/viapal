@@ -3,6 +3,12 @@ type: Domain Logic
 title: Generazione affitti
 description: Creazione dei canoni mensili con pro-rata, quota condominio e anniversary.
 resource: backend/apps/billing/calc/rent.py
+resources:
+  - backend/apps/billing/calc/rent.py
+  - backend/apps/billing/management/commands/genera_rent_payments.py
+  - backend/apps/billing/models/expenses.py
+  - backend/apps/properties/models/property.py
+  - backend/apps/properties/views.py
 tags: [domain, affitti, rent, billing]
 timestamp: 2026-09-03T00:00:00Z
 ---

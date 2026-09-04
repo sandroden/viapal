@@ -3,6 +3,12 @@ type: Domain Logic
 title: Solleciti e registro comunicazioni
 description: Email di riepilogo addebiti agli inquilini (canone del mese + pendenti a 15 giorni + voci dichiarate) e registro di cosa è stato inviato, a chi e con che esito.
 resource: backend/apps/billing/calc/riepilogo.py
+resources:
+  - backend/apps/billing/calc/riepilogo.py
+  - backend/apps/billing/management/commands/invia_riepilogo_addebiti.py
+  - backend/apps/billing/calc/posizione.py
+  - backend/apps/notifications/models/notifications.py
+  - backend/apps/properties/models/tenant.py
 tags: [domain, solleciti, notifiche, email, inquilini]
 timestamp: 2026-08-02T00:00:00Z
 ---

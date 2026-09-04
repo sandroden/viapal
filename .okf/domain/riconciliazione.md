@@ -3,8 +3,14 @@ type: Domain Logic
 title: Riconciliazione bonifici
 description: Matching e allocazione dei movimenti bancari sugli addebiti (M:N).
 resource: backend/apps/billing/calc/matching.py
+resources:
+  - backend/apps/billing/calc/matching.py
+  - backend/apps/billing/views.py
+  - backend/apps/billing/signals.py
+  - backend/apps/billing/calc/incassi.py
+  - backend/apps/billing/models/payments.py
 tags: [domain, riconciliazione, matching, billing]
-timestamp: 2026-07-08T00:00:00Z
+timestamp: 2026-09-05T00:00:00Z
 ---
 
 # Overview
@@ -27,6 +33,32 @@ coprire più addebiti (pagamento unico), un addebito può essere coperto da più
 
 Il matching è un **suggeritore**: la conferma passa dalla UI di riconciliazione.
 
+# Scrittura delle allocazioni
+
+Tre strade, tutte in `billing/views.py`, tutte atomiche:
+
+| Endpoint | Cosa fa |
+|----------|---------|
+| `POST /api/v1/reconciliations/` (`ReconciliationBulkView`) | sostituisce **in blocco** le allocazioni delle BT in `replace_for_transactions` con quelle in `items`; una BT presente in `items` ma non nella lista da sostituire è 400 (niente allocazioni orfane); valida segni e somme (sotto); riallinea esplicitamente i Receivable toccati, vecchi e nuovi, perché `bulk_create` non emette `post_save` |
+| `POST receivables/<pk>/registra-pagamento/` | data + importo + conto → BT + allocazione via `calc/incassi.registra_incasso`: alloca al massimo il residuo, l'eccedenza resta sulla BT come "parziale"/credito; 409 se già pagato |
+| `POST receivables/<pk>/conferma_pagato` | stesso motore, dalla pagina Ritardi; il conto è obbligatorio e deve essere [in uso sull'immobile](/domain/conti-per-immobile.md) |
+
+`rifiuta_pagato` non scrive allocazioni: rimette l'addebito alla verità delle
+allocazioni esistenti (`_riallinea_receivable`) e annota il rifiuto in `note`.
+`dichiara_pagato` (inquilino) non tocca `importo_pagato`: la copertura resta
+quella bancaria.
+
+# Stato di riconciliazione di una BT
+
+`BankTransaction.stato_riconciliazione` (`models/payments.py`), segno-aware
+sulla **somma algebrica** delle allocazioni: `vuoto` (nessuna), `parziale`,
+`pieno` (somma ≥ importo per le entrate, ≤ per le uscite), `sovra` (somma oltre
+l'importo di più di `TOLLERANZA_ALLOC` = 0,01 €, o di verso opposto alla BT).
+`residuo` conserva il segno della BT. I queryset `non_riconciliate()` /
+`riconciliate()` usano la stessa regola; una BT a importo 0 è "pieno" (nulla da
+abbinare) salvo che abbia allocazioni (`sovra`). Nel FE `sovra` è il chip
+*eccedente*, in admin un'icona rossa.
+
 # UX di riconciliazione (frontend)
 
 `ProprietarioRiconciliazione.vue` è simmetrica: allocazioni esplicite vs
@@ -46,11 +78,23 @@ credito), senza generare uno sbilancio a favore della proprietà.
   bancario prevale; la vecchia descrizione va nelle note.
 - **[Guardia allocations](/decisions/guardia-allocations.md)**: un Receivable con
   allocazioni vive non viene sovrascritto dai ricalcoli.
-- **[Segni concordi](/decisions/segni-concordi.md)**: allocazione, BT e Receivable
-  concordi in segno (restituzione deposito = tutti negativi).
+- **[Segni concordi](/decisions/segni-concordi.md)**, nella forma
+  **rilassata**: ogni allocazione ha il segno del `importo_dovuto` del suo
+  Receivable (regola assoluta); il segno della BT deve coincidere solo con
+  quello della **somma** delle sue allocazioni. Restituzione deposito = tutti
+  negativi; restituzione con trattenuta = BT −984 ↔ alloc −1060 + alloc +76,
+  valida. Imposta da `reconciliations/` (400), dal formset admin, da
+  `registra_incasso` e dal signal, che tratta come non coperto un Receivable
+  con allocazioni di segno opposto al dovuto.
 - **[Allocazioni non eccedenti](/decisions/allocazioni-non-eccedenti.md)**: la somma
-  allocata non supera l'importo della BT — verificata anche quando si corregge
-  l'importo di un movimento già riconciliato.
+  allocata non supera l'importo della BT (tolleranza 0,01 €) — verificata in
+  `reconciliations/`, per costruzione in `registra_incasso`, e nell'admin anche
+  quando si corregge l'importo di un movimento già riconciliato; lo sbilancio
+  residuo è visibile come stato `sovra` e si ripara con
+  `sana_allocazioni_eccedenti`.
+- **[Incasso sempre attribuito](/decisions/incasso-sempre-attribuito.md)**: un
+  Receivable arriva a `pagato` solo attraverso un'allocazione; `incassato_da_owner`
+  lo scrive il signal dal conto della BT.
 
 # Diagnosi "non abbinati"
 

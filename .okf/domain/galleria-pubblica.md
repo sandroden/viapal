@@ -2,15 +2,24 @@
 type: Feature
 title: Galleria pubblica (annuncio affitto)
 description: Pagina pubblica /g/<slug> con foto per stanza/spazi comuni, editabile in-place dal proprietario.
-resource: backend/apps/properties/
+resource: frontend/src/pages/GalleriaPubblica.vue
+resources:
+  - frontend/src/pages/GalleriaPubblica.vue
+  - backend/apps/properties/og.py
+  - backend/apps/properties/models/property.py
+  - frontend/src/stores/galleria.ts
+  - frontend/src/components/ImageSlot.vue
 tags: [feature, public, gallery, frontend]
-timestamp: 2026-07-23T00:00:00Z
+timestamp: 2026-09-05T00:00:00Z
 ---
 
 # Overview
 
 Pagina **pubblica senza login** che presenta la casa/stanze in affitto come annuncio
-(hero, planimetria, sezioni stanza con foto, posizione). Unica area pubblica dell'app.
+(hero, planimetria, sezioni stanza con foto, posizione). Prima area pubblica
+dell'app; dal 2026-08-26 la affiancano `/d/<token>` ([Link di
+lettura](/domain/link-lettura.md)) e `/privacy`, oltre alle pagine di login e
+password (tutte `meta.public` nel router).
 Editabile **in-place** dal proprietario loggato (stessa pagina, toggle "Modifica").
 Sviluppata sul branch `galleria-pubblica` staccato da `main` (indipendente dalla
 multiproprietà non ancora validata); legata a `Property`, compatibile col merge futuro.
@@ -27,11 +36,16 @@ Estende [properties](/models/properties.md):
 - **`Room`** (= **oggetto d'affitto**, la camera): campi d'annuncio espliciti `colore`,
   `descrizione`, `disponibile`, `libera_dal`, `prezzo_mensile`, `pubblica` — **indipendenti**
   dalle `RoomAssignment` contabili. **Il toggle `disponibile` è il comando principale di
-  visibilità**: se spento → badge "Non disponibile", **niente foto e data ignorata** (a
-  prescindere da `libera_dal`). Se acceso, `libera_dal` è solo un'etichetta: con una data
+  visibilità**: se spento → pill "occupata" (anche nella legenda della planimetria) e data
+  ignorata (a prescindere da `libera_dal`). Dal 2026-08-06 le **foto restano visibili
+  anche a stanza occupata**, velate (opacity .45 + desaturazione, piene in hover) con la
+  nota "Attualmente occupata — le foto restano visibili per farti capire com'è la casa":
+  il serializer pubblico **non svuota più `foto`**, la velatura è solo frontend
+  (`stanzaDisponibile`). Se acceso, `libera_dal` è solo un'etichetta: con una data
   **futura** mostra "Libera dal &lt;data&gt;" (stanza in annuncio con ingresso posticipato,
   messa alla disdetta ~2 mesi prima), altrimenti nessun badge. La regola "data futura" è nel
-  frontend (`liberaDalFutura`), la visibilità foto nel serializer (`if not obj.disponibile`).
+  frontend (`liberaDalFutura`). Su `unita_intera` disponibilità e "Libera dal" non si
+  mostrano (vedi [Unità intera](/domain/unita-intera.md)).
 - **`GalleryArea`** (= **ambiente comune**: cucina, soggiorno, bagni…): `property`, `nome`,
   `colore`, `descrizione`, `ordinamento`, `pubblica`. **NON** è un oggetto d'affitto (niente
   assegnazioni/canone): è solo un raggruppamento di foto. Scelta deliberata per non assimilare
@@ -92,8 +106,7 @@ rinomina i file opachi di `/media`, da cui `fetch`→blob). **Una foto** → fil
 propria, metodo *store* senza compressione (le foto sono già JPEG/WebP: deflate non
 guadagnerebbe nulla e servirebbe una libreria nel bundle). Lo ZIP evita anche il prompt
 "consenti download multipli" di Chrome. Nessun endpoint nuovo: gli URL sono nel payload
-pubblico. Limite noto: le foto delle stanze `disponibile=False` non sono nel payload
-pubblico, quindi non compaiono nell'elenco.
+pubblico (anche le foto delle stanze occupate, che dal 2026-08-06 ci sono).
 Store `galleria.ts` (`uploadImages` batch = N POST + 1 refresh; `patchImage`; `reorderImages`).
 Per ogni foto in edit: controlli **formato** (3 pulsanti crop), **didascalia** (overlay in basso,
 editabile), **riordino** con frecce laterali `‹ ›` (scelta deliberata vs drag: robusta con le

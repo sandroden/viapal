@@ -3,8 +3,14 @@ type: Domain Logic
 title: Receivable — l'addebito unificato
 description: Il modello unico che rappresenta ogni importo dovuto dall'inquilino.
 resource: backend/apps/billing/models/receivables.py
+resources:
+  - backend/apps/billing/models/receivables.py
+  - backend/apps/billing/signals.py
+  - backend/apps/billing/calc/incassi.py
+  - backend/apps/billing/_payments.py
+  - backend/apps/billing/views.py
 tags: [domain, receivable, billing]
-timestamp: 2026-08-03T00:00:00Z
+timestamp: 2026-09-05T00:00:00Z
 ---
 
 # Overview
@@ -16,22 +22,44 @@ Prima esistevano tre modelli separati (`RentPayment`, `UtilityCharge`,
 
 # Anatomia
 
-- **Cosa è dovuto**: `importo_dovuto`, `causale`, `competenza_da`/`competenza_a`,
-  `scadenza`, `assignment` (a chi/quale stanza).
-- **Cosa è stato pagato**: `importo_pagato`, `stato`, `data_pagamento`. Questi
-  sono derivati dalle allocazioni bancarie, **non** inseriti a mano.
+- **Cosa è dovuto**: `importo_dovuto`, `causale`, `descrizione` (obbligatoria
+  per EXTRA, opzionale altrove), `competenza_da`/`competenza_a` (nulla per
+  EXTRA: addebito puntuale), `scadenza`, `assignment` (a chi/quale stanza,
+  FK `PROTECT`: un'assegnazione con addebiti non si cancella).
+- **Cosa è stato pagato**: `importo_pagato`, `stato`, `data_pagamento`,
+  `incassato_da_owner`. Questi sono derivati dalle allocazioni bancarie,
+  **non** inseriti a mano.
+- **Stati** (`StatoPagamento`): `atteso`, `dichiarato`, `pagato`,
+  `in_ritardo`, `insoluto`.
 - **Legami**: `utility_period` (se causale utenze), `giorni_presenza` (pro-rata),
-  `is_aggiustamento` (voce di rettifica, es. uscita anticipata).
+  `is_aggiustamento` (voce di rettifica, es. uscita anticipata),
+  `bank_account_destinazione` (override del conto su cui va versato),
+  `ricevuta` (file su storage privato).
+- **`note`**: log append-only della macchina a stati dichiara/rifiuta; da non
+  confondere con i commenti (sotto).
+
+# Vincoli di database
+
+| Nome | Regola |
+|------|--------|
+| `receivable_affitto_unique` | un solo AFFITTO per `(assignment, competenza_da, competenza_a)` |
+| `receivable_utenze_unique` | un solo UTENZE per `(utility_period, assignment)` |
+| `receivable_pagato_ha_incassante` | `stato=pagato` ⇒ `incassato_da_owner` valorizzato (`CheckConstraint`; `clean()` ripete la regola per l'admin) |
 
 # Causali
 
-Il campo `causale` distingue AFFITTO, UTENZE, EXTRA e voci speciali (es.
-REGISTRAZIONE per il [costo cessione](/models/properties.md), restituzione deposito).
-Ogni sottodominio genera Receivable con la propria causale:
+`Receivable.Causale`: `AFFITTO`, `UTENZE`, `EXTRA`, `DEPOSITO`, `REGISTRAZIONE`
+(costo cessione, vedi [properties](/models/properties.md)). Ogni sottodominio
+genera Receivable con la propria causale:
 
-- [Generazione affitti](/domain/generazione-affitti.md) → causale AFFITTO.
-- [Calcolo utenze](/domain/calcolo-utenze.md) → causale UTENZE (+ `utility_period`).
-- [Deposito](/domain/deposito.md) → causale restituzione deposito.
+- [Generazione affitti](/domain/generazione-affitti.md) → AFFITTO.
+- [Calcolo utenze](/domain/calcolo-utenze.md) → UTENZE (+ `utility_period`).
+- [Deposito](/domain/deposito.md) → DEPOSITO, con il segno a distinguere il
+  versamento (positivo, eventualmente a rate) dalla restituzione (negativo).
+- EXTRA può avere `importo_dovuto` negativo (rimborso/accredito).
+
+Un'assegnazione marcata `rinunciata` (chi non è mai entrato) non produce
+AFFITTO né UTENZE; le resta agganciato solo il DEPOSITO.
 
 # Ciclo di vita e incasso
 
@@ -40,16 +68,39 @@ può coprire più addebiti e un addebito può essere coperto da più bonifici.
 `importo_pagato`/`stato` riflettono le allocazioni vive. Vedi
 [riconciliazione](/domain/riconciliazione.md).
 
+Il riallineamento è `billing/signals.py: _riallinea_receivable`, che scatta
+su ogni salvataggio/cancellazione di un'allocazione **e** sul salvataggio di
+una `BankTransaction` già esistente (correggere conto o data del movimento
+riallinea gli addebiti che copre). Regole:
+
+- somma delle allocazioni con segno; se è zero o di segno opposto al dovuto
+  l'addebito è **non coperto** (ATTESO, campi derivati azzerati);
+- `|somma| + 1 € ≥ |dovuto|` ⇒ PAGATO (soglia `_SOGLIA`: gli spiccioli non
+  tengono aperto un addebito), `data_pagamento` = data dell'ultima BT,
+  `incassato_da_owner` = titolare del conto dell'ultima BT allocata;
+- altrimenti parziale: resta ATTESO con `importo_pagato` = somma.
+
+Il signal **non** scatta sul salvataggio del Receivable stesso: correggere
+`importo_dovuto` a mano non ricalcola lo stato.
+
 # Dichiarazione, conferma, rifiuto
 
 L'inquilino può **dichiarare** di aver pagato (`dichiara_pagato`): lo stato passa
 a DICHIARATO ma `importo_pagato` **non viene toccato** — resta la copertura
-reale da allocazioni; gli estremi dichiarati finiscono in `note` (log
-append-only della macchina a stati). Il proprietario poi **conferma**
-(`conferma_pagato` → PAGATO a dovuto pieno) oppure **rifiuta**
-(`rifiuta_pagato` → riallineamento dalla verità bancaria, l'addebito torna
-da pagare). Una riconciliazione bancaria vince sempre sul dichiarato: il
-signal su `BankTransactionAllocation` ricalcola stato/importi a ogni tocco.
+reale da allocazioni; gli estremi dichiarati finiscono in `note`. Il
+proprietario poi **conferma** (`conferma_pagato`, ammesso da DICHIARATO,
+ATTESO e IN_RITARDO) oppure **rifiuta** (`rifiuta_pagato` → riallineamento
+dalla verità bancaria, l'addebito torna da pagare). Confermare non è una
+spunta: richiede il conto su cui è entrato il denaro e delega a
+`calc/incassi.py: registra_incasso` (BT + allocazione); è il signal a
+portare l'addebito a PAGATO. Una riconciliazione bancaria vince sempre sul
+dichiarato.
+
+`registra_incasso` misura il residuo sulle allocazioni (non su
+`importo_pagato`, che su un dichiarato riporta l'affermazione
+dell'inquilino), rifiuta un importo di segno discorde col residuo e alloca al
+massimo il residuo: l'eccedenza resta sulla BT come credito visibile in
+riconciliazione. Stesso motore per `receivables/<pk>/registra-pagamento/`.
 
 # Conto di destinazione
 
@@ -65,10 +116,11 @@ quick add), dove il conto proposto è quello di chi scrive: lì è chi ha
 anticipato il denaro.
 
 I conti eleggibili sono solo quelli **in uso su quell'immobile**
-(`OwnerBankAccount.properties`), non più quelli di chiunque ne sia membro:
-vedi [Conti bancari per immobile](/domain/conti-per-immobile.md). La stessa
-eccezione delle spese vale anche lì — per una spesa si accetta un conto
-proprio anche se non in uso sull'immobile.
+(`OwnerBankAccount.properties`, gate `_valida_conto_incasso` in
+`billing/views.py`, 403 altrimenti), non più quelli di chiunque ne sia
+membro: vedi [Conti bancari per immobile](/domain/conti-per-immobile.md). La
+stessa eccezione delle spese vale anche lì — per una spesa si accetta un
+conto proprio anche se non in uso sull'immobile.
 
 # Commenti
 
@@ -91,6 +143,8 @@ scadenze).
   (generazione affitti, conguaglio) — vedi [guardia allocations](/decisions/guardia-allocations.md).
 - Allocazioni, BT e Receivable devono essere **concordi in segno** — vedi
   [segni concordi](/decisions/segni-concordi.md).
+- La somma delle allocazioni di una BT non ne supera l'importo — vedi
+  [allocazioni non eccedenti](/decisions/allocazioni-non-eccedenti.md).
 - Un Receivable `pagato` ha sempre `incassato_da_owner` (vincolo di database):
   si chiude registrandone il movimento, mai scrivendo lo stato a mano — vedi
   [incasso sempre attribuito](/decisions/incasso-sempre-attribuito.md).

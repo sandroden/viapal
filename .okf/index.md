@@ -11,6 +11,10 @@ algoritmi contabili, invarianti di dominio, decisioni architetturali e playbook 
 
 Partire da qui, poi seguire solo i link rilevanti (progressive disclosure).
 
+# Principi (sempre in contesto)
+
+* [principles/](principles/) - regole di progetto senza `resource:`; l'hook di sessione inietta il loro indice. Oggi: tutto utilizzabile dal frontend.
+
 # Architettura
 
 * [Architecture overview](architecture/overview.md) - stack, monorepo, deploy, convenzioni.
@@ -39,7 +43,7 @@ Partire da qui, poi seguire solo i link rilevanti (progressive disclosure).
 
 # Decisioni e invarianti
 
-* [decisions/](decisions/) - unificazione Receivable, "banca vince sempre", guardia allocations, segni concordi, allocazioni non eccedenti.
+* [decisions/](decisions/) - la decisione architetturale (unificazione Receivable, ADR con `status`) e le invarianti imposte nel codice (`type: Invariant`, con `resource:` sul punto d'imposizione): banca vince sempre, guardia allocations, segni concordi, allocazioni non eccedenti, incasso sempre attribuito.
 
 # Reference modelli Django
 
@@ -47,4 +51,4 @@ Partire da qui, poi seguire solo i link rilevanti (progressive disclosure).
 
 # Playbook
 
-* [playbooks/](playbooks/) - dev setup, validazione, import dati storici.
+* [playbooks/](playbooks/) - dev setup, validazione, import dati storici, manutenzione del bundle (tipi, gate, soglie).

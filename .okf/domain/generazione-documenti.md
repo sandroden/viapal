@@ -2,9 +2,15 @@
 type: Domain Logic
 title: Generazione documenti
 description: Atto di subentro nel contratto e comunicazione di cessione di fabbricato generati in PDF dai dati già in archivio; il testo è un modello caricato per immobile, e i dati che mancano vengono elencati con il posto in cui compilarli.
-resource: backend/apps/properties/documenti/
+resource: backend/apps/properties/documenti/base.py
+resources:
+  - backend/apps/properties/documenti/base.py
+  - backend/apps/properties/documenti/__init__.py
+  - backend/apps/properties/documenti/atto_subentro.py
+  - backend/apps/properties/documenti/cessione_fabbricato.py
+  - backend/apps/properties/models/document_template.py
 tags: [domain, documenti, pdf, proprietari]
-timestamp: 2026-08-03T00:00:00Z
+timestamp: 2026-09-05T00:00:00Z
 ---
 
 # Overview
@@ -172,6 +178,18 @@ compromesso già accettato per l'invio dei riepiloghi addebiti.
 
 `/api/v1/document-templates/` gestisce i modelli, con `esempio/` e
 `segnaposto/` derivate dal generatore.
+
+`GET|POST /api/v1/property-documents/facsimile/` — il fac-simile (dal
+2026-08-26): `GET` anteprima con i mancanti (immobile, locatori, contratto,
+modello), `POST` genera un `PropertyDocument` di tipo `fac_simile` tramite
+`anteprima_facsimile`/`genera_facsimile` (`documenti/__init__.py`). Le fonti
+sono quelle di `fonti_facsimile`, con `OMISSIONI_FACSIMILE` al posto di
+inquilino, uscente, assegnazione, deposito e oneri accessori.
+
+Codici dei documenti (= `TenantDocument.Tipo`): `atto_subentro_locazione`,
+`cessione_fabbricato`. `Documento.riepilogo`, `Campo` e `Fonti` stanno in
+`documenti/base.py`; ogni documento è un modulo (`atto_subentro.py`,
+`cessione_fabbricato.py`) registrato in `documenti/__init__.py`.
 
 # Fonti dei dati
 
