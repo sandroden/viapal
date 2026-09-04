@@ -4,7 +4,7 @@ Contesto
 --------
 
 Le allocazioni nascono già validate: sia la riconciliazione da frontend
-(``POST bank-transactions/riconcilia/``) sia ``registra-pagamento``
+(``POST /api/v1/reconciliations/``) sia ``registra-pagamento``
 garantiscono che la somma algebrica delle allocations di una BT non superi
 ``BankTransaction.importo`` in valore assoluto.
 
