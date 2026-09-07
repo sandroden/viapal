@@ -9,7 +9,7 @@ resources:
   - backend/apps/properties/views.py
   - backend/apps/billing/dashboard_views/deposito.py
 tags: [decision, invariant, riconciliazione]
-timestamp: 2026-09-05T00:00:00Z
+timestamp: 2026-09-07T00:00:00Z
 ---
 
 # Invariante
@@ -31,7 +31,7 @@ Non c'è un vincolo di database né un signal: è un `allocations.exists()`
 | `calc/rent.genera_pagamenti_mese` | il Receivable esistente (o quello dello stesso mese su un altro assignment del tenant) con allocazioni è `skip_allocation` anche con `force`; finisce in `skippati_per_allocation` |
 | `calc/utility._persist_receivables` (via `calcola_conguaglio_periodo(persist=True)`) | quota ricalcolata **non** scritta sul Receivable UTENZE allocato; riportata in `skipped` con importo esistente e calcolato |
 | `properties/views.py` — `POST room-assignments/<id>/rigenera-receivable/` | rigenera con force e poi elimina gli orfani, ma **solo** quelli senza allocazioni (`skip_alloc_ids`) |
-| `dashboard_views.RestituzioneDepositoView` | la riga di restituzione già riconciliata non si modifica da lì (409: "modificala dalla riconciliazione") |
+| `dashboard_views/deposito.crea_o_aggiorna_restituzione` | la riga di restituzione già riconciliata non si modifica da lì (409: "modificala dalla riconciliazione"); helper usato da `RestituzioneDepositoView` e dal `POST chiusura/`, che la genera solo se manca |
 
 Deroga esplicita e voluta: `riconcilia_bonifici --reset` cancella **tutte** le
 allocazioni per ripartire da zero — è distruttivo per definizione, non una

@@ -648,13 +648,38 @@
                     <q-item>
                       <q-item-section>
                         <strong>
-                          {{ simulazioneUscita.giaRestituito ? 'Deposito già restituito' : 'Netto da restituire' }}
+                          {{ simulazioneUscita.giaRestituito ? 'Restituito' : 'Netto da restituire' }}
                         </strong>
+                        <q-item-label v-if="simulazioneUscita.giaRestituito && dataRestituito" caption>
+                          il {{ formattaData(dataRestituito) }}
+                        </q-item-label>
                       </q-item-section>
                       <q-item-section side>
-                        <strong class="vp-mono vp-p-id__sim-netto">
-                          {{ formattaEuro(simulazioneUscita.netto) }}
-                        </strong>
+                        <span class="vp-p-id__sim-netto-wrap">
+                          <strong class="vp-mono vp-p-id__sim-netto">
+                            {{ formattaEuro(simulazioneUscita.giaRestituito ? importoRestituito : nettoDaRestituire) }}
+                          </strong>
+                          <span
+                            v-if="chiusura?.registrabile && !simulazioneUscita.giaRestituito"
+                            class="vp-p-id__stato-click"
+                            data-testid="registra-bonifico-chiusura"
+                            @click="dialogBonificoChiusura = true"
+                          >
+                            <StatoPagamentoBadge
+                              :importo-dovuto="-nettoDaRestituire"
+                              :importo-pagato="0"
+                              stato="atteso"
+                            />
+                            <q-icon name="payments" size="14px" class="vp-p-id__stato-icon" />
+                            <q-tooltip>Registra il bonifico di restituzione</q-tooltip>
+                          </span>
+                          <StatoPagamentoBadge
+                            v-else-if="simulazioneUscita.giaRestituito"
+                            :importo-dovuto="-importoRestituito"
+                            :importo-pagato="-importoRestituito"
+                            stato="pagato"
+                          />
+                        </span>
                       </q-item-section>
                     </q-item>
                     <q-item v-if="simulazioneUscita.residuoDebito > 0">
@@ -665,6 +690,71 @@
                       </q-item-section>
                     </q-item>
                   </q-list>
+                  <q-expansion-item
+                    v-if="chiusura && chiusura.bonifici.length"
+                    dense
+                    dense-toggle
+                    label="Come si compone"
+                    class="vp-p-id__sim-exp"
+                  >
+                    <q-list dense>
+                      <template v-for="b in chiusura.bonifici" :key="b.bank_transaction_id">
+                        <q-item-label v-if="chiusura.bonifici.length > 1" header>
+                          Bonifico del {{ formattaData(b.data) }} · {{ formattaEuro(-b.importo) }}
+                        </q-item-label>
+                        <q-item v-for="a in b.allocazioni" :key="a.receivable_id">
+                          <q-item-section>
+                            <q-item-label>{{ a.descrizione }}</q-item-label>
+                            <q-item-label caption>{{ etichettaImputazione(a) }}</q-item-label>
+                          </q-item-section>
+                          <q-item-section side>
+                            <span class="vp-mono">{{ formattaEuro(a.effetto) }}</span>
+                          </q-item-section>
+                        </q-item>
+                        <q-item v-if="b.resto !== 0">
+                          <q-item-section>
+                            <q-item-label>Scarto del bonifico</q-item-label>
+                            <q-item-label caption>
+                              {{ b.resto < 0 ? 'bonificato oltre il dovuto: debito dell\'inquilino' : 'bonificato meno del dovuto: credito dell\'inquilino' }}
+                            </q-item-label>
+                          </q-item-section>
+                          <q-item-section side>
+                            <span class="vp-mono">{{ formattaEuro(-b.resto) }}</span>
+                          </q-item-section>
+                        </q-item>
+                      </template>
+                    </q-list>
+                  </q-expansion-item>
+                  <q-expansion-item
+                    v-else-if="chiusura && chiusura.componenti.length"
+                    dense
+                    dense-toggle
+                    label="Come si calcola"
+                    class="vp-p-id__sim-exp"
+                  >
+                    <q-list dense>
+                      <q-item v-for="c in chiusura.componenti" :key="c.receivable_id ?? 'deposito'">
+                        <q-item-section>
+                          <q-item-label>{{ c.descrizione }}</q-item-label>
+                          <q-item-label caption>{{ etichettaComponente(c) }}</q-item-label>
+                        </q-item-section>
+                        <q-item-section side>
+                          <span class="vp-mono">{{ formattaEuro(c.effetto) }}</span>
+                        </q-item-section>
+                      </q-item>
+                      <q-item v-if="chiusura.resti_bonifici !== 0">
+                        <q-item-section>
+                          <q-item-label>Resti dei bonifici</q-item-label>
+                          <q-item-label caption>
+                            {{ chiusura.resti_bonifici > 0 ? 'ricevuto oltre il dovuto: credito dell\'inquilino' : 'bonificato oltre il dovuto: debito dell\'inquilino' }}
+                          </q-item-label>
+                        </q-item-section>
+                        <q-item-section side>
+                          <span class="vp-mono">{{ formattaEuro(chiusura.resti_bonifici) }}</span>
+                        </q-item-section>
+                      </q-item>
+                    </q-list>
+                  </q-expansion-item>
                   <div class="vp-p-id__popup-nota">
                     {{
                       simulazioneUscita.giaRestituito
@@ -853,6 +943,16 @@
       v-model="dialogConguaglio"
       :tenant-id="tenantId"
       :previsionale-id="previsionaleApertoId"
+      @saved="dopoSalvataggioPagamento"
+    />
+
+    <RegistraBonificoChiusuraDialog
+      v-if="chiusura && tenantCorrente"
+      v-model="dialogBonificoChiusura"
+      :tenant-id="tenantId"
+      :tenant-nominativo="tenantCorrente.nominativo"
+      :chiusura="chiusura"
+      :owner-accounts="contiUtente"
       @saved="dopoSalvataggioPagamento"
     />
 
@@ -1066,6 +1166,8 @@ import { api } from 'boot/axios';
 import {
   useTenantSituazioneStore,
   type AssignmentRiga,
+  type Chiusura,
+  type ChiusuraComponente,
   type UtilityRiga,
 } from 'stores/tenantSituazione';
 import { useTenantsStore, type Tenant } from 'stores/tenants';
@@ -1079,6 +1181,7 @@ import EmptyState from 'src/components/EmptyState.vue';
 import RegistraPagamentoDialog from 'src/components/RegistraPagamentoDialog.vue';
 import PrevisionaleUtenzeDialog from 'src/components/PrevisionaleUtenzeDialog.vue';
 import ConguagliaPrevisionaleDialog from 'src/components/ConguagliaPrevisionaleDialog.vue';
+import RegistraBonificoChiusuraDialog from 'src/components/RegistraBonificoChiusuraDialog.vue';
 import AssegnaStanzaDialog from 'src/components/AssegnaStanzaDialog.vue';
 import RestituzioneDepositoDialog from 'src/components/RestituzioneDepositoDialog.vue';
 import AnagraficaInquilinoDialog from 'src/components/inquilini/AnagraficaInquilinoDialog.vue';
@@ -1241,6 +1344,55 @@ const simulazioneUscita = computed(() => {
     residuoDebito: !restituito && netto < 0 ? -netto : 0,
     giaRestituito: restituito,
   };
+});
+
+// Scomposizione del netto da restituire (endpoint chiusura): la stessa
+// cifra della simulazione, ma con le sue parti, e il bonifico complessivo.
+// Si ricarica ogni volta che cambia la situazione (pagamenti, conguagli,
+// restituzione): è derivata dagli stessi dati.
+const chiusura = ref<Chiusura | null>(null);
+const dialogBonificoChiusura = ref(false);
+
+async function loadChiusura(): Promise<void> {
+  try {
+    const resp = await api.get<Chiusura>(`/api/v1/tenants/${tenantId.value}/chiusura/`);
+    chiusura.value = resp.data.tenant_id === tenantId.value ? resp.data : null;
+  } catch {
+    chiusura.value = null;
+  }
+}
+
+watch(situazione, (s) => {
+  if (s) void loadChiusura();
+  else chiusura.value = null;
+});
+
+const nettoDaRestituire = computed(() => {
+  if (simulazioneUscita.value?.giaRestituito) return 0;
+  return chiusura.value?.netto ?? simulazioneUscita.value?.netto ?? 0;
+});
+
+function etichettaComponente(c: ChiusuraComponente): string {
+  if (c.causale === 'deposito') return 'deposito da rendere';
+  if (c.effetto < 0) return 'da trattenere';
+  return 'da accreditare';
+}
+function etichettaImputazione(a: { causale: string; effetto: number }): string {
+  if (a.causale === 'deposito') return 'deposito reso';
+  if (a.effetto < 0) return 'trattenuto';
+  return 'accreditato';
+}
+
+// Deposito già reso: quanto è uscito davvero (somma dei bonifici che hanno
+// pagato la restituzione) e quando.
+const importoRestituito = computed(() => {
+  const b = chiusura.value?.bonifici ?? [];
+  if (b.length) return b.reduce((acc, x) => acc - x.importo, 0);
+  return -(rigaRestituzione.value?.importo ?? 0);
+});
+const dataRestituito = computed(() => {
+  const b = chiusura.value?.bonifici ?? [];
+  return b.length ? (b[b.length - 1]?.data ?? null) : (rigaRestituzione.value?.data_pagamento ?? null);
 });
 
 const righePagamenti = computed<RigaPagamento[]>(() => {
@@ -1579,13 +1731,18 @@ const previsionaleApertoId = computed<number | null>(() => {
   return aperto?.id ?? null;
 });
 
+// Un previsionale esiste già (aperto o conguagliato): non se ne propone un altro.
+const previsionaleEsistente = computed(() =>
+  (situazione.value?.utility?.righe ?? []).some((r) => r.previsionale),
+);
+
 const puoCrearePrevisionale = computed(
   () =>
     (!!situazione.value?.tenant?.data_restituzione_prevista ||
       inFinestraUscita.value) &&
     !restituzioneEffettuata.value &&
     assignmentAttivoId.value !== null &&
-    previsionaleApertoId.value === null,
+    !previsionaleEsistente.value,
 );
 
 // Generazione/modifica esplicita dell'addebito di restituzione deposito:
@@ -2104,6 +2261,14 @@ const contiUtente = computed(() => contiStore.accounts);
 }
 .vp-p-id__sim-netto {
   font-size: var(--vp-text-lg);
+}
+.vp-p-id__sim-netto-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.vp-p-id__sim-exp {
+  margin-top: var(--vp-gap-1);
 }
 .vp-p-id__rendiconto-btn {
   margin-top: var(--vp-gap-3);

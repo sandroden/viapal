@@ -12,7 +12,7 @@ from ._common import (
     _descrizione_receivable,
 )
 from .conto_economico import ContoEconomicoView
-from .deposito import RestituzioneDepositoView
+from .deposito import ChiusuraDepositoView, RestituzioneDepositoView
 from .inquilino import DashboardInquilinoView, TenantSituazioneView
 from .previsionale import ConguagliaPrevisionaleView, PrevisionaleUtenzeView
 from .proprietario import BilancioOwnerDettaglioView, DashboardProprietarioView
@@ -23,6 +23,7 @@ __all__ = [
     "STATI_DA_PAGARE",
     "TIPO_PER_CAUSALE",
     "BilancioOwnerDettaglioView",
+    "ChiusuraDepositoView",
     "ConguagliaPrevisionaleView",
     "ContoEconomicoView",
     "DashboardInquilinoView",

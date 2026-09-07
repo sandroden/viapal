@@ -194,3 +194,51 @@ export const useTenantSituazioneStore = defineStore('tenantSituazione', {
     },
   },
 });
+
+// --- Chiusura (GET/POST /tenants/<id>/chiusura/) ---------------------------
+
+export interface ChiusuraComponente {
+  /** Nullo per il deposito da rendere quando l'addebito non è ancora generato. */
+  receivable_id: number | null;
+  tipo: string;
+  causale: string;
+  descrizione: string;
+  importo_dovuto: number;
+  residuo: number;
+  /** Contributo al netto da restituire: −residuo (la restituzione conta
+   *  positiva, un addebito da trattenere negativo, una rettifica positiva). */
+  effetto: number;
+  stato: string | null;
+}
+
+export interface ChiusuraBonifico {
+  bank_transaction_id: number;
+  data: string;
+  importo: number;
+  descrizione: string;
+  allocazioni: {
+    receivable_id: number;
+    causale: string;
+    descrizione: string;
+    importo: number;
+    effetto: number;
+  }[];
+  resto: number;
+}
+
+export interface Chiusura {
+  tenant_id: number;
+  deposito_versato: number;
+  importo_restituzione: number;
+  restituzione: {
+    receivable_id: number;
+    importo: number;
+    stato: string;
+    data: string;
+  } | null;
+  componenti: ChiusuraComponente[];
+  bonifici: ChiusuraBonifico[];
+  resti_bonifici: number;
+  netto: number;
+  registrabile: boolean;
+}

@@ -10,7 +10,7 @@ resources:
   - backend/apps/billing/dashboard_views/deposito.py
   - backend/apps/billing/dashboard_views/rendiconto.py
 tags: [domain, deposito, billing]
-timestamp: 2026-09-03T00:00:00Z
+timestamp: 2026-09-07T00:00:00Z
 ---
 
 # Overview
@@ -100,6 +100,44 @@ La restituzione è un [Receivable](/domain/receivable.md) con causale dedicata e
 tutti negativi — vedi [segni concordi](/decisions/segni-concordi.md). La
 generazione dell'addebito di restituzione è esplicita dal frontend. Esiste una
 pagina/endpoint di rendiconto deposito.
+
+# Chiusura: netto da rendere e bonifico unico
+
+`GET tenants/<id>/chiusura/` (`ChiusuraDepositoView`, 2026-09-07) scompone il
+netto da restituire nelle sue parti, così che "61,95" o "275,05" abbiano una
+spiegazione leggibile: la riga di restituzione (positiva, deposito da rendere;
+se l'addebito non è ancora generato, il lordo suggerito come componente
+virtuale senza `receivable_id`), ogni addebito aperto con il suo residuo
+(`effetto = −residuo`: un affitto o una bolletta da trattenere pesa negativo,
+una rettifica o un accredito positivo) e i resti dei bonifici già ricevuti.
+`netto = Σ effetti + resti` coincide con `deposito − sbilancio reale` della
+simulazione; la restituzione già saldata non compare fra le componenti.
+`bonifici` elenca i movimenti che hanno pagato la restituzione con tutte le
+loro imputazioni e lo scarto: è la memoria di come si componeva quel che si
+è reso, e resta visibile dopo. `registrabile` = c'è un'assegnazione e la
+restituzione non è saldata (riga assente compresa: la crea il POST).
+
+`POST tenants/<id>/chiusura/` `{data, importo>0, owner_account, descrizione?,
+note?}` genera la riga di restituzione se manca (lordo suggerito, data del
+bonifico, stesso helper `crea_o_aggiorna_restituzione` della vista esplicita)
+e registra il bonifico fatto all'inquilino come **una sola** BT in uscita
+allocata a tutte le componenti (la partita compensata di
+[segni concordi](/decisions/segni-concordi.md)): trattenute e rettifiche per
+intero, la restituzione prende il resto così che Σ allocazioni = BT, mai oltre
+il suo residuo. Bonifico superiore al netto ⇒ l'eccedenza resta sulla BT e nel
+saldo compare come debito dell'inquilino (caso Davide: 275,05 contro 267,59 →
+−7,46); inferiore ⇒ la restituzione resta parzialmente aperta. 409 senza riga
+di restituzione, con restituzione già saldata, o se il bonifico non copre
+nemmeno gli accrediti aperti.
+
+Frontend: card Deposito del dettaglio inquilino (tab Profilo & contratto).
+Prima della restituzione: riga "Netto da restituire" con badge `atteso`
+cliccabile (lo stesso gesto della tabella pagamenti) che apre
+`RegistraBonificoChiusuraDialog` (importo proposto = netto, nota sullo scarto,
+elenco delle imputazioni) ed espansore "Come si calcola" con le componenti.
+Dopo: riga "Restituito <importo> il <data>" con badge `pagato` ed espansore
+"Come si compone" con le imputazioni di ogni bonifico e lo scarto. Si
+ricarica a ogni cambio della situazione.
 
 # Vedi anche
 

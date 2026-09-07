@@ -5,6 +5,7 @@ from django.urls import path
 
 from billing.dashboard_views import (
     BilancioOwnerDettaglioView,
+    ChiusuraDepositoView,
     ConguagliaPrevisionaleView,
     ContoEconomicoView,
     DashboardInquilinoView,
@@ -52,5 +53,10 @@ urlpatterns = [
         "tenants/<int:tenant_id>/restituzione-deposito/",
         RestituzioneDepositoView.as_view(),
         name="tenant-restituzione-deposito",
+    ),
+    path(
+        "tenants/<int:tenant_id>/chiusura/",
+        ChiusuraDepositoView.as_view(),
+        name="tenant-chiusura",
     ),
 ]

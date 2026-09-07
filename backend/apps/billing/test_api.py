@@ -16,6 +16,7 @@ from django.contrib.auth.models import Group, User
 from rest_framework.test import APIClient
 
 from billing.models import (
+    BankTransaction,
     Receivable,
     StatoPagamento,
     TenantCondominioRate,
@@ -2726,6 +2727,237 @@ class TestPrevisionaleEConguaglio:
             format="json",
         )
         assert resp.status_code == 409
+
+
+class TestChiusuraDeposito:
+    """Netto da restituire scomposto e bonifico complessivo di chiusura."""
+
+    @pytest.fixture
+    def restituzione(self, db, tenant_1, assignment_1):
+        tenant_1.deposito_versato = Decimal("380.00")
+        tenant_1.save(update_fields=["deposito_versato"])
+        return Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.DEPOSITO,
+            descrizione="Deposito (restituzione)",
+            competenza_da=datetime.date(2026, 6, 30),
+            scadenza=datetime.date(2026, 6, 30),
+            importo_dovuto=Decimal("-380.00"),
+            stato=StatoPagamento.ATTESO,
+        )
+
+    def _prepara(self, client_prop, tenant_1, assignment_1):
+        """Previsionale 80 conguagliato: resta aperta la bolletta reale."""
+        prev_id = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/previsionale-utenze/",
+            {
+                "assignment": assignment_1.id,
+                "data_da": "2026-04-30",
+                "data_a": "2026-05-15",
+                "importo": "80.00",
+            },
+            format="json",
+        ).json()["id"]
+        resp = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/conguaglia-previsionale/",
+            {"previsionale_id": prev_id},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        return prev_id, resp.json()["rettifica_id"]
+
+    def test_get_scompone_il_netto(
+        self, client_prop, tenant_1, assignment_1, charge_maggio, restituzione
+    ):
+        prev_id, rett_id = self._prepara(client_prop, tenant_1, assignment_1)
+        resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/chiusura/")
+        assert resp.status_code == 200, resp.content
+        body = resp.json()
+        assert body["deposito_versato"] == 380.0
+        assert body["importo_restituzione"] == 380.0
+        assert body["restituzione"]["receivable_id"] == restituzione.id
+        assert body["registrabile"] is True
+        effetti = {c["receivable_id"]: c["effetto"] for c in body["componenti"]}
+        assert effetti == {
+            restituzione.id: 380.0,
+            charge_maggio.id: -26.69,
+            prev_id: -80.0,
+            rett_id: 80.0,
+        }
+        # Prima componente: la restituzione.
+        assert body["componenti"][0]["receivable_id"] == restituzione.id
+        assert body["resti_bonifici"] == 0.0
+        # 380 − 26,69: la stima e la sua rettifica si elidono.
+        assert body["netto"] == 353.31
+
+    def test_get_senza_restituzione_usa_il_lordo_suggerito(
+        self, client_prop, tenant_1, assignment_1, charge_maggio
+    ):
+        """Senza la riga di restituzione il deposito entra come componente
+        virtuale (nessun receivable_id) e il bonifico resta registrabile:
+        sarà il POST a generare la riga."""
+        tenant_1.deposito_versato = Decimal("380.00")
+        tenant_1.save(update_fields=["deposito_versato"])
+        resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/chiusura/")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["restituzione"] is None
+        assert body["registrabile"] is True
+        virtuale = body["componenti"][0]
+        assert virtuale["receivable_id"] is None
+        assert virtuale["effetto"] == 380.0
+        assert body["netto"] == 353.31
+        assert body["bonifici"] == []
+
+    def test_get_senza_deposito_niente_componente_virtuale(
+        self, client_prop, tenant_1, assignment_1, charge_maggio
+    ):
+        resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/chiusura/")
+        body = resp.json()
+        assert all(c["receivable_id"] is not None for c in body["componenti"])
+        assert body["netto"] == -26.69
+
+    def test_post_bonifico_esatto_chiude_tutto(
+        self, client_prop, tenant_1, assignment_1, charge_maggio, restituzione,
+        owner_account,
+    ):
+        prev_id, rett_id = self._prepara(client_prop, tenant_1, assignment_1)
+        resp = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/chiusura/",
+            {
+                "data": "2026-07-03",
+                "importo": "353.31",
+                "owner_account": owner_account.id,
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        body = resp.json()
+        assert body["importo"] == -353.31
+        assert body["resto"] == 0.0
+        alloc = {a["receivable_id"]: a["importo"] for a in body["allocazioni"]}
+        assert alloc == {
+            restituzione.id: -380.0,
+            charge_maggio.id: 26.69,
+            prev_id: 80.0,
+            rett_id: -80.0,
+        }
+        bt = BankTransaction.objects.get(pk=body["bank_transaction_id"])
+        assert bt.importo == Decimal("-353.31")
+        assert bt.owner_account_id == owner_account.id
+        assert "Restituzione deposito" in bt.descrizione
+        for pk in (restituzione.id, charge_maggio.id, prev_id, rett_id):
+            r = Receivable.objects.get(pk=pk)
+            assert r.stato == StatoPagamento.PAGATO, (pk, r.stato)
+        # Dopo: nulla più da restituire.
+        dopo = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/chiusura/").json()
+        assert dopo["netto"] == 0.0
+        assert dopo["registrabile"] is False
+
+    def test_post_bonifico_in_eccesso_lascia_il_resto_sulla_bt(
+        self, client_prop, tenant_1, assignment_1, charge_maggio, restituzione,
+        owner_account,
+    ):
+        """Bonificati 360 contro 353,31 dovuti: la restituzione non prende
+        più del suo residuo, i 6,69 restano sulla BT e nel saldo compaiono
+        come debito dell'inquilino."""
+        self._prepara(client_prop, tenant_1, assignment_1)
+        resp = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/chiusura/",
+            {"data": "2026-07-03", "importo": "360", "owner_account": owner_account.id},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        assert resp.json()["resto"] == -6.69
+        restituzione.refresh_from_db()
+        assert restituzione.importo_pagato == Decimal("-380.00")
+        dopo = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/chiusura/").json()
+        assert dopo["resti_bonifici"] == -6.69
+        assert dopo["netto"] == -6.69
+        assert dopo["registrabile"] is False
+        # La memoria di come si componeva il bonifico.
+        assert len(dopo["bonifici"]) == 1
+        b = dopo["bonifici"][0]
+        assert b["importo"] == -360.0
+        assert b["resto"] == -6.69
+        effetti = {a["receivable_id"]: a["effetto"] for a in b["allocazioni"]}
+        assert effetti[restituzione.id] == 380.0
+        assert effetti[charge_maggio.id] == -26.69
+
+    def test_post_senza_restituzione_la_genera(
+        self, client_prop, tenant_1, assignment_1, charge_maggio, owner_account
+    ):
+        """Bonifico registrato prima di "Genera addebito restituzione": la
+        riga nasce con il lordo suggerito e la data del bonifico."""
+        tenant_1.deposito_versato = Decimal("380.00")
+        tenant_1.save(update_fields=["deposito_versato"])
+        resp = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/chiusura/",
+            {"data": "2026-07-03", "importo": "353.31", "owner_account": owner_account.id},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        riga = Receivable.objects.get(
+            assignment__tenant=tenant_1, causale=Receivable.Causale.DEPOSITO,
+            importo_dovuto__lt=0,
+        )
+        assert riga.importo_dovuto == Decimal("-380.00")
+        assert riga.competenza_da == datetime.date(2026, 7, 3)
+        assert riga.stato == StatoPagamento.PAGATO
+        tenant_1.refresh_from_db()
+        assert tenant_1.data_restituzione_prevista == datetime.date(2026, 7, 3)
+
+    def test_post_senza_deposito_409(
+        self, client_prop, tenant_1, assignment_1, charge_maggio, owner_account
+    ):
+        resp = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/chiusura/",
+            {"data": "2026-07-03", "importo": "10", "owner_account": owner_account.id},
+            format="json",
+        )
+        assert resp.status_code == 409
+
+    def test_post_bonifico_inferiore_ai_crediti_409(
+        self, client_prop, tenant_1, assignment_1, restituzione, owner_account
+    ):
+        """Con un accredito aperto di 50 all'inquilino, un bonifico da 10
+        darebbe alla restituzione una quota positiva: rifiutato."""
+        Receivable.objects.create(
+            assignment=assignment_1,
+            causale=Receivable.Causale.EXTRA,
+            competenza_da=datetime.date(2026, 6, 1),
+            descrizione="Abbuono",
+            importo_dovuto=Decimal("-50.00"),
+            scadenza=datetime.date(2026, 6, 30),
+        )
+        resp = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/chiusura/",
+            {"data": "2026-07-03", "importo": "10", "owner_account": owner_account.id},
+            format="json",
+        )
+        assert resp.status_code == 409
+        assert not BankTransaction.objects.filter(importo=Decimal("-10")).exists()
+
+    def test_post_bonifico_parziale_lascia_aperta_la_restituzione(
+        self, client_prop, tenant_1, assignment_1, charge_maggio, restituzione,
+        owner_account,
+    ):
+        """Bonificati 10 con 26,69 di utenze da trattenere: le utenze si
+        chiudono, la restituzione resta aperta per 343,31."""
+        resp = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/chiusura/",
+            {"data": "2026-07-03", "importo": "10", "owner_account": owner_account.id},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        charge_maggio.refresh_from_db()
+        restituzione.refresh_from_db()
+        assert charge_maggio.stato == StatoPagamento.PAGATO
+        assert restituzione.importo_pagato == Decimal("-36.69")
+        assert restituzione.stato != StatoPagamento.PAGATO
+        dopo = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/chiusura/").json()
+        assert dopo["netto"] == 343.31
+        assert dopo["registrabile"] is True
 
 
 # ---------------------------------------------------------------------------
