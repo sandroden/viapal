@@ -35,7 +35,11 @@
           text-color="primary"
           class="vp-p-inq__vista"
           data-testid="vista-inquilini"
-        />
+        >
+          <q-tooltip anchor="bottom middle" self="top middle" :delay="600">
+            Tastiera: <b>L</b> attivi (live) · <b>A</b> anno · <b>T</b> tutti
+          </q-tooltip>
+        </q-btn-toggle>
         <div v-if="vista === 'anno'" class="vp-p-inq__nav-anno">
           <q-btn
             flat
@@ -216,7 +220,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuasar, type QTableProps } from 'quasar';
 import { api } from 'boot/axios';
@@ -345,6 +349,31 @@ function aggiornaQuery(): void {
   if (vista.value === 'anno') q.anno = String(annoSelezionato.value);
   void router.replace({ query: q });
 }
+
+// Scorciatoie da tastiera per cambiare vista senza mouse:
+// L = attivi (live), A = anno, T = tutti. Ignorate con modificatori, mentre
+// si scrive in un campo o con il dialog "Nuovo inquilino" aperto.
+const scorciatoieVista: Record<string, Vista> = { l: 'attivi', a: 'anno', t: 'tutti' };
+
+function inCampoEditabile(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return (
+    tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
+  );
+}
+
+function handleScorciatoia(e: KeyboardEvent): void {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+  if (dialogNuovo.value || inCampoEditabile(e.target)) return;
+  const nuova = scorciatoieVista[e.key.toLowerCase()];
+  if (!nuova) return;
+  e.preventDefault();
+  vista.value = nuova;
+}
+
+onMounted(() => window.addEventListener('keydown', handleScorciatoia));
+onBeforeUnmount(() => window.removeEventListener('keydown', handleScorciatoia));
 
 function annoPrecedente() {
   if (puoIndietro.value) annoSelezionato.value -= 1;
