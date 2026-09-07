@@ -8,7 +8,8 @@ resources:
   - backend/apps/billing/signals.py
   - backend/apps/billing/calc/incassi.py
   - backend/apps/billing/_payments.py
-  - backend/apps/billing/views.py
+  - backend/apps/billing/views/receivables.py
+  - backend/apps/billing/views/_common.py
 tags: [domain, receivable, billing]
 timestamp: 2026-09-05T00:00:00Z
 ---

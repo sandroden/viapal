@@ -7,7 +7,7 @@ resources:
   - backend/apps/billing/calc/rent.py
   - backend/apps/billing/calc/utility.py
   - backend/apps/properties/views.py
-  - backend/apps/billing/dashboard_views.py
+  - backend/apps/billing/dashboard_views/deposito.py
 tags: [decision, invariant, riconciliazione]
 timestamp: 2026-09-05T00:00:00Z
 ---

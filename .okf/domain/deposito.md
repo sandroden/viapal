@@ -7,7 +7,8 @@ resources:
   - backend/apps/properties/models/tenant.py
   - backend/apps/properties/signals.py
   - backend/apps/properties/views.py
-  - backend/apps/billing/dashboard_views.py
+  - backend/apps/billing/dashboard_views/deposito.py
+  - backend/apps/billing/dashboard_views/rendiconto.py
 tags: [domain, deposito, billing]
 timestamp: 2026-09-03T00:00:00Z
 ---

@@ -6,7 +6,7 @@ resource: backend/apps/billing/signals.py
 resources:
   - backend/apps/billing/signals.py
   - backend/apps/billing/calc/incassi.py
-  - backend/apps/billing/views.py
+  - backend/apps/billing/views/banca.py
   - backend/apps/billing/admin.py
   - backend/apps/billing/models/payments.py
 tags: [decision, invariant, riconciliazione, deposito]

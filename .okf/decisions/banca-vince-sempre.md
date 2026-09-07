@@ -2,9 +2,9 @@
 type: Invariant
 title: Banca vince sempre (import movimenti)
 description: In import idempotente dei movimenti, il dato bancario prevale sempre.
-resource: backend/apps/billing/views.py
+resource: backend/apps/billing/views/banca.py
 resources:
-  - backend/apps/billing/views.py
+  - backend/apps/billing/views/banca.py
   - backend/apps/billing/serializers.py
   - scripts/carica_movimenti_api.py
 tags: [decision, import, riconciliazione]

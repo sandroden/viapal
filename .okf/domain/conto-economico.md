@@ -2,9 +2,9 @@
 type: Domain Logic
 title: Conto economico (cassa vs competenza)
 description: Le due viste contabili e il ponte tra conguaglio di cassa e saldi live.
-resource: backend/apps/billing/dashboard_views.py
+resource: backend/apps/billing/dashboard_views/conto_economico.py
 resources:
-  - backend/apps/billing/dashboard_views.py
+  - backend/apps/billing/dashboard_views/conto_economico.py
   - backend/apps/accounting/services/saldi_live.py
 tags: [domain, conto-economico, cassa, competenza]
 timestamp: 2026-09-05T00:00:00Z

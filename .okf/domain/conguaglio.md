@@ -7,7 +7,7 @@ resources:
   - backend/apps/billing/calc/utility.py
   - backend/apps/billing/management/commands/calcola_conguaglio.py
   - backend/apps/billing/management/commands/genera_conguagli_storici.py
-  - backend/apps/billing/dashboard_views.py
+  - backend/apps/billing/dashboard_views/previsionale.py
 tags: [domain, conguaglio, billing]
 timestamp: 2026-09-05T00:00:00Z
 ---

@@ -7,7 +7,7 @@ resources:
   - backend/apps/billing/calc/utility.py
   - backend/apps/billing/calc/avvisi.py
   - backend/apps/billing/models/utilities.py
-  - backend/apps/billing/views.py
+  - backend/apps/billing/views/utenze.py
   - backend/apps/billing/management/commands/riparsa_bollette_pdf.py
 tags: [domain, utenze, utility, billing]
 timestamp: 2026-09-05T00:00:00Z

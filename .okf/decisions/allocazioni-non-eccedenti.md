@@ -5,7 +5,7 @@ description: La somma delle allocazioni non può superare l'importo del moviment
 resource: backend/apps/billing/admin.py
 resources:
   - backend/apps/billing/admin.py
-  - backend/apps/billing/views.py
+  - backend/apps/billing/views/banca.py
   - backend/apps/billing/calc/incassi.py
   - backend/apps/billing/models/payments.py
   - backend/apps/billing/management/commands/sana_allocazioni_eccedenti.py
