@@ -16,6 +16,15 @@ from properties.models import RoomAssignment, TenantProfile
 # ---------------------------------------------------------------------------
 
 
+def descrizione_rettifica(prev: Receivable) -> str:
+    """Descrizione della rettifica: dice che la stima lascia il posto al reale."""
+    return (
+        f"Conguaglio previsionale {prev.competenza_da.strftime('%d/%m/%Y')} → "
+        f"{prev.competenza_a.strftime('%d/%m/%Y')}: stima sostituita dalle "
+        "bollette reali"
+    )[:300]
+
+
 def _calcola_stima_previsionale(tenant: TenantProfile, data_target: datetime.date):
     """Ritorna dict con stima (vedi PrevisionaleUtenzeView) oppure ``None``
     insieme a un messaggio di errore se la stima non è calcolabile.
@@ -207,9 +216,19 @@ class ConguagliaPrevisionaleView(APIView):
         rettifica proposta.
     POST /api/v1/tenants/<tenant_id>/conguaglia-previsionale/
         body: {previsionale_id}
-        → crea Receivable UTENZE di rettifica con importo = -somma_utenze
+        → crea Receivable UTENZE di rettifica con importo = −previsionale
         e ``conguaglio_di`` = previsionale (è questo legame a dire che il
         previsionale è conguagliato).
+
+    La rettifica annulla la **stima**, non le bollette: così il dovuto del
+    periodo diventa la somma delle utenze reali e la trattenuta già
+    incassata sul previsionale si confronta con quello. La differenza fra
+    stima e reale emerge nel saldo dell'inquilino invece di sparire
+    (2026-09-07: prima la rettifica valeva −somma_reali e il dovuto restava
+    la stima, qualunque fossero le bollette).
+
+    Si conguaglia solo quando i periodi emessi coprono tutto l'intervallo del
+    previsionale: altrimenti si annullerebbe la stima con metà bollette.
     """
 
     permission_classes = [IsPropertyMember]
@@ -270,10 +289,13 @@ class ConguagliaPrevisionaleView(APIView):
         )
         righe = []
         somma = Decimal("0")
+        copertura_fino_a = None
         for r in candidate:
             p = r.utility_period
             if not p:
                 continue
+            if copertura_fino_a is None or p.periodo_a > copertura_fino_a:
+                copertura_fino_a = p.periodo_a
             importo = r.importo_dovuto.quantize(Decimal("0.01"))
             giorni_totali = (p.periodo_a - p.periodo_da).days + 1
             righe.append({
@@ -286,7 +308,35 @@ class ConguagliaPrevisionaleView(APIView):
                 "quota_nel_periodo": float(importo),
             })
             somma += importo
-        return righe, somma
+        return righe, somma, copertura_fino_a
+
+    @staticmethod
+    def _errore_copertura(prev, righe, somma, copertura_fino_a):
+        """Response 409 se non c'è (ancora) nulla con cui compensare, o se
+        le bollette emesse non arrivano alla fine del previsionale."""
+        if somma == 0 or not righe:
+            return Response(
+                {
+                    "detail": (
+                        "Nessuna utenza reale nel periodo del previsionale: "
+                        "niente da conguagliare."
+                    )
+                },
+                status=409,
+            )
+        if copertura_fino_a is None or copertura_fino_a < prev.competenza_a:
+            return Response(
+                {
+                    "detail": (
+                        "Le bollette emesse coprono fino al "
+                        f"{copertura_fino_a.strftime('%d/%m/%Y') if copertura_fino_a else '—'}, "
+                        f"il previsionale arriva al {prev.competenza_a.strftime('%d/%m/%Y')}: "
+                        "emetti prima il periodo mancante."
+                    )
+                },
+                status=409,
+            )
+        return None
 
     def get(self, request, tenant_id: int):
         from properties.context import get_request_property
@@ -307,11 +357,15 @@ class ConguagliaPrevisionaleView(APIView):
         if err_resp:
             return err_resp
 
-        righe, somma = self._utenze_nel_periodo(
+        righe, somma, copertura_fino_a = self._utenze_nel_periodo(
             tenant, prev.competenza_da, prev.competenza_a
         )
-        rettifica = -somma  # segno opposto al previsionale
-        netto = prev.importo_dovuto + rettifica
+        rettifica = -prev.importo_dovuto  # annulla la stima
+        # Positivo = la stima trattenuta superava il reale (spetta all'inquilino).
+        netto = prev.importo_dovuto - somma
+        copertura_completa = bool(
+            copertura_fino_a and copertura_fino_a >= prev.competenza_a
+        )
         return Response({
             "previsionale_id": prev.id,
             "previsionale_importo": float(prev.importo_dovuto),
@@ -321,6 +375,10 @@ class ConguagliaPrevisionaleView(APIView):
             "somma_utenze_reali": float(somma),
             "rettifica_proposta": float(rettifica),
             "netto_a_favore_inquilino": float(netto),
+            "copertura_fino_a": (
+                copertura_fino_a.isoformat() if copertura_fino_a else None
+            ),
+            "copertura_completa": copertura_completa,
         })
 
     def post(self, request, tenant_id: int):
@@ -342,32 +400,22 @@ class ConguagliaPrevisionaleView(APIView):
         if err_resp:
             return err_resp
 
-        righe, somma = self._utenze_nel_periodo(
+        righe, somma, copertura_fino_a = self._utenze_nel_periodo(
             tenant, prev.competenza_da, prev.competenza_a
         )
-        if somma == 0:
-            return Response(
-                {
-                    "detail": (
-                        "Nessuna utenza reale nel periodo del previsionale: "
-                        "niente da conguagliare."
-                    )
-                },
-                status=409,
-            )
+        err_resp = self._errore_copertura(prev, righe, somma, copertura_fino_a)
+        if err_resp:
+            return err_resp
 
         rettifica = Receivable.objects.create(
             assignment=prev.assignment,
             causale=Receivable.Causale.UTENZE,
             conguaglio_di=prev,
-            descrizione=(
-                f"Conguaglio previsionale {prev.competenza_da.isoformat()} "
-                f"→ {prev.competenza_a.isoformat()}"
-            )[:300],
+            descrizione=descrizione_rettifica(prev),
             competenza_da=prev.competenza_da,
             competenza_a=prev.competenza_a,
             scadenza=prev.competenza_a,
-            importo_dovuto=(-somma).quantize(Decimal("0.01")),
+            importo_dovuto=(-prev.importo_dovuto).quantize(Decimal("0.01")),
             stato=StatoPagamento.ATTESO,
         )
 
@@ -377,9 +425,7 @@ class ConguagliaPrevisionaleView(APIView):
                 "importo_rettifica": float(rettifica.importo_dovuto),
                 "somma_utenze_reali": float(somma),
                 "utenze_reali": righe,
-                "netto_a_favore_inquilino": float(
-                    prev.importo_dovuto + rettifica.importo_dovuto
-                ),
+                "netto_a_favore_inquilino": float(prev.importo_dovuto - somma),
             },
             status=201,
         )

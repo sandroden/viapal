@@ -8,9 +8,9 @@
             Compensa con le utenze reali
           </div>
           <div class="vp-cong-dlg__sub">
-            Crea un Receivable di rettifica negativo pari alla somma delle
-            utenze reali nel periodo del previsionale. La differenza resta
-            come saldo a favore dell'inquilino.
+            Annulla la stima con una rettifica di pari importo e segno
+            opposto: nel periodo restano dovute le bollette reali, e la
+            differenza con quanto trattenuto emerge nel saldo dell'inquilino.
           </div>
         </div>
         <q-space />
@@ -53,7 +53,7 @@
             <q-item>
               <q-item-section>
                 <strong>Rettifica proposta</strong>
-                <q-item-label caption>segno opposto al previsionale</q-item-label>
+                <q-item-label caption>annulla la stima</q-item-label>
               </q-item-section>
               <q-item-section side>
                 <strong class="vp-mono">
@@ -65,7 +65,7 @@
             <q-item>
               <q-item-section>
                 <strong>Netto a favore inquilino</strong>
-                <q-item-label caption>previsionale + rettifica</q-item-label>
+                <q-item-label caption>stima trattenuta − utenze reali</q-item-label>
               </q-item-section>
               <q-item-section side>
                 <strong class="vp-mono">
@@ -109,6 +109,16 @@
             Nessuna utenza reale emessa nel periodo coperto: prima emetti le
             bollette di quei mesi da «Utenze», poi torna qui a conguagliare.
           </q-banner>
+          <q-banner
+            v-else-if="!anteprima.copertura_completa"
+            class="bg-amber-1 text-amber-9 q-mt-md"
+            rounded
+          >
+            Le bollette emesse coprono fino al
+            {{ anteprima.copertura_fino_a ? formattaData(anteprima.copertura_fino_a) : '—' }},
+            il previsionale arriva al {{ formattaData(anteprima.data_a) }}:
+            emetti prima il periodo mancante.
+          </q-banner>
           <q-banner v-if="errore" class="bg-red-1 text-red-9 q-mt-md" rounded>
             {{ errore }}
           </q-banner>
@@ -123,7 +133,7 @@
           label="Conguaglia"
           no-caps
           :loading="salvando"
-          :disable="!anteprima || anteprima.somma_utenze_reali === 0"
+          :disable="!anteprima || anteprima.somma_utenze_reali === 0 || !anteprima.copertura_completa"
           @click="salva"
         />
       </q-card-actions>
@@ -157,6 +167,8 @@ interface Anteprima {
   somma_utenze_reali: number;
   rettifica_proposta: number;
   netto_a_favore_inquilino: number;
+  copertura_fino_a: string | null;
+  copertura_completa: boolean;
 }
 
 const props = defineProps<{

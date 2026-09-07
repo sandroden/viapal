@@ -2611,8 +2611,11 @@ class TestPrevisionaleEConguaglio:
         # Nessun secondo pro-rata: quota = importo_dovuto pieno.
         assert riga["quota_nel_periodo"] == 26.69
         assert ant["somma_utenze_reali"] == 26.69
-        assert ant["rettifica_proposta"] == -26.69
+        # La rettifica annulla la stima, non le bollette.
+        assert ant["rettifica_proposta"] == -80.0
         assert ant["netto_a_favore_inquilino"] == 53.31
+        assert ant["copertura_fino_a"] == "2026-05-31"
+        assert ant["copertura_completa"] is True
 
         # Salva conguaglio (POST)
         post_resp = client_prop.post(
@@ -2626,7 +2629,16 @@ class TestPrevisionaleEConguaglio:
         assert rett.causale == Receivable.Causale.UTENZE
         assert rett.previsionale is False
         assert rett.conguaglio_di_id == prev_id
-        assert rett.importo_dovuto == Decimal("-26.69")
+        assert rett.importo_dovuto == Decimal("-80.00")
+        assert rett.descrizione.startswith("Conguaglio previsionale 30/04/2026 → 15/05/2026")
+        assert body["importo_rettifica"] == -80.0
+        assert body["netto_a_favore_inquilino"] == 53.31
+        # Dovuto del periodo = bolletta reale: 80 + 26,69 − 80.
+        tot = sum(
+            r.importo_dovuto
+            for r in Receivable.objects.filter(pk__in=[prev_id, rett.id, charge_maggio.id])
+        )
+        assert tot == Decimal("26.69")
         # Il previsionale risulta conguagliato per via della rettifica che
         # lo punta, e la situazione lo espone.
         prev = Receivable.objects.get(pk=prev_id)
@@ -2670,6 +2682,36 @@ class TestPrevisionaleEConguaglio:
             format="json",
         )
         assert resp.status_code == 400
+
+    def test_conguaglio_rifiuta_copertura_parziale(
+        self, client_prop, tenant_1, assignment_1, charge_maggio
+    ):
+        """Previsionale fino al 15/6 ma bollette emesse solo fino al 31/5:
+        annullare la stima ora lascerebbe giugno scoperto → 409."""
+        prev_id = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/previsionale-utenze/",
+            {
+                "assignment": assignment_1.id,
+                "data_da": "2026-04-30",
+                "data_a": "2026-06-15",
+                "importo": "80.00",
+            },
+            format="json",
+        ).json()["id"]
+        ant = client_prop.get(
+            f"/api/v1/tenants/{tenant_1.id}/conguaglia-previsionale/?previsionale_id={prev_id}"
+        ).json()
+        assert ant["copertura_fino_a"] == "2026-05-31"
+        assert ant["copertura_completa"] is False
+        resp = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/conguaglia-previsionale/",
+            {"previsionale_id": prev_id},
+            format="json",
+        )
+        assert resp.status_code == 409
+        assert "31/05/2026" in resp.json()["detail"]
+        assert "15/06/2026" in resp.json()["detail"]
+        assert not Receivable.objects.filter(conguaglio_di_id=prev_id).exists()
 
     def test_conguaglio_nessuna_utenza_409(
         self, client_prop, tenant_1, assignment_1

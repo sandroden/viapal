@@ -72,10 +72,23 @@ custodire la natura dell'addebito.
 | stima | `GET tenants/<id>/previsionale-utenze/?data_target=` (`_calcola_stima_previsionale`) | media giornaliera delle **ultime due** utenze del tenant con `giorni_presenza > 0` × giorni dalla fine dell'ultimo periodo alla data target; errore esplicito se non ci sono utenze pregresse o la data non precede il target |
 | addebito | `POST tenants/<id>/previsionale-utenze/` | crea un Receivable **UTENZE** con `previsionale=True` (niente periodo), `competenza_da/_a` = range coperto |
 | anteprima | `GET tenants/<id>/conguaglia-previsionale/?previsionale_id=` | elenca le utenze reali del range e la rettifica proposta |
-| conguaglio | `POST tenants/<id>/conguaglia-previsionale/` | crea un UTENZE di rettifica con `importo = −somma_utenze_reali` e `conguaglio_di` = previsionale (409 se già conguagliato o se non ci sono utenze reali nel range, 400 se non è un previsionale o manca la competenza) |
+| conguaglio | `POST tenants/<id>/conguaglia-previsionale/` | crea un UTENZE di rettifica con `importo = −previsionale` (annulla la **stima**) e `conguaglio_di` = previsionale (409 se già conguagliato, se non ci sono utenze reali nel range o se i periodi emessi non arrivano a `competenza_a`; 400 se non è un previsionale o manca la competenza) |
 
 - **Niente doppio pro-rata**: le utenze reali del range sono già proratate sui
-  giorni; la rettifica le somma tal quali (fix noto).
+  giorni; si sommano tal quali (fix noto).
+- **La rettifica annulla la stima, non le bollette** (2026-09-07, scelta di
+  Sandro). Prima valeva −somma_reali: bolletta e rettifica si elidevano e il
+  dovuto del periodo restava la stima, qualunque fossero le bollette; la
+  differenza fra trattenuto e reale spariva (caso Davide: stima 49,80,
+  reale 57,26, bonificati 275,05 invece di 267,59, nessuna traccia dei
+  7,46). Ora il dovuto è la somma delle utenze reali e lo scarto emerge nel
+  saldo dell'inquilino. Il previsionale resta visibile come acconto:
+  nessuna riga viene cancellata. L'anteprima espone `copertura_fino_a` /
+  `copertura_completa` e `netto_a_favore_inquilino = stima − reale`.
+  `sana_conguagli_previsionali [--apply]` porta le rettifiche vecchie alla
+  nuova regola (salta quelle con allocazioni).
+- Tutto quel che manca nella chiusura (netto da rendere scomposto, bonifico
+  unico) è in [deposito](/domain/deposito.md#chiusura-netto-da-rendere-e-bonifico-unico).
 - La trattenuta sul deposito è la partita compensata del caso
   [segni concordi](/decisions/segni-concordi.md): BT −984 ↔ restituzione −1060
   + previsionale +76.
@@ -94,7 +107,9 @@ custodire la natura dell'addebito.
   senza periodo mostrano la `descrizione` al posto del periodo, ovunque
   (`_descrizione_receivable`, serializer di riconciliazione, situazione).
 - Il bottone "Conguaglia" resta disabilitato finché la somma delle utenze
-  reali è zero, con un avviso che rimanda all'emissione delle bollette.
+  reali è zero o la copertura è parziale, con un avviso che rimanda
+  all'emissione delle bollette. "Crea addebito previsionale" non compare se
+  un previsionale esiste già, anche conguagliato.
 
 # Vedi anche
 
