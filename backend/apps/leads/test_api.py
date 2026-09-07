@@ -357,7 +357,7 @@ def test_chiudi_campagna_cancella_solo_il_proprio_immobile(api, immobile, immobi
     assert Lead.objects.filter(post_id="altrui").exists()
 
 
-# --- canali, contatti manuali, attivi -------------------------------------
+# --- canali, contatti manuali, attivi, statistiche -------------------------
 
 
 def _manuale(api, utente, **extra):
@@ -477,3 +477,39 @@ def test_filtro_attivi_e_canale(api, immobile, sandro):
         {"id": "subito", "nome": "Subito.it", "n": 1},
     ]
 
+
+def test_statistiche_per_canale(api, immobile, sandro):
+    api.force_authenticate(sandro)
+    a = _lead(immobile, post_id="a")
+    b = _lead(immobile, post_id="b", group_id="42", group_label="Altro gruppo")
+    _lead(immobile, post_id="c", stato="scartato")
+    api.patch(f"{URL}{a.id}/", {"stato": "risposto"}, format="json")
+    api.patch(f"{URL}{a.id}/", {"stato": "perso"}, format="json")
+    api.patch(f"{URL}{b.id}/", {"stato": "contattato"}, format="json")
+    _manuale(api, sandro, stato="risposto")
+    _manuale(api, sandro, canale="fb_post")
+
+    r = api.get(f"{URL}statistiche/")
+    assert r.status_code == 200, r.data
+    tot = r.data["totale"]
+    assert (tot["totale"], tot["contattati"], tot["risposto"]) == (5, 3, 2)
+    assert (tot["attivi"], tot["persi"], tot["scartati"]) == (3, 1, 1)
+    assert tot["ultimo_at"]
+
+    canali = {c["canale"]: c for c in r.data["canali"]}
+    assert list(canali) == ["fb_gruppo", "fb_post", "subito"]
+    fb = canali["fb_gruppo"]
+    # Chi ha risposto e poi ha trovato altro ha comunque risposto.
+    assert (fb["totale"], fb["contattati"], fb["risposto"], fb["persi"]) == (3, 2, 1, 1)
+    assert {g["nome"]: g["totale"] for g in fb["gruppi"]} == {
+        "Affitti Monza": 2,
+        "Altro gruppo": 1,
+    }
+    assert "gruppi" not in canali["subito"]
+    assert (canali["subito"]["totale"], canali["subito"]["risposto"]) == (1, 1)
+
+
+def test_statistiche_vuote(api, immobile, sandro):
+    api.force_authenticate(sandro)
+    r = api.get(f"{URL}statistiche/")
+    assert r.data["canali"] == [] and r.data["totale"]["totale"] == 0

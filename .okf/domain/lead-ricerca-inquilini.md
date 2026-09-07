@@ -1,13 +1,14 @@
 ---
 type: Feature
 title: Lead — ricerca inquilini
-description: I contatti di chi cerca stanza — dal bot Facebook e dagli altri canali inseriti a mano — lavorati in due da /p/cerca-inquilini.
+description: I contatti di chi cerca stanza — dal bot Facebook e dagli altri canali inseriti a mano — lavorati in due da /p/cerca-inquilini, con statistiche per canale.
 resource: backend/apps/leads/models.py
 resources:
   - backend/apps/leads/models.py
   - backend/apps/leads/serializers.py
   - backend/apps/leads/views.py
   - frontend/src/pages/ProprietarioLeads.vue
+  - frontend/src/pages/ProprietarioLeadsStatistiche.vue
   - frontend/src/components/leads/LeadManualeDialog.vue
   - frontend/src/stores/leads.ts
 tags: [feature, leads, campagna, bot, canali, gdpr]
@@ -29,7 +30,8 @@ Dal 2026-09-07 la pagina non è più solo il bot: i canali di una campagna sono
 molti (annunci su Subito e Idealista, risposte a un post nostro su Facebook) e
 guardarli in posti diversi non funziona. I contatti degli altri canali si
 inseriscono **a mano** dalla stessa pagina (lead *manuali*), e ogni lead porta
-il suo `canale`, da dove viene.
+il suo `canale`: è la chiave della pagina delle **statistiche**, che dice quanti
+contatti porta ogni canale e quanti rispondono.
 
 Non è anagrafica. È lo stato di una **campagna**: dura le due settimane di
 sfitto e poi si cancella (vedi *Chiusura di campagna*).
@@ -126,6 +128,9 @@ nomina e l'upsert non lo azzera.
 - `POST /leads/<id>/rilascia/` — solo chi l'ha preso (o superuser).
 - `GET /leads/riepilogo/` — conteggi per stato, `attivi`, gruppi e canali
   presenti (con conteggio).
+- `GET /leads/statistiche/` — per canale: `totale`, `contattati`, `risposto`,
+  `attivi`, `persi`, `scartati`, `ultimo_at`; per `fb_gruppo` anche una riga
+  per gruppo. Solo i canali con almeno un lead, per totale decrescente.
 - `POST /leads/chiudi-campagna/` — **`IsPropertyProprietario`**, non membro
   qualsiasi: cancellare butta via anche le note e la presa in carico degli
   altri, e l'utente del bot ha la password in chiaro nel TOML. Vedi sotto.
@@ -171,7 +176,10 @@ Filtro stati con **Attivi** predefinito; il filtro per canale compare solo se i
 canali presenti sono più d'uno. In testa **Aggiungi** apre il dialog del lead
 manuale (`LeadManualeDialog.vue`: canale, nome, contatto, link, zona/budget/da
 quando, testo, note, stato iniziale); sulle card dei manuali lo stesso dialog si
-riapre in modifica, con l'eliminazione dentro.
+riapre in modifica, con l'eliminazione dentro. **Statistiche** porta a
+`/p/cerca-inquilini/statistiche` (`ProprietarioLeadsStatistiche.vue`): una card
+per canale con contatti, contattati, risposte (con percentuale), attivi, persi,
+scartati, e le righe per gruppo Facebook.
 
 Card per contatto: in testa **stato** (badge + fondo colorato: "Da
 contattare" resta senza colore di proposito, scartato è smorzato e barrato) e
@@ -194,4 +202,5 @@ card solo se non è il gruppo Facebook o se i canali sono più d'uno. Il
 
 `manage.py seed_leads --property <id>` crea quattro lead finti del bot e
 quattro manuali su canali e stati diversi (`--pulisci` li toglie; i manuali si
-riconoscono dalla marca `[seed-m-NN]` nella nota): la pagina si sviluppa senza far girare uno scrape vero di Facebook a ogni ritocco.
+riconoscono dalla marca `[seed-m-NN]` nella nota): la pagina e le statistiche
+si sviluppano senza far girare uno scrape vero di Facebook a ogni ritocco.

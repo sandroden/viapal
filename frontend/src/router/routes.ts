@@ -152,6 +152,11 @@ const routes: RouteRecordRaw[] = [
         name: 'p-leads',
         component: () => import('pages/ProprietarioLeads.vue'),
       },
+      {
+        path: 'cerca-inquilini/statistiche',
+        name: 'p-leads-statistiche',
+        component: () => import('pages/ProprietarioLeadsStatistiche.vue'),
+      },
       // La pagina si chiamava "riepilogo addebiti": i link già in giro
       // (email, segnalibri) devono continuare ad aprirla.
       { path: 'riepilogo', redirect: { name: 'p-notifiche' } },

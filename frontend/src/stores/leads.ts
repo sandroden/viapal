@@ -62,6 +62,31 @@ export interface RiepilogoLead {
   canali: { id: CanaleLead; nome: string; n: number }[];
 }
 
+/** Una riga delle statistiche. `contattati` e `risposto` contano le date
+ *  (contattato_at, risposto_at), non lo stato attuale: chi ha risposto e poi
+ *  ha trovato altro resta una risposta ottenuta. */
+export interface RigaStatistica {
+  totale: number;
+  contattati: number;
+  risposto: number;
+  attivi: number;
+  persi: number;
+  scartati: number;
+  ultimo_at: string | null;
+}
+
+export interface StatisticaCanale extends RigaStatistica {
+  canale: CanaleLead;
+  nome: string;
+  /** Solo per fb_gruppo: una riga per gruppo Facebook. */
+  gruppi?: (RigaStatistica & { id: string; nome: string })[];
+}
+
+export interface StatisticheLead {
+  totale: RigaStatistica;
+  canali: StatisticaCanale[];
+}
+
 /** Come si presenta uno stato: etichetta, colore Quasar per i controlli, e
  *  l'aspetto che ha sulla card (`tono` = suffisso della classe, `icona`).
  *  Sta qui e non nella pagina perché la card e i filtri devono dire la stessa
@@ -151,6 +176,13 @@ export const useLeadsStore = defineStore('leads', {
         // la pagina resta perfettamente usabile.
         this.riepilogo = null;
       }
+    },
+
+    /** Non passa dallo stato: la pagina delle statistiche è di sola lettura
+     *  e non ha bisogno di sopravvivere al cambio di rotta. */
+    async fetchStatistiche(): Promise<StatisticheLead> {
+      const { data } = await api.get<StatisticheLead>(`${ENDPOINT}statistiche/`);
+      return data;
     },
 
     /** Sostituisce in lista il lead aggiornato dal backend. */

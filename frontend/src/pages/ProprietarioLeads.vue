@@ -27,9 +27,31 @@
           :loading="store.loading"
           @click="ricarica"
         />
+        <!-- Su telefono le statistiche restano nel menu: in testa ci stanno
+             solo i due tasti che si usano davvero con Messenger accanto. -->
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="primary"
+          icon="bar_chart"
+          label="Statistiche"
+          class="gt-xs"
+          :to="{ name: 'p-leads-statistiche' }"
+        />
         <q-btn flat dense round icon="more_vert" aria-label="Altre azioni">
           <q-menu>
             <q-list style="min-width: 220px">
+              <q-item clickable v-close-popup :to="{ name: 'p-leads-statistiche' }">
+                <q-item-section avatar>
+                  <q-icon name="bar_chart" />
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label>Statistiche</q-item-label>
+                  <q-item-label caption>Da quale canale arrivano</q-item-label>
+                </q-item-section>
+              </q-item>
+              <q-separator />
               <q-item clickable v-close-popup @click="chiediChiusura">
                 <q-item-section avatar>
                   <q-icon name="delete_sweep" color="negative" />

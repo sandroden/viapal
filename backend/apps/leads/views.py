@@ -6,7 +6,7 @@ viene verificata lato server come sempre — nessun percorso di autorizzazione
 nuovo da mantenere.
 """
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.authentication import BasicAuthentication, SessionAuthentication
@@ -187,6 +187,60 @@ class LeadViewSet(ModelViewSet):
                 "canali": canali,
             }
         )
+
+    @action(detail=False)
+    def statistiche(self, request):
+        """Quanto rende ogni canale: contatti, contattati, risposte.
+
+        «Contattati» e «hanno risposto» leggono le date dei passaggi, non lo
+        stato di adesso: chi ha risposto e poi ha trovato altro ha comunque
+        risposto, ed è questo che dice se un canale vale il tempo che costa.
+        Per i gruppi Facebook c'è anche il dettaglio gruppo per gruppo.
+        """
+        prop = get_request_property(request)
+        qs = Lead.objects.filter(property=prop)
+        conteggi = {
+            "totale": Count("id"),
+            "contattati": Count("id", filter=Q(contattato_at__isnull=False)),
+            "risposto": Count("id", filter=Q(risposto_at__isnull=False)),
+            "attivi": Count("id", filter=Q(stato__in=Lead.STATI_ATTIVI)),
+            "persi": Count("id", filter=Q(stato=Lead.Stato.PERSO)),
+            "scartati": Count("id", filter=Q(stato=Lead.Stato.SCARTATO)),
+            "ultimo_at": Max("seen_at"),
+        }
+        chiavi = tuple(conteggi)
+
+        def riga(r):
+            return {k: r[k] for k in chiavi}
+
+        per_gruppo = {}
+        for r in (
+            qs.filter(canale=Lead.Canale.FB_GRUPPO)
+            .values("group_id", "group_label")
+            .annotate(**conteggi)
+            .order_by("-totale", "group_label")
+        ):
+            # Il bot non sempre conosce il nome del gruppo: meglio l'id che
+            # cinque righe uguali "senza gruppo".
+            nome = r["group_label"] or (f"gruppo {r['group_id']}" if r["group_id"] else "senza gruppo")
+            per_gruppo.setdefault(Lead.Canale.FB_GRUPPO, []).append(
+                {"id": r["group_id"], "nome": nome, **riga(r)}
+            )
+
+        etichette = dict(Lead.Canale.choices)
+        canali = []
+        for r in qs.values("canale").annotate(**conteggi).order_by("-totale", "canale"):
+            voce = {
+                "canale": r["canale"],
+                "nome": etichette.get(r["canale"], r["canale"]),
+                **riga(r),
+            }
+            if r["canale"] in per_gruppo:
+                voce["gruppi"] = per_gruppo[r["canale"]]
+            canali.append(voce)
+
+        totale = riga(qs.aggregate(**conteggi))
+        return Response({"totale": totale, "canali": canali})
 
     @action(detail=False, methods=["post"], url_path="chiudi-campagna")
     def chiudi_campagna(self, request):
