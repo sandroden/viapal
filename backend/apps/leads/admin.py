@@ -11,15 +11,18 @@ from .models import Lead
 
 @admin.register(Lead)
 class LeadAdmin(admin.ModelAdmin):
-    list_display = ("author_name", "stato", "preso_da", "zona", "budget", "seen_at")
-    list_filter = ("stato", "property", "group_label")
-    search_fields = ("author_name", "testo", "post_id")
+    list_display = ("author_name", "canale", "stato", "preso_da", "zona", "budget", "seen_at")
+    list_filter = ("stato", "canale", "property", "group_label")
+    search_fields = ("author_name", "contatto", "testo", "post_id")
     date_hierarchy = "seen_at"
     readonly_fields = ("post_id", "seen_at", "created_at", "updated_at", "link")
     fieldsets = (
-        (None, {"fields": ("property", "author_name", "author_url", "link", "testo")}),
+        (None, {"fields": ("property", "canale", "author_name", "contatto", "author_url", "link", "testo")}),
         ("Analisi del bot", {"fields": ("analisi", "commento_proposto", "privato_proposto")}),
-        ("Lavorazione", {"fields": ("stato", "preso_da", "preso_at", "contattato_at", "note")}),
+        (
+            "Lavorazione",
+            {"fields": ("stato", "preso_da", "preso_at", "contattato_at", "risposto_at", "note")},
+        ),
         ("Origine", {"fields": ("post_id", "group_id", "group_label", "permalink", "seen_at")}),
     )
 

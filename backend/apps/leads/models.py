@@ -16,10 +16,19 @@ rompere:
 
 La separazione è realizzata da due serializer distinti (``serializers.py``):
 quello del bot non sa nemmeno nominare i campi umani, e viceversa.
+
+Dal 2026-09 il lead può anche essere **manuale** (``post_id`` vuoto): un
+contatto arrivato da un altro canale — risposta a un annuncio nostro, Subito,
+Idealista — che qualcuno inserisce a mano per averlo nella stessa pagina. Per
+questi i campi descrittivi sono delle persone, non del bot, e ``canale`` dice
+da dove viene: è la chiave delle statistiche per canale.
 """
+import builtins
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 
 from properties.models import TimestampedModel
 
@@ -57,7 +66,23 @@ class Lead(TimestampedModel):
         NUOVO = "nuovo", "Da contattare"
         CONTATTATO = "contattato", "Contattato"
         RISPOSTO = "risposto", "Ha risposto"
+        # Le due uscite sono diverse: "scartato" lo decidiamo noi, "perso" lo
+        # decide la persona (ha trovato altro, non risponde più). Per le
+        # statistiche di un canale conta la differenza.
+        PERSO = "perso", "Ha trovato altro"
         SCARTATO = "scartato", "Scartato"
+
+    # "Attivi" non è uno stato salvato ma un filtro: chi è ancora in gioco.
+    # Un contatto che ha risposto resta attivo finché non trova altro.
+    STATI_ATTIVI = (Stato.NUOVO, Stato.CONTATTATO, Stato.RISPOSTO)
+
+    class Canale(models.TextChoices):
+        FB_GRUPPO = "fb_gruppo", "Gruppo Facebook"
+        FB_POST = "fb_post", "Risposta a un mio post"
+        SUBITO = "subito", "Subito.it"
+        IDEALISTA = "idealista", "Idealista"
+        IMMOBILIARE = "immobiliare", "Immobiliare.it"
+        ALTRO = "altro", "Altro"
 
     property = models.ForeignKey(
         "properties.Property",
@@ -69,8 +94,23 @@ class Lead(TimestampedModel):
     # --- identità -------------------------------------------------------
     post_id = models.CharField(
         max_length=64,
+        blank=True,
         verbose_name="id del post",
-        help_text="Id Facebook del post: chiave naturale dell'upsert.",
+        help_text=(
+            "Id Facebook del post: chiave naturale dell'upsert. Vuoto per i "
+            "contatti inseriti a mano, che non hanno un post da cui ripartire."
+        ),
+    )
+    canale = models.CharField(
+        max_length=16,
+        choices=Canale.choices,
+        default=Canale.FB_GRUPPO,
+        verbose_name="canale",
+        help_text=(
+            "Da dove arriva il contatto. Il bot deposita solo dai gruppi "
+            "Facebook; gli altri canali (annunci su Subito, Idealista, risposte "
+            "a un post nostro) li inserisce a mano chi li riceve."
+        ),
     )
     group_id = models.CharField(
         max_length=64,
@@ -99,6 +139,15 @@ class Lead(TimestampedModel):
     permalink = models.URLField(max_length=500, blank=True, verbose_name="link al post")
     link_messenger = models.URLField(
         max_length=500, blank=True, verbose_name="link a Messenger"
+    )
+    contatto = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="contatto",
+        help_text=(
+            "Telefono, email o nome utente sulla piattaforma. Serve ai contatti "
+            "inseriti a mano: per quelli del bot il recapito è Messenger."
+        ),
     )
     testo = models.TextField(blank=True, verbose_name="testo del post")
     analisi = models.JSONField(
@@ -143,6 +192,16 @@ class Lead(TimestampedModel):
     )
     preso_at = models.DateTimeField(null=True, blank=True, verbose_name="preso in carico il")
     contattato_at = models.DateTimeField(null=True, blank=True, verbose_name="contattato il")
+    risposto_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="ha risposto il",
+        help_text=(
+            "Prima volta in cui è passato a «ha risposto». Resta anche se poi "
+            "trova altro: le statistiche contano chi ha risposto, non chi sta "
+            "rispondendo adesso."
+        ),
+    )
     note = models.TextField(blank=True, verbose_name="note")
     foto = models.TextField(
         blank=True,
@@ -163,16 +222,31 @@ class Lead(TimestampedModel):
         constraints = [
             # Unico per immobile, non globalmente: due immobili che pescano
             # dallo stesso gruppo devono poter lavorare lo stesso post, ognuno
-            # con la propria presa in carico.
+            # con la propria presa in carico. I contatti manuali hanno post_id
+            # vuoto e restano fuori dal vincolo: non c'è nulla da deduplicare.
             models.UniqueConstraint(
                 fields=["property", "post_id"],
+                condition=~Q(post_id=""),
                 name="lead_post_id_unique_per_property",
             ),
         ]
         indexes = [
             models.Index(fields=["property", "stato"]),
+            models.Index(fields=["property", "canale"]),
             models.Index(fields=["author_url"]),
         ]
 
     def __str__(self):
         return f"{self.author_name or 'anonimo'} — {self.get_stato_display()}"
+
+    # Il campo ``property`` (l'immobile) copre il builtin dentro la classe.
+    @builtins.property
+    def manuale(self) -> bool:
+        """Inserito a mano, non depositato dal bot: i suoi campi descrittivi
+        li scrivono le persone, e si può cancellare senza che un upsert lo
+        faccia ricomparire."""
+        return not self.post_id
+
+    @builtins.property
+    def attivo(self) -> bool:
+        return self.stato in self.STATI_ATTIVI

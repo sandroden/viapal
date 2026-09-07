@@ -13,17 +13,25 @@ export interface AnalisiLead {
   motivo?: string | null;
 }
 
-export type StatoLead = 'nuovo' | 'contattato' | 'risposto' | 'scartato';
+export type StatoLead = 'nuovo' | 'contattato' | 'risposto' | 'perso' | 'scartato';
+
+/** Da dove arriva il contatto. `fb_gruppo` è l'unico che il bot sa produrre;
+ *  gli altri li inserisce una persona. */
+export type CanaleLead = 'fb_gruppo' | 'fb_post' | 'subito' | 'idealista' | 'immobiliare' | 'altro';
 
 export interface Lead {
   id: number;
   post_id: string;
   group_id: string;
   group_label: string;
+  canale: CanaleLead;
+  canale_display: string;
   author_name: string;
   author_url: string;
   permalink: string;
   link_messenger: string;
+  /** Telefono, email o nick sulla piattaforma. Vuoto per i lead del bot. */
+  contatto: string;
   testo: string;
   analisi: AnalisiLead;
   commento_proposto: string;
@@ -35,16 +43,23 @@ export interface Lead {
   preso_da_nome: string;
   preso_at: string | null;
   contattato_at: string | null;
+  risposto_at: string | null;
   note: string;
   /** Francobollo incollato a mano: data URI, non un URL a un file. */
   foto: string;
+  /** Inserito a mano (nessun post_id): è l'unico che si può modificare e
+   *  cancellare dalla pagina. */
+  manuale: boolean;
   created_at: string;
 }
 
 export interface RiepilogoLead {
   totale: number;
+  /** nuovo + contattato + risposto: non è uno stato, è il filtro di default. */
+  attivi: number;
   per_stato: Record<StatoLead, number>;
   gruppi: { id: string; nome: string }[];
+  canali: { id: CanaleLead; nome: string; n: number }[];
 }
 
 /** Come si presenta uno stato: etichetta, colore Quasar per i controlli, e
@@ -61,8 +76,35 @@ export const STATI: {
   { value: 'nuovo', label: 'Da contattare', colore: 'primary', tono: 'nuovo', icona: 'schedule' },
   { value: 'contattato', label: 'Contattato', colore: 'info', tono: 'contattato', icona: 'send' },
   { value: 'risposto', label: 'Ha risposto', colore: 'positive', tono: 'risposto', icona: 'forum' },
+  { value: 'perso', label: 'Ha trovato altro', colore: 'warning', tono: 'perso', icona: 'directions_walk' },
   { value: 'scartato', label: 'Scartato', colore: 'grey', tono: 'scartato', icona: 'block' },
 ];
+
+/** Gli stati in cui il contatto è ancora da lavorare: il filtro "Attivi". */
+export const STATI_ATTIVI: StatoLead[] = ['nuovo', 'contattato', 'risposto'];
+
+export const CANALI: { value: CanaleLead; label: string; icona: string }[] = [
+  { value: 'fb_gruppo', label: 'Gruppo Facebook', icona: 'groups' },
+  { value: 'fb_post', label: 'Risposta a un mio post', icona: 'reply' },
+  { value: 'subito', label: 'Subito.it', icona: 'storefront' },
+  { value: 'idealista', label: 'Idealista', icona: 'apartment' },
+  { value: 'immobiliare', label: 'Immobiliare.it', icona: 'home_work' },
+  { value: 'altro', label: 'Altro', icona: 'more_horiz' },
+];
+
+/** Quello che una persona può scrivere di un lead manuale, in creazione e in
+ *  modifica. Il resto (stato, note, foto) passa dalle azioni dedicate. */
+export interface DatiLeadManuale {
+  canale: CanaleLead;
+  author_name: string;
+  contatto?: string;
+  author_url?: string;
+  permalink?: string;
+  testo?: string;
+  analisi?: Pick<AnalisiLead, 'zona' | 'budget_max' | 'disponibile_da'>;
+  note?: string;
+  stato?: StatoLead;
+}
 
 interface State {
   leads: Lead[];
@@ -85,7 +127,9 @@ export const useLeadsStore = defineStore('leads', {
     /** Carica la lista. Tutte le pagine: una campagna può produrre qualche
      *  centinaio di post e fermarsi alla prima ne nasconderebbe una parte
      *  senza dirlo. */
-    async fetch(filtri: { stato?: string; gruppo?: string; preso_da?: string } = {}) {
+    async fetch(
+      filtri: { stato?: string; canale?: string; gruppo?: string; preso_da?: string } = {},
+    ) {
       this.loading = true;
       this.errore = null;
       try {
@@ -136,6 +180,29 @@ export const useLeadsStore = defineStore('leads', {
       } catch (e: unknown) {
         return { ok: false, messaggio: messaggioErrore(e, 'Foto non salvata') };
       }
+    },
+
+    /** Lead inserito a mano. Va in testa alla lista: è appena stato scritto
+     *  ed è quello che si vuole vedere, qualunque sia l'ordine del server. */
+    async crea(dati: DatiLeadManuale): Promise<Lead> {
+      const { data } = await api.post<Lead>(ENDPOINT, dati);
+      this.leads.unshift(data);
+      return data;
+    },
+
+    /** Solo i campi descrittivi di un lead manuale: stato, note e foto hanno
+     *  le loro azioni. */
+    async modifica(lead: Lead, dati: Partial<DatiLeadManuale>): Promise<Lead> {
+      const { data } = await api.patch<Lead>(`${ENDPOINT}${lead.id}/`, dati);
+      this._aggiorna(data);
+      return data;
+    },
+
+    /** Solo per i manuali: sui lead del bot il server risponde 409, e
+     *  l'errore arriva a chi chiama con il suo messaggio. */
+    async elimina(lead: Lead): Promise<void> {
+      await api.delete(`${ENDPOINT}${lead.id}/`);
+      this.leads = this.leads.filter((l) => l.id !== lead.id);
     },
 
     /** «Lo contatto io». Il 409 non è un errore da nascondere: è l'altro che

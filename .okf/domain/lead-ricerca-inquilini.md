@@ -1,16 +1,17 @@
 ---
 type: Feature
 title: Lead — ricerca inquilini
-description: I contatti trovati dal bot Facebook depositati su viapal e lavorati in due da /p/cerca-inquilini.
+description: I contatti di chi cerca stanza — dal bot Facebook e dagli altri canali inseriti a mano — lavorati in due da /p/cerca-inquilini.
 resource: backend/apps/leads/models.py
 resources:
   - backend/apps/leads/models.py
   - backend/apps/leads/serializers.py
   - backend/apps/leads/views.py
   - frontend/src/pages/ProprietarioLeads.vue
+  - frontend/src/components/leads/LeadManualeDialog.vue
   - frontend/src/stores/leads.ts
-tags: [feature, leads, campagna, bot, gdpr]
-timestamp: 2026-09-05T00:00:00Z
+tags: [feature, leads, campagna, bot, canali, gdpr]
+timestamp: 2026-09-07T00:00:00Z
 ---
 
 # Overview
@@ -24,8 +25,53 @@ due — non diceva a chi era già stato scritto.
 L'app `leads` è il **secondo binario**: gli stessi contatti depositati qui, e
 lavorati dalla pagina **Cerca inquilini** (`/p/cerca-inquilini`).
 
+Dal 2026-09-07 la pagina non è più solo il bot: i canali di una campagna sono
+molti (annunci su Subito e Idealista, risposte a un post nostro su Facebook) e
+guardarli in posti diversi non funziona. I contatti degli altri canali si
+inseriscono **a mano** dalla stessa pagina (lead *manuali*), e ogni lead porta
+il suo `canale`, da dove viene.
+
 Non è anagrafica. È lo stato di una **campagna**: dura le due settimane di
 sfitto e poi si cancella (vedi *Chiusura di campagna*).
+
+# Stati, "attivi" e le date dei passaggi
+
+`nuovo` (Da contattare) → `contattato` → `risposto` → in uscita `perso` (Ha
+trovato altro) oppure `scartato`. Le due uscite sono distinte di proposito:
+*scartato* lo decidiamo noi, *perso* lo decide la persona, e per giudicare un
+canale la differenza conta.
+
+**Attivi** non è uno stato salvato ma il filtro predefinito della pagina
+(`?stato=attivi` = nuovo + contattato + risposto): chi è ancora in gioco. Un
+contatto che ha risposto resta attivo per un po', poi trova altro e esce.
+
+`contattato_at` e `risposto_at` si marcano la **prima volta** e non si
+spostano più (`segna_passaggi` in `serializers.py`): un ritorno indietro per
+errore non cancella la storia, e chi salta a "risposto" prende anche la data di
+contatto. Le statistiche leggono queste date, non lo stato attuale: chi ha
+risposto e poi ha trovato altro *ha risposto*. La migrazione `0003` ha dato a
+chi era già "risposto" la data dell'ultimo aggiornamento.
+
+# Canali e lead manuali
+
+`Lead.Canale`: `fb_gruppo` (Gruppo Facebook, l'unico che il bot deposita),
+`fb_post` (Risposta a un mio post), `subito`, `idealista`, `immobiliare`,
+`altro`. Il bot può dichiarare `canale` nel payload (default `fb_gruppo`): il
+giorno in cui leggerà anche le risposte ai nostri post non servirà un secondo
+endpoint.
+
+Un lead **manuale** ha `post_id` vuoto (`Lead.manuale`): il vincolo di unicità
+`(property, post_id)` è condizionale e non lo riguarda. Ha in più `contatto`
+(telefono, email o nick sulla piattaforma: per il bot il recapito è
+Messenger). Per i manuali i campi descrittivi sono delle persone, non del bot:
+`LeadManualeSerializer` estende quello di lavorazione con canale, nome,
+contatto, link, testo e `analisi` (solo zona/budget_max/disponibile_da: le
+chiavi del classificatore non entrano da un POST umano). La view sceglie il
+serializer del PATCH **in base al lead**, non alla richiesta: su un lead del
+bot i campi descrittivi restano ignorati.
+
+Si cancellano solo i manuali (`DELETE` → 409 su un lead del bot: ricomparirebbe
+al giro dopo con l'upsert, e per toglierlo di mezzo c'è "scartato").
 
 # L'invariante: due metà con proprietari diversi
 
@@ -34,8 +80,8 @@ persone, e le due metà non si toccano:
 
 | metà | campi | chi li scrive |
 |---|---|---|
-| scoperta | `testo`, `author_*`, `permalink`, `link_messenger`, `analisi`, `commento_proposto`, `privato_proposto`, `seen_at`, `group_*` | il bot, a ogni upsert dello stesso post |
-| lavorazione | `stato`, `preso_da`, `preso_at`, `contattato_at`, `note`, `foto` | le persone, dalla pagina |
+| scoperta | `canale`, `testo`, `author_*`, `permalink`, `link_messenger`, `analisi`, `commento_proposto`, `privato_proposto`, `seen_at`, `group_*` | il bot, a ogni upsert dello stesso post (per i lead manuali: le persone) |
+| lavorazione | `stato`, `preso_da`, `preso_at`, `contattato_at`, `risposto_at`, `note`, `foto` | le persone, dalla pagina |
 
 L'upsert del bot **non tocca mai** la seconda metà. La garanzia non è la buona
 educazione del payload: sono **due serializer** (`LeadBotSerializer` e
@@ -65,16 +111,21 @@ nomina e l'upsert non lo azzera.
 - `POST /leads/bulk-upsert/` — il bot. `IsPropertyMember` +
   `BasicAuthentication` (è uno script, non ha sessione da cui prendere il
   CSRF): stesso schema del bulk-import dei movimenti bancari. Idempotente.
-- `GET /leads/` — lista filtrabile per `stato`, `gruppo`, `preso_da`
-  (`me`/`nessuno`/id).
-- `PATCH /leads/<id>/` — solo `stato`, `note` e `foto`
-  (`LeadLavorazioneSerializer`). `contattato_at` si marca alla
-  prima volta e non si sposta più.
+- `GET /leads/` — lista filtrabile per `stato` (uno o più, oppure `attivi`),
+  `canale`, `gruppo`, `preso_da` (`me`/`nessuno`/id).
+- `POST /leads/` — crea un lead **manuale** (`LeadManualeSerializer`); torna il
+  lead intero. `seen_at` = adesso.
+- `PATCH /leads/<id>/` — sui lead del bot solo `stato`, `note` e `foto`
+  (`LeadLavorazioneSerializer`); sui manuali anche i campi descrittivi.
+  `contattato_at` e `risposto_at` si marcano alla prima volta e non si
+  spostano più.
+- `DELETE /leads/<id>/` — solo manuali; 409 sui lead del bot.
 - `POST /leads/<id>/prendi/` — presa in carico. Assegna **sempre** a chi
   chiama; **409** se è già di un altro, col nome. È il conflitto che la pagina
   serve a evitare: due messaggi alla stessa persona.
 - `POST /leads/<id>/rilascia/` — solo chi l'ha preso (o superuser).
-- `GET /leads/riepilogo/` — conteggi per stato e gruppi presenti.
+- `GET /leads/riepilogo/` — conteggi per stato, `attivi`, gruppi e canali
+  presenti (con conteggio).
 - `POST /leads/chiudi-campagna/` — **`IsPropertyProprietario`**, non membro
   qualsiasi: cancellare butta via anche le note e la presa in carico degli
   altri, e l'utente del bot ha la password in chiaro nel TOML. Vedi sotto.
@@ -116,6 +167,12 @@ privacy in `docs/privacy/`.
 inquilini"**: "lead" non è una parola di casa. Mobile-first, perché si usa dal
 telefono con Messenger accanto.
 
+Filtro stati con **Attivi** predefinito; il filtro per canale compare solo se i
+canali presenti sono più d'uno. In testa **Aggiungi** apre il dialog del lead
+manuale (`LeadManualeDialog.vue`: canale, nome, contatto, link, zona/budget/da
+quando, testo, note, stato iniziale); sulle card dei manuali lo stesso dialog si
+riapre in modifica, con l'eliminazione dentro.
+
 Card per contatto: in testa **stato** (badge + fondo colorato: "Da
 contattare" resta senza colore di proposito, scartato è smorzato e barrato) e
 **chi ci sta scrivendo** (badge col nome, o "lo contatti tu"), fotina accanto
@@ -129,10 +186,12 @@ stanno in `STATI` (store `leads.ts`), condivisi da filtri, select e card.
 Ctrl-Invio salva la nota dal dialog. Con un filtro attivo il lead che cambia
 stato sparisce dall'elenco: una notifica dice dov'è finito e offre di andarci.
 
-Il gruppo si mostra solo se i gruppi presenti sono più d'uno.
+Il gruppo si mostra solo se i gruppi presenti sono più d'uno; il canale sulla
+card solo se non è il gruppo Facebook o se i canali sono più d'uno. Il
+`contatto` diventa link `tel:`/`mailto:` quando ne ha l'aspetto.
 
 # Sviluppo
 
-`manage.py seed_leads --property <id>` crea quattro lead finti (`--pulisci` li
-toglie): la pagina si sviluppa senza far girare uno scrape vero di Facebook a
-ogni ritocco.
+`manage.py seed_leads --property <id>` crea quattro lead finti del bot e
+quattro manuali su canali e stati diversi (`--pulisci` li toglie; i manuali si
+riconoscono dalla marca `[seed-m-NN]` nella nota): la pagina si sviluppa senza far girare uno scrape vero di Facebook a ogni ritocco.

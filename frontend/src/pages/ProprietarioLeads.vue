@@ -7,6 +7,17 @@
       </div>
       <div class="vp-lead__azioni">
         <q-btn
+          unelevated
+          dense
+          no-caps
+          color="primary"
+          icon="person_add"
+          label="Aggiungi"
+          class="vp-lead__aggiungi"
+          data-testid="lead-aggiungi"
+          @click="apriNuovo"
+        />
+        <q-btn
           flat
           dense
           no-caps
@@ -49,6 +60,21 @@
           data-testid="filtro-stato"
         />
       </div>
+      <!-- Il canale compare solo quando ce n'è più d'uno: finché arriva
+           tutto dal bot, un filtro con una voce sola è un controllo in più
+           da capire per niente. -->
+      <q-select
+        v-if="mostraCanale"
+        v-model="filtroCanale"
+        :options="opzioniCanale"
+        emit-value
+        map-options
+        options-dense
+        dense
+        outlined
+        class="vp-lead__canale-filtro"
+        data-testid="filtro-canale"
+      />
       <q-toggle v-model="soloMiei" label="Solo i miei" dense />
       <q-space />
       <span class="vp-lead__conteggio">{{ leadVisibili.length }} in elenco</span>
@@ -65,7 +91,8 @@
     <div v-else-if="!leadVisibili.length" class="vp-lead__vuoto">
       <q-icon name="search" size="42px" color="grey-5" />
       <p v-if="!store.riepilogo?.totale">
-        Nessun contatto ancora. Li porta qui il bot mentre gira sui gruppi.
+        Nessun contatto ancora. Li porta qui il bot dai gruppi, oppure li aggiungi tu con
+        «Aggiungi».
       </p>
       <p v-else>Nessun contatto con questo filtro.</p>
     </div>
@@ -130,8 +157,39 @@
           <span v-if="lead.analisi?.stanze_compatibili?.length" class="vp-lead__stanze">
             <q-icon name="bed" size="16px" />{{ lead.analisi.stanze_compatibili.join(', ') }}
           </span>
-          <span v-if="mostraGruppo && lead.group_label" class="vp-lead__gruppo">
+          <!-- Per i gruppi Facebook il gruppo dice già da dove arriva; per
+               tutto il resto lo dice il canale. -->
+          <span
+            v-if="lead.canale === 'fb_gruppo' && mostraGruppo && lead.group_label"
+            class="vp-lead__gruppo"
+          >
             <q-icon name="groups" size="16px" />{{ lead.group_label }}
+          </span>
+          <span
+            v-if="lead.canale !== 'fb_gruppo' || mostraCanale"
+            class="vp-badge vp-lead__canale"
+            data-testid="lead-canale"
+          >
+            <q-icon :name="iconaCanale(lead.canale)" size="14px" />{{ lead.canale_display }}
+          </span>
+          <span v-if="lead.contatto" class="vp-lead__contatto" data-testid="lead-contatto">
+            <q-icon :name="tipoContatto(lead.contatto).icona" size="16px" />
+            <a
+              v-if="tipoContatto(lead.contatto).href"
+              :href="tipoContatto(lead.contatto).href"
+              class="vp-lead__contatto-link"
+              >{{ lead.contatto }}</a
+            >
+            <template v-else>{{ lead.contatto }}</template>
+            <q-btn
+              flat
+              dense
+              round
+              size="xs"
+              icon="content_copy"
+              aria-label="Copia il contatto"
+              @click="copia(lead.contatto, 'Contatto copiato')"
+            />
           </span>
         </div>
 
@@ -168,9 +226,24 @@
             no-caps
             color="primary"
             icon="open_in_new"
-            label="Il post"
+            :label="lead.manuale ? 'L\'annuncio' : 'Il post'"
             class="vp-lead__vai"
             :href="lead.permalink"
+            target="_blank"
+          />
+          <!-- Il profilo si mostra solo quando non c'è Messenger: con il
+               bot il link al profilo è la stessa persona che si raggiunge
+               già dal primo tasto. -->
+          <q-btn
+            v-if="lead.author_url && !lead.link_messenger"
+            outline
+            dense
+            no-caps
+            color="primary"
+            icon="person"
+            label="Profilo"
+            class="vp-lead__vai"
+            :href="lead.author_url"
             target="_blank"
           />
           <q-btn
@@ -248,9 +321,30 @@
           >
             <q-tooltip>{{ lead.note ? 'Modifica la nota' : 'Aggiungi una nota' }}</q-tooltip>
           </q-btn>
+          <!-- Solo i lead scritti a mano si correggono: quelli del bot li
+               riscriverebbe il prossimo giro. -->
+          <q-btn
+            v-if="lead.manuale"
+            flat
+            dense
+            round
+            icon="edit"
+            aria-label="Modifica il contatto"
+            data-testid="lead-modifica"
+            @click="apriModifica(lead)"
+          >
+            <q-tooltip>Modifica il contatto</q-tooltip>
+          </q-btn>
         </div>
       </article>
     </div>
+
+    <LeadManualeDialog
+      v-model="dialogManuale"
+      :lead="leadInModifica"
+      @salvato="dopoSalvato"
+      @eliminato="dopoEliminato"
+    />
 
     <!-- Note: sono il posto dove finisce ciò che il bot non sa (ha risposto
          al telefono, viene a vedere giovedì…). -->
@@ -284,28 +378,70 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { Dialog, Notify } from 'quasar';
-import { useLeadsStore, STATI, type Lead, type StatoLead } from 'src/stores/leads';
+import {
+  useLeadsStore,
+  STATI,
+  STATI_ATTIVI,
+  CANALI,
+  type CanaleLead,
+  type Lead,
+  type StatoLead,
+} from 'src/stores/leads';
 import LeadFotina from 'components/leads/LeadFotina.vue';
+import LeadManualeDialog from 'components/leads/LeadManualeDialog.vue';
 import { useAuthStore } from 'src/stores/auth';
+import { quando } from 'src/utils/quando';
 
 const store = useLeadsStore();
 const auth = useAuthStore();
 
-const filtroStato = ref<string>('nuovo');
+// "Attivi" non è uno stato: è il lavoro che resta (da contattare, contattato,
+// ha risposto), ed è quello che si vuole vedere aprendo la pagina.
+const filtroStato = ref<string>('attivi');
+const filtroCanale = ref<string>('');
 const soloMiei = ref(false);
 const aperti = ref(new Set<number>());
 
 // "Tutti" è una stringa vuota: il backend accetta stato assente come
 // "nessun filtro", e i conteggi arrivano dal riepilogo.
 const opzioniStato = computed(() => [
-  { value: '', label: etichettaConto('Tutti', store.riepilogo?.totale) },
+  { value: 'attivi', label: etichettaConto('Attivi', store.riepilogo?.attivi) },
   ...STATI.map((s) => ({
     value: s.value,
     label: etichettaConto(s.label, store.riepilogo?.per_stato?.[s.value]),
   })),
+  { value: '', label: etichettaConto('Tutti', store.riepilogo?.totale) },
 ]);
 
 const opzioniStatoSelect = STATI.map((s) => ({ value: s.value, label: s.label }));
+
+const opzioniCanale = computed(() => [
+  { value: '', label: 'Tutti i canali' },
+  ...(store.riepilogo?.canali ?? []).map((c) => ({
+    value: c.id,
+    label: etichettaConto(c.nome, c.n),
+  })),
+]);
+
+const ICONE_CANALE = Object.fromEntries(CANALI.map((c) => [c.value, c.icona])) as Record<
+  CanaleLead,
+  string
+>;
+
+function iconaCanale(canale: CanaleLead): string {
+  return ICONE_CANALE[canale] ?? 'more_horiz';
+}
+
+/** Come si presenta il contatto: un telefono si chiama, un'email si scrive,
+ *  un nick si copia e basta. */
+function tipoContatto(contatto: string): { href?: string; icona: string } {
+  const c = contatto.trim();
+  if (/^\+?[\d\s().-]{5,}$/.test(c)) {
+    return { href: `tel:${c.replace(/[\s().-]/g, '')}`, icona: 'call' };
+  }
+  if (c.includes('@')) return { href: `mailto:${c}`, icona: 'mail' };
+  return { icona: 'alternate_email' };
+}
 
 const ICONE = Object.fromEntries(STATI.map((s) => [s.value, s.icona])) as Record<
   StatoLead,
@@ -327,6 +463,9 @@ function etichettaConto(testo: string, n?: number): string {
 /** Il gruppo si mostra solo se ce n'è più d'uno: con un gruppo solo sarebbe
  *  rumore ripetuto su ogni card. */
 const mostraGruppo = computed(() => (store.riepilogo?.gruppi.length ?? 0) > 1);
+/** Stessa regola per il canale: con un canale solo non c'è niente da
+ *  distinguere. */
+const mostraCanale = computed(() => (store.riepilogo?.canali?.length ?? 0) > 1);
 
 const leadVisibili = computed(() => {
   if (!soloMiei.value) return store.leads;
@@ -339,13 +478,6 @@ function mio(lead: Lead): boolean {
 
 function altrui(lead: Lead): boolean {
   return !!lead.preso_da && lead.preso_da !== auth.user?.id;
-}
-
-function quando(iso: string): string {
-  const minuti = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (minuti < 60) return `${Math.max(minuti, 1)} min fa`;
-  if (minuti < 60 * 24) return `${Math.round(minuti / 60)} h fa`;
-  return new Date(iso).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
 }
 
 function alterna(id: number) {
@@ -365,13 +497,22 @@ async function copia(testo: string, messaggio: string) {
 
 async function ricarica() {
   await Promise.all([
-    store.fetch(filtroStato.value ? { stato: filtroStato.value } : {}),
+    store.fetch({ stato: filtroStato.value, canale: filtroCanale.value }),
     store.fetchRiepilogo(),
   ]);
 }
 
-watch(filtroStato, ricarica);
+watch([filtroStato, filtroCanale], ricarica);
 onMounted(ricarica);
+
+/** Il lead resta nell'elenco che si sta guardando? "Attivi" copre tre
+ *  stati, "Tutti" tutti quanti: sparire va deciso sul filtro, non sul
+ *  confronto secco con lo stato nuovo. */
+function fuoriDalFiltro(stato: StatoLead): boolean {
+  if (!filtroStato.value) return false;
+  if (filtroStato.value === 'attivi') return !STATI_ATTIVI.includes(stato);
+  return filtroStato.value !== stato;
+}
 
 async function prendi(lead: Lead) {
   const esito = await store.prendi(lead);
@@ -391,7 +532,7 @@ async function cambiaStato(lead: Lead, stato: StatoLead) {
   // Con un filtro attivo, il lead appena cambiato non appartiene più
   // all'elenco che si sta guardando: si toglie da solo. Sparire e basta però
   // sembra un errore: si dice dov'è andato, e si offre di andarci.
-  if (filtroStato.value && filtroStato.value !== stato) {
+  if (fuoriDalFiltro(stato)) {
     store.leads = store.leads.filter((l) => l.id !== lead.id);
     Notify.create({
       type: 'positive',
@@ -423,6 +564,45 @@ function apriNote(lead: Lead) {
 async function salvaNote() {
   if (leadNote.value) await store.salvaNote(leadNote.value, testoNote.value);
   noteAperte.value = false;
+}
+
+// --- lead manuali ---------------------------------------------------------
+const dialogManuale = ref(false);
+const leadInModifica = ref<Lead | null>(null);
+
+function apriNuovo() {
+  leadInModifica.value = null;
+  dialogManuale.value = true;
+}
+
+function apriModifica(lead: Lead) {
+  leadInModifica.value = lead;
+  dialogManuale.value = true;
+}
+
+async function dopoSalvato(lead: Lead) {
+  // Il riepilogo cambia (un contatto in più, forse un canale nuovo) e il
+  // lead appena creato può non appartenere al filtro corrente: si dice dov'è.
+  await store.fetchRiepilogo();
+  const creato = !leadInModifica.value;
+  if (creato && fuoriDalFiltro(lead.stato)) {
+    store.leads = store.leads.filter((l) => l.id !== lead.id);
+    Notify.create({
+      type: 'positive',
+      icon: statoIcona(lead.stato),
+      message: `${lead.author_name}: aggiunto come «${ETICHETTE[lead.stato]}»`,
+      actions: [
+        { label: 'vedi', color: 'white', handler: () => (filtroStato.value = lead.stato) },
+      ],
+    });
+  } else if (creato) {
+    Notify.create({ type: 'positive', message: `${lead.author_name} aggiunto`, icon: 'check' });
+  }
+}
+
+async function dopoEliminato(lead: Lead) {
+  await store.fetchRiepilogo();
+  Notify.create({ type: 'positive', message: `${lead.author_name || 'Contatto'} eliminato` });
 }
 
 // --- chiusura campagna --------------------------------------------------
@@ -538,6 +718,12 @@ function chiediChiusura() {
   text-decoration: line-through;
   text-decoration-color: var(--vp-ink-4);
 }
+/* "Ha trovato altro" è chiuso ma non è un rifiuto nostro: smorzato, senza
+   barrare il nome. */
+.vp-lead__card--st-perso {
+  background: var(--vp-paper-2);
+  opacity: 0.75;
+}
 
 .vp-lead__badge {
   flex-shrink: 0;
@@ -557,9 +743,39 @@ function chiediChiusura() {
   background: var(--vp-cream);
   color: var(--vp-status-ok-fg);
 }
+.vp-lead__badge--perso {
+  background: var(--vp-status-wait-bg);
+  color: var(--vp-status-wait-fg);
+}
 .vp-lead__badge--scartato {
   background: var(--vp-paper-3);
   color: var(--vp-ink-2);
+}
+
+.vp-lead__aggiungi {
+  padding-left: 10px;
+  padding-right: 12px;
+}
+.vp-lead__canale-filtro {
+  min-width: 170px;
+}
+/* Il canale nei fatti è un chip più piccolo del badge di stato: è un dato,
+   non un segnale. */
+.vp-lead__canale {
+  height: 20px;
+  padding: 0 8px;
+  gap: 4px;
+  font-size: var(--vp-text-xs);
+  font-weight: 400;
+  background: var(--vp-paper-2);
+  color: var(--vp-ink-2);
+}
+.vp-lead__contatto-link {
+  color: var(--vp-terra-deep);
+  text-decoration: none;
+}
+.vp-lead__contatto-link:hover {
+  text-decoration: underline;
 }
 
 /* La nota è un foglietto attaccato sopra: si vede senza aprire nulla, e

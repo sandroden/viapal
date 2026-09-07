@@ -355,3 +355,125 @@ def test_chiudi_campagna_cancella_solo_il_proprio_immobile(api, immobile, immobi
     assert r.status_code == 200
     assert r.data["cancellati"] == 1
     assert Lead.objects.filter(post_id="altrui").exists()
+
+
+# --- canali, contatti manuali, attivi -------------------------------------
+
+
+def _manuale(api, utente, **extra):
+    api.force_authenticate(utente)
+    dati = {
+        "canale": "subito",
+        "author_name": "Luca R.",
+        "contatto": "+39 333 1234567",
+        "testo": "Chiede la singola vista su Subito.",
+        "analisi": {"zona": "Monza", "budget_max": 450, "motivo": "non mio"},
+    }
+    dati.update(extra)
+    return api.post(URL, dati, format="json")
+
+
+def test_upsert_del_bot_ha_canale_gruppo(api, immobile, bot_user):
+    api.force_authenticate(bot_user)
+    r = api.post(URL_UPSERT, {"leads": [_payload()]}, format="json")
+    assert r.status_code == 200, r.data
+    lead = Lead.objects.get(property=immobile, post_id="fb-1")
+    assert lead.canale == Lead.Canale.FB_GRUPPO
+    assert not lead.manuale
+
+
+def test_crea_contatto_manuale(api, immobile, sandro):
+    r = _manuale(api, sandro)
+    assert r.status_code == 201, r.data
+    assert r.data["manuale"] is True
+    assert r.data["canale"] == "subito"
+    assert r.data["canale_display"] == "Subito.it"
+    assert r.data["contatto"] == "+39 333 1234567"
+    assert r.data["stato"] == "nuovo"
+    assert r.data["seen_at"]
+    # Le chiavi di analisi che il bot possiede non entrano da un POST umano.
+    assert r.data["analisi"] == {"zona": "Monza", "budget_max": 450}
+    lead = Lead.objects.get(pk=r.data["id"])
+    assert lead.post_id == "" and lead.property == immobile
+
+
+def test_due_manuali_non_collidono_sul_post_id_vuoto(api, immobile, sandro):
+    assert _manuale(api, sandro).status_code == 201
+    assert _manuale(api, sandro, author_name="Altro").status_code == 201
+    assert Lead.objects.filter(property=immobile, post_id="").count() == 2
+
+
+def test_manuale_creato_gia_risposto_ha_le_date(api, immobile, sandro):
+    r = _manuale(api, sandro, stato="risposto")
+    assert r.status_code == 201, r.data
+    assert r.data["contattato_at"] and r.data["risposto_at"]
+
+
+def test_manuale_richiede_nome_e_canale_valido(api, immobile, sandro):
+    assert _manuale(api, sandro, author_name="").status_code == 400
+    assert _manuale(api, sandro, canale="piccione").status_code == 400
+
+
+def test_patch_manuale_modifica_i_campi_descrittivi(api, immobile, sandro):
+    lead_id = _manuale(api, sandro).data["id"]
+    r = api.patch(
+        f"{URL}{lead_id}/",
+        {"author_name": "Luca Rossi", "canale": "idealista", "contatto": "luca@x.it"},
+        format="json",
+    )
+    assert r.status_code == 200, r.data
+    assert r.data["author_name"] == "Luca Rossi"
+    assert r.data["canale"] == "idealista"
+    assert r.data["contatto"] == "luca@x.it"
+
+
+def test_patch_lead_del_bot_ignora_i_campi_descrittivi(api, immobile, sandro):
+    lead = _lead(immobile)
+    api.force_authenticate(sandro)
+    r = api.patch(
+        f"{URL}{lead.id}/", {"author_name": "Cambiato", "canale": "subito"}, format="json"
+    )
+    assert r.status_code == 200
+    lead.refresh_from_db()
+    assert lead.author_name == "Giulia F."
+    assert lead.canale == Lead.Canale.FB_GRUPPO
+
+
+def test_delete_solo_manuali(api, immobile, sandro):
+    manuale_id = _manuale(api, sandro).data["id"]
+    del_bot = _lead(immobile)
+    assert api.delete(f"{URL}{del_bot.id}/").status_code == 409
+    assert Lead.objects.filter(pk=del_bot.id).exists()
+    assert api.delete(f"{URL}{manuale_id}/").status_code == 204
+    assert not Lead.objects.filter(pk=manuale_id).exists()
+
+
+def test_risposto_at_si_marca_una_volta_e_resta(api, immobile, sandro):
+    lead = _lead(immobile)
+    api.force_authenticate(sandro)
+    r = api.patch(f"{URL}{lead.id}/", {"stato": "risposto"}, format="json")
+    assert r.data["risposto_at"] and r.data["contattato_at"]
+    prima = r.data["risposto_at"]
+    api.patch(f"{URL}{lead.id}/", {"stato": "perso"}, format="json")
+    r = api.patch(f"{URL}{lead.id}/", {"stato": "risposto"}, format="json")
+    assert r.data["risposto_at"] == prima
+
+
+def test_filtro_attivi_e_canale(api, immobile, sandro):
+    _lead(immobile, post_id="a")
+    _lead(immobile, post_id="b", stato="scartato")
+    _lead(immobile, post_id="c", stato="perso")
+    _lead(immobile, post_id="d", stato="risposto")
+    _manuale(api, sandro, stato="contattato")
+    r = api.get(URL, {"stato": "attivi"})
+    assert {l["post_id"] for l in r.data["results"]} == {"a", "d", ""}
+    r = api.get(URL, {"canale": "subito"})
+    assert [l["canale"] for l in r.data["results"]] == ["subito"]
+    r = api.get(f"{URL}riepilogo/")
+    assert r.data["totale"] == 5 and r.data["attivi"] == 3
+    assert r.data["per_stato"]["perso"] == 1
+    assert r.data["canali"] == [
+        {"id": "fb_gruppo", "nome": "Gruppo Facebook", "n": 4},
+        {"id": "subito", "nome": "Subito.it", "n": 1},
+    ]
+

@@ -102,6 +102,50 @@ ESEMPI = [
 ]
 
 
+# Contatti degli altri canali: quelli che si inseriscono a mano. Stati diversi
+# di proposito, così la pagina delle statistiche ha qualcosa da confrontare.
+ESEMPI_MANUALI = [
+    {
+        "chiave": "seed-m-01",
+        "canale": Lead.Canale.SUBITO,
+        "author_name": "Luca R.",
+        "contatto": "+39 333 1234567",
+        "author_url": "https://www.subito.it/annunci-lombardia/",
+        "testo": "Ha chiamato per la singola vista su Subito, chiede se è libera da ottobre.",
+        "analisi": {"zona": "Monza", "budget_max": 450, "disponibile_da": "ottobre"},
+        "stato": Lead.Stato.RISPOSTO,
+    },
+    {
+        "chiave": "seed-m-02",
+        "canale": Lead.Canale.SUBITO,
+        "author_name": "Francesca T.",
+        "contatto": "francesca.t@example.org",
+        "testo": "Messaggio su Subito: cerca doppia per due colleghe.",
+        "analisi": {"zona": "Monza", "budget_max": 600},
+        "stato": Lead.Stato.CONTATTATO,
+    },
+    {
+        "chiave": "seed-m-03",
+        "canale": Lead.Canale.FB_POST,
+        "author_name": "Karim B.",
+        "author_url": "https://www.facebook.com/",
+        "testo": "Ha commentato il post nel gruppo Affitti Monza chiedendo il prezzo.",
+        "analisi": {"budget_max": 400},
+        "stato": Lead.Stato.PERSO,
+        "note": "Aveva già trovato a Sesto.",
+    },
+    {
+        "chiave": "seed-m-04",
+        "canale": Lead.Canale.IDEALISTA,
+        "author_name": "Elena M.",
+        "contatto": "idealista: elena_m",
+        "testo": "Richiesta da Idealista per la singola grande.",
+        "analisi": {"zona": "Villasanta", "disponibile_da": "subito"},
+        "stato": Lead.Stato.NUOVO,
+    },
+]
+
+
 class Command(BaseCommand):
     help = "Crea lead di esempio per sviluppare la pagina senza far girare il bot."
 
@@ -117,7 +161,9 @@ class Command(BaseCommand):
         prop = resolve_property_cli(options["property"])
         if options["pulisci"]:
             n, _ = Lead.objects.filter(property=prop, post_id__startswith="seed-").delete()
-            self.stdout.write(self.style.SUCCESS(f"Cancellati {n} lead di esempio."))
+            # I manuali non hanno post_id: si riconoscono dalla nota di servizio.
+            m, _ = Lead.objects.filter(property=prop, post_id="", note__contains="[seed").delete()
+            self.stdout.write(self.style.SUCCESS(f"Cancellati {n + m} lead di esempio."))
             return
 
         ora = timezone.now()
@@ -139,6 +185,29 @@ class Command(BaseCommand):
                     },
                 },
             )
+        for i, dati in enumerate(ESEMPI_MANUALI):
+            marca = f"[{dati['chiave']}]"
+            if Lead.objects.filter(property=prop, post_id="", note__contains=marca).exists():
+                continue
+            stato = dati["stato"]
+            quando = ora - timedelta(days=i + 1)
+            Lead.objects.create(
+                property=prop,
+                post_id="",
+                canale=dati["canale"],
+                author_name=dati["author_name"],
+                contatto=dati.get("contatto", ""),
+                author_url=dati.get("author_url", ""),
+                testo=dati["testo"],
+                analisi=dati.get("analisi", {}),
+                stato=stato,
+                note=f"{dati.get('note', '')} {marca}".strip(),
+                seen_at=quando,
+                contattato_at=quando if stato != Lead.Stato.NUOVO else None,
+                risposto_at=quando if stato in (Lead.Stato.RISPOSTO, Lead.Stato.PERSO) else None,
+            )
         self.stdout.write(
-            self.style.SUCCESS(f"{len(ESEMPI)} lead di esempio su «{prop}».")
+            self.style.SUCCESS(
+                f"{len(ESEMPI)} lead del bot e {len(ESEMPI_MANUALI)} manuali di esempio su «{prop}»."
+            )
         )

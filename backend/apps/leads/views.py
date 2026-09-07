@@ -6,7 +6,7 @@ viene verificata lato server come sempre — nessun percorso di autorizzazione
 nuovo da mantenere.
 """
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.authentication import BasicAuthentication, SessionAuthentication
@@ -25,6 +25,7 @@ from .serializers import (
     LeadBotSerializer,
     LeadBulkUpsertSerializer,
     LeadLavorazioneSerializer,
+    LeadManualeSerializer,
     LeadSerializer,
 )
 
@@ -32,16 +33,19 @@ from .serializers import (
 class LeadViewSet(ModelViewSet):
     """/api/v1/leads/ — la lista su cui si lavora, in due.
 
-    Sola lettura più il PATCH di lavorazione: i lead nascono dal bot, non si
-    creano a mano. Filtri: ``stato``, ``gruppo`` (id del gruppo Facebook),
-    ``preso_da`` (id utente, oppure ``me``/``nessuno``).
+    I lead del bot arrivano dal bulk-upsert e qui si lavorano (PATCH di stato,
+    note, foto). Quelli **manuali** — gli altri canali: risposte a un post
+    nostro, Subito, Idealista — si creano, si modificano e si cancellano da
+    qui, perché non c'è un bot che li possieda.
+
+    Filtri: ``stato`` (uno o più separati da virgola, oppure ``attivi``),
+    ``canale``, ``gruppo`` (id del gruppo Facebook), ``preso_da`` (id utente,
+    oppure ``me``/``nessuno``).
     """
 
     permission_classes = [IsPropertyMember]
     pagination_class = BillingPagination
-    # Niente POST/DELETE sulle risorse: i lead li crea il bot e li cancella
-    # la chiusura di campagna. Il POST serve solo alle action qui sotto.
-    http_method_names = ["get", "patch", "post", "head", "options"]
+    http_method_names = ["get", "patch", "post", "delete", "head", "options"]
 
     def get_permissions(self):
         # Cancellare la campagna butta via anche le note e la presa in carico
@@ -53,16 +57,32 @@ class LeadViewSet(ModelViewSet):
         return super().get_permissions()
 
     def get_serializer_class(self):
+        if self.action == "create":
+            return LeadManualeSerializer
         if self.action == "partial_update":
+            # Su un lead del bot i campi descrittivi restano suoi: il PATCH
+            # umano tocca solo la lavorazione. Su un manuale, tutto.
+            if self.get_object().manuale:
+                return LeadManualeSerializer
             return LeadLavorazioneSerializer
         return LeadSerializer
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["property"] = get_request_property(self.request)
+        return ctx
 
     def get_queryset(self):
         prop = get_request_property(self.request)
         qs = Lead.objects.filter(property=prop).select_related("preso_da")
         p = self.request.query_params
         if stato := p.get("stato"):
-            qs = qs.filter(stato__in=stato.split(","))
+            if stato == "attivi":
+                qs = qs.filter(stato__in=Lead.STATI_ATTIVI)
+            else:
+                qs = qs.filter(stato__in=stato.split(","))
+        if canale := p.get("canale"):
+            qs = qs.filter(canale=canale)
         if gruppo := p.get("gruppo"):
             qs = qs.filter(group_id=gruppo)
         preso = p.get("preso_da")
@@ -74,12 +94,33 @@ class LeadViewSet(ModelViewSet):
             qs = qs.filter(preso_da_id=preso)
         return qs
 
+    def create(self, request, *args, **kwargs):
+        # Torna il lead intero, come il PATCH: la pagina lo mette in cima
+        # alla lista senza rileggerla.
+        riga = LeadManualeSerializer(data=request.data, context=self.get_serializer_context())
+        riga.is_valid(raise_exception=True)
+        lead = riga.save()
+        return Response(LeadSerializer(lead).data, status=status.HTTP_201_CREATED)
+
     def partial_update(self, request, *args, **kwargs):
         # Il PATCH torna il lead intero: la pagina aggiorna la card senza
         # dover rileggere la lista.
         super().partial_update(request, *args, **kwargs)
         istanza = self.get_object()
         return Response(LeadSerializer(istanza).data)
+
+    def destroy(self, request, *args, **kwargs):
+        """Solo i manuali: un lead del bot cancellato ricomparirebbe al giro
+        dopo con l'upsert, e comunque sparisce con la campagna. Per toglierlo
+        di mezzo c'è «scartato»."""
+        lead = self.get_object()
+        if not lead.manuale:
+            return Response(
+                {"detail": "I contatti trovati dal bot non si cancellano: si scartano."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        lead.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"])
     def prendi(self, request, pk=None):
@@ -120,7 +161,7 @@ class LeadViewSet(ModelViewSet):
 
     @action(detail=False)
     def riepilogo(self, request):
-        """Conteggi per stato — i numeri sui filtri della pagina."""
+        """Conteggi per stato e canali presenti — i numeri sui filtri."""
         prop = get_request_property(request)
         qs = Lead.objects.filter(property=prop)
         per_stato = {s: 0 for s, _ in Lead.Stato.choices}
@@ -132,11 +173,18 @@ class LeadViewSet(ModelViewSet):
                 for l in qs.exclude(group_id="").values("group_id", "group_label")
             }
         )
+        etichette = dict(Lead.Canale.choices)
+        canali = [
+            {"id": r["canale"], "nome": etichette.get(r["canale"], r["canale"]), "n": r["n"]}
+            for r in qs.values("canale").annotate(n=Count("id")).order_by("-n", "canale")
+        ]
         return Response(
             {
                 "totale": sum(per_stato.values()),
+                "attivi": sum(per_stato[s] for s in Lead.STATI_ATTIVI),
                 "per_stato": per_stato,
                 "gruppi": [{"id": g, "nome": n} for g, n in gruppi],
+                "canali": canali,
             }
         )
 
