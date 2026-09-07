@@ -300,7 +300,7 @@
               <q-expansion-item
                 v-for="r in situazione.utility.righe"
                 :key="r.id"
-                :label="`${formattaData(r.period_da)} → ${formattaData(r.period_a)}`"
+                :label="etichettaRigaUtenze(r)"
                 :caption="`${formattaEuro(r.importo_totale)} · ${r.stato}`"
               >
                 <q-card flat class="vp-i-sit__card-inner">
@@ -581,7 +581,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { QTableProps } from 'quasar';
-import { useTenantSituazioneStore } from 'stores/tenantSituazione';
+import { useTenantSituazioneStore, type UtilityRiga } from 'stores/tenantSituazione';
 import { useDashboardStore } from 'stores/dashboard';
 import { useAuthStore } from 'stores/auth';
 import KpiCard from 'src/components/KpiCard.vue';
@@ -613,6 +613,13 @@ const dashboard = useDashboardStore();
 const auth = useAuthStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
+
+// Riga utenze: il periodo per le bollette, la descrizione per il
+// previsionale d'uscita e la sua rettifica (che un periodo non ce l'hanno).
+function etichettaRigaUtenze(r: UtilityRiga): string {
+  if (!r.period_id) return r.descrizione || 'Utenze previsionali';
+  return `Utenze ${formattaData(r.period_da)} → ${formattaData(r.period_a ?? r.period_da)}`;
+}
 
 const nominativoFallback = computed(
   () =>
@@ -733,7 +740,7 @@ const righe = computed<RigaPagamento[]>(() => {
     out.push({
       rowKey: `utility-${c.id}`,
       tipo: 'utility',
-      descrizione: `Utenze ${formattaData(c.period_da)} → ${formattaData(c.period_a)}`,
+      descrizione: etichettaRigaUtenze(c),
       importo_dovuto: c.importo_totale,
       importo_pagato: c.importo_pagato,
       scadenza: c.scadenza,

@@ -9,7 +9,7 @@ resources:
   - backend/apps/billing/models/utilities.py
   - backend/apps/billing/models/expenses.py
 tags: [models, billing]
-timestamp: 2026-09-05T00:00:00Z
+timestamp: 2026-09-07T00:00:00Z
 ---
 
 # Overview
@@ -28,7 +28,7 @@ Dalla multiproprietà (2026-07) `Supplier`, `ExpenseCategory`, `Expense`,
 
 | Modello | Campi chiave | Note |
 |---------|--------------|------|
-| `Receivable` | `assignment` (PROTECT), `causale` (affitto/utenze/extra/deposito/registrazione), `descrizione`, `importo_dovuto`, `importo_pagato`, `stato`, `data_pagamento`, `incassato_da_owner`, `bank_account_destinazione`, `ricevuta`, `scadenza`, `competenza_da`/`_a`, `utility_period`, `giorni_presenza`, `is_aggiustamento`, `note` | addebito unificato → [receivable](/domain/receivable.md); vincoli `receivable_affitto_unique`, `receivable_utenze_unique`, `receivable_pagato_ha_incassante` (check) |
+| `Receivable` | `assignment` (PROTECT), `causale` (affitto/utenze/extra/deposito/registrazione), `descrizione`, `importo_dovuto`, `importo_pagato`, `stato`, `data_pagamento`, `incassato_da_owner`, `bank_account_destinazione`, `ricevuta`, `scadenza`, `competenza_da`/`_a`, `utility_period`, `giorni_presenza`, `is_aggiustamento`, `previsionale`, `conguaglio_di` (self-FK, PROTECT), `note` | addebito unificato → [receivable](/domain/receivable.md); vincoli `receivable_affitto_unique`, `receivable_utenze_unique`, `receivable_pagato_ha_incassante` (check) |
 | `ReceivableComment` | `receivable`, `autore`, `testo` | commento libero, inoltrato via email |
 | `BankTransaction` | `data`, `descrizione`, `importo` (+entrata/−uscita), `owner_account`, `note` | movimento bancario; `stato_riconciliazione` calcolato: `pieno`/`parziale`/`vuoto`/`sovra`; queryset `non_riconciliate()`/`riconciliate()` segno-aware; `TOLLERANZA_ALLOC` = 0,01 € |
 | `BankTransactionAllocation` | `bank_transaction` (CASCADE), `receivable` (PROTECT), `importo` | ponte M:N BT↔Receivable, unica per coppia (`allocation_unique_pair`) |

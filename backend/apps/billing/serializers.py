@@ -113,9 +113,12 @@ class UtilityChargeSerializer(serializers.ModelSerializer):
             "period_tot_tari",
             "period_tot_altro",
             "period_giorni_totali",
+            "previsionale",
+            "conguaglio_di",
         ]
         read_only_fields = [
             "stato_display", "periodo_da", "periodo_a",
+            "previsionale", "conguaglio_di",
             "period_tot_luce", "period_tot_gas", "period_tot_tari",
             "period_tot_altro", "period_giorni_totali",
         ]
@@ -555,8 +558,9 @@ class BankTransactionAllocationSerializer(serializers.ModelSerializer):
         if r.causale == Receivable.Causale.AFFITTO:
             return f"Affitto {format_mese_anno(r.competenza_da)} — {r.assignment.tenant.nominativo}"
         if r.causale == Receivable.Causale.UTENZE:
-            base = r.utility_period.periodo_da if r.utility_period else r.competenza_da
-            return f"Utenze {format_mese_anno(base)} — {r.assignment.tenant.nominativo}"
+            if not r.utility_period_id:
+                return f"{r.descrizione or 'Utenze previsionali'} — {r.assignment.tenant.nominativo}"
+            return f"Utenze {format_mese_anno(r.utility_period.periodo_da)} — {r.assignment.tenant.nominativo}"
         return f"{r.descrizione or 'Extra'} — {r.assignment.tenant.nominativo}"
 
 
@@ -671,8 +675,9 @@ class ReceivableForReconcileSerializer(serializers.ModelSerializer):
         if r.causale == Receivable.Causale.AFFITTO:
             return f"Affitto {format_mese_anno(r.competenza_da)}"
         if r.causale == Receivable.Causale.UTENZE:
-            base = r.utility_period.periodo_da if r.utility_period else r.competenza_da
-            return f"Utenze {format_mese_anno(base)}"
+            if not r.utility_period_id:
+                return r.descrizione or "Utenze previsionali"
+            return f"Utenze {format_mese_anno(r.utility_period.periodo_da)}"
         return r.descrizione or "Addebito extra"
 
     def get_importo_allocato(self, r: Receivable):

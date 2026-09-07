@@ -16,12 +16,6 @@ from properties.models import RoomAssignment, TenantProfile
 # ---------------------------------------------------------------------------
 
 
-# Marker che identifica un Receivable come "previsionale utenze".
-# Salvato come prima riga delle note al momento della creazione (POST).
-MARKER_PREVISIONALE = "previsionale_utenze"
-MARKER_CONGUAGLIO = "conguaglio_previsionale"
-
-
 def _calcola_stima_previsionale(tenant: TenantProfile, data_target: datetime.date):
     """Ritorna dict con stima (vedi PrevisionaleUtenzeView) oppure ``None``
     insieme a un messaggio di errore se la stima non è calcolabile.
@@ -67,12 +61,12 @@ class PrevisionaleUtenzeView(APIView):
         → stima dell'importo per utenze previsionali a fine locazione.
     POST /api/v1/tenants/<tenant_id>/previsionale-utenze/
         body: {assignment, data_da, data_a, importo, descrizione?}
-        → crea un Receivable EXTRA marcato come previsionale, con
-        competenza_da/competenza_a valorizzate sul range coperto.
+        → crea un Receivable UTENZE con ``previsionale=True`` (senza periodo
+        utenze), con competenza_da/competenza_a valorizzate sul range coperto.
 
-    Il marker ``previsionale_utenze`` nella prima riga delle note serve poi
-    a identificare il Receivable in fase di conguaglio (vedi
-    ConguagliaPrevisionaleView).
+    Il flag ``previsionale`` identifica poi il Receivable in fase di
+    conguaglio (vedi ConguagliaPrevisionaleView); "conguagliato" vuol dire
+    che esiste una rettifica con ``conguaglio_di`` che punta qui.
     """
 
     permission_classes = [IsPropertyMember]
@@ -181,14 +175,14 @@ class PrevisionaleUtenzeView(APIView):
 
         rec = Receivable.objects.create(
             assignment=assignment,
-            causale=Receivable.Causale.EXTRA,
+            causale=Receivable.Causale.UTENZE,
+            previsionale=True,
             descrizione=descrizione[:300],
             competenza_da=data_da,
             competenza_a=data_a,
             scadenza=data_a,
             importo_dovuto=importo.quantize(Decimal("0.01")),
             stato=StatoPagamento.ATTESO,
-            note=MARKER_PREVISIONALE,
         )
         return Response(
             {
@@ -213,8 +207,9 @@ class ConguagliaPrevisionaleView(APIView):
         rettifica proposta.
     POST /api/v1/tenants/<tenant_id>/conguaglia-previsionale/
         body: {previsionale_id}
-        → crea Receivable EXTRA di rettifica con importo = -somma_utenze
-        e marca il previsionale come conguagliato.
+        → crea Receivable UTENZE di rettifica con importo = -somma_utenze
+        e ``conguaglio_di`` = previsionale (è questo legame a dire che il
+        previsionale è conguagliato).
     """
 
     permission_classes = [IsPropertyMember]
@@ -230,12 +225,12 @@ class ConguagliaPrevisionaleView(APIView):
                 {"detail": "Previsionale non trovato per questo inquilino."},
                 status=404,
             )
-        if MARKER_PREVISIONALE not in (prev.note or ""):
+        if not prev.previsionale:
             return None, Response(
                 {"detail": "Il Receivable indicato non è un previsionale."},
                 status=400,
             )
-        if MARKER_CONGUAGLIO in (prev.note or ""):
+        if prev.conguagli.exists():
             return None, Response(
                 {"detail": "Previsionale già conguagliato."},
                 status=409,
@@ -361,26 +356,20 @@ class ConguagliaPrevisionaleView(APIView):
                 status=409,
             )
 
-        from django.db import transaction
-        with transaction.atomic():
-            rettifica = Receivable.objects.create(
-                assignment=prev.assignment,
-                causale=Receivable.Causale.EXTRA,
-                descrizione=(
-                    f"Conguaglio previsionale {prev.competenza_da.isoformat()} "
-                    f"→ {prev.competenza_a.isoformat()}"
-                )[:300],
-                competenza_da=prev.competenza_da,
-                competenza_a=prev.competenza_a,
-                scadenza=prev.competenza_a,
-                importo_dovuto=(-somma).quantize(Decimal("0.01")),
-                stato=StatoPagamento.ATTESO,
-                note=f"{MARKER_CONGUAGLIO}:{prev.id}",
-            )
-            # Marca il previsionale come conguagliato.
-            note_aggiornate = (prev.note or "") + f"\n{MARKER_CONGUAGLIO}:{rettifica.id}"
-            prev.note = note_aggiornate.strip()
-            prev.save(update_fields=["note", "updated_at"])
+        rettifica = Receivable.objects.create(
+            assignment=prev.assignment,
+            causale=Receivable.Causale.UTENZE,
+            conguaglio_di=prev,
+            descrizione=(
+                f"Conguaglio previsionale {prev.competenza_da.isoformat()} "
+                f"→ {prev.competenza_a.isoformat()}"
+            )[:300],
+            competenza_da=prev.competenza_da,
+            competenza_a=prev.competenza_a,
+            scadenza=prev.competenza_a,
+            importo_dovuto=(-somma).quantize(Decimal("0.01")),
+            stato=StatoPagamento.ATTESO,
+        )
 
         return Response(
             {

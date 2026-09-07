@@ -312,7 +312,7 @@ class ReceivableAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboMode
         "incassato_da_owner",
         "get_modal_edit_icon", "get_modal_delete_icon",
     )
-    list_filter = ("causale", "stato", "is_aggiustamento")
+    list_filter = ("causale", "stato", "is_aggiustamento", "previsionale")
     search_fields = (
         "descrizione",
         "assignment__tenant__nominativo",
@@ -325,7 +325,7 @@ class ReceivableAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboMode
     )
     autocomplete_fields = (
         "assignment", "incassato_da_owner",
-        "bank_account_destinazione", "utility_period",
+        "bank_account_destinazione", "utility_period", "conguaglio_di",
     )
     date_hierarchy = "scadenza"
     ordering = ("-scadenza", "assignment__tenant__nominativo")
@@ -428,6 +428,7 @@ class ReceivableAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, JumboMode
                 "assignment", "causale", "descrizione",
                 "competenza_da", "competenza_a", "scadenza",
                 "is_aggiustamento", "utility_period", "giorni_presenza",
+                "previsionale", "conguaglio_di",
             ),
         }),
         ("Importi e stato", {

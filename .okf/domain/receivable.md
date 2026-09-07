@@ -11,7 +11,7 @@ resources:
   - backend/apps/billing/views/receivables.py
   - backend/apps/billing/views/_common.py
 tags: [domain, receivable, billing]
-timestamp: 2026-09-05T00:00:00Z
+timestamp: 2026-09-07T00:00:00Z
 ---
 
 # Overview
@@ -36,6 +36,9 @@ Prima esistevano tre modelli separati (`RentPayment`, `UtilityCharge`,
   `is_aggiustamento` (voce di rettifica, es. uscita anticipata),
   `bank_account_destinazione` (override del conto su cui va versato),
   `ricevuta` (file su storage privato).
+- **Previsionale d'uscita**: `previsionale` (UTENZE senza periodo, stima
+  trattenuta dal deposito) e `conguaglio_di` (self-FK: la rettifica punta il
+  previsionale che compensa). Vedi [conguaglio](/domain/conguaglio.md).
 - **`note`**: log append-only della macchina a stati dichiara/rifiuta; da non
   confondere con i commenti (sotto).
 
@@ -54,7 +57,9 @@ Prima esistevano tre modelli separati (`RentPayment`, `UtilityCharge`,
 genera Receivable con la propria causale:
 
 - [Generazione affitti](/domain/generazione-affitti.md) → AFFITTO.
-- [Calcolo utenze](/domain/calcolo-utenze.md) → UTENZE (+ `utility_period`).
+- [Calcolo utenze](/domain/calcolo-utenze.md) → UTENZE (+ `utility_period`);
+  il [previsionale d'uscita](/domain/conguaglio.md) e la sua rettifica sono
+  UTENZE **senza** periodo (`previsionale` / `conguaglio_di`).
 - [Deposito](/domain/deposito.md) → DEPOSITO, con il segno a distinguere il
   versamento (positivo, eventualmente a rate) dalla restituzione (negativo).
 - EXTRA può avere `importo_dovuto` negativo (rimborso/accredito).

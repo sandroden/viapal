@@ -125,6 +125,28 @@ class Receivable(TimestampedModel):
         verbose_name="giorni di presenza",
         help_text="Numeratore della ripartizione utenze (giorni nel periodo).",
     )
+    # Utenze stimate all'uscita dell'inquilino: causale UTENZE senza periodo,
+    # trattenute dal deposito e poi compensate con le bollette reali tramite
+    # un secondo Receivable UTENZE negativo che punta qui (``conguaglio_di``).
+    # È un campo proprio, non uno stato: lo stato di pagamento viene
+    # riallineato dalle allocazioni e non può custodire la natura dell'addebito.
+    previsionale = models.BooleanField(
+        default=False,
+        verbose_name="previsionale",
+        help_text=(
+            "Utenze stimate all'uscita, da compensare con le bollette reali "
+            "(causale=utenze, senza periodo)."
+        ),
+    )
+    conguaglio_di = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        related_name="conguagli",
+        null=True,
+        blank=True,
+        verbose_name="conguaglio del previsionale",
+        help_text="Per la rettifica: il previsionale che compensa.",
+    )
 
     note = models.TextField(
         blank=True,

@@ -2532,18 +2532,43 @@ class TestPrevisionaleEConguaglio:
             format="json",
         )
 
-    def test_post_crea_previsionale_marcato(
+    def test_post_crea_previsionale_utenze_flag(
         self, client_prop, tenant_1, assignment_1
     ):
+        """Il previsionale è un UTENZE senza periodo con il flag proprio,
+        non un EXTRA riconosciuto da un marcatore nelle note."""
         resp = self._crea_previsionale(client_prop, tenant_1, assignment_1)
         assert resp.status_code == 201, resp.content
         body = resp.json()
         rec = Receivable.objects.get(pk=body["id"])
-        assert rec.causale == Receivable.Causale.EXTRA
+        assert rec.causale == Receivable.Causale.UTENZE
+        assert rec.previsionale is True
+        assert rec.utility_period_id is None
         assert rec.competenza_da == datetime.date(2026, 4, 30)
         assert rec.competenza_a == datetime.date(2026, 5, 15)
         assert rec.importo_dovuto == Decimal("80.00")
-        assert "previsionale_utenze" in (rec.note or "")
+        assert rec.note == ""
+
+    def test_previsionale_nella_situazione_fra_le_utenze(
+        self, client_prop, tenant_1, assignment_1
+    ):
+        """Nel dettaglio inquilino il previsionale sta fra le utenze (non fra
+        gli extra), con flag e descrizione al posto del periodo."""
+        prev_id = self._crea_previsionale(
+            client_prop, tenant_1, assignment_1
+        ).json()["id"]
+        resp = client_prop.get(
+            f"/api/v1/tenants/{tenant_1.id}/situazione/?anno=2026"
+        )
+        assert resp.status_code == 200, resp.content
+        body = resp.json()
+        riga = next(r for r in body["utility"]["righe"] if r["id"] == prev_id)
+        assert riga["previsionale"] is True
+        assert riga["previsionale_conguagliato"] is False
+        assert riga["period_id"] is None
+        assert riga["period_da"] == "2026-04-30"
+        assert riga["descrizione"].startswith("Previsionale utenze")
+        assert all(r["id"] != prev_id for r in body["extra"]["righe"])
 
     def test_post_previsionale_data_a_uguale_da_400(
         self, client_prop, tenant_1, assignment_1
@@ -2598,12 +2623,21 @@ class TestPrevisionaleEConguaglio:
         assert post_resp.status_code == 201, post_resp.content
         body = post_resp.json()
         rett = Receivable.objects.get(pk=body["rettifica_id"])
-        assert rett.causale == Receivable.Causale.EXTRA
+        assert rett.causale == Receivable.Causale.UTENZE
+        assert rett.previsionale is False
+        assert rett.conguaglio_di_id == prev_id
         assert rett.importo_dovuto == Decimal("-26.69")
-        assert f"conguaglio_previsionale:{prev_id}" in (rett.note or "")
-        # Previsionale marcato come conguagliato
+        # Il previsionale risulta conguagliato per via della rettifica che
+        # lo punta, e la situazione lo espone.
         prev = Receivable.objects.get(pk=prev_id)
-        assert "conguaglio_previsionale" in (prev.note or "")
+        assert prev.conguagli.count() == 1
+        sit = client_prop.get(
+            f"/api/v1/tenants/{tenant_1.id}/situazione/?anno=2026"
+        ).json()
+        per_id = {r["id"]: r for r in sit["utility"]["righe"]}
+        assert per_id[prev_id]["previsionale_conguagliato"] is True
+        assert per_id[rett.id]["conguaglio_di"] == prev_id
+        assert per_id[rett.id]["previsionale"] is False
 
     def test_conguaglio_rifiuta_se_gia_conguagliato(
         self, client_prop, tenant_1, assignment_1, charge_maggio
@@ -2628,7 +2662,7 @@ class TestPrevisionaleEConguaglio:
     def test_conguaglio_su_non_previsionale_400(
         self, client_prop, tenant_1, extra_charge_1
     ):
-        """Un Receivable extra qualsiasi (non marcato previsionale) non è
+        """Un Receivable extra qualsiasi (senza flag previsionale) non è
         conguagliabile."""
         resp = client_prop.post(
             f"/api/v1/tenants/{tenant_1.id}/conguaglia-previsionale/",

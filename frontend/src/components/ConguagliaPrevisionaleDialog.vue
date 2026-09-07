@@ -101,6 +101,14 @@
             </q-list>
           </q-expansion-item>
 
+          <q-banner
+            v-if="anteprima.somma_utenze_reali === 0"
+            class="bg-amber-1 text-amber-9 q-mt-md"
+            rounded
+          >
+            Nessuna utenza reale emessa nel periodo coperto: prima emetti le
+            bollette di quei mesi da «Utenze», poi torna qui a conguagliare.
+          </q-banner>
           <q-banner v-if="errore" class="bg-red-1 text-red-9 q-mt-md" rounded>
             {{ errore }}
           </q-banner>

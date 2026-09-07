@@ -4,7 +4,7 @@ Dashboard inquilino e drilldown per singolo inquilino.
 import datetime
 from decimal import Decimal
 
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
 from django.db.models.functions import Coalesce
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -231,17 +231,23 @@ class TenantSituazioneView(APIView):
             if r.importo_pagato:
                 rent_pagato += r.importo_pagato
 
-        # Utenze dell'anno (per utility_period.periodo_da)
+        # Utenze dell'anno (per utility_period.periodo_da). Il previsionale
+        # d'uscita e la sua rettifica non hanno periodo: per loro conta
+        # ``competenza_da``.
         utility_qs = (
             Receivable.objects.filter(
                 assignment__tenant=tenant,
                 causale=Receivable.Causale.UTENZE,
-                utility_period__periodo_da__year=anno,
+            )
+            .filter(
+                Q(utility_period__periodo_da__year=anno)
+                | Q(utility_period__isnull=True, competenza_da__year=anno)
             )
             .select_related(
                 "utility_period", "assignment__room__property__bank_account_utenze"
             )
-            .order_by("utility_period__periodo_da")
+            .annotate(n_conguagli=Count("conguagli"))
+            .order_by(Coalesce("utility_period__periodo_da", "competenza_da"), "id")
         )
         utility_righe = []
         utility_dovuto = Decimal("0")
@@ -278,6 +284,13 @@ class TenantSituazioneView(APIView):
                 "lines": lines,
                 "bank_account_destinazione_id": r.bank_account_destinazione_id,
                 "conto_suggerito_id": _conto_suggerito_id(r),
+                # Previsionale d'uscita e relativa rettifica (vedi
+                # dashboard_views/previsionale.py): descrizione al posto
+                # del periodo, che qui manca.
+                "descrizione": r.descrizione,
+                "previsionale": r.previsionale,
+                "previsionale_conguagliato": r.previsionale and r.n_conguagli > 0,
+                "conguaglio_di": r.conguaglio_di_id,
             })
             utility_dovuto += r.importo_dovuto
             if r.importo_pagato:
@@ -303,11 +316,6 @@ class TenantSituazioneView(APIView):
         extra_totale = Decimal("0")
         extra_pagato = Decimal("0")
         for r in extra_qs:
-            note_str = r.note or ""
-            is_previsionale = "previsionale_utenze" in note_str
-            previsionale_conguagliato = (
-                is_previsionale and "conguaglio_previsionale" in note_str
-            )
             extra_righe.append({
                 "id": r.id,
                 "data": r.competenza_da.isoformat(),
@@ -320,8 +328,6 @@ class TenantSituazioneView(APIView):
                 "data_pagamento": r.data_pagamento.isoformat() if r.data_pagamento else None,
                 "bank_account_destinazione_id": r.bank_account_destinazione_id,
                 "conto_suggerito_id": _conto_suggerito_id(r),
-                "is_previsionale": is_previsionale,
-                "previsionale_conguagliato": previsionale_conguagliato,
             })
             extra_totale += r.importo_dovuto
             if r.importo_pagato:

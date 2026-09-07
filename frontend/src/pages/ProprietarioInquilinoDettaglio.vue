@@ -302,6 +302,18 @@
                 {{ etichettaPerTipo(props.row.tipo) }}
               </q-td>
             </template>
+            <template #body-cell-descrizione="props">
+              <q-td :props="props">
+                {{ props.row.descrizione }}
+                <q-badge
+                  v-if="props.row.etichetta"
+                  outline
+                  color="primary"
+                  class="q-ml-xs"
+                  :label="props.row.etichetta"
+                />
+              </q-td>
+            </template>
             <template #body-cell-importo_dovuto="props">
               <q-td :props="props">{{ formattaEuro(props.row.importo_dovuto) }}</q-td>
             </template>
@@ -379,7 +391,7 @@
               <q-expansion-item
                 v-for="r in situazione.utility.righe"
                 :key="r.id"
-                :label="`${formattaData(r.period_da)} → ${formattaData(r.period_a)}`"
+                :label="etichettaRigaUtenze(r)"
                 :caption="`${formattaEuro(r.importo_totale)} · ${r.stato}`"
               >
                 <q-card flat class="vp-p-id__card">
@@ -1054,6 +1066,7 @@ import { api } from 'boot/axios';
 import {
   useTenantSituazioneStore,
   type AssignmentRiga,
+  type UtilityRiga,
 } from 'stores/tenantSituazione';
 import { useTenantsStore, type Tenant } from 'stores/tenants';
 import { useAuthStore } from 'stores/auth';
@@ -1101,6 +1114,8 @@ interface RigaPagamento {
   rowKey: string;
   tipo: TipoPagamento;
   descrizione: string;
+  // Badge accanto alla descrizione (previsionale utenze e suo conguaglio).
+  etichetta?: string | undefined;
   importo_dovuto: number;
   importo_pagato: number;
   scadenza: string | null;
@@ -1118,6 +1133,18 @@ const store = useTenantSituazioneStore();
 const tenantsStore = useTenantsStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
+
+// Riga utenze: il periodo per le bollette, la descrizione per il
+// previsionale d'uscita e la sua rettifica (che un periodo non ce l'hanno).
+function etichettaRigaUtenze(r: UtilityRiga): string {
+  if (!r.period_id) return r.descrizione || 'Utenze previsionali';
+  return `Utenze ${formattaData(r.period_da)} → ${formattaData(r.period_a ?? r.period_da)}`;
+}
+function etichettaPrevisionale(r: UtilityRiga): string | undefined {
+  if (r.previsionale) return r.previsionale_conguagliato ? 'Previsionale conguagliato' : 'Previsionale';
+  if (r.conguaglio_di) return 'Conguaglio previsionale';
+  return undefined;
+}
 
 const tenantId = computed(() => Number(route.params.id));
 
@@ -1240,7 +1267,8 @@ const righePagamenti = computed<RigaPagamento[]>(() => {
     out.push({
       rowKey: `utility-${c.id}`,
       tipo: 'utility',
-      descrizione: `Utenze ${formattaData(c.period_da)} → ${formattaData(c.period_a)}`,
+      descrizione: etichettaRigaUtenze(c),
+      etichetta: etichettaPrevisionale(c),
       importo_dovuto: c.importo_totale,
       importo_pagato: c.importo_pagato,
       scadenza: c.scadenza,
@@ -1542,15 +1570,12 @@ const dataTargetPrevisionale = computed<string | null>(
     null,
 );
 
-// Cerca un Receivable EXTRA marcato come previsionale e non ancora
-// conguagliato. Usa la situazione dell'anno corrente; in futuro si potrebbe
-// estendere su più anni se necessario.
+// Cerca fra le utenze il previsionale d'uscita non ancora conguagliato.
+// Usa la situazione dell'anno corrente; in futuro si potrebbe estendere su
+// più anni se necessario.
 const previsionaleApertoId = computed<number | null>(() => {
-  const righe = situazione.value?.extra?.righe ?? [];
-  const aperto = righe.find(
-    (r: { is_previsionale?: boolean; previsionale_conguagliato?: boolean; id: number }) =>
-      r.is_previsionale && !r.previsionale_conguagliato,
-  );
+  const righe = situazione.value?.utility?.righe ?? [];
+  const aperto = righe.find((r) => r.previsionale && !r.previsionale_conguagliato);
   return aperto?.id ?? null;
 });
 

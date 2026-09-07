@@ -9,7 +9,7 @@ resources:
   - backend/apps/billing/management/commands/genera_conguagli_storici.py
   - backend/apps/billing/dashboard_views/previsionale.py
 tags: [domain, conguaglio, billing]
-timestamp: 2026-09-05T00:00:00Z
+timestamp: 2026-09-07T00:00:00Z
 ---
 
 # Overview
@@ -55,14 +55,24 @@ le ricostruzioni a posteriori chiamano il calcolo con `persist=False` e
 
 Serve quando l'inquilino esce prima che arrivino le bollette del suo ultimo
 periodo: si trattiene una stima dal deposito e la si conguaglia dopo. Vive in
-`billing/dashboard_views.py`, per immobile (scoping 2026-07-24):
+`billing/dashboard_views/previsionale.py`, per immobile (scoping 2026-07-24).
+
+Dal 2026-09-07 il previsionale è un Receivable **UTENZE** senza
+`utility_period`, con il campo proprio `previsionale=True`; la rettifica è
+un altro UTENZE (negativo) che lo punta via `conguaglio_di`. "Conguagliato"
+significa che esiste almeno una rettifica che lo punta: non c'è più nessun
+marcatore nelle `note` (che tornano a essere solo il log dichiara/rifiuta).
+Prima era un EXTRA riconosciuto dalla stringa `previsionale_utenze` nelle
+note; la migrazione `billing/0035` ha convertito i dati. Non è uno *stato*:
+lo stato di pagamento viene riallineato dalle allocazioni e non può
+custodire la natura dell'addebito.
 
 | Passo | Endpoint | Cosa fa |
 |-------|----------|---------|
 | stima | `GET tenants/<id>/previsionale-utenze/?data_target=` (`_calcola_stima_previsionale`) | media giornaliera delle **ultime due** utenze del tenant con `giorni_presenza > 0` × giorni dalla fine dell'ultimo periodo alla data target; errore esplicito se non ci sono utenze pregresse o la data non precede il target |
-| addebito | `POST tenants/<id>/previsionale-utenze/` | crea un Receivable **EXTRA** marcato in `note` con `previsionale_utenze`, `competenza_da/_a` = range coperto |
+| addebito | `POST tenants/<id>/previsionale-utenze/` | crea un Receivable **UTENZE** con `previsionale=True` (niente periodo), `competenza_da/_a` = range coperto |
 | anteprima | `GET tenants/<id>/conguaglia-previsionale/?previsionale_id=` | elenca le utenze reali del range e la rettifica proposta |
-| conguaglio | `POST tenants/<id>/conguaglia-previsionale/` | crea un EXTRA di rettifica con `importo = −somma_utenze_reali` e marca il previsionale `conguaglio_previsionale` (409 se già fatto, 400 se non è un previsionale o manca la competenza) |
+| conguaglio | `POST tenants/<id>/conguaglia-previsionale/` | crea un UTENZE di rettifica con `importo = −somma_utenze_reali` e `conguaglio_di` = previsionale (409 se già conguagliato o se non ci sono utenze reali nel range, 400 se non è un previsionale o manca la competenza) |
 
 - **Niente doppio pro-rata**: le utenze reali del range sono già proratate sui
   giorni; la rettifica le somma tal quali (fix noto).
@@ -77,7 +87,14 @@ periodo: si trattiene una stima dal deposito e la si conguaglia dopo. Vive in
   pagina di conguaglio previsionale; l'inquilino vede il previsionale come un
   normale addebito EXTRA.
 - Proprietario: `PrevisionaleUtenzeDialog` e `ConguagliaPrevisionaleDialog` nel
-  dettaglio inquilino; l'emissione per periodo in `/p/utenze`.
+  dettaglio inquilino (tab Profilo & contratto, card Deposito); l'emissione
+  per periodo in `/p/utenze`. Nella tabella pagamenti il previsionale e la
+  rettifica stanno fra le **Utenze**, con badge "Previsionale" /
+  "Previsionale conguagliato" / "Conguaglio previsionale"; le righe utenze
+  senza periodo mostrano la `descrizione` al posto del periodo, ovunque
+  (`_descrizione_receivable`, serializer di riconciliazione, situazione).
+- Il bottone "Conguaglia" resta disabilitato finché la somma delle utenze
+  reali è zero, con un avviso che rimanda all'emissione delle bollette.
 
 # Vedi anche
 

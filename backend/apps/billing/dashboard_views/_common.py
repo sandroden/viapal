@@ -85,6 +85,10 @@ def _descrizione_receivable(r: Receivable) -> str:
     if r.causale == Receivable.Causale.AFFITTO:
         return f"Affitto {format_mese_anno(r.competenza_da)}"
     if r.causale == Receivable.Causale.UTENZE:
+        if not r.utility_period_id:
+            # Previsionale d'uscita o sua rettifica: la descrizione dice
+            # già periodo e natura, il mese di competenza confonderebbe.
+            return r.descrizione or "Utenze previsionali"
         return f"Utenze {format_mese_anno(_competenza_base(r))}"
     return r.descrizione or "Addebito extra"
 

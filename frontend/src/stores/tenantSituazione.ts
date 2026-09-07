@@ -44,9 +44,11 @@ export interface UtilityLine {
 
 export interface UtilityRiga {
   id: number;
-  period_id: number;
+  // Nullo per il previsionale d'uscita e la sua rettifica: allora
+  // period_da/period_a sono la competenza e `descrizione` dice cos'è.
+  period_id: number | null;
   period_da: string;
-  period_a: string;
+  period_a: string | null;
   importo_totale: number;
   importo_pagato: number;
   scadenza: string | null;
@@ -55,6 +57,10 @@ export interface UtilityRiga {
   lines: UtilityLine[];
   bank_account_destinazione_id: number | null;
   conto_suggerito_id: number | null;
+  descrizione: string;
+  previsionale: boolean;
+  previsionale_conguagliato: boolean;
+  conguaglio_di: number | null;
 }
 
 export interface ExtraRiga {
