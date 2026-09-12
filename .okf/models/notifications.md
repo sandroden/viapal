@@ -9,7 +9,9 @@ resources:
   - backend/apps/notifications/views.py
   - backend/apps/notifications/api_urls.py
 tags: [models, notifications, push]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Overview

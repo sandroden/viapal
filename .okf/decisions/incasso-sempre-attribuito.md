@@ -10,7 +10,9 @@ resources:
   - backend/apps/billing/views/receivables.py
   - backend/apps/billing/management/commands/sana_incassi_senza_incassante.py
 tags: [decision, invariant, riconciliazione, saldi, api]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Invariante

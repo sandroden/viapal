@@ -9,7 +9,9 @@ resources:
   - backend/apps/properties/views.py
   - backend/apps/billing/dashboard_views/deposito.py
 tags: [decision, invariant, riconciliazione]
-timestamp: 2026-09-07T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-07T00:00:00Z
 ---
 
 # Invariante

@@ -10,7 +10,9 @@ resources:
   - backend/apps/billing/models/payments.py
   - backend/apps/billing/management/commands/sana_allocazioni_eccedenti.py
 tags: [decision, invariant, riconciliazione, admin]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Invariante

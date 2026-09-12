@@ -9,7 +9,9 @@ resources:
   - frontend/quasar.config.ts
   - backend/apps/properties/management/commands/seed_demo.py
 tags: [playbook, dev, setup]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Prerequisiti

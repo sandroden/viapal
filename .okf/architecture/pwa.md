@@ -10,7 +10,9 @@ resources:
   - frontend/src/composables/usePush.ts
   - backend/apps/notifications/push.py
 tags: [architecture, pwa, service-worker, push]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Overview

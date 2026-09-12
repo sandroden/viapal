@@ -10,7 +10,9 @@ resources:
   - backend/apps/notifications/models/notifications.py
   - backend/apps/properties/models/tenant.py
 tags: [domain, solleciti, notifiche, email, inquilini]
-timestamp: 2026-08-02T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-08-02T00:00:00Z
 ---
 
 # Overview

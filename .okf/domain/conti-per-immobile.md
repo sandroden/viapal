@@ -10,7 +10,9 @@ resources:
   - backend/apps/billing/views/banca.py
   - backend/apps/properties/migrations/0036_ownerbankaccount_properties.py
 tags: [conti, multiproprieta, banca, isolamento]
-timestamp: 2026-08-07T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-08-07T00:00:00Z
 ---
 
 # Il problema

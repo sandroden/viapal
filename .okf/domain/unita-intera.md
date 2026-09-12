@@ -10,7 +10,9 @@ resources:
   - frontend/src/stores/properties.ts
   - backend/apps/properties/test_unita_intera.py
 tags: [feature, properties, domain, multiproprieta]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Overview

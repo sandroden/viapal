@@ -10,7 +10,9 @@ resources:
   - backend/apps/accounts/serializers.py
   - backend/apps/accounts/urls.py
 tags: [models, accounts, auth]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Overview

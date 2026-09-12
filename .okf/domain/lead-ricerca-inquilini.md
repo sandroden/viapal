@@ -12,7 +12,9 @@ resources:
   - frontend/src/components/leads/LeadManualeDialog.vue
   - frontend/src/stores/leads.ts
 tags: [feature, leads, campagna, bot, canali, gdpr]
-timestamp: 2026-09-07T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-07T00:00:00Z
 ---
 
 # Overview

@@ -10,7 +10,9 @@ resources:
   - frontend/src/components/impostazioni/LinkLetturaPannello.vue
   - frontend/src/components/impostazioni/CopieLetturaPannello.vue
 tags: [feature, public, documenti, privacy, token]
-timestamp: 2026-08-26T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-08-26T00:00:00Z
 ---
 
 # Overview

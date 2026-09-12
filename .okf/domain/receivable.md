@@ -11,7 +11,9 @@ resources:
   - backend/apps/billing/views/receivables.py
   - backend/apps/billing/views/_common.py
 tags: [domain, receivable, billing]
-timestamp: 2026-09-07T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-07T00:00:00Z
 ---
 
 # Overview

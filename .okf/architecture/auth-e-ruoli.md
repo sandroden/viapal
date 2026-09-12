@@ -10,7 +10,9 @@ resources:
   - backend/apps/accounts/impersonation.py
   - frontend/src/router/index.ts
 tags: [architecture, auth, permissions]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Overview

@@ -9,7 +9,9 @@ resources:
   - frontend/src/components/documenti/FascicoloPannello.vue
   - frontend/src/pages/InquilinoDocumenti.vue
 tags: [domain, documenti, inquilini, frontend]
-timestamp: 2026-08-06T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-08-06T00:00:00Z
 ---
 
 # Overview

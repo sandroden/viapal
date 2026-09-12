@@ -7,7 +7,9 @@ resources:
   - backend/apps/billing/dashboard_views/conto_economico.py
   - backend/apps/accounting/services/saldi_live.py
 tags: [domain, conto-economico, cassa, competenza]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Overview

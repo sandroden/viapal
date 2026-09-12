@@ -10,7 +10,9 @@ resources:
   - backend/apps/billing/views/utenze.py
   - backend/apps/billing/management/commands/riparsa_bollette_pdf.py
 tags: [domain, utenze, utility, billing]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Overview

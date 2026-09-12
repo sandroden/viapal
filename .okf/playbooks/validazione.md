@@ -4,7 +4,9 @@ title: Validazione (test + agent-browser)
 description: I due livelli di verifica obbligatori per ogni feature.
 resource: justfile
 tags: [playbook, testing, validation]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Regola

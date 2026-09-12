@@ -3,7 +3,9 @@ type: Architecture
 title: Modello dati
 description: Mappa Receivable-centrica delle entità e relazioni principali.
 tags: [architecture, data-model]
-timestamp: 2026-07-08T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-07-08T00:00:00Z
 ---
 
 # Overview

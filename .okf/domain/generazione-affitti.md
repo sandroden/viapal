@@ -10,7 +10,9 @@ resources:
   - backend/apps/properties/models/property.py
   - backend/apps/properties/views.py
 tags: [domain, affitti, rent, billing]
-timestamp: 2026-09-03T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-03T00:00:00Z
 ---
 
 # Overview

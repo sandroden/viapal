@@ -8,7 +8,9 @@ resources:
   - backend/apps/billing/serializers.py
   - scripts/carica_movimenti_api.py
 tags: [decision, import, riconciliazione]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Decisione

@@ -9,7 +9,9 @@ resources:
   - backend/apps/billing/models/utilities.py
   - backend/apps/billing/models/expenses.py
 tags: [models, billing]
-timestamp: 2026-09-07T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-07T00:00:00Z
 ---
 
 # Overview

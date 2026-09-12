@@ -10,7 +10,9 @@ resources:
   - frontend/src/stores/galleria.ts
   - frontend/src/components/ImageSlot.vue
 tags: [feature, public, gallery, frontend]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Overview

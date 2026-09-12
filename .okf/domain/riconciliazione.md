@@ -11,7 +11,9 @@ resources:
   - backend/apps/billing/calc/incassi.py
   - backend/apps/billing/models/payments.py
 tags: [domain, riconciliazione, matching, billing]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Overview

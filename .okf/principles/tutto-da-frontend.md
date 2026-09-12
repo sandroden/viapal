@@ -3,7 +3,9 @@ type: Principle
 title: Tutto utilizzabile dal frontend
 description: Ogni operazione che serve a un proprietario o a un inquilino si compie dalla PWA; l'admin Django è un fallback per il superuser, non un'interfaccia utente.
 tags: [principle, frontend, admin]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Principio

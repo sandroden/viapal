@@ -10,7 +10,9 @@ resources:
   - backend/apps/billing/admin.py
   - backend/apps/billing/models/payments.py
 tags: [decision, invariant, riconciliazione, deposito]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Invariante

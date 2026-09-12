@@ -10,7 +10,9 @@ resources:
   - backend/apps/billing/management/commands/pin_bollette_periodi_emessi.py
   - backend/apps/billing/management/commands/genera_storico.py
 tags: [playbook, import, storico, data]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Overview

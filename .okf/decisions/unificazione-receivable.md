@@ -1,10 +1,12 @@
 ---
 type: Architecture Decision
-status: active
+status: stable
 title: Unificazione in Receivable
 description: RentPayment + UtilityCharge + ExtraCharge fusi in un unico Receivable con causale.
 tags: [decision, receivable, refactor]
-timestamp: 2026-07-08T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-07-08T00:00:00Z
 ---
 
 # Decisione

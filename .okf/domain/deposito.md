@@ -10,7 +10,9 @@ resources:
   - backend/apps/billing/dashboard_views/deposito.py
   - backend/apps/billing/dashboard_views/rendiconto.py
 tags: [domain, deposito, billing]
-timestamp: 2026-09-07T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-07T00:00:00Z
 ---
 
 # Overview

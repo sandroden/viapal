@@ -9,7 +9,9 @@ resources:
   - backend/apps/billing/management/commands/genera_conguagli_storici.py
   - backend/apps/billing/dashboard_views/previsionale.py
 tags: [domain, conguaglio, billing]
-timestamp: 2026-09-07T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-07T00:00:00Z
 ---
 
 # Overview

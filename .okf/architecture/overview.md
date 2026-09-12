@@ -4,7 +4,9 @@ title: Architecture overview
 description: Stack, monorepo, deploy e convenzioni del progetto Viapal.
 resource: https://github.com/sandroden/viapal
 tags: [architecture, stack, deploy]
-timestamp: 2026-07-08T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-07-08T00:00:00Z
 ---
 
 # Overview

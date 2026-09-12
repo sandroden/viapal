@@ -10,7 +10,9 @@ resources:
   - backend/apps/properties/documenti/cessione_fabbricato.py
   - backend/apps/properties/models/document_template.py
 tags: [domain, documenti, pdf, proprietari]
-timestamp: 2026-09-05T00:00:00Z
+generated:
+  by: process:okf-migrate
+  at: 2026-09-05T00:00:00Z
 ---
 
 # Overview
