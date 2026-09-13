@@ -170,6 +170,14 @@ const routes: RouteRecordRaw[] = [
         name: 'p-impostazioni',
         component: () => import('pages/ProprietarioImpostazioni.vue'),
       },
+      // Area personale: riguarda la persona, non l'immobile — per questo sta
+      // fuori da /p/impostazioni (che è a tab sull'immobile) e si raggiunge
+      // dal menu sul proprio nome in testata.
+      {
+        path: 'profilo',
+        name: 'p-profilo',
+        component: () => import('pages/ProprietarioProfilo.vue'),
+      },
       // Le due vecchie pagine ("Immobile e membri" e "La casa") sono fuse
       // nella pagina a tab qui sopra: segnalibri e link nei documenti già
       // generati devono continuare ad aprirla. Il tab di default va iniettato

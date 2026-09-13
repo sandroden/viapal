@@ -102,96 +102,12 @@
       </q-item>
     </q-card>
 
-    <!-- Notifiche push: visibile solo se browser e server le supportano -->
-    <q-card v-if="push.disponibile.value" class="vp-i-prof__card q-mt-md">
-      <q-item>
-        <q-item-section avatar>
-          <q-icon name="notifications_active" color="primary" size="28px" />
-        </q-item-section>
-        <q-item-section>
-          <q-item-label>Notifiche su questo dispositivo</q-item-label>
-          <q-item-label caption>
-            Avvisi di bollette e scadenze anche ad app chiusa
-          </q-item-label>
-        </q-item-section>
-        <q-item-section side>
-          <q-toggle
-            :model-value="push.attivo.value"
-            color="primary"
-            :disable="push.loading.value || push.negato.value"
-            @update:model-value="togglePush"
-          />
-        </q-item-section>
-      </q-item>
-      <q-card-section v-if="push.negato.value" class="q-pt-none">
-        <q-banner class="text-white bg-orange-8" rounded dense>
-          Le notifiche sono bloccate per questo sito: sbloccale dalle
-          impostazioni del browser e ricarica la pagina.
-        </q-banner>
-      </q-card-section>
-      <q-card-section v-else-if="push.errore.value" class="q-pt-none">
-        <q-banner class="text-white bg-red-7" rounded dense>
-          {{ push.errore.value }}
-        </q-banner>
-      </q-card-section>
-      <q-card-section v-if="push.attivo.value" class="q-pt-none">
-        <q-btn
-          outline
-          color="primary"
-          icon="send"
-          label="Invia notifica di prova"
-          no-caps
-          size="sm"
-          :loading="provaLoading"
-          @click="inviaProva"
-        />
-      </q-card-section>
-    </q-card>
+    <NotifichePushPannello
+      class="vp-i-prof__card q-mt-md"
+      descrizione="Avvisi di bollette e scadenze anche ad app chiusa"
+    />
 
-    <q-card class="vp-i-prof__card q-mt-md">
-      <q-expansion-item icon="lock_reset" label="Cambia password" header-class="text-primary">
-        <q-form ref="cambioForm" @submit.prevent="cambiaPassword" class="q-pa-md q-gutter-md">
-          <q-input
-            v-model="pwdVecchia"
-            type="password"
-            label="Password attuale"
-            outlined
-            dense
-            :rules="[(v) => !!v || 'Inserisci la password attuale']"
-            autocomplete="current-password"
-          />
-          <q-input
-            v-model="pwdNuova1"
-            type="password"
-            label="Nuova password"
-            outlined
-            dense
-            :rules="[(v) => !!v || 'Inserisci la nuova password', (v) => v.length >= 8 || 'Almeno 8 caratteri']"
-            autocomplete="new-password"
-          />
-          <q-input
-            v-model="pwdNuova2"
-            type="password"
-            label="Conferma nuova password"
-            outlined
-            dense
-            :rules="[(v) => v === pwdNuova1 || 'Le password non coincidono']"
-            autocomplete="new-password"
-          />
-          <q-banner v-if="pwdErrore" class="text-white bg-red-7" rounded dense>
-            {{ pwdErrore }}
-          </q-banner>
-          <q-btn
-            type="submit"
-            label="Aggiorna password"
-            color="primary"
-            unelevated
-            no-caps
-            :loading="pwdLoading"
-          />
-        </q-form>
-      </q-expansion-item>
-    </q-card>
+    <CambioPasswordPannello class="vp-i-prof__card q-mt-md" />
 
     <div class="vp-i-prof__logout">
       <q-btn outline color="primary" icon="logout" label="Esci dal profilo" no-caps @click="logout" />
@@ -200,7 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar, type QForm } from 'quasar';
 import { api } from 'boot/axios';
@@ -208,8 +124,8 @@ import { useAuthStore } from 'stores/auth';
 import { useDashboardStore } from 'stores/dashboard';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
-import { usePush } from 'src/composables/usePush';
-import { messaggioErrore } from 'src/utils/apiErrors';
+import NotifichePushPannello from 'components/profilo/NotifichePushPannello.vue';
+import CambioPasswordPannello from 'components/profilo/CambioPasswordPannello.vue';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -258,43 +174,7 @@ async function caricaDati() {
 onMounted(() => {
   void store.loadInquilino();
   void caricaDati();
-  void push.init();
 });
-
-// --- Notifiche push ---
-const push = usePush();
-const provaLoading = ref(false);
-
-async function togglePush(valore: boolean) {
-  if (valore) {
-    await push.abilita();
-    if (push.attivo.value) {
-      $q.notify({ type: 'positive', message: 'Notifiche attivate su questo dispositivo.' });
-    }
-  } else {
-    await push.disabilita();
-  }
-}
-
-async function inviaProva() {
-  provaLoading.value = true;
-  try {
-    const esito = await push.provaNotifica();
-    $q.notify({
-      type: esito.inviate ? 'positive' : 'warning',
-      message: esito.inviate
-        ? `Notifica di prova inviata (${esito.inviate} dispositivi).`
-        : 'Nessun dispositivo raggiunto: riattiva le notifiche.',
-    });
-  } catch (e: unknown) {
-    $q.notify({
-      type: 'negative',
-      message: messaggioErrore(e, 'Invio della prova non riuscito.'),
-    });
-  } finally {
-    provaLoading.value = false;
-  }
-}
 
 async function salvaDati() {
   datiErrore.value = '';
@@ -337,42 +217,6 @@ async function logout() {
   await router.replace('/login');
 }
 
-// --- Cambio password ---
-const cambioForm = ref<QForm | null>(null);
-const pwdVecchia = ref('');
-const pwdNuova1 = ref('');
-const pwdNuova2 = ref('');
-const pwdErrore = ref('');
-const pwdLoading = ref(false);
-
-function estraiErrorePwd(e: unknown): string {
-  const data = (e as { response?: { data?: Record<string, unknown> } })?.response?.data;
-  if (data) {
-    for (const chiave of ['old_password', 'new_password2', 'new_password1', 'detail']) {
-      const v = data[chiave];
-      if (Array.isArray(v) && v.length) return String(v[0]);
-      if (typeof v === 'string' && v) return v;
-    }
-  }
-  return 'Impossibile aggiornare la password. Riprova.';
-}
-
-async function cambiaPassword() {
-  pwdErrore.value = '';
-  pwdLoading.value = true;
-  try {
-    await auth.changePassword(pwdVecchia.value, pwdNuova1.value, pwdNuova2.value);
-    pwdVecchia.value = '';
-    pwdNuova1.value = '';
-    pwdNuova2.value = '';
-    void nextTick(() => cambioForm.value?.resetValidation());
-    $q.notify({ type: 'positive', message: 'Password aggiornata.' });
-  } catch (e: unknown) {
-    pwdErrore.value = estraiErrorePwd(e);
-  } finally {
-    pwdLoading.value = false;
-  }
-}
 </script>
 
 <style scoped>

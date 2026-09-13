@@ -8,11 +8,12 @@ resources:
   - frontend/src-pwa/register-service-worker.ts
   - frontend/quasar.config.ts
   - frontend/src/composables/usePush.ts
+  - frontend/src/components/profilo/NotifichePushPannello.vue
   - backend/apps/notifications/push.py
 tags: [architecture, pwa, service-worker, push]
 generated:
   by: process:okf-migrate
-  at: 2026-09-05T00:00:00Z
+  at: 2026-09-13T00:00:00Z
 ---
 
 # Overview
@@ -61,12 +62,19 @@ client con bundle pre-fix richiedono una pulizia SW manuale una tantum.
   `push` (mostra la notifica) e `notificationclick` (apre/focalizza l'app).
 - `push_configurato()` = chiavi VAPID presenti; senza chiavi il canale è un
   **no-op silenzioso**, non un errore.
-- Sottoscrizione modellata da `PushSubscription`; toggle in `/i/profilo` via
-  composable `usePush.ts`: `GET /api/v1/push-subscriptions/vapid-public-key/`,
-  `POST/DELETE /api/v1/push-subscriptions/`, `POST .../test/` (invio di prova
-  a se stessi).
-- In produzione servono solo le chiavi VAPID in `local.py`
-  (comando `genera_chiavi_vapid`).
+- Sottoscrizione modellata da `PushSubscription`: una riga **per dispositivo**
+  (non per persona), rimossa al primo 404/410 del push service.
+- Il toggle è il componente `NotifichePushPannello.vue`, che incapsula
+  `usePush.ts` (`GET /api/v1/push-subscriptions/vapid-public-key/`,
+  `POST/DELETE /api/v1/push-subscriptions/`, `POST .../test/` per l'invio di
+  prova a se stessi). Compare in **due** posti, perché l'endpoint è
+  `IsAuthenticated` e non riguarda solo gli inquilini: `/i/profilo` e
+  `/p/profilo` (area personale del proprietario, dal menu sul proprio nome in
+  testata).
+- `disponibile` = API del browser presenti **e** chiavi VAPID sul server: senza
+  chiavi il pannello non si disegna affatto, invece di offrire un toggle inerte.
+- Chiavi VAPID presenti sia in dev (`core/settings/dev.py`) sia in produzione
+  (`local.py`, generate con `genera_chiavi_vapid`).
 
 # Vedi anche
 

@@ -60,9 +60,24 @@
           {{ etichettaRuolo(propStore.mioRuolo) }}
         </q-chip>
 
-        <q-chip dense outline class="vp-user-chip">
-          {{ auth.user?.first_name || auth.user?.username }}
-        </q-chip>
+        <!-- Il proprio nome è la porta dell'area personale: quanto riguarda
+             la persona (notifiche del dispositivo, password) non ha posto
+             nelle impostazioni dell'immobile. -->
+        <q-btn-dropdown
+          flat
+          dense
+          no-caps
+          :label="auth.user?.first_name || auth.user?.username"
+          class="vp-user-menu"
+          data-testid="user-menu"
+        >
+          <q-list>
+            <q-item v-close-popup clickable to="/p/profilo" data-testid="menu-area-personale">
+              <q-item-section avatar><q-icon name="account_circle" /></q-item-section>
+              <q-item-section>Area personale</q-item-section>
+            </q-item>
+          </q-list>
+        </q-btn-dropdown>
         <q-btn flat dense icon="logout" aria-label="Esci" @click="logout" />
       </q-toolbar>
     </q-header>
@@ -234,6 +249,9 @@ async function logout() {
 .vp-user-chip {
   color: var(--vp-cream);
   border-color: var(--vp-cream);
+}
+.vp-user-menu {
+  color: var(--vp-cream);
 }
 .vp-property-switcher {
   color: var(--vp-cream);
