@@ -17,7 +17,7 @@ resources:
 tags: [architecture, pwa, service-worker, push]
 generated:
   by: process:okf-migrate
-  at: 2026-09-14T00:30:00Z
+  at: 2026-09-14T01:15:00Z
 ---
 
 # Overview
@@ -163,9 +163,12 @@ cambia l'upsert:
 - `invia_push` **registra ogni tentativo**, anche «nessun dispositivo
   registrato» (vedi [registro](/models/notifications.md)): prima quel caso
   non lasciava traccia da nessuna parte, ed è proprio quello da leggere.
-- La notifica di **prova** resta l'unica a non scrivere nel registro
-  (`salva_notification=False`): è una verifica su di sé, non una
-  comunicazione.
+- Il pannello elenca i **dispositivi attivi** dell'utente (`GET
+  /api/v1/push-subscriptions/`, riga «questo» per endpoint, `×` per
+  disattivarne uno): la lista vuota, o senza il proprio browser, si vede
+  prima che manchi una notifica. La notifica di **prova** resta l'unica a
+  non scrivere nel registro (`salva_notification=False`): è una verifica su
+  di sé, non una comunicazione.
 
 # Vedi anche
 

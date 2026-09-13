@@ -145,5 +145,6 @@ class PushSubscriptionSerializer(serializers.ModelSerializer):
             "auth",
             "device_label",
             "ultima_attivita",
+            "created_at",
         ]
-        read_only_fields = ["ultima_attivita"]
+        read_only_fields = ["ultima_attivita", "created_at"]

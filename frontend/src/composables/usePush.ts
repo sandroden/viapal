@@ -14,9 +14,22 @@ import { api } from 'boot/axios';
  * `supportato` risulta false e il toggle non viene mostrato.
  */
 
+export interface DispositivoPush {
+  id: number;
+  endpoint: string;
+  device_label: string;
+  ultima_attivita: string | null;
+  created_at: string;
+  /** Il browser da cui si sta guardando, riconosciuto per endpoint. */
+  corrente: boolean;
+}
+
 interface PushSubscriptionApi {
   id: number;
   endpoint: string;
+  device_label: string;
+  ultima_attivita: string | null;
+  created_at: string;
 }
 
 interface VapidInfo {
@@ -75,6 +88,21 @@ export function usePush() {
    *  riavvio): diverso da "il canale non c'è". */
   const verificaFallita = ref(false);
 
+  /** I device sottoscritti da questo utente, non solo quello in uso.
+   *
+   *  Serve a rendere visibile una cosa che altrimenti si scopre solo da una
+   *  notifica che non arriva: la sottoscrizione è del **browser**, non della
+   *  persona, e chi entra dopo su quello stesso browser se la prende
+   *  (l'upsert lato server è per endpoint). Chi si vede la lista vuota sa
+   *  perché non riceve più nulla. */
+  const dispositivi = ref<DispositivoPush[]>([]);
+  /** La lista non è arrivata (rete, backend giù): diverso da «zero device».
+   *  Senza distinguerle si finisce per dire «non hai nessun dispositivo» a
+   *  chi ne ha, che è esattamente l'assenza muta che il pannello evita. */
+  const dispositiviNonLetti = ref(false);
+  /** Endpoint di questo browser, per marcare la riga «questo dispositivo». */
+  const endpointCorrente = ref('');
+
   // Il pannello si disegna se il *server* ha il canale, anche quando questo
   // browser non può usarlo: sparire in silenzio lascia l'utente a chiedersi
   // dove sia finito il toggle, ed è esattamente il caso che non si diagnostica.
@@ -87,6 +115,47 @@ export function usePush() {
     return reg.pushManager.getSubscription();
   }
 
+  /** Ricarica la lista dei device. Best-effort: un errore qui non deve
+   *  spegnere il toggle, che è la funzione principale del pannello. */
+  async function caricaDispositivi(): Promise<void> {
+    try {
+      const { data } = await api.get<PushSubscriptionApi[]>('/api/v1/push-subscriptions/');
+      dispositivi.value = data.map((d) => ({
+        ...d,
+        corrente: d.endpoint === endpointCorrente.value,
+      }));
+      dispositiviNonLetti.value = false;
+    } catch {
+      dispositivi.value = [];
+      dispositiviNonLetti.value = true;
+    }
+  }
+
+  /** Disattiva le notifiche su un device dell'elenco.
+   *
+   *  Se è questo browser va tolta anche la sottoscrizione locale, o il
+   *  browser resterebbe iscritto al push service a vuoto e `attivo`
+   *  tornerebbe vero al reload successivo. */
+  async function rimuoviDispositivo(id: number): Promise<void> {
+    const device = dispositivi.value.find((d) => d.id === id);
+    errore.value = '';
+    loading.value = true;
+    try {
+      await api.delete(`/api/v1/push-subscriptions/${id}/`);
+      if (device?.corrente) {
+        const sub = await subscriptionCorrente();
+        if (sub) await sub.unsubscribe();
+        attivo.value = false;
+        endpointCorrente.value = '';
+      }
+      await caricaDispositivi();
+    } catch (e) {
+      errore.value = `Rimozione non riuscita: ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   /** Carica stato server + stato locale del device. Da chiamare in onMounted.
    *
    *  Interroga il server anche su un browser che non supporta le push: è il
@@ -96,15 +165,21 @@ export function usePush() {
   async function init(tentativi = 3): Promise<void> {
     for (let i = 0; i < tentativi; i++) {
       try {
-        const { data } = await api.get<VapidInfo>(
-          '/api/v1/push-subscriptions/vapid-public-key/',
-        );
+        const { data } = await api.get<VapidInfo>('/api/v1/push-subscriptions/vapid-public-key/');
         verificaFallita.value = false;
         abilitatoServer.value = data.abilitato;
         publicKey = data.public_key;
-        if (!data.abilitato || !supportato) return;
-        negato.value = Notification.permission === 'denied';
-        attivo.value = (await subscriptionCorrente()) !== null;
+        if (!data.abilitato) return;
+        // La lista dei device si carica anche da un browser che non può
+        // usare le push: è proprio lì che serve vedere quali dispositivi
+        // restano attivi altrove.
+        if (supportato) {
+          negato.value = Notification.permission === 'denied';
+          const sub = await subscriptionCorrente();
+          endpointCorrente.value = sub?.endpoint ?? '';
+          attivo.value = sub !== null;
+        }
+        await caricaDispositivi();
         return;
       } catch (e: unknown) {
         const stato = (e as { response?: { status?: number } })?.response?.status;
@@ -157,6 +232,8 @@ export function usePush() {
         device_label: etichettaDevice(),
       });
       attivo.value = true;
+      endpointCorrente.value = sub.endpoint;
+      await caricaDispositivi();
     } catch (e) {
       errore.value = `Attivazione non riuscita: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
@@ -171,9 +248,7 @@ export function usePush() {
       const sub = await subscriptionCorrente();
       if (sub) {
         // Rimuove la registrazione lato server (match per endpoint)...
-        const { data } = await api.get<PushSubscriptionApi[]>(
-          '/api/v1/push-subscriptions/',
-        );
+        const { data } = await api.get<PushSubscriptionApi[]>('/api/v1/push-subscriptions/');
         const mia = data.find((s) => s.endpoint === sub.endpoint);
         if (mia) {
           await api.delete(`/api/v1/push-subscriptions/${mia.id}/`);
@@ -182,6 +257,8 @@ export function usePush() {
         await sub.unsubscribe();
       }
       attivo.value = false;
+      endpointCorrente.value = '';
+      await caricaDispositivi();
     } catch (e) {
       errore.value = `Disattivazione non riuscita: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
@@ -191,9 +268,7 @@ export function usePush() {
 
   /** Invia una notifica di prova a tutti i device dell'utente. */
   async function provaNotifica(): Promise<{ inviate: number }> {
-    const { data } = await api.post<{ inviate: number }>(
-      '/api/v1/push-subscriptions/test/',
-    );
+    const { data } = await api.post<{ inviate: number }>('/api/v1/push-subscriptions/test/');
     return data;
   }
 
@@ -207,9 +282,12 @@ export function usePush() {
     negato,
     loading,
     errore,
+    dispositivi,
+    dispositiviNonLetti,
     init,
     abilita,
     disabilita,
+    rimuoviDispositivo,
     provaNotifica,
   };
 }
