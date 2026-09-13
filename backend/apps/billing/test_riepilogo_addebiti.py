@@ -393,7 +393,10 @@ class TestContenuto:
         invia_riepiloghi(immobile, dry_run=False)
 
         assert [m.to for m in mailoutbox] == [["alt@example.com"]]
-        riga = Notification.objects.get(codice="riepilogo_addebiti")
+        riga = Notification.objects.get(
+            codice="riepilogo_addebiti",
+            canale=Notification.CanaleComunicazione.EMAIL,
+        )
         assert riga.destinatario == "alt@example.com"
         assert riga.inviata_at is not None
 

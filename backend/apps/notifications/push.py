@@ -9,8 +9,11 @@ Comportamento:
 - senza chiavi VAPID configurate il canale è disattivato (no-op);
 - le subscription morte (push service risponde 404/410: permesso revocato,
   browser disinstallato) vengono eliminate;
-- per ogni invio andato a buon fine si logga una :class:`Notification`
-  (canale push), come già avviene per le email.
+- di **ogni** tentativo resta una :class:`Notification` (canale push), come
+  già avviene per le email: recapitata (``inviata_at``) o fallita
+  (``errore``). Il caso che più serve leggere nel registro è proprio quello
+  muto — "ho dichiarato il pagamento e non è arrivato niente" — e finché si
+  loggavano solo i successi quel caso non lasciava traccia da nessuna parte.
 """
 import json
 import logging
@@ -46,20 +49,47 @@ def invia_push(
     best-effort, gli errori vengono loggati.
     """
     esito = {"inviate": 0, "rimosse": 0, "errori": 0}
+    # Canale spento a livello di installazione (niente chiavi) o nessun
+    # utente: non è un tentativo di comunicazione, non si registra nulla.
     if user is None or not push_configurato():
         return esito
+
+    def registra(*, destinatario: str = "", errore: str = "") -> None:
+        """Riga di registro del tentativo. Non solleva: il push è accessorio."""
+        if not salva_notification:
+            return
+        try:
+            Notification.objects.create(
+                user=user,
+                canale=Notification.CanaleComunicazione.PUSH,
+                codice=codice,
+                destinatario=destinatario,
+                oggetto=titolo,
+                corpo=corpo,
+                # Convenzione del modello: le due condizioni si escludono.
+                errore=errore,
+                inviata_at=None if errore else timezone.now(),
+                oggetto_riferimento=oggetto_riferimento,
+            )
+        except Exception as e:  # noqa: BLE001 — il registro non blocca l'invio
+            logger.warning("Registro push non scritto per %s: %s", user, e)
+
     subscriptions = list(
         PushSubscription.objects.filter(user=user).order_by("id")
     )
     if not subscriptions:
+        # Il silenzio più frequente e meno diagnosticabile: la persona non ha
+        # mai attivato le notifiche, o la sua sottoscrizione è stata presa da
+        # un altro utente sullo stesso browser (upsert per endpoint).
+        registra(errore="Nessun dispositivo registrato: notifiche non attive.")
         return esito
-    # Etichetta del primo device raggiunto: nel registro sta al posto
-    # dell'indirizzo email (un push non ha destinatario leggibile).
-    primo = subscriptions[0]
-    destinatario = (primo.device_label or primo.endpoint)[:254]
 
     from pywebpush import WebPushException, webpush
 
+    # Etichetta del primo device **raggiunto**: nel registro sta al posto
+    # dell'indirizzo email (un push non ha destinatario leggibile).
+    destinatario = ""
+    fallimenti: list[str] = []
     payload = json.dumps({"title": titolo, "body": corpo, "url": url})
     for sub in subscriptions:
         try:
@@ -75,34 +105,39 @@ def invia_push(
             )
         except WebPushException as e:
             status = getattr(getattr(e, "response", None), "status_code", None)
+            etichetta = sub.device_label or sub.endpoint
             if status in (404, 410):
                 # Subscription morta: il device non esiste più per il push
                 # service. La togliamo, al prossimo giro non si ritenta.
                 sub.delete()
                 esito["rimosse"] += 1
+                fallimenti.append(f"{etichetta}: dispositivo scollegato (HTTP {status}).")
             else:
                 logger.warning(
                     "Push fallita per %s (endpoint %.40s…): %s",
                     user, sub.endpoint, e,
                 )
                 esito["errori"] += 1
+                fallimenti.append(f"{etichetta}: {e}")
         except Exception as e:  # noqa: BLE001 — best-effort, mai bloccare
             logger.warning("Push fallita per %s: %s", user, e)
             esito["errori"] += 1
+            fallimenti.append(f"{sub.device_label or sub.endpoint}: {e}")
         else:
             esito["inviate"] += 1
+            if not destinatario:
+                destinatario = (sub.device_label or sub.endpoint)[:254]
             sub.ultima_attivita = timezone.now()
             sub.save(update_fields=["ultima_attivita"])
 
-    if salva_notification and esito["inviate"]:
-        Notification.objects.create(
-            user=user,
-            canale=Notification.CanaleComunicazione.PUSH,
-            codice=codice,
-            destinatario=destinatario,
-            oggetto=titolo,
-            corpo=corpo,
-            inviata_at=timezone.now(),
-            oggetto_riferimento=oggetto_riferimento,
-        )
+    if esito["inviate"]:
+        # Recapitata almeno una volta: è partita. I device che hanno fallito
+        # restano nel log applicativo — il registro dice "comunicato", e
+        # dirlo fallito perché un secondo telefono non risponde sarebbe falso.
+        altri = esito["inviate"] - 1
+        riga = f"{destinatario} (+{altri})" if altri else destinatario
+        # `destinatario` è un CharField(254): il suffisso non deve sforare.
+        registra(destinatario=riga[:254])
+    else:
+        registra(errore="\n".join(fallimenti))
     return esito

@@ -17,7 +17,7 @@ resources:
 tags: [architecture, pwa, service-worker, push]
 generated:
   by: process:okf-migrate
-  at: 2026-09-13T23:30:00Z
+  at: 2026-09-14T00:30:00Z
 ---
 
 # Overview
@@ -143,6 +143,29 @@ inquilino e proprietario e porta lì.
     server è invece una risposta vera: niente canale per quell'utente, non si insiste.
 - Chiavi VAPID presenti sia in dev (`core/settings/dev.py`) sia in produzione
   (`local.py`, generate con `genera_chiavi_vapid`).
+
+# La sottoscrizione è del browser, non della persona
+
+`PushSubscription.endpoint` è **unique** e l'upsert dell'API riassegna
+`user` a chi sta facendo la POST. Sullo stesso profilo browser, quindi,
+chi attiva le notifiche per secondo **si prende la sottoscrizione del
+primo**, che da quel momento non riceve più nulla — il logout non chiama
+`unsubscribe()`, così `getSubscription()` restituisce sempre lo stesso
+endpoint. Sul telefono personale è il comportamento giusto (stesso device
+dopo un cambio password); è una trappola sul browser dove ci si alterna, e
+per provare i due lati servono **due profili browser distinti**.
+
+Il caso reale (13/09/2026): Sandro attiva, poi Arun attiva sullo stesso
+Chrome; Arun dichiara un pagamento e ai proprietari non arriva niente,
+perché Sandro non ha più device. Due contromisure, nessuna delle quali
+cambia l'upsert:
+
+- `invia_push` **registra ogni tentativo**, anche «nessun dispositivo
+  registrato» (vedi [registro](/models/notifications.md)): prima quel caso
+  non lasciava traccia da nessuna parte, ed è proprio quello da leggere.
+- La notifica di **prova** resta l'unica a non scrivere nel registro
+  (`salva_notification=False`): è una verifica su di sé, non una
+  comunicazione.
 
 # Vedi anche
 

@@ -11,7 +11,7 @@ resources:
 tags: [models, notifications, push]
 generated:
   by: process:okf-migrate
-  at: 2026-09-05T00:00:00Z
+  at: 2026-09-14T00:30:00Z
 ---
 
 # Overview
@@ -25,7 +25,7 @@ Notifiche verso utenti (email + Web Push) e regole di promemoria. Il canale push
 |---------|--------------|------|
 | `MessageTemplate` | `property` (FK), `codice` (slug, univoco per immobile), `titolo`, `corpo`, `canale` (`email`/`push`/`sms`) | template messaggio, per immobile dal 2026-07-11 |
 | `ReminderRule` | `property` (FK), `applicabile_a` (`affitto`/`conguaglio`/`extra`), `giorni_offset`, `canale` (`email`/`push`/`both`), `destinatario` (`inquilino`/`proprietario`/`entrambi`), `template`, `attiva` | regola promemoria (offset da un evento); il template deve essere dello stesso immobile |
-| `PushSubscription` | `user`, `endpoint`, `auth`, `device_label`, `ultima_attivita` | sottoscrizione Web Push |
+| `PushSubscription` | `user`, `endpoint`, `auth`, `device_label`, `ultima_attivita` | sottoscrizione Web Push; **una per browser, non per persona** |
 | `Notification` | `user`, `regola`, `oggetto`, `corpo`, `corpo_html`, `destinatario`, `codice`, `errore`, `inviata_at`, `letta_at`, `canale`, `oggetto_riferimento` (GFK) | comunicazione emessa (o tentata) |
 
 `Notification` è il **registro delle comunicazioni**: archivia anche i
@@ -34,6 +34,12 @@ valorizzato = fallita (con `inviata_at` nullo). Il `codice` distingue
 comunicazioni che condividono la stessa GenericFK (invito inquilino e
 riepilogo addebiti puntano entrambi a un `TenantProfile`). Dettagli in
 [solleciti](/domain/solleciti.md).
+
+Email e push condividono `codice`: **un conteggio per `codice` senza
+`canale` conta due volte** la stessa comunicazione. Dal 2026-09-13 anche il
+push registra ogni tentativo, quindi le righe per codice sono tipicamente
+il doppio dei destinatari — chi interroga il registro filtri sempre per
+canale.
 
 `ReminderRule` esiste come modello + admin + API ma **nessun engine la
 consuma**: i solleciti si inviano a mano.

@@ -52,10 +52,19 @@ def _webpush_exception(status_code):
 
 
 class TestInviaPush:
-    def test_senza_subscription_no_op(self, user):
+    def test_senza_subscription_registra_il_mancato_recapito(self, user):
+        """Il silenzio va lasciato scritto: è il caso che non si diagnostica.
+
+        Chi non ha mai attivato le notifiche (o si è visto soffiare la
+        sottoscrizione da un altro utente sullo stesso browser) non riceve
+        nulla, e prima non restava traccia da nessuna parte del perché.
+        """
         esito = invia_push(user, "Titolo", "Corpo")
         assert esito == {"inviate": 0, "rimosse": 0, "errori": 0}
-        assert Notification.objects.count() == 0
+        notifica = Notification.objects.get()
+        assert notifica.canale == Notification.CanaleComunicazione.PUSH
+        assert notifica.inviata_at is None
+        assert "Nessun dispositivo registrato" in notifica.errore
 
     def test_invio_ok_logga_notification(self, user, subscription):
         with mock.patch("pywebpush.webpush") as wp:
@@ -78,13 +87,18 @@ class TestInviaPush:
             esito = invia_push(user, "Titolo", "Corpo")
         assert esito == {"inviate": 0, "rimosse": 1, "errori": 0}
         assert not PushSubscription.objects.filter(pk=subscription.pk).exists()
-        assert Notification.objects.count() == 0
+        notifica = Notification.objects.get()
+        assert notifica.inviata_at is None
+        assert "dispositivo scollegato" in notifica.errore
 
     def test_errore_generico_non_elimina(self, user, subscription):
         with mock.patch("pywebpush.webpush", side_effect=_webpush_exception(500)):
             esito = invia_push(user, "Titolo", "Corpo")
         assert esito == {"inviate": 0, "rimosse": 0, "errori": 1}
         assert PushSubscription.objects.filter(pk=subscription.pk).exists()
+        notifica = Notification.objects.get()
+        assert notifica.inviata_at is None
+        assert "Chrome su Linux" in notifica.errore
 
     def test_senza_chiavi_vapid_no_op(self, user, subscription, settings):
         settings.VAPID_PRIVATE_KEY = ""
@@ -98,6 +112,48 @@ class TestInviaPush:
         with mock.patch("pywebpush.webpush"):
             invia_push(user, "Titolo", "Corpo", salva_notification=False)
         assert Notification.objects.count() == 0
+
+    def test_salva_notification_false_tace_anche_sul_fallimento(self, user):
+        """La notifica di prova non sporca il registro nemmeno quando fallisce.
+
+        È una verifica che l'utente fa su di sé, non una comunicazione.
+        """
+        invia_push(user, "Prova", "Corpo", salva_notification=False)
+        assert Notification.objects.count() == 0
+
+    def test_piu_device_registrano_una_riga_sola(self, user, subscription):
+        PushSubscription.objects.create(
+            user=user,
+            endpoint="https://push.example.com/def",
+            p256dh="p2",
+            auth="a2",
+            device_label="Safari su iOS",
+        )
+        with mock.patch("pywebpush.webpush"):
+            esito = invia_push(user, "Titolo", "Corpo")
+        assert esito["inviate"] == 2
+        notifica = Notification.objects.get()
+        assert notifica.inviata_at is not None
+        assert notifica.destinatario == "Chrome su Linux (+1)"
+
+    def test_un_device_ko_su_due_resta_comunicata(self, user, subscription):
+        """Un secondo telefono che non risponde non rende falsa la consegna."""
+        PushSubscription.objects.create(
+            user=user,
+            endpoint="https://push.example.com/def",
+            p256dh="p2",
+            auth="a2",
+            device_label="Safari su iOS",
+        )
+        with mock.patch(
+            "pywebpush.webpush",
+            side_effect=[None, _webpush_exception(500)],
+        ):
+            esito = invia_push(user, "Titolo", "Corpo")
+        assert esito == {"inviate": 1, "rimosse": 0, "errori": 1}
+        notifica = Notification.objects.get()
+        assert notifica.inviata_at is not None
+        assert notifica.errore == ""
 
 
 class TestPushApiActions:

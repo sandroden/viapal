@@ -75,7 +75,12 @@ class TestRegistroInvioRiuscito:
         assert esito["inviati"] == 2
         assert len(mailoutbox) == 2
 
-        righe = Notification.objects.filter(codice="avviso_utenze")
+        # Filtro sul canale: lo stesso codice lo usa anche il push, che dal
+        # 2026-09 registra ogni tentativo — compreso "nessun dispositivo".
+        righe = Notification.objects.filter(
+            codice="avviso_utenze",
+            canale=Notification.CanaleComunicazione.EMAIL,
+        )
         assert righe.count() == 2
         riga = righe.get(destinatario="a@example.com")
         assert riga.inviata_at is not None
