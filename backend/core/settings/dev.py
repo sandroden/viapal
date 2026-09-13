@@ -32,7 +32,10 @@ if (_extra := os.environ.get('VIAPAL_FRONTEND_PORT')):
 _ORIGINI_DEV = [
     f'http://{host}:{porta}'
     for porta in _PORTE_FRONTEND
-    for host in ('localhost', '127.0.0.1', 'viapal.local')
+    # `viapal.localhost` (e non `.local`) perché i browser trattano come
+    # contesto sicuro qualsiasi nome che finisce in `.localhost`: senza quello
+    # niente service worker e niente notifiche push fuori da localhost nudo.
+    for host in ('localhost', '127.0.0.1', 'viapal.local', 'viapal.localhost')
 ]
 
 CSRF_TRUSTED_ORIGINS = list(_ORIGINI_DEV)

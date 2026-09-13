@@ -11,7 +11,7 @@ resources:
 tags: [playbook, dev, setup]
 generated:
   by: process:okf-migrate
-  at: 2026-09-05T00:00:00Z
+  at: 2026-09-13T00:00:00Z
 ---
 
 # Prerequisiti
@@ -35,7 +35,14 @@ cd .. && just up
 ```
 
 - Backend admin: <http://localhost:8020/admin/> (`admin` / `admin`)
-- Frontend: <http://localhost:9020/login> (host alternativo `viapal.local:9020`)
+- Frontend: <http://localhost:9020/login> (host alternativi in
+  `quasar.config.ts: allowedHosts` + `settings/dev.py: _ORIGINI_DEV`:
+  `viapal.local:9020` e `viapal.localhost:9020`)
+  - Per le **notifiche push** serve un contesto sicuro: usare
+    `viapal.localhost` (o `localhost` nudo), mai `viapal.local`, che essendo
+    http su nome non speciale spegne `serviceWorker`/`PushManager`.
+  - `viapal.localhost` va messo in `/etc/hosts` puntato a `127.0.0.1`: il
+    resolver di sistema lo risolve a `::1`, ma i dev server ascoltano su IPv4.
 - I superuser hanno i link "→ App Viapal" (admin) e "Admin Django" (drawer
   proprietario); il primo passa da `APP_BASE_URL`, perché in dev le due
   porte sono diverse.
