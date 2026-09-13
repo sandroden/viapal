@@ -1,19 +1,22 @@
 ---
 type: Architecture
 title: PWA e service worker
-description: Service worker Quasar, Web Push e gestione del reload post-deploy.
+description: Service worker Quasar, Web Push, installazione guidata e reload post-deploy.
 resource: frontend/src-pwa/custom-service-worker.ts
 resources:
   - frontend/src-pwa/custom-service-worker.ts
   - frontend/src-pwa/register-service-worker.ts
   - frontend/quasar.config.ts
   - frontend/src/composables/usePush.ts
+  - frontend/src/composables/useInstallPwa.ts
+  - frontend/src/boot/pwa-install.ts
+  - frontend/src/pages/InstallaApp.vue
   - frontend/src/components/profilo/NotifichePushPannello.vue
   - backend/apps/notifications/push.py
 tags: [architecture, pwa, service-worker, push]
 generated:
   by: process:okf-migrate
-  at: 2026-09-13T00:00:00Z
+  at: 2026-09-13T12:00:00Z
 ---
 
 # Overview
@@ -56,6 +59,44 @@ client con bundle pre-fix richiedono una pulizia SW manuale una tantum.
 - `cleanupOutdatedCaches()` nel SW resta: è il reload che rende innocua la
   purga della precache vecchia.
 
+# Installazione guidata (/installa)
+
+Pagina pubblica `/installa` (`PublicLayout`, come `/g/` e `/d/`): il link si
+manda a chi non ha ancora fatto il primo accesso, quindi non può richiedere
+la sessione. Tre passi — installa, accedi, accendi le notifiche — con il
+passo 2 che sparisce a utente già autenticato e i numeri che si rinumerano.
+
+- **`beforeinstallprompt` va intercettato nel boot**, non nella pagina:
+  Chromium lo spara all'avvio dell'app, molto prima che la rotta lazy sia
+  montata. Ascoltarlo in `onMounted` significa perderlo a ogni caricamento
+  a freddo e non abilitare mai il bottone. `boot/pwa-install.ts` registra
+  gli ascoltatori, `composables/useInstallPwa.ts` tiene l'evento in stato di
+  modulo. Serve `preventDefault()`, o Chrome si tiene l'evento per la sua
+  infobar. `prompt()` è **usa e getta**: l'evento si consuma alla prima
+  chiamata.
+- **Le istruzioni manuali restano sempre a schermo**, anche col bottone
+  disponibile: se il prompt viene chiuso per sbaglio non resta nient'altro.
+- **iOS non ha alcuna API**: solo Condividi → Aggiungi a Home. E poiché le
+  push iOS esistono solo dentro la PWA installata (≥ 16.4), il passo 3 su
+  iOS-non-installato mostra un avviso con l'ordine dei passi invece del
+  toggle: un interruttore che non può funzionare è peggio di una spiegazione.
+- **Stato dedotto dal vivo**, mai memorizzato: `display-mode: standalone`
+  (più `navigator.standalone` per iOS) e l'evento `appinstalled`. Così la
+  stessa URL, riaperta dall'icona, riconosce da sé di essere nell'app.
+- **Browser in-app** (WhatsApp, Facebook): da lì non si installa nulla e la
+  voce di menu descritta non esiste. Rilevato **solo** per marcatori
+  espliciti nello user agent (`FBAN`, `Instagram`, …) e per il `; wv)` delle
+  WebView Android. Su iOS si potrebbe dedurlo dall'assenza di
+  `navigator.standalone`, ma quella prova pesca dentro anche Chrome e Firefox
+  per iOS, dove installare si può: si è preferita una nota di ripiego
+  («non trovi la voce? apri in Safari») a una diagnosi che sbaglia bersaglio.
+- **Testi anfibi, nessuna variante per ruolo**: la pagina si apre quasi
+  sempre prima del login, quando il ruolo non si sa, e anche dopo distinguere
+  inquilino da proprietario non aggiunge nulla — chi legge vuole sapere a
+  cosa serve l'app, non quale evento tocca a lui.
+- Il passo 3 riusa `NotifichePushPannello.vue` — è il terzo punto in cui
+  compare, dopo `/i/profilo` e `/p/profilo`.
+
 # Web Push
 
 - VAPID + funzione `invia_push` (`notifications/push.py`); SW gestisce
@@ -67,10 +108,10 @@ client con bundle pre-fix richiedono una pulizia SW manuale una tantum.
 - Il toggle è il componente `NotifichePushPannello.vue`, che incapsula
   `usePush.ts` (`GET /api/v1/push-subscriptions/vapid-public-key/`,
   `POST/DELETE /api/v1/push-subscriptions/`, `POST .../test/` per l'invio di
-  prova a se stessi). Compare in **due** posti, perché l'endpoint è
-  `IsAuthenticated` e non riguarda solo gli inquilini: `/i/profilo` e
+  prova a se stessi). Compare in **tre** posti, perché l'endpoint è
+  `IsAuthenticated` e non riguarda solo gli inquilini: `/i/profilo`,
   `/p/profilo` (area personale del proprietario, dal menu sul proprio nome in
-  testata).
+  testata) e il passo 3 di `/installa`.
 - `disponibile` = **il server** ha le chiavi (o non si è potuto chiedere): senza
   canale il pannello non si disegna affatto, invece di offrire un toggle inerte.
   Quando invece il canale c'è ma questo browser non può usarlo, il pannello

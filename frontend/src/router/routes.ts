@@ -64,6 +64,21 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // Guida all'installazione della PWA e all'attivazione delle notifiche.
+    // Pubblica di proposito: il link si manda a chi non ha ancora fatto il
+    // primo accesso, e la pagina stessa porta al login quando serve.
+    path: '/installa',
+    component: () => import('layouts/PublicLayout.vue'),
+    meta: { public: true },
+    children: [
+      {
+        path: '',
+        name: 'installa',
+        component: () => import('pages/InstallaApp.vue'),
+      },
+    ],
+  },
+  {
     // Privacy/cookie per i visitatori anonimi (link dal footer della
     // galleria pubblica). L'informativa completa per gli inquilini resta
     // in /i/privacy.

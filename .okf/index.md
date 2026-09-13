@@ -20,7 +20,7 @@ Partire da qui, poi seguire solo i link rilevanti (progressive disclosure).
 * [Architecture overview](architecture/overview.md) - stack, monorepo, deploy, convenzioni.
 * [Modello dati](architecture/modello-dati.md) - mappa Receivable-centrica delle entità.
 * [Auth e ruoli](architecture/auth-e-ruoli.md) - sessione Django, gruppi, inviti, impersonation.
-* [PWA](architecture/pwa.md) - service worker, Web Push, reload post-deploy.
+* [PWA](architecture/pwa.md) - service worker, Web Push, pagina /installa, reload post-deploy.
 
 # Dominio (logica contabile)
 
