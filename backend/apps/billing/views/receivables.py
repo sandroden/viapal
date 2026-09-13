@@ -21,6 +21,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
+from billing._notifiche import notifica_dichiarazione_pagamento
 from billing.calc.incassi import (
     IncassoRifiutato,
     registra_incasso,
@@ -167,6 +168,11 @@ class _ReceivableMixin:
                 f"{receivable.note}\n{riga_nota}" if receivable.note else riga_nota
             )
         receivable.save(update_fields=["stato", "data_pagamento", "note"])
+
+        # I proprietari devono sapere che c'è un incasso da confermare: senza
+        # questo avviso la dichiarazione resta muta fino a quando qualcuno non
+        # apre i ritardi. Chi ha premuto il bottone non si avvisa da solo.
+        notifica_dichiarazione_pagamento(receivable, autore=request.user)
 
         return Response(
             self.get_serializer(receivable).data,

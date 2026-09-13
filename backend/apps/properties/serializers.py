@@ -902,6 +902,7 @@ class PropertySerializer(serializers.ModelSerializer):
             "foto_mappa",
             "testi_pubblici",
             "bank_account_utenze",
+            "notifica_dichiarazioni",
             "owner_anticipa_cessioni",
             "owner_firmatario",
             "mio_ruolo",

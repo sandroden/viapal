@@ -569,6 +569,7 @@ class PropertyAdmin(ModalEditMixin, JumboModelAdmin):
             "fields": (
                 "nome", "tipo_gestione", "indirizzo", "bank_account_utenze",
                 "owner_anticipa_cessioni", "owner_firmatario",
+                "notifica_dichiarazioni",
             ),
         }),
         ("Indirizzo strutturato", {

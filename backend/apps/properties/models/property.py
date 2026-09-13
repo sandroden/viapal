@@ -46,6 +46,10 @@ class Property(TimestampedModel):
         STANZE = "stanze", "A stanze"
         UNITA_INTERA = "unita_intera", "Unità intera"
 
+    class NotificaDichiarazioni(models.TextChoices):
+        TUTTI = "tutti", "Tutti i proprietari"
+        DESTINATARIO = "destinatario", "Solo chi riceve il bonifico"
+
     nome = models.CharField(
         max_length=120,
         verbose_name="nome",
@@ -120,6 +124,17 @@ class Property(TimestampedModel):
         max_length=60,
         blank=True,
         verbose_name="ingressi",
+    )
+    notifica_dichiarazioni = models.CharField(
+        max_length=20,
+        choices=NotificaDichiarazioni.choices,
+        default=NotificaDichiarazioni.TUTTI,
+        verbose_name="avvisa del pagamento dichiarato",
+        help_text=(
+            "Chi riceve la notifica quando un inquilino dichiara di aver "
+            "pagato dall'app. «Solo chi riceve il bonifico» ripiega su tutti "
+            "se il conto di destinazione non è risolvibile."
+        ),
     )
     bank_account_utenze = models.ForeignKey(
         OwnerBankAccount,

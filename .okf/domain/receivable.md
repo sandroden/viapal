@@ -5,6 +5,7 @@ description: Il modello unico che rappresenta ogni importo dovuto dall'inquilino
 resource: backend/apps/billing/models/receivables.py
 resources:
   - backend/apps/billing/models/receivables.py
+  - backend/apps/billing/_notifiche.py
   - backend/apps/billing/signals.py
   - backend/apps/billing/calc/incassi.py
   - backend/apps/billing/_payments.py
@@ -13,7 +14,7 @@ resources:
 tags: [domain, receivable, billing]
 generated:
   by: process:okf-migrate
-  at: 2026-09-07T00:00:00Z
+  at: 2026-09-13T00:00:00Z
 ---
 
 # Overview
@@ -109,6 +110,15 @@ dichiarato.
 dell'inquilino), rifiuta un importo di segno discorde col residuo e alloca al
 massimo il residuo: l'eccedenza resta sulla BT come credito visibile in
 riconciliazione. Stesso motore per `receivables/<pk>/registra-pagamento/`.
+
+La dichiarazione **avvisa i proprietari** via push
+(`billing/_notifiche.py: notifica_dichiarazione_pagamento`): è l'unico evento
+in cui la proprietà deve agire e nient'altro glielo direbbe. Chi riceve lo
+decide `Property.notifica_dichiarazioni` (tutti i proprietari, oppure il solo
+intestatario del conto risolto da `conto_per_receivable`, con **ripiego su
+tutti** se non risolvibile). Escluso chi ha premuto il bottone: `dichiara_pagato`
+è aperta anche ai proprietari, che possono dichiarare per conto dell'inquilino.
+Il canale è accessorio: non solleva mai e non fa fallire la dichiarazione.
 
 # Conto di destinazione
 

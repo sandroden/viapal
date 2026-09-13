@@ -12,7 +12,7 @@ resources:
 tags: [models, properties]
 generated:
   by: process:okf-migrate
-  at: 2026-09-05T00:00:00Z
+  at: 2026-09-13T00:00:00Z
 ---
 
 # Overview
@@ -30,7 +30,7 @@ residenza).
 
 | Modello | Campi chiave | Note |
 |---------|--------------|------|
-| `Property` | `nome`, `indirizzo` (libero) + indirizzo strutturato `via`/`civico`/`cap`/`comune`/`provincia`/`piano`/`scala`/`interno`/`vani`/`accessori`/`ingressi`, `bank_account_utenze` (FK), `owner_anticipa_cessioni` (FK), `owner_firmatario` (FK), `tipo_gestione`; annuncio: `slug`, `pubblica`, `foto_hero`/`foto_planimetria`/`foto_mappa`, `testi_pubblici` (JSON) | conto utenze; `tipo_gestione` = `stanze` (default) / `unita_intera`; `via` contiene già "Via/Piazza"; slug auto in `save()` |
+| `Property` | `nome`, `indirizzo` (libero) + indirizzo strutturato `via`/`civico`/`cap`/`comune`/`provincia`/`piano`/`scala`/`interno`/`vani`/`accessori`/`ingressi`, `bank_account_utenze` (FK), `owner_anticipa_cessioni` (FK), `owner_firmatario` (FK), `tipo_gestione`, `notifica_dichiarazioni`; annuncio: `slug`, `pubblica`, `foto_hero`/`foto_planimetria`/`foto_mappa`, `testi_pubblici` (JSON) | conto utenze; `tipo_gestione` = `stanze` (default) / `unita_intera`; `notifica_dichiarazioni` = `tutti` (default) / `destinatario`, chi avvisare quando un inquilino dichiara di aver pagato (vedi [Receivable](/domain/receivable.md)); `via` contiene già "Via/Piazza"; slug auto in `save()` |
 | `PropertyMembership` | `property`, `user`, `ruolo` (`proprietario`/`gestore`/`sola_lettura`), `invitato_da` | accesso di un utente a un immobile: è ciò che rende "lato gestione" un utente (vedi [Auth e ruoli](/architecture/auth-e-ruoli.md)); `sola_lettura` = solo metodi safe |
 | `Room` | `property`, `nome`, `superficie_mq`, `foto`, `ordinamento`; annuncio: `colore`, `descrizione`, `disponibile`, `libera_dal`, `prezzo_mensile`, `pubblica` | stanza, o **unità locata** su `unita_intera`; i campi d'annuncio sono indipendenti dalle assegnazioni |
 | `GalleryArea` | `property`, `nome`, `colore`, `descrizione`, `ordinamento`, `pubblica` | ambiente comune (cucina, bagno…): raggruppa foto, **non** è oggetto d'affitto |

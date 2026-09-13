@@ -73,12 +73,16 @@ export const CAMPI_INDIRIZZO: Array<{ campo: keyof IndirizzoStrutturato; label: 
   { campo: 'ingressi', label: 'Ingressi' },
 ];
 
+/** Chi viene avvisato quando un inquilino dichiara di aver pagato. */
+export type NotificaDichiarazioni = 'tutti' | 'destinatario';
+
 export interface PropertyDettaglio extends IndirizzoStrutturato {
   id: number;
   nome: string;
   slug: string | null;
   indirizzo: string;
   bank_account_utenze: number | null;
+  notifica_dichiarazioni: NotificaDichiarazioni;
   owner_anticipa_cessioni: number | null;
   owner_firmatario: number | null;
   mio_ruolo: RuoloProperty | null;
@@ -197,7 +201,11 @@ export const usePropertiesStore = defineStore('properties', {
       payload: Partial<
         Pick<
           PropertyDettaglio,
-          'nome' | 'indirizzo' | 'owner_firmatario' | 'bank_account_utenze'
+          | 'nome'
+          | 'indirizzo'
+          | 'owner_firmatario'
+          | 'bank_account_utenze'
+          | 'notifica_dichiarazioni'
         > &
           IndirizzoStrutturato
       >,

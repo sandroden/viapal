@@ -92,6 +92,26 @@
         />
       </div>
     </CardSezione>
+
+    <!-- La dichiarazione dell'inquilino chiede un'azione ai proprietari
+         (confermare l'incasso): qui si decide a chi squilla il telefono. -->
+    <CardSezione
+      titolo="Avvisi"
+      descrizione="Chi riceve la notifica quando un inquilino dichiara di aver pagato dall'app."
+    >
+      <q-select
+        v-model="formNotificaDichiarazioni"
+        :options="opzioniNotifica"
+        label="Avvisa del pagamento dichiarato"
+        outlined
+        dense
+        emit-value
+        map-options
+        :readonly="!puoModificare"
+        hint="Arriva solo a chi ha attivato le notifiche nella propria area personale"
+        data-testid="immobile-notifica_dichiarazioni"
+      />
+    </CardSezione>
   </q-form>
 </template>
 
@@ -104,6 +124,7 @@ import {
   CAMPI_INDIRIZZO,
   usePropertiesStore,
   type IndirizzoStrutturato,
+  type NotificaDichiarazioni,
   type PropertyDettaglio,
   type Quota,
 } from 'stores/properties';
@@ -128,6 +149,7 @@ const formIndirizzo = ref('');
 const formIndirizzoStrutturato = ref<IndirizzoStrutturato>(indirizzoVuoto());
 const formFirmatario = ref<number | null>(null);
 const formContoUtenze = ref<number | null>(null);
+const formNotificaDichiarazioni = ref<NotificaDichiarazioni>('tutti');
 const savingDati = ref(false);
 
 /** Riferimenti ai campi, per portare il fuoco dove il link dei "dati
@@ -160,6 +182,10 @@ function registraCampo(campo: string, el: unknown) {
 const opzioniFirmatario = computed(() =>
   props.quoteCorrenti.map((q) => ({ label: q.owner_nominativo, value: q.owner })),
 );
+const opzioniNotifica: { label: string; value: NotificaDichiarazioni }[] = [
+  { label: 'Tutti i proprietari', value: 'tutti' },
+  { label: 'Solo chi riceve il bonifico', value: 'destinatario' },
+];
 /** I conti dei membri dell'immobile: l'endpoint è già scopato sull'immobile
  *  attivo, quindi non compaiono conti di estranei. */
 const opzioniConto = computed(() =>
@@ -174,6 +200,7 @@ function riempiForm(dati: PropertyDettaglio) {
   formIndirizzo.value = dati.indirizzo;
   formFirmatario.value = dati.owner_firmatario;
   formContoUtenze.value = dati.bank_account_utenze;
+  formNotificaDichiarazioni.value = dati.notifica_dichiarazioni ?? 'tutti';
   const strutturato = indirizzoVuoto();
   for (const c of CAMPI_INDIRIZZO) strutturato[c.campo] = dati[c.campo] ?? '';
   formIndirizzoStrutturato.value = strutturato;
@@ -200,6 +227,7 @@ async function salvaDati() {
       indirizzo: formIndirizzo.value.trim(),
       owner_firmatario: formFirmatario.value,
       bank_account_utenze: formContoUtenze.value,
+      notifica_dichiarazioni: formNotificaDichiarazioni.value,
       ...formIndirizzoStrutturato.value,
     });
     emit('aggiornato', aggiornato);
