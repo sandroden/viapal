@@ -81,12 +81,14 @@ def _username_da_nominativo(nominativo: str) -> str:
 
 class OwnerProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.CharField(source="user.email", read_only=True)
 
     class Meta:
         model = OwnerProfile
         fields = [
             "id",
             "username",
+            "email",
             "nominativo",
             "codice_fiscale",
             "telefono",
@@ -98,20 +100,53 @@ class OwnerProfileSerializer(serializers.ModelSerializer):
 class OwnerProfileUpdateSerializer(serializers.ModelSerializer):
     """Serializer con cui si aggiorna l'anagrafica di un OwnerProfile dal
     frontend (tab Membri). Esclude ``note`` (campo di lavoro admin) e lo
-    user collegato; chi può scrivere lo decide la view."""
+    user collegato; chi può scrivere lo decide la view.
+
+    L'``email`` vive sullo ``User`` (è quella con cui si accede e a cui
+    arrivano inviti e reset password): qui è scrivibile come per gli
+    inquilini, con controllo di unicità perché il login accetta anche
+    l'email (``ACCOUNT_UNIQUE_EMAIL``)."""
 
     username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.EmailField(
+        source="user.email", required=False, allow_blank=True,
+    )
 
     class Meta:
         model = OwnerProfile
         fields = [
             "id",
             "username",
+            "email",
             "nominativo",
             "codice_fiscale",
             "telefono",
             *CAMPI_ANAGRAFICA,
         ]
+
+    def validate_email(self, value):
+        from django.contrib.auth import get_user_model
+
+        email = (value or "").strip()
+        if not email:
+            return email
+        User = get_user_model()
+        qs = User.objects.filter(email__iexact=email)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.user_id)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "Questa email è già usata da un altro utente."
+            )
+        return email
+
+    def update(self, instance, validated_data):
+        user_data = validated_data.pop("user", {})
+        email = user_data.get("email")
+        if email is not None and email != instance.user.email:
+            instance.user.email = email
+            instance.user.save(update_fields=["email"])
+        return super().update(instance, validated_data)
 
 
 class TenantProfileSerializer(serializers.ModelSerializer):

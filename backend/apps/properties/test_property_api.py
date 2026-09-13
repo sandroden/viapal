@@ -778,3 +778,47 @@ class TestOwnerAnagrafica:
         assert owner_profile.nominativo == "Prop A2"
         assert owner_profile.note == ""
         assert owner_profile.user_id != 999
+
+    def test_email_modificabile(self, client_prop, owner_profile2):
+        resp = self._patch(
+            client_prop, owner_profile2.pk, {"email": " Nuova@Example.com "}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["email"] == "Nuova@Example.com"
+        owner_profile2.user.refresh_from_db()
+        assert owner_profile2.user.email == "Nuova@Example.com"
+
+    def test_email_svuotabile(self, client_prop, owner_profile2):
+        owner_profile2.user.email = "vecchia@example.com"
+        owner_profile2.user.save()
+        resp = self._patch(client_prop, owner_profile2.pk, {"email": ""})
+        assert resp.status_code == 200
+        owner_profile2.user.refresh_from_db()
+        assert owner_profile2.user.email == ""
+
+    def test_email_duplicata_rifiutata(self, client_prop, owner_profile, owner_profile2):
+        owner_profile.user.email = "presa@example.com"
+        owner_profile.user.save()
+        resp = self._patch(
+            client_prop, owner_profile2.pk, {"email": "PRESA@example.com"}
+        )
+        assert resp.status_code == 400
+        assert "email" in resp.json()
+        owner_profile2.user.refresh_from_db()
+        assert owner_profile2.user.email != "PRESA@example.com"
+
+    def test_email_propria_invariata_ok(self, client_prop, owner_profile2):
+        owner_profile2.user.email = "mia@example.com"
+        owner_profile2.user.save()
+        resp = self._patch(
+            client_prop, owner_profile2.pk,
+            {"email": "mia@example.com", "telefono": "333"},
+        )
+        assert resp.status_code == 200
+        owner_profile2.refresh_from_db()
+        assert owner_profile2.telefono == "333"
+
+    def test_email_non_valida(self, client_prop, owner_profile2):
+        resp = self._patch(client_prop, owner_profile2.pk, {"email": "non-email"})
+        assert resp.status_code == 400
+        assert "email" in resp.json()

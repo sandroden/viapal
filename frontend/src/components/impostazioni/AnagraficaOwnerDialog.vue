@@ -150,6 +150,18 @@
         <div class="row q-col-gutter-sm">
           <div class="col-6">
             <q-input
+              :ref="(el) => registra('email', el)"
+              v-model="form.email"
+              label="Email"
+              type="email"
+              outlined
+              dense
+              hint="Serve per accedere e ricevere inviti e reset password"
+              data-testid="owner-email"
+            />
+          </div>
+          <div class="col-6">
+            <q-input
               :ref="(el) => registra('telefono', el)"
               v-model="form.telefono"
               label="Telefono"
@@ -211,6 +223,7 @@ interface FormAnagraficaOwner {
   residenza_provincia: string;
   residenza_cap: string;
   telefono: string;
+  email: string;
 }
 
 function vuoto(): FormAnagraficaOwner {
@@ -228,6 +241,7 @@ function vuoto(): FormAnagraficaOwner {
     residenza_provincia: '',
     residenza_cap: '',
     telefono: '',
+    email: '',
   };
 }
 
@@ -289,6 +303,7 @@ async function salva() {
       // Le date vuote arrivano come stringa vuota dagli input: il backend
       // vuole null.
       data_nascita: f.data_nascita || null,
+      email: f.email.trim(),
     });
     $q.notify({ type: 'positive', message: 'Anagrafica aggiornata.' });
     aperto.value = false;
