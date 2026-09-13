@@ -3,15 +3,8 @@
     <q-header elevated class="vp-header">
       <q-toolbar>
         <q-btn flat dense round icon="menu" aria-label="Menu" @click="toggleDrawer" />
-        <img
-          v-if="!drawerOpen"
-          src="/viapal.png"
-          alt="Viapal"
-          class="vp-header__logo"
-        />
-        <q-toolbar-title class="text-display">
-          Viapal — area proprietari
-        </q-toolbar-title>
+        <img v-if="!drawerOpen" src="/viapal.png" alt="Viapal" class="vp-header__logo" />
+        <q-toolbar-title class="text-display"> Viapal — area proprietari </q-toolbar-title>
         <q-space />
 
         <!-- Switcher immobile: visibile solo con più di un immobile.
@@ -36,7 +29,13 @@
               @click="propStore.cambia(p.id)"
             >
               <q-item-section avatar>
-                <q-icon :name="p.id === propStore.activePropertyId ? 'radio_button_checked' : 'radio_button_unchecked'" />
+                <q-icon
+                  :name="
+                    p.id === propStore.activePropertyId
+                      ? 'radio_button_checked'
+                      : 'radio_button_unchecked'
+                  "
+                />
               </q-item-section>
               <q-item-section>
                 <q-item-label>{{ p.nome }}</q-item-label>
@@ -82,13 +81,7 @@
       </q-toolbar>
     </q-header>
 
-    <q-drawer
-      v-model="drawerOpen"
-      show-if-above
-      :width="240"
-      :breakpoint="900"
-      class="vp-drawer"
-    >
+    <q-drawer v-model="drawerOpen" show-if-above :width="240" :breakpoint="900" class="vp-drawer">
       <div class="vp-drawer__brand">
         <img src="/viapal.png" alt="Viapal" class="vp-drawer__brand-img" />
       </div>
@@ -140,6 +133,9 @@
     </q-drawer>
 
     <q-page-container>
+      <!-- Dentro il page container, non accanto: fuori di qui il drawer
+           persistente coprirebbe icona e testo del banner. -->
+      <InstallaBanner />
       <router-view />
     </q-page-container>
   </q-layout>
@@ -149,6 +145,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from 'stores/auth';
+import InstallaBanner from 'components/InstallaBanner.vue';
 import { etichettaRuolo, usePropertiesStore } from 'stores/properties';
 
 const auth = useAuthStore();
@@ -173,9 +170,7 @@ interface SezioneMenu {
 const sezioniMenu = computed<SezioneMenu[]>(() => {
   // Un'unica pagina a tab per tutto l'immobile: la voce si chiama come la
   // pagina, quindi la sezione non ripete l'header "Immobile".
-  const immobile: VoceMenu[] = [
-    { to: '/p/impostazioni', label: 'Immobile', icon: 'home_work' },
-  ];
+  const immobile: VoceMenu[] = [{ to: '/p/impostazioni', label: 'Immobile', icon: 'home_work' }];
   if (galleriaSlug.value) {
     immobile.push({
       to: `/g/${galleriaSlug.value}`,

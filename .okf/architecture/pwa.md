@@ -11,12 +11,13 @@ resources:
   - frontend/src/composables/useInstallPwa.ts
   - frontend/src/boot/pwa-install.ts
   - frontend/src/pages/InstallaApp.vue
+  - frontend/src/components/InstallaBanner.vue
   - frontend/src/components/profilo/NotifichePushPannello.vue
   - backend/apps/notifications/push.py
 tags: [architecture, pwa, service-worker, push]
 generated:
   by: process:okf-migrate
-  at: 2026-09-13T12:00:00Z
+  at: 2026-09-13T23:30:00Z
 ---
 
 # Overview
@@ -96,6 +97,18 @@ passo 2 che sparisce a utente già autenticato e i numeri che si rinumerano.
   cosa serve l'app, non quale evento tocca a lui.
 - Il passo 3 riusa `NotifichePushPannello.vue` — è il terzo punto in cui
   compare, dopo `/i/profilo` e `/p/profilo`.
+
+**Il collo di bottiglia è la scoperta, non la pagina**: nessuno cerca
+`/installa` da solo. La striscia `InstallaBanner.vue` sta nei layout di
+inquilino e proprietario e porta lì.
+
+- Va **dentro `q-page-container`**, non accanto: fuori di lì il drawer
+  persistente del layout proprietario copre icona e testo.
+- Sparisce da sé quando l'app è installata (`display-mode: standalone`).
+- Chiuderla la rinvia di **30 giorni**, non per sempre: chi la chiude di
+  fretta è esattamente chi non ha ancora installato niente. Scadenza in
+  `localStorage` (`vp-installa-rinviato`), letta e scritta in `try/catch` —
+  in navigazione privata può sollevare, e allora il banner compare e basta.
 
 # Web Push
 

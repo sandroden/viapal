@@ -27,6 +27,7 @@
     </q-banner>
 
     <q-page-container>
+      <InstallaBanner />
       <div class="vp-i-shell" :class="{ 'vp-i-shell--wide': isWide }">
         <router-view />
       </div>
@@ -48,12 +49,7 @@
           label="Situazione"
           to="/i/situazione"
         />
-        <q-route-tab
-          name="rendiconto"
-          icon="description"
-          label="Rendiconto"
-          to="/i/rendiconto"
-        />
+        <q-route-tab name="rendiconto" icon="description" label="Rendiconto" to="/i/rendiconto" />
         <q-route-tab name="utenze" icon="bolt" label="Utenze" to="/i/utenze" />
         <q-route-tab name="profilo" icon="person" label="Profilo" to="/i/profilo" />
       </q-tabs>
@@ -65,6 +61,7 @@
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from 'stores/auth';
+import InstallaBanner from 'components/InstallaBanner.vue';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -120,7 +117,7 @@ async function logout() {
   background: var(--vp-cream);
   color: var(--vp-ink);
   border-top: 1px solid var(--vp-paper-3);
-  box-shadow: 0 -2px 6px oklch(0.30 0.02 50 / 0.06);
+  box-shadow: 0 -2px 6px oklch(0.3 0.02 50 / 0.06);
 }
 .vp-bottom-nav :deep(.q-tab) {
   color: var(--vp-ink-3);
