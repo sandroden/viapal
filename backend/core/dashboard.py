@@ -137,6 +137,42 @@ class ViapalSaldiNegativiModule(modules.LinkList):
         super().init_with_context(context)
 
 
+# --- Raggruppamenti dei modelli nei tab -------------------------------------
+# I pattern di admin-tools si applicano al percorso completo del modello
+# (`modulo.Classe`, cfr. admin_tools.utils.filter_models): "properties.*"
+# prende tutta l'app, il percorso esatto un modello solo. NB: i pattern esatti
+# entrano nell'ordine in cui sono scritti, solo i wildcard vengono ordinati
+# alfabeticamente — le tuple qui sotto sono quindi in ordine logico.
+
+# Tabelle di configurazione / a basso ricambio: fuori dalle liste operative.
+CONFIG_MODELS = (
+    "billing.models.expenses.ExpenseCategory",
+    "billing.models.expenses.Supplier",
+    "billing.models.expenses.TenantCondominioRate",
+    "billing.models.utilities.PropertyUtilityService",
+    "properties.models.document_template.DocumentTemplate",
+)
+
+# Anagrafiche legate alle persone che abitano la casa (lead inclusi: sono
+# candidati inquilini).
+INQUILINI_MODELS = (
+    "properties.models.tenant.TenantProfile",
+    "properties.models.property.RoomAssignment",
+    "properties.models.property.Contract",
+    "properties.models.tenant.TenantDocument",
+    "properties.models.share.DocumentShare",
+    "leads.*",
+)
+
+# Anagrafiche dei proprietari: chi possiede, in che quota, con quale conto.
+PROPRIETARI_MODELS = (
+    "properties.models.owner.OwnerProfile",
+    "properties.models.membership.PropertyMembership",
+    "properties.models.owner.OwnershipShare",
+    "properties.models.owner.OwnerBankAccount",
+)
+
+
 class ViapalIndexDashboard(Dashboard):
     """Dashboard principale dell'admin (override di /admin/)."""
 
@@ -150,39 +186,50 @@ class ViapalIndexDashboard(Dashboard):
         self.children.append(ViapalConguagliDaInviareModule())
         self.children.append(ViapalSaldiNegativiModule())
 
-        # AppList — anagrafiche
+        # Anagrafiche: inquilini | immobile | proprietari.
+        # ModelList e non AppList: qui i tab mescolano app diverse e
+        # l'intestazione dell'app ("Immobile e occupazione") si ripeterebbe in
+        # ogni tab senza dire nulla. Il tab "Immobile" è il catch-all dell'app
+        # properties: un modello nuovo compare lì invece di sparire.
         self.children.append(
-            modules.AppList(
-                title="Anagrafiche e immobile",
-                models=("properties.*", "accounts.*"),
+            modules.Group(
+                title="Anagrafiche",
+                display="tabs",
+                children=[
+                    modules.ModelList(
+                        title="Inquilini",
+                        models=INQUILINI_MODELS,
+                    ),
+                    modules.ModelList(
+                        title="Immobile",
+                        models=("properties.*",),
+                        exclude=INQUILINI_MODELS + PROPRIETARI_MODELS + CONFIG_MODELS,
+                    ),
+                    modules.ModelList(
+                        title="Proprietari",
+                        models=PROPRIETARI_MODELS,
+                    ),
+                ],
             )
         )
 
-        # Tabelle "di configurazione" / a basso cambio: spostate fuori dal tab
-        # "Pagamenti e bollette" e raggruppate in un tab dedicato.
-        CONFIG_MODELS = (
-            "billing.models.expenses.ExpenseCategory",
-            "billing.models.expenses.Supplier",
-            "billing.models.expenses.TenantCondominioRate",
-        )
-
-        # Group tabs: pagamenti+bollette (default) | contabilita' proprietari | configurazione.
-        # Ordine = primo tab visibile by default.
+        # Pagamenti: operativo | contabilità proprietari | configurazione.
+        # Il primo tab è il catch-all di billing (meno la configurazione).
         self.children.append(
             modules.Group(
                 title="Pagamenti e contabilità",
                 display="tabs",
                 children=[
-                    modules.AppList(
+                    modules.ModelList(
                         title="Pagamenti e bollette",
                         models=("billing.*",),
                         exclude=CONFIG_MODELS,
                     ),
-                    modules.AppList(
+                    modules.ModelList(
                         title="Contabilità proprietari",
                         models=("accounting.*",),
                     ),
-                    modules.AppList(
+                    modules.ModelList(
                         title="Configurazione",
                         models=CONFIG_MODELS,
                     ),
