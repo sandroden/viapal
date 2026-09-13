@@ -54,8 +54,13 @@ function etichettaDevice(): string {
 }
 
 export function usePush() {
+  // Fuori da HTTPS/localhost il browser non espone affatto queste API: la
+  // causa più comune è l'indirizzo (IP di LAN, hostname della macchina), non
+  // il browser. Tenerle distinte permette di dire *cosa* manca.
+  const contestoSicuro = window.isSecureContext;
   const supportato =
     'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const origine = window.location.origin;
 
   /** Il backend ha le chiavi VAPID configurate. */
   const abilitatoServer = ref(false);
@@ -66,7 +71,14 @@ export function usePush() {
   const loading = ref(false);
   const errore = ref('');
 
-  const disponibile = computed(() => supportato && abilitatoServer.value);
+  /** La verifica col server non è riuscita (rete assente, backend in
+   *  riavvio): diverso da "il canale non c'è". */
+  const verificaFallita = ref(false);
+
+  // Il pannello si disegna se il *server* ha il canale, anche quando questo
+  // browser non può usarlo: sparire in silenzio lascia l'utente a chiedersi
+  // dove sia finito il toggle, ed è esattamente il caso che non si diagnostica.
+  const disponibile = computed(() => abilitatoServer.value || verificaFallita.value);
 
   let publicKey = '';
 
@@ -75,20 +87,45 @@ export function usePush() {
     return reg.pushManager.getSubscription();
   }
 
-  /** Carica stato server + stato locale del device. Da chiamare in onMounted. */
-  async function init(): Promise<void> {
-    if (!supportato) return;
-    try {
-      const { data } = await api.get<VapidInfo>(
-        '/api/v1/push-subscriptions/vapid-public-key/',
-      );
-      abilitatoServer.value = data.abilitato;
-      publicKey = data.public_key;
-      if (!data.abilitato) return;
-      negato.value = Notification.permission === 'denied';
-      attivo.value = (await subscriptionCorrente()) !== null;
-    } catch {
-      abilitatoServer.value = false;
+  /** Carica stato server + stato locale del device. Da chiamare in onMounted.
+   *
+   *  Interroga il server anche su un browser che non supporta le push: è il
+   *  server a dire se il canale esiste, e senza quella risposta non si può
+   *  distinguere «non configurato» da «non l'ho potuto chiedere».
+   */
+  async function init(tentativi = 3): Promise<void> {
+    for (let i = 0; i < tentativi; i++) {
+      try {
+        const { data } = await api.get<VapidInfo>(
+          '/api/v1/push-subscriptions/vapid-public-key/',
+        );
+        verificaFallita.value = false;
+        abilitatoServer.value = data.abilitato;
+        publicKey = data.public_key;
+        if (!data.abilitato || !supportato) return;
+        negato.value = Notification.permission === 'denied';
+        attivo.value = (await subscriptionCorrente()) !== null;
+        return;
+      } catch (e: unknown) {
+        const stato = (e as { response?: { status?: number } })?.response?.status;
+        // Risposta vera del server (403 non autenticato, 404): il canale non
+        // c'è per questo utente, inutile insistere.
+        if (stato !== undefined && stato < 500) {
+          abilitatoServer.value = false;
+          verificaFallita.value = false;
+          return;
+        }
+        // Rete assente o backend in riavvio: il dev server riparte in qualche
+        // secondo e `init` gira una volta sola, in onMounted. Senza ritentare
+        // il toggle resterebbe sparito fino al reload successivo.
+        if (i === tentativi - 1) {
+          abilitatoServer.value = false;
+          verificaFallita.value = true;
+          errore.value = 'Non riesco a verificare le notifiche: server non raggiungibile.';
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+      }
     }
   }
 
@@ -162,6 +199,9 @@ export function usePush() {
 
   return {
     supportato,
+    contestoSicuro,
+    origine,
+    verificaFallita,
     disponibile,
     attivo,
     negato,

@@ -71,8 +71,22 @@ client con bundle pre-fix richiedono una pulizia SW manuale una tantum.
   `IsAuthenticated` e non riguarda solo gli inquilini: `/i/profilo` e
   `/p/profilo` (area personale del proprietario, dal menu sul proprio nome in
   testata).
-- `disponibile` = API del browser presenti **e** chiavi VAPID sul server: senza
-  chiavi il pannello non si disegna affatto, invece di offrire un toggle inerte.
+- `disponibile` = **il server** ha le chiavi (o non si è potuto chiedere): senza
+  canale il pannello non si disegna affatto, invece di offrire un toggle inerte.
+  Quando invece il canale c'è ma questo browser non può usarlo, il pannello
+  compare e **dice perché** — l'assenza muta non si distingue da un bug.
+- Tre cause producevano la stessa pagina vuota, ora separate in `usePush`:
+  - **contesto non sicuro** (`isSecureContext`): fuori da HTTPS/localhost il
+    browser non espone affatto `serviceWorker`/`PushManager`. È la causa più
+    comune e non dipende dal browser ma dall'indirizzo: `viapal.local:9020`
+    non è sicuro, `viapal.localhost:9020` sì (per specifica, **qualsiasi**
+    nome che finisce in `.localhost` lo è). Il banner riporta l'origine in chiaro.
+  - **API assenti in contesto sicuro**: finestra in navigazione privata.
+  - **verifica fallita** (`verificaFallita`): la GET `vapid-public-key` non è
+    arrivata a destinazione — backend in riavvio. `init` ritenta 3 volte con
+    backoff prima di arrendersi; gira una volta sola in `onMounted`, quindi
+    senza ritentativi il toggle spariva fino al reload successivo. Un 4xx del
+    server è invece una risposta vera: niente canale per quell'utente, non si insiste.
 - Chiavi VAPID presenti sia in dev (`core/settings/dev.py`) sia in produzione
   (`local.py`, generate con `genera_chiavi_vapid`).
 

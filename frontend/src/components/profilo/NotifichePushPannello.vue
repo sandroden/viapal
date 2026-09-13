@@ -1,7 +1,9 @@
 <template>
-  <!-- Il pannello esiste solo se il browser espone le API push *e* il server
-       ha le chiavi VAPID: senza chiavi il canale è un no-op silenzioso e un
-       toggle che non fa nulla sarebbe peggio di nessun toggle. -->
+  <!-- Il pannello si disegna se il *server* ha il canale (chiavi VAPID), o se
+       non si è potuto chiedere. Quando il server non ce l'ha resta invisibile:
+       un toggle che non fa nulla sarebbe peggio di nessun toggle. Ma se il
+       canale c'è e questo browser non può usarlo, il pannello lo dice —
+       l'assenza muta non si distingue da un bug. -->
   <q-card v-if="disponibile" data-testid="push-pannello">
     <q-item>
       <q-item-section avatar>
@@ -15,13 +17,34 @@
         <q-toggle
           :model-value="attivo"
           color="primary"
-          :disable="loading || negato"
+          :disable="loading || negato || !supportato || verificaFallita"
           data-testid="push-toggle"
           @update:model-value="toggle"
         />
       </q-item-section>
     </q-item>
-    <q-card-section v-if="negato" class="q-pt-none">
+    <!-- Il browser non espone le API push. Le due cause portano a rimedi
+         opposti — cambiare indirizzo, o cambiare finestra — quindi vanno
+         dette separate, con l'indirizzo in chiaro. -->
+    <q-card-section v-if="!supportato" class="q-pt-none">
+      <q-banner class="text-white bg-grey-7" rounded dense data-testid="push-non-supportato">
+        <template v-if="!contestoSicuro">
+          Le notifiche richiedono una connessione sicura: apri l'app su
+          <strong>https://</strong> oppure su <strong>localhost</strong>.
+          Questa pagina è su <strong>{{ origine }}</strong>.
+        </template>
+        <template v-else>
+          Questo browser non espone le notifiche push: capita nelle finestre
+          in navigazione privata e nei browser con i service worker disattivati.
+        </template>
+      </q-banner>
+    </q-card-section>
+    <q-card-section v-else-if="verificaFallita" class="q-pt-none">
+      <q-banner class="text-white bg-orange-8" rounded dense data-testid="push-verifica-fallita">
+        {{ errore }} Ricarica la pagina quando il server è di nuovo su.
+      </q-banner>
+    </q-card-section>
+    <q-card-section v-else-if="negato" class="q-pt-none">
       <q-banner class="text-white bg-orange-8" rounded dense>
         Le notifiche sono bloccate per questo sito: sbloccale dalle
         impostazioni del browser e ricarica la pagina.
@@ -30,7 +53,7 @@
     <q-card-section v-else-if="errore" class="q-pt-none">
       <q-banner class="text-white bg-red-7" rounded dense>{{ errore }}</q-banner>
     </q-card-section>
-    <q-card-section v-if="attivo" class="q-pt-none">
+    <q-card-section v-if="attivo && supportato" class="q-pt-none">
       <q-btn
         outline
         color="primary"
@@ -62,8 +85,21 @@ withDefaults(
 );
 
 const $q = useQuasar();
-const { disponibile, attivo, negato, loading, errore, init, abilita, disabilita, provaNotifica } =
-  usePush();
+const {
+  supportato,
+  contestoSicuro,
+  origine,
+  verificaFallita,
+  disponibile,
+  attivo,
+  negato,
+  loading,
+  errore,
+  init,
+  abilita,
+  disabilita,
+  provaNotifica,
+} = usePush();
 const provaLoading = ref(false);
 
 onMounted(() => {
