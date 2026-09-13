@@ -40,4 +40,5 @@ export const VP_ICONS: Record<string, string> = {
   list: 'M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01',
   // Catena: i link di lettura dei documenti.
   link: 'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5',
+  copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
 };

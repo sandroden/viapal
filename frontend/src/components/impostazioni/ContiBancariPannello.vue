@@ -46,6 +46,13 @@
             @elimina="eliminaConto(c)"
           >
             <BtnIcona
+              icona="copy"
+              :etichetta="`Copia i dati del conto ${c.banca} per un bonifico`"
+              tooltip="Copia i dati per un bonifico"
+              data-testid="copia-conto"
+              @click="copiaDatiBonifico(c)"
+            />
+            <BtnIcona
               v-if="puoGestire"
               icona="x"
               :etichetta="`Togli il conto ${c.banca} da questo immobile`"
@@ -176,7 +183,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useQuasar } from 'quasar';
+import { useQuasar, copyToClipboard } from 'quasar';
 import { api } from 'boot/axios';
 import { messaggioErrore } from 'src/utils/apiErrors';
 import { useAuthStore } from 'stores/auth';
@@ -309,6 +316,25 @@ function scollegaConto(c: BankAccountFull) {
       }
     })();
   });
+}
+
+/** I dati che servono a chi deve fare un bonifico, in un blocco incollabile
+ *  in un messaggio. L'IBAN va senza spazi: è la forma che i siti delle
+ *  banche accettano al volo. */
+function testoBonifico(c: BankAccountFull): string {
+  return [
+    `Intestatario: ${c.intestatario}`,
+    `IBAN: ${c.iban.replace(/\s+/g, '')}`,
+    `Banca: ${c.banca}`,
+  ].join('\n');
+}
+
+function copiaDatiBonifico(c: BankAccountFull) {
+  const testo = testoBonifico(c);
+  void copyToClipboard(testo).then(
+    () => $q.notify({ type: 'positive', message: 'Dati del conto copiati.', icon: 'check' }),
+    () => $q.notify({ type: 'negative', message: `Copia non riuscita. ${testo}` }),
+  );
 }
 
 /** L'elenco e lo store da cui pescano i select del conto: sempre insieme. */
