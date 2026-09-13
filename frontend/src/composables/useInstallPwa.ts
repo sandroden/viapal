@@ -22,6 +22,9 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 export type Piattaforma = 'ios' | 'android' | 'desktop';
+/** Motore del browser, non la marca: è il motore a decidere se e come si
+ *  installa. `chromium` copre Chrome, Edge, Brave, Opera, Samsung Internet. */
+export type MotoreBrowser = 'chromium' | 'firefox' | 'safari' | 'altro';
 
 const promptEvent = ref<BeforeInstallPromptEvent | null>(null);
 /** Installazione conclusa mentre la pagina era aperta (evento `appinstalled`). */
@@ -69,6 +72,20 @@ function rilevaPiattaforma(): Piattaforma {
   return 'desktop';
 }
 
+function rilevaMotore(piattaforma: Piattaforma): MotoreBrowser {
+  if (typeof navigator === 'undefined') return 'altro';
+  const ua = navigator.userAgent;
+  // Su iOS sono tutti WebKit per obbligo di piattaforma: Chrome e Firefox
+  // per iOS si installano con la stessa condivisione di Safari.
+  if (piattaforma === 'ios') return 'safari';
+  if (/FxiOS|Firefox\//i.test(ua)) return 'firefox';
+  // Edge e Opera dichiarano anche "Chrome": il test su Chrome li copre tutti,
+  // e per l'installazione si comportano allo stesso modo.
+  if (/Chrome\/|Chromium\/|CriOS/i.test(ua)) return 'chromium';
+  if (/Safari\//i.test(ua)) return 'safari';
+  return 'altro';
+}
+
 /**
  * Browser incorporato in un'altra app (Facebook, Instagram…): il link
  * arriverà proprio di lì, e da lì non si installa nulla. Va detto, o
@@ -91,12 +108,31 @@ function rilevaInApp(piattaforma: Piattaforma): boolean {
 
 export function useInstallPwa() {
   const piattaforma = rilevaPiattaforma();
+  const motore = rilevaMotore(piattaforma);
   const inApp = rilevaInApp(piattaforma);
 
   /** L'app è già installata (o lo è appena stata). */
   const installata = computed(() => inStandalone.value || installataOra.value);
   /** Chrome/Edge ci ha dato l'evento: possiamo installare con un bottone. */
   const installabileConBottone = computed(() => promptEvent.value !== null);
+
+  /**
+   * Firefox **su computer** non installa le app web: non c'è API, non c'è
+   * voce di menu, servirebbe un'estensione. Dirgli "cerca l'icona Installa
+   * nella barra degli indirizzi" è mandarlo a cercare una cosa che non
+   * esiste. Su Android invece Firefox installa senza problemi.
+   *
+   * L'evento `beforeinstallprompt` batte lo user agent: se il browser ci ha
+   * offerto l'installazione, sa installare — e l'euristica, che è pur
+   * sempre una lettura di stringhe, non deve poter nascondere un bottone
+   * che funziona il giorno in cui Firefox lo implementa.
+   *
+   * Nota: non installabile ≠ senza notifiche. Firefox su computer le push
+   * le riceve lo stesso; è solo iOS a pretendere l'app installata.
+   */
+  const installabile = computed(
+    () => installabileConBottone.value || !(piattaforma === 'desktop' && motore === 'firefox'),
+  );
 
   /**
    * Su iOS le notifiche push funzionano **solo** dentro la PWA installata:
@@ -118,6 +154,8 @@ export function useInstallPwa() {
 
   return {
     piattaforma,
+    motore,
+    installabile,
     inApp,
     installata,
     installabileConBottone,

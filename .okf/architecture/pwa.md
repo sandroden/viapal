@@ -17,7 +17,7 @@ resources:
 tags: [architecture, pwa, service-worker, push]
 generated:
   by: process:okf-migrate
-  at: 2026-09-14T01:15:00Z
+  at: 2026-09-14T09:00:00Z
 ---
 
 # Overview
@@ -81,6 +81,24 @@ passo 2 che sparisce a utente già autenticato e i numeri che si rinumerano.
   push iOS esistono solo dentro la PWA installata (≥ 16.4), il passo 3 su
   iOS-non-installato mostra un avviso con l'ordine dei passi invece del
   toggle: un interruttore che non può funzionare è peggio di una spiegazione.
+- **Le istruzioni dipendono dal browser, non dalla piattaforma.** Una sola
+  pagina "per computer" mente a metà dei lettori:
+  - **Firefox su computer non installa affatto** le app web (serve
+    un'estensione; il supporto nativo è sperimentale e solo su Windows).
+    Lì le istruzioni spariscono e si dice com'è, con la strada che funziona
+    — e si chiarisce che le **notifiche**, quelle, vanno lo stesso: iOS è
+    l'unico posto dove servono l'app installata. Su Android invece Firefox
+    installa senza problemi, quindi la regola è `desktop && firefox`.
+  - **Safari su Mac**: Archivio → Aggiungi al Dock, e solo da macOS 14.
+  - **Su iOS sono tutti WebKit** per obbligo di piattaforma: una sola
+    istruzione, cambia solo dove sta il pulsante Condividi.
+  - `beforeinstallprompt` **batte lo user agent**: se il browser ha offerto
+    l'installazione sa installare, e l'euristica (che legge stringhe) non
+    deve poter nascondere un bottone che funziona.
+- **Ogni claim va verificato sul browser giusto**: «è l'unico modo per
+  ricevere le notifiche» era falso ovunque tranne iOS, e «installa sulla
+  schermata principale» è lessico da telefono letto anche su un computer.
+  Titolo, occhiello e testo della striscia si adattano alla piattaforma.
 - **Stato dedotto dal vivo**, mai memorizzato: `display-mode: standalone`
   (più `navigator.standalone` per iOS) e l'evento `appinstalled`. Così la
   stessa URL, riaperta dall'icona, riconosce da sé di essere nell'app.

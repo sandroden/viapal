@@ -1,11 +1,15 @@
 <template>
   <q-page padding class="vp-inst">
     <div class="vp-eyebrow">Viapal</div>
-    <h1 class="vp-display vp-inst__titolo">Installa l'app sul telefono</h1>
+    <h1 class="vp-display vp-inst__titolo">{{ titolo }}</h1>
     <p class="vp-inst__occhiello">
-      Viapal è un sito che si comporta come un'app: si aggiunge alla schermata principale del
-      telefono e da lì si apre con un tocco, senza passare dal browser e senza rifare l'accesso ogni
-      volta. È anche l'unico modo per ricevere le notifiche.
+      Viapal è un sito che si comporta come un'app: si aggiunge
+      {{ suDesktop ? 'al computer' : 'alla schermata principale del telefono' }} e da lì si apre
+      {{ suDesktop ? 'con un clic' : 'con un tocco' }}, senza passare dal browser e senza rifare
+      l'accesso ogni volta.
+      <template v-if="piattaforma === 'ios'">
+        Su iPhone è anche l'unica strada per ricevere le notifiche.
+      </template>
     </p>
 
     <!-- Cosa ci si guadagna: la pagina la apre chi non sa perché dovrebbe
@@ -24,7 +28,7 @@
           <q-icon v-if="installata" name="check" size="18px" />
           <template v-else>1</template>
         </div>
-        <h2>Metti Viapal nella schermata principale</h2>
+        <h2>{{ titoloPasso }}</h2>
       </div>
 
       <div class="vp-card vp-inst__corpo">
@@ -49,6 +53,24 @@
             browser» nel menu in alto.
           </q-banner>
 
+          <!-- Firefox su computer non ha alcun modo di installare: mandarlo a
+               cercare la voce di menu delle istruzioni sarebbe una caccia a
+               vuoto. Si dice com'è e si indica la strada che funziona. -->
+          <q-banner
+            v-if="!installabile"
+            rounded
+            class="vp-inst__banner"
+            data-testid="installa-non-supportato"
+          >
+            <template #avatar>
+              <q-icon name="info" color="primary" />
+            </template>
+            <strong>Firefox su computer non installa le app web.</strong> Per avere Viapal come
+            applicazione apri questa pagina in Chrome o in Edge — oppure, meglio, installala sul
+            telefono: è lì che servono le notifiche. Le notifiche su Firefox funzionano comunque
+            anche senza installare: vai pure al passo successivo.
+          </q-banner>
+
           <q-btn
             v-if="installabileConBottone"
             unelevated
@@ -65,7 +87,7 @@
           <!-- Le istruzioni manuali restano visibili anche quando il bottone
                c'è: se il browser rifiuta il prompt (o l'utente lo chiude per
                sbaglio) senza di esse non resta niente da fare. -->
-          <div class="vp-inst__istruzioni" data-testid="installa-istruzioni">
+          <div v-if="installabile" class="vp-inst__istruzioni" data-testid="installa-istruzioni">
             <div class="vp-section-title">
               {{ installabileConBottone ? 'Oppure a mano' : istruzioni.titolo }}
             </div>
@@ -169,12 +191,20 @@ const router = useRouter();
 const $q = useQuasar();
 const {
   piattaforma,
+  motore,
+  installabile,
   inApp,
   installata,
   installabileConBottone,
   pushRichiedeInstallazione,
   installa,
 } = useInstallPwa();
+
+const suDesktop = piattaforma === 'desktop';
+const titolo = suDesktop ? "Installa l'app sul computer" : "Installa l'app sul telefono";
+const titoloPasso = suDesktop
+  ? 'Installa Viapal sul computer'
+  : 'Metti Viapal nella schermata principale';
 
 // La pagina è pubblica: quasi sempre la si apre prima del login, quando il
 // ruolo non si sa ancora. Anche dopo, distinguere inquilino e proprietario
@@ -185,19 +215,31 @@ const vantaggi = [
     icona: 'notifications_active',
     testo: 'Ti avvisa quando c’è un pagamento da fare o da confermare',
   },
-  { icona: 'bolt', testo: 'Si apre con un tocco, come un’app' },
+  {
+    icona: 'bolt',
+    testo: suDesktop
+      ? 'Si apre come un’applicazione, senza browser'
+      : 'Si apre con un tocco, come un’app',
+  },
   { icona: 'lock_open', testo: 'Resti connesso: niente password ogni volta' },
 ];
 
 const descrizioneNotifiche = 'Avvisi di scadenze e pagamenti, anche ad app chiusa';
 
-/** Le istruzioni manuali, l'unica strada su iOS e la rete di sicurezza altrove. */
+/** Le istruzioni manuali: l'unica strada su iOS e su Safari, e la rete di
+ *  sicurezza dove il prompt automatico c'è ma può essere chiuso per sbaglio.
+ *
+ *  Dipendono dal **browser**, non solo dalla piattaforma: su computer la
+ *  voce di menu di Chrome non esiste in Safari, e in Firefox non esiste
+ *  affatto (quel ramo non arriva neppure qui, vedi `installabile`). */
 const istruzioni = computed(() => {
   if (piattaforma === 'ios') {
     return {
-      titolo: 'Su iPhone e iPad (Safari)',
+      // Su iOS anche Chrome e Firefox sono WebKit: stessa condivisione,
+      // cambia solo dove sta il pulsante.
+      titolo: 'Su iPhone e iPad',
       passi: [
-        'Tocca l’icona <strong>Condividi</strong> in basso (il quadrato con la freccia in su).',
+        'Tocca <strong>Condividi</strong>, il quadrato con la freccia in su (in Safari è in basso, negli altri browser nel menu in alto).',
         'Scorri e tocca <strong>Aggiungi a Home</strong>.',
         'Conferma con <strong>Aggiungi</strong>: l’icona di Viapal compare fra le altre app.',
       ],
@@ -205,6 +247,17 @@ const istruzioni = computed(() => {
     };
   }
   if (piattaforma === 'android') {
+    if (motore === 'firefox') {
+      return {
+        titolo: 'Su Android (Firefox)',
+        passi: [
+          'Tocca i <strong>tre puntini</strong> in alto a destra.',
+          'Scegli <strong>Installa</strong> (in alcune versioni: «Aggiungi a schermata Home»).',
+          'Conferma: l’icona di Viapal compare fra le altre app.',
+        ],
+        nota: '',
+      };
+    }
     return {
       titolo: 'Su Android (Chrome)',
       passi: [
@@ -215,8 +268,20 @@ const istruzioni = computed(() => {
       nota: 'Non trovi «Installa app»? Apri questo link in Chrome: dal browser di WhatsApp non si installa.',
     };
   }
+  if (motore === 'safari') {
+    return {
+      // Safari installa dal menu Archivio, e solo da macOS 14 (Sonoma).
+      titolo: 'Su Mac (Safari)',
+      passi: [
+        'Apri il menu <strong>Archivio</strong> nella barra in alto.',
+        'Scegli <strong>Aggiungi al Dock</strong>.',
+        'Conferma: Viapal compare nel Dock e si apre come un’applicazione.',
+      ],
+      nota: 'La voce c’è da macOS 14 (Sonoma) in poi. Su versioni precedenti usa Chrome o Edge.',
+    };
+  }
   return {
-    titolo: 'Su computer (Chrome o Edge)',
+    titolo: 'Su computer (Chrome, Edge o Brave)',
     passi: [
       'Cerca l’icona <strong>Installa</strong> nella barra degli indirizzi, a destra.',
       'In alternativa: menu <strong>⋮</strong> → <strong>Installa Viapal</strong>.',
