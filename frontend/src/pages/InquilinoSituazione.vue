@@ -455,15 +455,30 @@
                 <q-list dense>
                   <q-item>
                     <q-item-section>
-                      <q-item-label caption>Versato</q-item-label>
+                      <q-item-label caption>
+                        {{ depositoIncassatoParziale ? 'Pattuito' : 'Versato' }}
+                      </q-item-label>
                       <q-item-label class="vp-mono">
-                        {{ formattaEuro(Number(situazione.tenant.deposito_versato || 0)) }}
+                        {{ formattaEuro(depositoPattuito) }}
                       </q-item-label>
                       <q-item-label
                         v-if="situazione.tenant.data_versamento_deposito"
                         caption
                       >
-                        il {{ formattaData(situazione.tenant.data_versamento_deposito) }}
+                        {{ depositoIncassatoParziale ? 'pattuito il' : 'il' }}
+                        {{ formattaData(situazione.tenant.data_versamento_deposito) }}
+                      </q-item-label>
+                      <q-item-label
+                        v-if="depositoIncassatoParziale"
+                        caption
+                        class="vp-i-sit__sim-warn"
+                        data-testid="deposito-incassato-parziale"
+                      >
+                        {{
+                          depositoIncassato > 0
+                            ? `incassato finora ${formattaEuro(depositoIncassato)}`
+                            : 'non ancora incassato'
+                        }}
                       </q-item-label>
                     </q-item-section>
                   </q-item>
@@ -490,7 +505,12 @@
                   </div>
                   <q-list dense>
                     <q-item>
-                      <q-item-section>Deposito versato</q-item-section>
+                      <q-item-section>
+                        Deposito incassato
+                        <q-item-label v-if="depositoIncassatoParziale" caption>
+                          di {{ formattaEuro(depositoPattuito) }} pattuiti
+                        </q-item-label>
+                      </q-item-section>
                       <q-item-section side>
                         <span class="vp-mono">{{ formattaEuro(simulazioneUscita.versato) }}</span>
                       </q-item-section>
@@ -498,7 +518,7 @@
                     <q-item v-if="simulazioneUscita.daRestituire !== simulazioneUscita.versato">
                       <q-item-section>
                         Importo da rendere
-                        <q-item-label caption>override su versato</q-item-label>
+                        <q-item-label caption>override sull'incassato</q-item-label>
                       </q-item-section>
                       <q-item-section side>
                         <span class="vp-mono">{{ formattaEuro(simulazioneUscita.daRestituire) }}</span>
@@ -540,7 +560,7 @@
                     {{
                       simulazioneUscita.giaRestituito
                         ? 'Il deposito è stato restituito: nulla da trattenere. Il saldo residuo resta da regolare a parte.'
-                        : 'Stima alla data odierna: deposito versato al netto del saldo totale cumulativo (affitti, utenze, extra). Non include addebiti di fine locazione non ancora registrati.'
+                        : 'Stima alla data odierna: deposito effettivamente incassato al netto del saldo totale cumulativo (affitti, utenze, extra). Non include addebiti di fine locazione non ancora registrati.'
                     }}
                   </div>
                 </template>
@@ -692,19 +712,32 @@ const rigaRestituzione = computed(() => {
 const restituzioneEffettuata = computed(
   () => rigaRestituzione.value?.stato === 'pagato',
 );
-const importoDaRestituire = computed(() => {
-  const t = situazione.value?.tenant;
-  if (!t) return 0;
-  const override = Number(t.deposito_da_restituire || 0);
-  if (override > 0) return override;
-  return Number(t.deposito_versato || 0);
-});
+// Deposito: il pattuito in anagrafica (con le rate è il totale concordato,
+// valorizzato subito) contro quanto è entrato davvero. Tutto ciò che
+// riguarda la restituzione ragiona sull'incassato: non si rende ciò che
+// non è mai arrivato.
+const depositoPattuito = computed(
+  () => Number(situazione.value?.deposito?.pattuito ?? 0),
+);
+const depositoIncassato = computed(
+  () => Number(situazione.value?.deposito?.incassato ?? 0),
+);
+const depositoIncassatoParziale = computed(
+  () =>
+    depositoPattuito.value > 0 &&
+    depositoIncassato.value < depositoPattuito.value - 0.005,
+);
+// Importo lordo da rendere all'uscita: override esplicito se valorizzato,
+// altrimenti l'incassato (calcolato dal backend).
+const importoDaRestituire = computed(
+  () => Number(situazione.value?.deposito?.da_rendere ?? 0),
+);
 const simulazioneUscita = computed(() => {
   const s = situazione.value;
   if (!s) return null;
-  const versato = Number(s.tenant.deposito_versato || 0);
+  const versato = depositoIncassato.value;
   const daRestituire = importoDaRestituire.value;
-  if (versato <= 0 && daRestituire <= 0) return null;
+  if (depositoPattuito.value <= 0 && daRestituire <= 0) return null;
   const saldo = s.saldi.totale;
   const restituito = restituzioneEffettuata.value;
   const netto = restituito ? 0 : daRestituire + saldo;

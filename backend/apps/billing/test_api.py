@@ -42,6 +42,25 @@ def api_client():
     return APIClient(enforce_csrf_checks=False)
 
 
+def _segna_deposito_incassato(tenant):
+    """Marca pagate le righe DEPOSITO positive (versamento/rate) del
+    tenant: il lordo da rendere è l'incassato, non il pattuito. Pagato
+    implica incassante (vincolo DB): serve un proprietario qualsiasi."""
+    owner = OwnerProfile.objects.first() or OwnerProfile.objects.create(
+        user=User.objects.create_user("incassante-deposito"),
+        nominativo="Incassante deposito",
+    )
+    for r in Receivable.objects.filter(
+        assignment__tenant=tenant,
+        causale=Receivable.Causale.DEPOSITO,
+        importo_dovuto__gt=0,
+    ):
+        r.importo_pagato = r.importo_dovuto
+        r.stato = StatoPagamento.PAGATO
+        r.incassato_da_owner = owner
+        r.save(update_fields=["importo_pagato", "stato", "incassato_da_owner"])
+
+
 @pytest.fixture
 def gruppo_proprietari(db):
     grp, _ = Group.objects.get_or_create(name="proprietari")
@@ -1383,6 +1402,7 @@ class TestRendiconto:
         tenant_1.data_versamento_deposito = datetime.date(2024, 9, 1)
         tenant_1.data_restituzione_prevista = datetime.date(2026, 6, 30)
         tenant_1.save()
+        _segna_deposito_incassato(tenant_1)
 
         resp = client_prop.get(
             f"/api/v1/tenants/{tenant_1.id}/rendiconto/"
@@ -1404,9 +1424,10 @@ class TestRendiconto:
         assert data["totali"]["pagato"] == 0.0
         assert data["totali"]["saldo"] == -450.0
 
-        # Chiusura: da_restituire = versato (no override) = 1000
+        # Chiusura: da_restituire = incassato (no override) = 1000
         dep = data["deposito"]
         assert dep["versato"] == 1000.0
+        assert dep["versato_effettivo"] == 1000.0
         assert dep["da_restituire"] == 1000.0
         assert dep["override"] is False
         assert dep["restituito_effettivo"] is False
@@ -1551,6 +1572,24 @@ class TestRendiconto:
         saldi = resp.json()["saldi"]
         assert saldi["anno"] == 50.0
         assert saldi["totale"] == 50.0
+
+    def test_deposito_pattuito_non_incassato_non_si_rende(
+        self, client_prop, tenant_1, assignment_1, rent_payment_1
+    ):
+        """Deposito pattuito (riga di versamento attesa, nulla pagato): il
+        lordo da rendere è 0 e il debito resta tutto a carico."""
+        tenant_1.deposito_versato = Decimal("1000")
+        tenant_1.data_versamento_deposito = datetime.date(2024, 9, 1)
+        tenant_1.save()
+
+        resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/rendiconto/")
+        assert resp.status_code == 200
+        dep = resp.json()["deposito"]
+        assert dep["versato"] == 1000.0
+        assert dep["versato_effettivo"] == 0.0
+        assert dep["da_restituire"] == 0.0
+        assert dep["netto_da_restituire"] == 0.0
+        assert dep["residuo_debito"] == 400.0
 
     def test_override_importo_da_restituire(
         self, client_prop, tenant_1, assignment_1
@@ -2798,9 +2837,11 @@ class TestChiusuraDeposito:
         sarà il POST a generare la riga."""
         tenant_1.deposito_versato = Decimal("380.00")
         tenant_1.save(update_fields=["deposito_versato"])
+        _segna_deposito_incassato(tenant_1)
         resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/chiusura/")
         assert resp.status_code == 200
         body = resp.json()
+        assert body["deposito_incassato"] == 380.0
         assert body["restituzione"] is None
         assert body["registrabile"] is True
         virtuale = body["componenti"][0]
@@ -2891,6 +2932,7 @@ class TestChiusuraDeposito:
         riga nasce con il lordo suggerito e la data del bonifico."""
         tenant_1.deposito_versato = Decimal("380.00")
         tenant_1.save(update_fields=["deposito_versato"])
+        _segna_deposito_incassato(tenant_1)
         resp = client_prop.post(
             f"/api/v1/tenants/{tenant_1.id}/chiusura/",
             {"data": "2026-07-03", "importo": "353.31", "owner_account": owner_account.id},
@@ -2906,6 +2948,30 @@ class TestChiusuraDeposito:
         assert riga.stato == StatoPagamento.PAGATO
         tenant_1.refresh_from_db()
         assert tenant_1.data_restituzione_prevista == datetime.date(2026, 7, 3)
+
+    def test_get_deposito_pattuito_non_incassato(
+        self, client_prop, tenant_1, assignment_1, charge_maggio, owner_account
+    ):
+        """Rate del deposito ancora tutte attese: niente componente
+        "deposito da rendere", il netto è il solo debito, e il bonifico di
+        chiusura è rifiutato (non si rende ciò che non è entrato)."""
+        tenant_1.deposito_versato = Decimal("380.00")
+        tenant_1.save(update_fields=["deposito_versato"])
+        resp = client_prop.get(f"/api/v1/tenants/{tenant_1.id}/chiusura/")
+        assert resp.status_code == 200, resp.content
+        body = resp.json()
+        assert body["deposito_versato"] == 380.0
+        assert body["deposito_incassato"] == 0.0
+        assert body["importo_restituzione"] == 0.0
+        assert all(c["causale"] != "deposito" for c in body["componenti"])
+        assert body["netto"] == -26.69
+        assert body["registrabile"] is False
+        resp = client_prop.post(
+            f"/api/v1/tenants/{tenant_1.id}/chiusura/",
+            {"data": "2026-07-03", "importo": "10", "owner_account": owner_account.id},
+            format="json",
+        )
+        assert resp.status_code == 409
 
     def test_post_senza_deposito_409(
         self, client_prop, tenant_1, assignment_1, charge_maggio, owner_account
@@ -3098,13 +3164,15 @@ def assignment_uscita(db, room_1, tenant_1):
     tenant_1.deposito_versato = Decimal("380")
     tenant_1.data_versamento_deposito = datetime.date(2024, 9, 1)
     tenant_1.save()
-    return RoomAssignment.objects.create(
+    a = RoomAssignment.objects.create(
         room=room_1,
         tenant=tenant_1,
         valid_from=datetime.date(2024, 9, 1),
         valid_to=datetime.date(2026, 6, 30),
         canone_mensile=Decimal("400"),
     )
+    _segna_deposito_incassato(tenant_1)
+    return a
 
 
 class TestRestituzioneDeposito:
@@ -3118,7 +3186,7 @@ class TestRestituzioneDeposito:
         assert resp.status_code == 200
         data = resp.json()
         assert data["esiste"] is False
-        # data suggerita = fine occupazione; importo = deposito versato
+        # data suggerita = fine occupazione; importo = deposito incassato
         assert data["data_suggerita"] == "2026-06-30"
         assert data["importo_suggerito"] == 380.0
 

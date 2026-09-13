@@ -23,6 +23,7 @@ from ._common import (
     _descrizione_receivable,
     _giorni_ritardo,
 )
+from .deposito import importo_suggerito, versato_effettivo
 from .rendiconto import _resti_per_anno, _sbilancio_progressivo
 
 # ---------------------------------------------------------------------------
@@ -516,6 +517,13 @@ class TenantSituazioneView(APIView):
                 "pagato_anno": float(deposito_pagato),
                 "saldo": float(deposito_pagato - deposito_dovuto),
                 "righe": deposito_righe,
+                # Fuori dall'anno: il pattuito in anagrafica, quanto è
+                # entrato davvero (rate pagate) e il lordo che si renderebbe
+                # oggi (override o incassato). La simulazione di uscita
+                # ragiona su questi, non su ``tenant.deposito_versato``.
+                "pattuito": float(tenant.deposito_versato or 0),
+                "incassato": float(versato_effettivo(tenant)),
+                "da_rendere": float(importo_suggerito(tenant)),
             },
             "totali_anno": {
                 "dovuto": float(totale_dovuto),

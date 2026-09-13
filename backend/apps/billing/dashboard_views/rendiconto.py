@@ -417,9 +417,13 @@ class RendicontoView(APIView):
             versamenti.append(v)
 
         # --- Chiusura deposito ---
+        from .deposito import importo_suggerito
+
         versato = tenant.deposito_versato or Decimal("0")
         override = tenant.deposito_da_restituire or Decimal("0")
-        da_restituire = override if override > 0 else versato
+        # Lordo da rendere: override esplicito, altrimenti l'incassato
+        # effettivo (mai il pattuito).
+        da_restituire = importo_suggerito(tenant)
 
         dep_qs = list(
             Receivable.objects.filter(

@@ -12,7 +12,7 @@ resources:
 tags: [domain, deposito, billing]
 generated:
   by: process:okf-migrate
-  at: 2026-09-07T00:00:00Z
+  at: 2026-09-13T00:00:00Z
 ---
 
 # Overview
@@ -57,6 +57,34 @@ dichiara/conferma pagato, sole rate positive). Le restituzioni
 compaiono in `ultimi_pagamenti` (home inquilino) insieme alle causali
 operative.
 
+# Pattuito vs incassato: non si rende ciò che non è entrato
+
+Dal 2026-09-13 (caso Rosalia: 2 rate da 470 appena create, nulla pagato,
+e la simulazione mostrava "versato 940" e 576,50 da rendere) **tutto ciò
+che riguarda la restituzione ragiona sull'incassato effettivo**, mai sul
+pattuito. Un solo punto di verità in `dashboard_views/deposito.py`:
+
+- `versato_effettivo(tenant)` = Σ `importo_pagato` delle righe DEPOSITO
+  positive (rate comprese);
+- `importo_suggerito(tenant)` (lordo da rendere) = `deposito_da_restituire`
+  se > 0, altrimenti `versato_effettivo` — **non più** `deposito_versato`.
+
+Lo usano la vista di restituzione esplicita, la chiusura (componente
+virtuale "deposito da rendere", `registrabile` è falso se non c'è nulla
+da rendere e la riga manca, 409 sul POST), il rendiconto
+(`deposito.da_restituire`) e la situazione, che espone fuori dall'anno
+`deposito.pattuito` / `incassato` / `da_rendere`. Le card Deposito dei
+due frontend (dettaglio proprietario e `/i/situazione`) leggono quei tre
+campi: con incasso parziale l'etichetta diventa "Pattuito … · incassato
+finora X" (o "non ancora incassato") e la simulazione mostra "Deposito
+incassato, di Y pattuiti". Con l'override valorizzato l'override vince
+ancora, anche sopra l'incassato: è una scelta esplicita di chi lo scrive.
+
+Effetto sui dati reali: chi ha la riga di versamento `atteso` senza
+allocazioni (caso Mehmet, 1250 del 2025-11) vede "non ancora incassato"
+e 0 da rendere finché il bonifico non viene riconciliato — è la verità
+del sistema, non un bug, e il rimedio è la riconciliazione.
+
 # Deposito nel rendiconto
 
 Poiché `deposito_versato` è il pattuito, il rendiconto NON lo usa come
@@ -85,11 +113,12 @@ pattuiti):
   trattato come "non valorizzato" e fa fallback su `deposito_versato`.
   Trattenere = lasciare `data_restituzione_prevista` vuota, cioè non far
   scattare il trigger;
-- `deposito_versato` è il **pattuito**, non l'incassato: con un versamento
-  parziale la restituzione proporrebbe il pattuito. Chiudendo la posizione
-  vanno allineati entrambi (Receivable e anagrafica), e lo stato del
-  Receivable **non** si riallinea da solo — `_riallinea_receivable` scatta
-  sulle allocazioni, non sul salvataggio dell'addebito.
+- `deposito_versato` è il **pattuito**, non l'incassato: fino al 2026-09-13
+  con un versamento parziale la restituzione proponeva il pattuito (oggi
+  propone l'incassato, vedi sopra). Chiudendo la posizione vanno comunque
+  allineati entrambi (Receivable e anagrafica), e lo stato del Receivable
+  **non** si riallinea da solo — `_riallinea_receivable` scatta sulle
+  allocazioni, non sul salvataggio dell'addebito.
 
 Un deposito trattenuto è di fatto un ricavo, ma la causale DEPOSITO è fuori
 da `CAUSALI_OPERATIVE`: per vederlo nel [conto economico](/domain/conto-economico.md)
@@ -117,7 +146,8 @@ simulazione; la restituzione già saldata non compare fra le componenti.
 `bonifici` elenca i movimenti che hanno pagato la restituzione con tutte le
 loro imputazioni e lo scarto: è la memoria di come si componeva quel che si
 è reso, e resta visibile dopo. `registrabile` = c'è un'assegnazione e la
-restituzione non è saldata (riga assente compresa: la crea il POST).
+restituzione non è saldata (riga assente compresa, purché l'incassato
+da rendere sia > 0: la crea il POST).
 
 `POST tenants/<id>/chiusura/` `{data, importo>0, owner_account, descrizione?,
 note?}` genera la riga di restituzione se manca (lordo suggerito, data del

@@ -4,6 +4,8 @@ Restituzione esplicita del deposito cauzionale.
 import datetime
 from decimal import Decimal
 
+from django.db.models import Sum
+from django.db.models.functions import Coalesce
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -25,12 +27,26 @@ def riga_restituzione(tenant: TenantProfile):
     )
 
 
+def versato_effettivo(tenant: TenantProfile) -> Decimal:
+    """Quanto del deposito è entrato davvero: la somma dei pagamenti sulle
+    righe DEPOSITO positive (rate comprese). ``deposito_versato`` in
+    anagrafica è il **pattuito**, valorizzato subito dalla prima
+    assegnazione anche se nessuna rata è ancora stata incassata."""
+    return Receivable.objects.filter(
+        assignment__tenant=tenant,
+        causale=Receivable.Causale.DEPOSITO,
+        importo_dovuto__gt=0,
+    ).aggregate(s=Coalesce(Sum("importo_pagato"), Decimal("0")))["s"]
+
+
 def importo_suggerito(tenant: TenantProfile) -> Decimal:
-    """Lordo da rendere: override esplicito o deposito versato."""
+    """Lordo da rendere: override esplicito, altrimenti il deposito
+    effettivamente incassato (mai il pattuito: non si rende ciò che non è
+    mai entrato)."""
     override = tenant.deposito_da_restituire or Decimal("0")
     if override > 0:
         return override
-    return tenant.deposito_versato or Decimal("0")
+    return versato_effettivo(tenant)
 
 
 def crea_o_aggiorna_restituzione(tenant: TenantProfile, data_rest, importo: Decimal):
@@ -93,7 +109,7 @@ class RestituzioneDepositoView(APIView):
 
     GET /api/v1/tenants/<tenant_id>/restituzione-deposito/
         → stato corrente + valori suggeriti (data = fine occupazione,
-        importo lordo = override o deposito versato).
+        importo lordo = override o deposito effettivamente incassato).
     POST /api/v1/tenants/<tenant_id>/restituzione-deposito/
         body: {data_restituzione, importo}
         → crea o aggiorna il Receivable DEPOSITO negativo.
@@ -294,6 +310,7 @@ class ChiusuraDepositoView(APIView):
             "bonifici": self._bonifici(restituzione),
             "tenant_id": tenant.id,
             "deposito_versato": float(tenant.deposito_versato or 0),
+            "deposito_incassato": float(versato_effettivo(tenant)),
             "importo_restituzione": float(
                 -restituzione.importo_dovuto if restituzione else suggerito
             ),
@@ -318,9 +335,10 @@ class ChiusuraDepositoView(APIView):
             "registrabile": bool(
                 ha_assegnazioni
                 and (
-                    restituzione is None
+                    (restituzione is None and suggerito > 0)
                     or (
-                        not pagata
+                        restituzione is not None
+                        and not pagata
                         and abs(
                             restituzione.importo_dovuto
                             - (restituzione.importo_pagato or 0)
@@ -407,7 +425,7 @@ class ChiusuraDepositoView(APIView):
             lordo = importo_suggerito(tenant)
             if lordo <= 0:
                 return Response(
-                    {"detail": "Nessun deposito versato: nulla da restituire."},
+                    {"detail": "Nessun deposito incassato: nulla da restituire."},
                     status=409,
                 )
             riga, esito = crea_o_aggiorna_restituzione(tenant, data, lordo)

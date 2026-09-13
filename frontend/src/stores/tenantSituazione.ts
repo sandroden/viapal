@@ -137,6 +137,12 @@ export interface TenantSituazione {
     pagato_anno: number;
     saldo: number;
     righe: DepositoRiga[];
+    /** Totale pattuito in anagrafica (con le rate, anche se non ancora incassato). */
+    pattuito: number;
+    /** Quanto è entrato davvero: somma dei pagamenti sulle rate. */
+    incassato: number;
+    /** Lordo che si renderebbe oggi: override esplicito o incassato. */
+    da_rendere: number;
   };
   totali_anno: {
     dovuto: number;
@@ -229,6 +235,7 @@ export interface ChiusuraBonifico {
 export interface Chiusura {
   tenant_id: number;
   deposito_versato: number;
+  deposito_incassato: number;
   importo_restituzione: number;
   restituzione: {
     receivable_id: number;
