@@ -9,10 +9,11 @@ resources:
   - backend/apps/billing/management/commands/riconcilia_storico_manuale.py
   - backend/apps/billing/management/commands/pin_bollette_periodi_emessi.py
   - backend/apps/billing/management/commands/genera_storico.py
+  - backend/apps/accounting/management/commands/importa_trasferimenti_fabio.py
 tags: [playbook, import, storico, data]
 generated:
   by: process:okf-migrate
-  at: 2026-09-05T00:00:00Z
+  at: 2026-09-15T00:00:00Z
 ---
 
 # Overview
@@ -53,6 +54,7 @@ di scrittura in parallelo sullo stesso immobile.
 | `riallinea_dichiarati` | riporta `importo_pagato` dei DICHIARATO alla copertura reale (prima `dichiara_pagato` lo sovrascriveva col dovuto) |
 | `sana_incassi_senza_incassante` | lista chiusa di ricostruzioni dei PAGATO senza incassante; da eseguire **prima** della migration del vincolo — [incasso sempre attribuito](/decisions/incasso-sempre-attribuito.md) |
 | `sana_allocazioni_eccedenti` | riduce le allocazioni che superano l'importo della BT (dalla più recente) e riallinea; dry-run, `--apply`, `--bt` — [allocazioni non eccedenti](/decisions/allocazioni-non-eccedenti.md) |
+| `importa_trasferimenti_fabio` | 42 trasferimenti di Bruna a Fabio dall'estratto bonifici + 2 rientri, marcati `distribuzione`; rimuove gli aggregati del libro mano e converte le due Expense IMU (lista chiusa, idempotente, anteprima di default) |
 
 # Note operative
 
@@ -61,7 +63,15 @@ di scrittura in parallelo sullo stesso immobile.
 - Alcune riconciliazioni restano manuali (utenze, affitti, cauzioni): non forzare
   i comandi su record scoperti/orfani noti.
 - Le BT **sintetiche** (libro mano, incassi non monetari) sono riconoscibili
-  dalla nota: nell'estratto conto reale non esistono.
+  dalla nota: nell'estratto conto reale non esistono. Dove esiste l'estratto
+  vero vanno sostituite: `importa_trasferimenti_fabio` rimuove così «affitti
+  Fabio» -1900 e «4 quote Fabio» -1200.
+- I soldi che un proprietario gira a un altro sono `distribuzione`, **mai**
+  spese: anche quando prendono la forma del pagamento di un suo F24. La spesa
+  esiste solo se è un costo dell'immobile, e allora ha anticipante e
+  beneficiario coincidenti (nessun effetto sui saldi, cfr.
+  [saldi proprietari](/domain/saldi-proprietari.md)). Le partite `bilaterale`
+  restano per i movimenti privati: non entrano nella cassa comune.
 - Upload bollette in prod richiede `poppler-utils` (Dockerfile) + encoding utf-8
   esplicito; PDF organizzati in `bollette/<immobile>/<anno>/<mese>`.
 - Gli import storici fatti *dopo* la creazione dei periodi passano la guardia
