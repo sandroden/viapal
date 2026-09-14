@@ -19,6 +19,7 @@ from accounting.serializers import (
     PianoRientroVoceSerializer,
     QuadraturaSerializer,
     SaldoLiveSerializer,
+    TrasferimentoProprietariSerializer,
 )
 from accounting.services.bt_inter_owner import (
     BTGiaMarcata,
@@ -111,6 +112,71 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
             else:
                 out.append({"kind": "ledger_b", **InterOwnerEntrySerializer(v).data})
         return Response(out, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["post"], url_path="trasferimento")
+    def trasferimento_create(self, request):
+        """Registra un bonifico fra proprietari in un colpo solo.
+
+        Crea la `BankTransaction` sul conto indicato e la marca subito come
+        `distribuzione`: è il gesto che i proprietari fanno davvero (girare a
+        un altro la sua quota di incassi), e che altrimenti richiederebbe due
+        passaggi separati, uno dei quali senza strada dal frontend.
+        """
+        from django.db import transaction as db_transaction
+        from django.db.models import Q
+        from properties.models import OwnerBankAccount
+
+        ser = TrasferimentoProprietariSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        d = ser.validated_data
+        prop = get_request_property(request)
+
+        # Il conto è di chi muove il denaro: quelli in uso sull'immobile più
+        # i propri, stessa eccezione delle spese anticipate di tasca propria.
+        account = OwnerBankAccount.objects.filter(
+            Q(properties=prop) | Q(owner__user=request.user),
+            pk=d["owner_account"],
+        ).distinct().select_related("owner").first()
+        if account is None:
+            return Response(
+                {"detail": "Conto non in uso su questo immobile né tuo."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        controparte = get_object_or_404(OwnerProfile, pk=d["controparte_owner"])
+        if controparte.user_id not in prop.memberships.values_list("user_id", flat=True):
+            return Response(
+                {"detail": "La controparte non è membro di questo immobile."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if controparte == account.owner:
+            return Response(
+                {"detail": "La controparte deve essere un altro proprietario."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        segno = -1 if d["direzione"] == "uscita" else 1
+        descrizione = d.get("descrizione", "") or (
+            f"Quota {'a' if segno < 0 else 'da'} {controparte.nominativo}"
+        )
+        with db_transaction.atomic():
+            bt = BankTransaction.objects.create(
+                owner_account=account,
+                data=d["data"],
+                importo=segno * d["importo"],
+                descrizione=descrizione,
+                note=d.get("note", "") or "",
+            )
+            voci = marca_bt_come_ledger(
+                bt, property=prop, tipo="distribuzione",
+                controparte_owner=controparte, descrizione=descrizione,
+            )
+        return Response(
+            {
+                "bank_transaction": bt.pk,
+                "voci": OwnerLedgerEntrySerializer(voci, many=True).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=False, methods=["delete"], url_path=r"bt-inter-owner/(?P<bt_id>\d+)")
     def bt_inter_owner_delete(self, request, bt_id=None):

@@ -179,14 +179,30 @@
 
     <!-- Sezione: chi deve a chi (piano di rientro) -->
     <section class="vp-saldi__sezione">
-      <div class="vp-eyebrow">Chi deve a chi</div>
+      <div class="vp-saldi__sezione-head">
+        <div class="vp-eyebrow">Chi deve a chi</div>
+        <q-btn
+          outline
+          color="primary"
+          icon="swap_horiz"
+          no-caps
+          label="Registra bonifico…"
+          @click="apriTrasferimento()"
+        />
+      </div>
       <p class="vp-saldi__hint">
-        Bonifici minimi per azzerare i saldi alla data. Una volta fatti,
-        marcali come inter-owner dalla Riconciliazione: i saldi si
-        aggiornano da soli.
+        Bonifici minimi per azzerare i saldi alla data. Quando ne fai uno,
+        registralo da qui: il movimento bancario e la sua attribuzione
+        nascono insieme e i saldi si aggiornano da soli.
       </p>
       <q-list separator bordered class="vp-saldi__lista">
-        <q-item v-for="(v, i) in store.pianoRientro" :key="i">
+        <q-item
+          v-for="(v, i) in store.pianoRientro"
+          :key="i"
+          v-ripple
+          clickable
+          @click="apriTrasferimento(v)"
+        >
           <q-item-section avatar>
             <q-icon name="swap_horiz" color="primary" />
           </q-item-section>
@@ -196,6 +212,7 @@
               <q-icon name="east" size="16px" class="q-mx-sm" />
               <strong>{{ v.a.nominativo }}</strong>
             </q-item-label>
+            <q-item-label caption>Tocca per registrarlo come fatto</q-item-label>
           </q-item-section>
           <q-item-section side class="vp-mono vp-saldi__rientro-importo">
             {{ formattaEuro(v.importo) }}
@@ -404,6 +421,86 @@
       </q-card>
     </q-dialog>
 
+    <!-- Modal registrazione bonifico fra proprietari -->
+    <q-dialog v-model="dialogTrasferimentoAperto">
+      <q-card class="vp-saldi__dialog">
+        <q-card-section class="row items-center q-pb-none">
+          <div>
+            <div class="vp-eyebrow">Fra proprietari</div>
+            <div class="vp-display vp-saldi__dialog-titolo">Registra bonifico</div>
+          </div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
+        </q-card-section>
+        <q-card-section class="q-gutter-md">
+          <q-select
+            v-model="trasfConto"
+            :options="opzioniConti"
+            option-label="label"
+            option-value="value"
+            emit-value
+            map-options
+            outlined
+            dense
+            label="Conto del movimento"
+          />
+          <q-select
+            v-model="trasfDirezione"
+            :options="opzioniDirezione"
+            option-label="label"
+            option-value="value"
+            emit-value
+            map-options
+            outlined
+            dense
+            label="Verso"
+          />
+          <q-select
+            v-model="trasfControparte"
+            :options="opzioniControparte"
+            option-label="label"
+            option-value="value"
+            emit-value
+            map-options
+            outlined
+            dense
+            label="L'altro proprietario"
+          />
+          <q-input
+            v-model.number="trasfImporto"
+            type="number"
+            step="0.01"
+            outlined
+            dense
+            label="Importo (€)"
+          />
+          <q-input v-model="trasfData" type="date" outlined dense label="Data" />
+          <q-input
+            v-model="trasfDescrizione"
+            outlined
+            dense
+            label="Causale"
+            placeholder="Quota parte affitto"
+          />
+          <q-banner v-if="trasfErrore" class="bg-red-1 text-red-9" rounded>
+            {{ trasfErrore }}
+          </q-banner>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat color="primary" label="Annulla" no-caps v-close-popup />
+          <q-btn
+            unelevated
+            color="primary"
+            label="Registra"
+            no-caps
+            :disable="!trasfValido"
+            :loading="trasfInCorso"
+            @click="salvaTrasferimento"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
     <!-- Modal voci settlement -->
     <q-dialog v-model="dialogSettlementAperto">
       <q-card class="vp-saldi__dialog">
@@ -444,18 +541,22 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { Notify } from 'quasar';
 import {
   useSaldiProprietariStore,
   type GeneraSettlementEsito,
   type OwnerLedgerEntryFE,
   type OwnerSettlementFE,
+  type PianoRientroVoceFE,
 } from 'stores/saldiProprietari';
 import { useOwnersStore } from 'stores/owners';
+import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
 const store = useSaldiProprietariStore();
 const ownersStore = useOwnersStore();
+const contiStore = useOwnerBankAccountsStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
 
@@ -470,6 +571,87 @@ const atDate = ref<string>(isoOggi());
 const dialogSettlementAperto = ref(false);
 const settlementSelezionato = ref<OwnerSettlementFE | null>(null);
 const vociSettlement = ref<OwnerLedgerEntryFE[]>([]);
+
+const dialogTrasferimentoAperto = ref(false);
+const trasfConto = ref<number | null>(null);
+const trasfControparte = ref<number | null>(null);
+const trasfImporto = ref<number>(0);
+const trasfData = ref<string>(isoOggi());
+const trasfDirezione = ref<'uscita' | 'entrata'>('uscita');
+const trasfDescrizione = ref('');
+const trasfInCorso = ref(false);
+const trasfErrore = ref<string | null>(null);
+
+const opzioniConti = computed(() =>
+  contiStore.accounts.map((a) => ({
+    value: a.id,
+    label: `${a.banca} — ${a.intestatario} (…${a.iban.slice(-4)})`,
+  })),
+);
+const opzioniDirezione = [
+  { value: 'uscita' as const, label: 'Esce dal conto (pago io)' },
+  { value: 'entrata' as const, label: 'Entra sul conto (ricevo io)' },
+];
+/** Il proprietario del conto è una delle due parti: la controparte è
+ *  chiunque altro fra i proprietari. */
+const ownerDelConto = computed(
+  () => contiStore.accounts.find((a) => a.id === trasfConto.value)?.owner_id ?? null,
+);
+const opzioniControparte = computed(() =>
+  ownersStore.owners
+    .filter((o) => o.id !== ownerDelConto.value)
+    .map((o) => ({ value: o.id, label: o.nominativo })),
+);
+const trasfValido = computed(
+  () =>
+    trasfConto.value != null &&
+    trasfControparte.value != null &&
+    trasfImporto.value > 0 &&
+    !!trasfData.value,
+);
+
+/** Dalla riga del piano di rientro: chi deve pagare è `da`, e il conto
+ *  proposto è il suo, così resta solo da confermare. */
+function apriTrasferimento(voce?: PianoRientroVoceFE) {
+  trasfErrore.value = null;
+  trasfData.value = isoOggi();
+  trasfDescrizione.value = '';
+  trasfDirezione.value = 'uscita';
+  if (voce) {
+    const contoDa = contiStore.accounts.find((a) => a.owner_id === voce.da.id);
+    trasfConto.value = contoDa?.id ?? contiStore.accounts[0]?.id ?? null;
+    trasfControparte.value = voce.a.id;
+    trasfImporto.value = Math.round(Number(voce.importo) * 100) / 100;
+  } else {
+    trasfConto.value = contiStore.accounts[0]?.id ?? null;
+    trasfControparte.value = null;
+    trasfImporto.value = 0;
+  }
+  dialogTrasferimentoAperto.value = true;
+}
+
+async function salvaTrasferimento() {
+  if (!trasfValido.value) return;
+  trasfInCorso.value = true;
+  trasfErrore.value = null;
+  try {
+    await store.registraTrasferimento({
+      owner_account: trasfConto.value as number,
+      controparte_owner: trasfControparte.value as number,
+      importo: trasfImporto.value.toFixed(2),
+      data: trasfData.value,
+      direzione: trasfDirezione.value,
+      ...(trasfDescrizione.value ? { descrizione: trasfDescrizione.value } : {}),
+    });
+    Notify.create({ type: 'positive', message: 'Bonifico registrato', icon: 'check_circle' });
+    dialogTrasferimentoAperto.value = false;
+    await ricarica();
+  } catch (e: unknown) {
+    trasfErrore.value = erroreApi(e);
+  } finally {
+    trasfInCorso.value = false;
+  }
+}
 
 const dialogChiusuraAperto = ref(false);
 const chiusuraAnno = ref<number>(new Date().getFullYear() - 1);
@@ -611,6 +793,7 @@ async function ricarica() {
 
 onMounted(async () => {
   await ownersStore.fetchOwners();
+  void contiStore.ensureLoaded();
   await ricarica();
 });
 

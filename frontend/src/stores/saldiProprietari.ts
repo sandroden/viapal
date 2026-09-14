@@ -54,6 +54,15 @@ interface SaldiLiveResponse {
   piano_rientro: PianoRientroVoceFE[];
 }
 
+export interface TrasferimentoPayload {
+  owner_account: number;
+  controparte_owner: number;
+  importo: string;
+  data: string;
+  direzione: 'uscita' | 'entrata';
+  descrizione?: string;
+}
+
 export interface GeneraSettlementPayload {
   anno: number;
   descrizione?: string | undefined;
@@ -186,6 +195,12 @@ export const useSaldiProprietariStore = defineStore('saldiProprietari', {
         payload,
       );
       return data;
+    },
+    /** Bonifico fra proprietari: il movimento bancario e la sua marcatura
+     *  nascono insieme, come il gesto che rappresentano. Ricaricare i saldi
+     *  spetta a chi chiama: solo lui sa a che data li sta guardando. */
+    async registraTrasferimento(payload: TrasferimentoPayload): Promise<void> {
+      await api.post('/api/v1/owner-ledger/trasferimento/', payload);
     },
     async fetchLedgerBySettlement(settlementId: number): Promise<OwnerLedgerEntryFE[]> {
       const { data } = await api.get<

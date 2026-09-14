@@ -1,6 +1,8 @@
 """
 Serializer per l'app accounting.
 """
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from accounting.models import InterOwnerEntry, OwnerLedgerEntry, OwnerSettlement
@@ -60,6 +62,21 @@ class MarcaBtInterOwnerSerializer(serializers.Serializer):
     )
     controparte_owner = serializers.IntegerField(required=False, allow_null=True)
     settlement = serializers.IntegerField(required=False, allow_null=True)
+    descrizione = serializers.CharField(required=False, allow_blank=True, default="")
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class TrasferimentoProprietariSerializer(serializers.Serializer):
+    """Payload per POST /api/v1/owner-ledger/trasferimento/.
+
+    L'importo è sempre positivo: il verso lo dice `direzione`, riferita al
+    proprietario del conto (chi bonifica, o chi riceve sul proprio conto).
+    """
+    owner_account = serializers.IntegerField()
+    controparte_owner = serializers.IntegerField()
+    importo = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.01"))
+    data = serializers.DateField()
+    direzione = serializers.ChoiceField(choices=["uscita", "entrata"], default="uscita")
     descrizione = serializers.CharField(required=False, allow_blank=True, default="")
     note = serializers.CharField(required=False, allow_blank=True, default="")
 

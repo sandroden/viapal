@@ -81,6 +81,12 @@ trattare un movimento bancario come regolamento fra proprietari (idempotente e
 reversibile, `BTGiaMarcata` se già marcata); dal FE via
 `bt-inter-owner/` sull'`OwnerLedgerEntryViewSet`, nel perimetro dell'immobile.
 
+`POST owner-ledger/trasferimento/` fa il gesto completo: crea la
+`BankTransaction` sul conto indicato (`direzione` uscita/entrata, importo
+sempre positivo) e la marca `distribuzione` nella stessa transazione. Serve
+perché il movimento bancario "libero" non si crea da nessun'altra parte del
+frontend, e un bonifico fra proprietari altrimenti richiedeva l'admin.
+
 **Segno**: la voce vale `-bt.importo` per il proprietario del conto e
 `+bt.importo` per la controparte, la stessa convenzione di `genera_settlement`
 («Versamento alla cassa» è negativo, «Anticipo» positivo). Un bonifico in
@@ -91,7 +97,9 @@ uscita fa quindi risalire chi lo paga e scendere chi lo incassa. Fino al
 # Frontend
 
 - `/p/saldi-proprietari` (`ProprietarioSaldiProprietari.vue`) — saldi, quadratura,
-  settlement; `/p/saldi-fratelli` resta come redirect per i segnalibri.
+  settlement; `/p/saldi-fratelli` resta come redirect per i segnalibri. Una riga
+  del piano di rientro apre il dialog «Registra bonifico» già compilato:
+  registrarlo è il modo previsto per dire che quel rientro è stato fatto.
 - Dashboard "Flusso di cassa".
 
 # Vedi anche

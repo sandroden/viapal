@@ -441,3 +441,68 @@ def test_piano_rientro_compensa_flussi_incrociati(db, immobile, quote_terzi, san
         (sandro, bruna, Decimal("400.00")),
         (fabio, bruna, Decimal("200.00")),
     ]
+
+
+def test_endpoint_trasferimento_crea_bt_e_marcatura(
+    db, client, immobile, quote_terzi, sandro, bruna, fabio, conto_bruna, assignment,
+):
+    """Un bonifico fra proprietari si registra in un gesto solo dal frontend."""
+    from django.contrib.auth.models import Group
+    from properties.models import PropertyMembership
+
+    gruppo, _ = Group.objects.get_or_create(name="proprietari")
+    for owner in (sandro, bruna, fabio):
+        PropertyMembership.objects.get_or_create(
+            property=immobile, user=owner.user, defaults={"ruolo": "proprietario"},
+        )
+        owner.user.groups.add(gruppo)
+    conto_bruna.properties.add(immobile)
+    client.force_login(bruna.user)
+
+    r = client.post(
+        "/api/v1/owner-ledger/trasferimento/",
+        data={
+            "owner_account": conto_bruna.pk,
+            "controparte_owner": fabio.pk,
+            "importo": "300.00",
+            "data": "2025-05-20",
+            "direzione": "uscita",
+            "descrizione": "Quota parte affitto",
+        },
+        content_type="application/json",
+    )
+    assert r.status_code == 201, r.content
+    bt = BankTransaction.objects.get(pk=r.json()["bank_transaction"])
+    assert bt.importo == Decimal("-300.00")
+    assert bt.owner_account == conto_bruna
+    voci = {v.owner: v.importo for v in bt.ledger_entries.all()}
+    # Chi paga risale, chi incassa scende: cfr. bt_inter_owner.
+    assert voci[bruna] == Decimal("300.00")
+    assert voci[fabio] == Decimal("-300.00")
+
+
+def test_endpoint_trasferimento_rifiuta_se_stesso(
+    db, client, immobile, quote_terzi, bruna, conto_bruna,
+):
+    from django.contrib.auth.models import Group
+    from properties.models import PropertyMembership
+
+    PropertyMembership.objects.get_or_create(
+        property=immobile, user=bruna.user, defaults={"ruolo": "proprietario"},
+    )
+    gruppo, _ = Group.objects.get_or_create(name="proprietari")
+    bruna.user.groups.add(gruppo)
+    conto_bruna.properties.add(immobile)
+    client.force_login(bruna.user)
+    r = client.post(
+        "/api/v1/owner-ledger/trasferimento/",
+        data={
+            "owner_account": conto_bruna.pk,
+            "controparte_owner": bruna.pk,
+            "importo": "50.00",
+            "data": "2025-05-20",
+        },
+        content_type="application/json",
+    )
+    assert r.status_code == 400
+    assert BankTransaction.objects.filter(owner_account=conto_bruna).count() == 0
