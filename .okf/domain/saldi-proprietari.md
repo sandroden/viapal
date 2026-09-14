@@ -11,7 +11,7 @@ resources:
 tags: [domain, accounting, settlement, saldi]
 generated:
   by: process:okf-migrate
-  at: 2026-09-05T00:00:00Z
+  at: 2026-09-15T00:00:00Z
 ---
 
 # Overview
@@ -50,7 +50,7 @@ Convenzioni di segno (decomposizione in `SaldoLive`):
 | | R | `−importo` |
 | incasso ricevuto da X (Receivable `pagato`) | X | `−(1 − quota_X) · importo_pagato` (tiene i soldi degli altri) |
 | | Y ≠ X | `+quota_Y · importo_pagato` |
-| BT marcata inter-owner | owner della voce ledger | `+importo` della voce |
+| BT marcata inter-owner | owner della voce ledger | `+importo` della voce (denaro ricevuto = voce negativa) |
 
 Entrano nel riparto solo i Receivable `pagato` con `data_pagamento` e
 `importo_pagato` valorizzati **e** `incassato_da_owner`. La quadratura elenca
@@ -80,6 +80,13 @@ Comando: `genera_settlement` (con `--property`); azionabile anche da UI
 trattare un movimento bancario come regolamento fra proprietari (idempotente e
 reversibile, `BTGiaMarcata` se già marcata); dal FE via
 `bt-inter-owner/` sull'`OwnerLedgerEntryViewSet`, nel perimetro dell'immobile.
+
+**Segno**: la voce vale `-bt.importo` per il proprietario del conto e
+`+bt.importo` per la controparte, la stessa convenzione di `genera_settlement`
+(«Versamento alla cassa» è negativo, «Anticipo» positivo). Un bonifico in
+uscita fa quindi risalire chi lo paga e scendere chi lo incassa. Fino al
+2026-09-15 il segno era invertito: nessun dato reale ne dipendeva (zero
+`OwnerLedgerEntry` a DB), ma i saldi si sarebbero mossi al contrario.
 
 # Frontend
 

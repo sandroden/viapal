@@ -19,6 +19,7 @@ from django.contrib.auth.models import User
 from django.db.utils import IntegrityError
 
 from accounting.models import OwnerLedgerEntry, OwnerSettlement
+from accounting.services.bt_inter_owner import marca_bt_come_ledger
 from accounting.services.saldi_live import (
     calcola_piano_rientro,
     calcola_saldi_correnti,
@@ -220,7 +221,11 @@ def test_settlement_baseline_e_periodo_aperto(db, immobile, quote_terzi, sandro,
 
 
 def test_bt_inter_owner_marcata(db, immobile, quote_terzi, sandro, bruna, fabio, conto_bruna):
-    """Una BT marcata genera voci ledger A che entrano nel saldo."""
+    """Una BT marcata genera voci ledger A che entrano nel saldo.
+
+    Convenzione: chi riceve denaro ha una voce negativa (il suo credito verso
+    gli altri si riduce), chi lo eroga una voce positiva.
+    """
     bt = BankTransaction.objects.create(
         data=datetime.date(2025, 5, 10),
         descrizione="CONGUAGLIO",
@@ -233,7 +238,7 @@ def test_bt_inter_owner_marcata(db, immobile, quote_terzi, sandro, bruna, fabio,
         owner=bruna,
         data=bt.data,
         descrizione="Conguaglio da Sandro",
-        importo=Decimal("700"),
+        importo=Decimal("-700"),
         tipo=OwnerLedgerEntry.TipoVoce.INCASSO_CONGUAGLIO,
         bank_transaction=bt,
     )
@@ -242,16 +247,57 @@ def test_bt_inter_owner_marcata(db, immobile, quote_terzi, sandro, bruna, fabio,
         owner=sandro,
         data=bt.data,
         descrizione="Pagamento conguaglio a Bruna",
-        importo=Decimal("-700"),
+        importo=Decimal("700"),
         tipo=OwnerLedgerEntry.TipoVoce.AGGIUSTAMENTO,
         bank_transaction=bt,
     )
     saldi = calcola_saldi_correnti(immobile, datetime.date(2025, 6, 30))
-    assert saldi[bruna].bt_inter_owner == Decimal("700")
-    assert saldi[sandro].bt_inter_owner == Decimal("-700")
+    assert saldi[bruna].bt_inter_owner == Decimal("-700")
+    assert saldi[sandro].bt_inter_owner == Decimal("700")
     assert saldi[fabio].bt_inter_owner == Decimal("0")
-    assert saldi[bruna].totale == Decimal("700")
-    assert saldi[sandro].totale == Decimal("-700")
+    assert saldi[bruna].totale == Decimal("-700")
+    assert saldi[sandro].totale == Decimal("700")
+
+
+def test_marcatura_distribuzione_estingue_il_debito_di_chi_ha_incassato(
+    db, immobile, quote_terzi, sandro, bruna, fabio, conto_bruna, assignment,
+):
+    """Bruna incassa l'affitto e ne gira una parte a Fabio: il debito cala.
+
+    È il verso che conta: il bonifico esce dal conto di Bruna (importo
+    negativo) e deve farla risalire, non scendere ancora.
+    """
+    Receivable.objects.create(
+        assignment=assignment,
+        causale=Receivable.Causale.AFFITTO,
+        competenza_da=datetime.date(2025, 5, 1),
+        competenza_a=datetime.date(2025, 5, 31),
+        scadenza=datetime.date(2025, 5, 1),
+        importo_dovuto=Decimal("400"),
+        importo_pagato=Decimal("400"),
+        data_pagamento=datetime.date(2025, 5, 2),
+        stato=StatoPagamento.PAGATO,
+        incassato_da_owner=bruna,
+    )
+    saldi = calcola_saldi_correnti(immobile, datetime.date(2025, 5, 31))
+    # Bruna tiene i 3/4 degli altri; Fabio vanta il suo quarto.
+    assert saldi[bruna].totale == Decimal("-300")
+    assert saldi[fabio].totale == Decimal("100")
+
+    bt = BankTransaction.objects.create(
+        data=datetime.date(2025, 5, 20),
+        descrizione="quota Fabio",
+        importo=Decimal("-100"),
+        owner_account=conto_bruna,
+    )
+    marca_bt_come_ledger(
+        bt, property=immobile, tipo="distribuzione", controparte_owner=fabio,
+    )
+
+    saldi = calcola_saldi_correnti(immobile, datetime.date(2025, 5, 31))
+    assert saldi[bruna].totale == Decimal("-200")
+    assert saldi[fabio].totale == Decimal("0")
+    assert saldi[sandro].totale == Decimal("200")
 
 
 def test_at_date_anteriore_a_quote_torna_dict_vuoto(db, immobile, quote_terzi):

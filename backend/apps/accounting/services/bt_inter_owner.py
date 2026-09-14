@@ -8,6 +8,12 @@ Quattro tipologie:
   prestiti o restituzioni che non passano dalla cassa virtuale.
 - aggiustamento: 1 OwnerLedgerEntry libera sul proprietario del conto.
 
+Convenzione di segno (la stessa di ``genera_settlement``): nel libro mastro
+il denaro **ricevuto** è una voce negativa e il denaro **erogato** una voce
+positiva, perché il saldo di un proprietario misura il suo credito verso gli
+altri. La voce vale quindi ``-bt.importo``: un bonifico in uscita (importo
+negativo) fa risalire chi l'ha pagato e scendere chi l'ha incassato.
+
 Tutte le scritture sono atomiche e proteggono dalla concorrenza con un
 SELECT FOR UPDATE sulla BT.
 """
@@ -62,11 +68,13 @@ def marca_bt_come_ledger(
             raise ValueError("controparte_owner deve essere diverso dal proprietario del conto")
         tipo_voce = TIPI_LEDGER_SIMMETRICI[tipo]
         descr = descrizione or f"{tipo_voce.label} con {controparte_owner.nominativo}"
-        v_ricevente = OwnerLedgerEntry.objects.create(
+        # Chi muove il denaro dal proprio conto vede il proprio credito salire
+        # (BT negativa → voce positiva) e viceversa: vedi la convenzione in cima.
+        v_proprietario = OwnerLedgerEntry.objects.create(
             property=property,
             owner=proprietario_bt,
             data=bt.data,
-            importo=importo,
+            importo=-importo,
             tipo=tipo_voce,
             descrizione=descr,
             bank_transaction=bt,
@@ -77,14 +85,14 @@ def marca_bt_come_ledger(
             property=property,
             owner=controparte_owner,
             data=bt.data,
-            importo=-importo,
+            importo=importo,
             tipo=tipo_voce,
             descrizione=descr,
             bank_transaction=bt,
             riferimento_settlement=settlement,
             note=note,
         )
-        return [v_ricevente, v_controparte]
+        return [v_proprietario, v_controparte]
 
     if tipo == "bilaterale":
         if controparte_owner is None:
@@ -113,7 +121,7 @@ def marca_bt_come_ledger(
             property=property,
             owner=proprietario_bt,
             data=bt.data,
-            importo=importo,
+            importo=-importo,
             tipo=OwnerLedgerEntry.TipoVoce.AGGIUSTAMENTO,
             descrizione=descrizione or "Aggiustamento da BT",
             bank_transaction=bt,
