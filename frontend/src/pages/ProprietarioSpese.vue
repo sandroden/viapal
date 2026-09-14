@@ -266,6 +266,37 @@
               :error="!!errorOf('category')"
               :error-message="errorOf('category')"
             />
+            <q-select
+              v-model="form.riferimento_quota_owner"
+              :options="opzioniACarico"
+              option-label="label"
+              option-value="value"
+              emit-value
+              map-options
+              outlined
+              label="A carico di"
+              :error="!!errorOf('riferimento_quota_owner')"
+              :error-message="errorOf('riferimento_quota_owner')"
+            />
+            <q-select
+              v-model="form.anticipata_da_owner"
+              :options="opzioniProprietari"
+              option-label="label"
+              option-value="value"
+              emit-value
+              map-options
+              outlined
+              :disable="form.crea_bank_transaction"
+              label="Chi ha pagato"
+              :hint="form.crea_bank_transaction
+                ? 'Lo determina il conto del movimento, qui sotto.'
+                : ''"
+              :error="!!errorOf('anticipata_da_owner')"
+              :error-message="errorOf('anticipata_da_owner')"
+            />
+            <div v-if="spiegazioneACarico" class="vp-p-spese__a-carico-nota">
+              {{ spiegazioneACarico }}
+            </div>
             <q-input v-model="form.note" outlined type="textarea" label="Note" autogrow />
             <q-file
               v-model="fileNuovaSpesa"
@@ -351,6 +382,7 @@ import { useExpensesStore, type Expense, type NuovaSpesa } from 'stores/expenses
 import { useAuthStore } from 'stores/auth';
 import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
 import { useExpenseCategoriesStore } from 'stores/expenseCategories';
+import { useOwnersStore } from 'stores/owners';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 import { useFormErrors } from 'src/composables/useFormErrors';
@@ -362,6 +394,7 @@ const store = useExpensesStore();
 const auth = useAuthStore();
 const contiStore = useOwnerBankAccountsStore();
 const categoriesStore = useExpenseCategoriesStore();
+const ownersStore = useOwnersStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
 const { globalError, captureError, reset: resetErrors, errorOf } = useFormErrors();
@@ -386,6 +419,35 @@ const opzioniContiBT = computed(() =>
     label: `${a.banca} — ${a.intestatario} (…${a.iban.slice(-4)})`,
   })),
 );
+const opzioniProprietari = computed(() =>
+  ownersStore.owners.map((o) => ({ value: o.id, label: o.nominativo })),
+);
+/** Il caso normale è la spesa di tutti, ripartita per quote; la voce di un
+ *  solo proprietario (IMU, cedolare secca) è l'eccezione. */
+const opzioniACarico = computed(() => [
+  { value: null, label: 'Tutti i proprietari, per quote' },
+  ...opzioniProprietari.value,
+]);
+
+function nomeProprietario(id: number | null): string {
+  return ownersStore.owners.find((o) => o.id === id)?.nominativo ?? '';
+}
+
+/** Spiega cosa comporta la combinazione scelta: la differenza fra una spesa
+ *  personale e un anticipo per conto di un altro non è ovvia. */
+const spiegazioneACarico = computed(() => {
+  const aCarico = form.riferimento_quota_owner;
+  if (aCarico == null) return '';
+  const chi = form.anticipata_da_owner;
+  if (chi === aCarico) {
+    return `Spesa personale di ${nomeProprietario(aCarico)}: entra nei costi `
+      + "dell'immobile ma non sposta i conti fra proprietari.";
+  }
+  if (chi == null) return '';
+  return `${nomeProprietario(chi)} anticipa per conto di `
+    + `${nomeProprietario(aCarico)}, che gli deve l'intero importo.`;
+});
+
 const contoDefaultBT = computed(
   () => auth.user?.bank_accounts?.[0]?.id ?? contiUtente.value[0]?.id ?? null,
 );
@@ -403,11 +465,39 @@ const form = reactive<FormSpesa>({
   importo: 0,
   category: null,
   note: '',
+  anticipata_da_owner: null,
+  riferimento_quota_owner: null,
   crea_bank_transaction: true,
   bt_owner_account: contoDefaultBT.value,
   bt_data: new Date().toISOString().slice(0, 10),
   bt_descrizione: '',
 });
+
+function contoOwnerId(contoId: number | null): number | null {
+  return contiUtente.value.find((a) => a.id === contoId)?.owner_id ?? null;
+}
+
+/** Con il movimento bancario l'anticipante è il proprietario del conto:
+ *  il backend lo deriva, qui si tiene allineato per mostrarlo. */
+watch(
+  [() => form.crea_bank_transaction, () => form.bt_owner_account],
+  ([creaBt, contoId]) => {
+    if (!creaBt) return;
+    form.anticipata_da_owner = contoOwnerId(contoId);
+  },
+  { immediate: true },
+);
+
+/** Senza movimento bancario nessuno deriva l'anticipante: per una spesa
+ *  personale il pagante è lo stesso proprietario a cui è imputata. */
+watch(
+  () => form.riferimento_quota_owner,
+  (aCarico) => {
+    if (!form.crea_bank_transaction && aCarico != null && form.anticipata_da_owner == null) {
+      form.anticipata_da_owner = aCarico;
+    }
+  },
+);
 
 watch(contoDefaultBT, (id) => {
   if (form.bt_owner_account == null) form.bt_owner_account = id;
@@ -658,6 +748,7 @@ onMounted(() => {
   void store.fetchExpenses();
   void contiStore.ensureLoaded();
   void categoriesStore.ensureLoaded();
+  void ownersStore.fetchOwners();
 });
 
 function ricarica() {
@@ -679,8 +770,14 @@ async function salva() {
       importo: form.importo,
       category: form.category,
       note: form.note || undefined,
+      riferimento_quota_owner: form.riferimento_quota_owner,
       crea_bank_transaction: form.crea_bank_transaction,
     };
+    // Col movimento bancario lo deriva il backend dal conto: mandarlo qui
+    // significherebbe imporre una scelta che l'utente non ha fatto.
+    if (!form.crea_bank_transaction) {
+      payload.anticipata_da_owner = form.anticipata_da_owner;
+    }
     if (form.crea_bank_transaction) {
       payload.bt_owner_account = form.bt_owner_account;
       payload.bt_data = form.bt_data || form.data;
@@ -713,6 +810,8 @@ async function salva() {
       importo: 0,
       category: null,
       note: '',
+      anticipata_da_owner: contoOwnerId(contoDefaultBT.value),
+      riferimento_quota_owner: null,
       crea_bank_transaction: true,
       bt_owner_account: contoDefaultBT.value,
       bt_data: new Date().toISOString().slice(0, 10),
@@ -835,6 +934,16 @@ async function salva() {
 .vp-p-spese__dialog-titolo {
   font-size: var(--vp-text-xl);
   margin: var(--vp-gap-1) 0 0;
+}
+/* Nessun margine negativo: il campo sopra ha il proprio hint e i due testi
+   finirebbero uno sull'altro. */
+.vp-p-spese__a-carico-nota {
+  padding: var(--vp-gap-2);
+  border-radius: var(--vp-r-md);
+  background: var(--vp-paper-2);
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--vp-ink-2);
 }
 .vp-p-spese__bt-sezione {
   display: flex;

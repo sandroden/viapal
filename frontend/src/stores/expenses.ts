@@ -29,9 +29,14 @@ export interface NuovaSpesa {
   importo: number;
   category: number | null;
   note?: string | undefined;
+  /** Chi ha messo i soldi. Senza movimento bancario va indicato: il backend
+   *  lo deriva dal conto solo quando la BT viene creata contestualmente. */
+  anticipata_da_owner?: number | null | undefined;
+  /** Spesa di un solo proprietario anziché ripartita per quote (IMU,
+   *  cedolare secca). Se coincide con l'anticipante è una spesa personale:
+   *  entra nei costi dell'immobile senza muovere i conti fra proprietari. */
+  riferimento_quota_owner?: number | null | undefined;
   // Creazione contestuale BankTransaction in uscita.
-  // L'anticipante (`anticipata_da_owner`) viene derivato lato BE dal proprietario
-  // del conto BT, quindi il FE non lo invia.
   crea_bank_transaction?: boolean;
   bt_owner_account?: number | null;
   bt_data?: string;
