@@ -132,8 +132,11 @@ TRASFERIMENTI: list[Riga] = [
 
 # Rientri di Fabio verso Bruna, già a DB e non documentati dall'estratto
 # (che elenca i soli bonifici in uscita): vanno marcati nello stesso modo,
-# con il segno opposto. Da confermare con Sandro se il «reso» di 300 sia la
-# restituzione del doppio bonifico di maggio 2025.
+# con il segno opposto. Provengono dalla stessa ricostruzione a mano degli
+# aggregati rimossi qui sopra, quindi valgono quanto la memoria di chi li ha
+# scritti. Il «reso» di 300 del 2026-03-02 **non** è la restituzione del
+# doppio bonifico di maggio 2025 (Sandro, 2026-09-15): di quella restituzione,
+# che Bruna dà per avvenuta, non c'è traccia da nessuna parte.
 RIENTRI: list[Riga] = [
     Riga(date(2024, 12, 1), Decimal("630"), "4 quote  Fabio"),
     Riga(date(2026, 3, 2), Decimal("300"), "FABIO reso"),
