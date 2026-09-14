@@ -10,6 +10,7 @@ resources:
   - backend/apps/billing/management/commands/pin_bollette_periodi_emessi.py
   - backend/apps/billing/management/commands/genera_storico.py
   - backend/apps/accounting/management/commands/importa_trasferimenti_fabio.py
+  - backend/apps/billing/management/commands/inserisci_imposte_proprietari.py
 tags: [playbook, import, storico, data]
 generated:
   by: process:okf-migrate
@@ -54,6 +55,7 @@ di scrittura in parallelo sullo stesso immobile.
 | `riallinea_dichiarati` | riporta `importo_pagato` dei DICHIARATO alla copertura reale (prima `dichiara_pagato` lo sovrascriveva col dovuto) |
 | `sana_incassi_senza_incassante` | lista chiusa di ricostruzioni dei PAGATO senza incassante; da eseguire **prima** della migration del vincolo — [incasso sempre attribuito](/decisions/incasso-sempre-attribuito.md) |
 | `sana_allocazioni_eccedenti` | riduce le allocazioni che superano l'importo della BT (dalla più recente) e riallinea; dry-run, `--apply`, `--bt` — [allocazioni non eccedenti](/decisions/allocazioni-non-eccedenti.md) |
+| `inserisci_imposte_proprietari` | IMU e cedolare secca dei tre proprietari come costo dell'immobile (anticipante = beneficiario: nessun effetto sui saldi); idempotente, anteprima di default |
 | `importa_trasferimenti_fabio` | 42 trasferimenti di Bruna a Fabio dall'estratto bonifici + 2 rientri, marcati `distribuzione`; rimuove gli aggregati del libro mano e converte le due Expense IMU (lista chiusa, idempotente, anteprima di default) |
 
 # Note operative

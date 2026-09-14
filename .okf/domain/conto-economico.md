@@ -9,7 +9,7 @@ resources:
 tags: [domain, conto-economico, cassa, competenza]
 generated:
   by: process:okf-migrate
-  at: 2026-09-05T00:00:00Z
+  at: 2026-09-15T00:00:00Z
 ---
 
 # Overview
@@ -39,6 +39,21 @@ Endpoint: `GET /api/v1/dashboard/conto-economico/?anno=YYYY`
 Un deposito **trattenuto** è di fatto un ricavo ma resta invisibile qui finché
 non viene riclassificato su EXTRA: nessun automatismo lo fa (vedi
 [deposito](/domain/deposito.md)).
+
+# Imposte dei proprietari
+
+IMU e cedolare secca sono pagate da ciascun proprietario con il proprio F24,
+ma sono un'uscita dell'affitto: senza, l'utile è sovrastimato. Stanno qui come
+`Expense` con **anticipante e beneficiario coincidenti**
+(`anticipata_da_owner == riferimento_quota_owner`), forma che entra nel costo
+e che [saldi_live](/domain/saldi-proprietari.md) ignora: le imposte non
+spostano nulla fra i proprietari. Se un proprietario le anticipa per un altro,
+quel denaro è un trasferimento a parte (`distribuzione`), non una seconda
+spesa. Comando di popolamento storico: `inserisci_imposte_proprietari`.
+
+Poiché `Expense` ha una sola data per cassa e competenza, le imposte portano
+la data dell'anno di competenza anche quando il versamento è avvenuto in
+ritardo (il caso reale: l'IMU 2022 di Fabio, pagata nel dicembre 2023).
 
 # Il ponte competenza ↔ cassa
 
