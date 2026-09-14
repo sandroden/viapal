@@ -17,7 +17,7 @@ resources:
 tags: [architecture, pwa, service-worker, push]
 generated:
   by: process:okf-migrate
-  at: 2026-09-14T09:00:00Z
+  at: 2026-09-14T11:00:00Z
 ---
 
 # Overview
@@ -64,8 +64,60 @@ client con bundle pre-fix richiedono una pulizia SW manuale una tantum.
 
 Pagina pubblica `/installa` (`PublicLayout`, come `/g/` e `/d/`): il link si
 manda a chi non ha ancora fatto il primo accesso, quindi non può richiedere
-la sessione. Tre passi — installa, accedi, accendi le notifiche — con il
-passo 2 che sparisce a utente già autenticato e i numeri che si rinumerano.
+la sessione.
+
+# Installazione e notifiche sono due cose distinte
+
+Legate **solo su iOS**, dove le push esistono unicamente dentro la PWA
+installata (≥ 16.4). Su Android, su Chrome e su Firefox per computer le
+notifiche arrivano **senza installare niente**. Presentarle come un
+percorso unico che parte dall'installazione è falso quasi ovunque e mette
+davanti, a chi legge da un computer, il passo che gli serve meno.
+
+Quindi la pagina ha **due passi**, in quest'ordine:
+
+1. **Accendi le notifiche** — l'accesso è il prerequisito di questo passo e
+   vive dentro di esso (`Accedi`), non come passo a sé: altrimenti la
+   numerazione cambierebbe con lo stato di login. Su iOS non installato, al
+   posto del toggle c'è l'avviso che rimanda al passo 2.
+2. **Mettila fra le tue app** — marcata «facoltativo», tranne su iOS dove
+   il badge dice «serve per le notifiche».
+
+# Il rilevamento decide l'evidenza, non l'esistenza
+
+Errore commesso e corretto il 14/09/2026: il rilevamento di piattaforma e
+browser era usato come **filtro esclusivo**, e il passo di installazione
+aveva sei esiti mutuamente esclusivi (fino a nessuna istruzione del tutto,
+su Firefox desktop). Ma questa pagina ha **due lettori**: chi la segue sul
+proprio telefono e chi la guarda da un computer per sapere cosa dire agli
+altri. Nascondere le altre piattaforme rende la pagina inutile al secondo,
+e nessuno può vedere cosa vedono gli altri.
+
+Ora le **tre sezioni** (iPhone · Android · computer) ci sono sempre, in
+`q-expansion-item`: quella rilevata è aperta e marcata «stai leggendo da
+qui», le altre sono a un tocco. `default-opened`, **non** `model-value`:
+legata al valore la sezione resterebbe bloccata e le altre non si
+aprirebbero.
+
+Regola del contenuto: ogni sezione ha un testo **predefinito** (il browser
+più diffuso su quella piattaforma) e usa la variante del browser reale
+**solo se è la piattaforma rilevata** — degli altri dispositivi non
+sappiamo il browser, e indovinarlo darebbe istruzioni sbagliate con l'aria
+di essere giuste.
+
+- **Firefox su computer non installa** le app web (serve un'estensione; il
+  nativo è sperimentale e solo su Windows). L'avviso sta **accanto** alle
+  istruzioni di Chrome/Edge, non al posto loro, con una riga che dice a
+  quale browser si riferiscono i passi che seguono. Su Android Firefox
+  installa benissimo: la condizione è `desktop && firefox`.
+- **Safari su Mac**: Archivio → Aggiungi al Dock, solo da macOS 14.
+- **Su iOS sono tutti WebKit** per obbligo di piattaforma: una sola
+  istruzione, cambia solo dove sta il pulsante Condividi.
+- `beforeinstallprompt` **batte lo user agent**: se il browser ha offerto
+  l'installazione sa installare, e l'euristica (che legge stringhe) non
+  deve poter nascondere un bottone che funziona.
+
+# Il resto del passo installazione
 
 - **`beforeinstallprompt` va intercettato nel boot**, non nella pagina:
   Chromium lo spara all'avvio dell'app, molto prima che la rotta lazy sia
@@ -73,48 +125,25 @@ passo 2 che sparisce a utente già autenticato e i numeri che si rinumerano.
   a freddo e non abilitare mai il bottone. `boot/pwa-install.ts` registra
   gli ascoltatori, `composables/useInstallPwa.ts` tiene l'evento in stato di
   modulo. Serve `preventDefault()`, o Chrome si tiene l'evento per la sua
-  infobar. `prompt()` è **usa e getta**: l'evento si consuma alla prima
-  chiamata.
-- **Le istruzioni manuali restano sempre a schermo**, anche col bottone
-  disponibile: se il prompt viene chiuso per sbaglio non resta nient'altro.
-- **iOS non ha alcuna API**: solo Condividi → Aggiungi a Home. E poiché le
-  push iOS esistono solo dentro la PWA installata (≥ 16.4), il passo 3 su
-  iOS-non-installato mostra un avviso con l'ordine dei passi invece del
-  toggle: un interruttore che non può funzionare è peggio di una spiegazione.
-- **Le istruzioni dipendono dal browser, non dalla piattaforma.** Una sola
-  pagina "per computer" mente a metà dei lettori:
-  - **Firefox su computer non installa affatto** le app web (serve
-    un'estensione; il supporto nativo è sperimentale e solo su Windows).
-    Lì le istruzioni spariscono e si dice com'è, con la strada che funziona
-    — e si chiarisce che le **notifiche**, quelle, vanno lo stesso: iOS è
-    l'unico posto dove servono l'app installata. Su Android invece Firefox
-    installa senza problemi, quindi la regola è `desktop && firefox`.
-  - **Safari su Mac**: Archivio → Aggiungi al Dock, e solo da macOS 14.
-  - **Su iOS sono tutti WebKit** per obbligo di piattaforma: una sola
-    istruzione, cambia solo dove sta il pulsante Condividi.
-  - `beforeinstallprompt` **batte lo user agent**: se il browser ha offerto
-    l'installazione sa installare, e l'euristica (che legge stringhe) non
-    deve poter nascondere un bottone che funziona.
-- **Ogni claim va verificato sul browser giusto**: «è l'unico modo per
-  ricevere le notifiche» era falso ovunque tranne iOS, e «installa sulla
-  schermata principale» è lessico da telefono letto anche su un computer.
-  Titolo, occhiello e testo della striscia si adattano alla piattaforma.
+  infobar. `prompt()` è **usa e getta**: si consuma alla prima chiamata.
+- **Da computer il riquadro «Portala sul telefono»**: QR della pagina più
+  il link da copiare. È l'uso vero da desktop — l'app serve in tasca — e il
+  QR si genera con `qrcode`, già dipendenza per il GiroCode dei bonifici
+  (`useEpcQr` resta specifico dell'EPC, non si tocca).
 - **Stato dedotto dal vivo**, mai memorizzato: `display-mode: standalone`
   (più `navigator.standalone` per iOS) e l'evento `appinstalled`. Così la
   stessa URL, riaperta dall'icona, riconosce da sé di essere nell'app.
-- **Browser in-app** (WhatsApp, Facebook): da lì non si installa nulla e la
-  voce di menu descritta non esiste. Rilevato **solo** per marcatori
-  espliciti nello user agent (`FBAN`, `Instagram`, …) e per il `; wv)` delle
-  WebView Android. Su iOS si potrebbe dedurlo dall'assenza di
-  `navigator.standalone`, ma quella prova pesca dentro anche Chrome e Firefox
-  per iOS, dove installare si può: si è preferita una nota di ripiego
-  («non trovi la voce? apri in Safari») a una diagnosi che sbaglia bersaglio.
+- **Browser in-app** (WhatsApp, Facebook): da lì non si installa nulla.
+  Rilevato **solo** per marcatori espliciti nello user agent (`FBAN`,
+  `Instagram`, …) e per il `; wv)` delle WebView Android. Su iOS si
+  potrebbe dedurlo dall'assenza di `navigator.standalone`, ma quella prova
+  pesca dentro anche Chrome e Firefox per iOS, dove installare si può.
 - **Testi anfibi, nessuna variante per ruolo**: la pagina si apre quasi
-  sempre prima del login, quando il ruolo non si sa, e anche dopo distinguere
-  inquilino da proprietario non aggiunge nulla — chi legge vuole sapere a
-  cosa serve l'app, non quale evento tocca a lui.
-- Il passo 3 riusa `NotifichePushPannello.vue` — è il terzo punto in cui
-  compare, dopo `/i/profilo` e `/p/profilo`.
+  sempre prima del login, quando il ruolo non si sa.
+- Il passo 1 riusa `NotifichePushPannello.vue` — è il terzo punto in cui
+  compare, dopo `/i/profilo` e `/p/profilo`. La notifica di **prova** resta
+  l'unica a non scrivere nel registro (`salva_notification=False`): è una
+  verifica su di sé, non una comunicazione.
 
 **Il collo di bottiglia è la scoperta, non la pagina**: nessuno cerca
 `/installa` da solo. La striscia `InstallaBanner.vue` sta nei layout di
@@ -122,7 +151,11 @@ inquilino e proprietario e porta lì.
 
 - Va **dentro `q-page-container`**, non accanto: fuori di lì il drawer
   persistente del layout proprietario copre icona e testo.
-- Sparisce da sé quando l'app è installata (`display-mode: standalone`).
+- Sparisce da sé quando l'app è installata (`display-mode: standalone`), ma
+  **compare anche dove installare non si può**: la pagina a cui porta offre
+  comunque le notifiche e le istruzioni da girare a chi ha un telefono.
+- Nomina le **notifiche**, che valgono ovunque, e l'app come secondo
+  motivo: promettere l'una attraverso l'altra è vero solo su iPhone.
 - Chiuderla la rinvia di **30 giorni**, non per sempre: chi la chiude di
   fretta è esattamente chi non ha ancora installato niente. Scadenza in
   `localStorage` (`vp-installa-rinviato`), letta e scritta in `try/catch` —

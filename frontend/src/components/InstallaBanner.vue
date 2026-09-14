@@ -20,7 +20,7 @@
         dense
         no-caps
         color="primary"
-        label="Come si fa"
+        label="Vedi come"
         data-testid="installa-banner-vai"
         @click="vai"
       />
@@ -50,7 +50,7 @@ const GIORNI_RINVIO = 30;
 const CHIAVE = 'vp-installa-rinviato';
 
 const router = useRouter();
-const { piattaforma, installabile, installata } = useInstallPwa();
+const { piattaforma, installata } = useInstallPwa();
 
 function letturaRinvio(): number {
   // localStorage può mancare o sollevare (navigazione privata, cookie di
@@ -64,24 +64,19 @@ function letturaRinvio(): number {
 
 const rinviatoAl = ref(letturaRinvio());
 
-// Niente invito dove installare non si può (Firefox su computer): sarebbe
-// un invito a un'azione inesistente. Lì le notifiche si accendono comunque
-// dal profilo, che è la strada che resta.
-const visibile = computed(
-  () => installabile.value && !installata.value && Date.now() > rinviatoAl.value,
-);
+// Compare anche dove installare non si può (Firefox su computer): la
+// pagina a cui porta offre comunque le notifiche, che lì funzionano, e le
+// istruzioni da girare a chi ha un telefono.
+const visibile = computed(() => !installata.value && Date.now() > rinviatoAl.value);
 
-// L'installazione è *necessaria* per le notifiche solo su iOS. Altrove è un
-// vantaggio, non un requisito: dirlo requisito sarebbe falso.
-const testo = computed(() => {
-  if (piattaforma === 'desktop') {
-    return 'Installa Viapal: si apre come un’applicazione, senza passare dal browser.';
-  }
-  if (piattaforma === 'ios') {
-    return 'Metti Viapal nella schermata principale: su iPhone è l’unico modo per ricevere le notifiche.';
-  }
-  return 'Metti Viapal nella schermata principale: si apre con un tocco e ti avvisa delle scadenze.';
-});
+// L'installazione è *necessaria* per le notifiche solo su iOS; altrove è
+// una comodità. La striscia non promette quindi l'una attraverso l'altra:
+// nomina le notifiche, che valgono ovunque, e l'app come secondo motivo.
+const testo = computed(() =>
+  piattaforma === 'ios'
+    ? 'Accendi le notifiche: su iPhone arrivano solo mettendo Viapal nella schermata principale.'
+    : 'Accendi le notifiche e tieni Viapal a portata di mano, senza cercare il sito ogni volta.',
+);
 
 function rinvia() {
   const scadenza = Date.now() + GIORNI_RINVIO * 24 * 3600 * 1000;
