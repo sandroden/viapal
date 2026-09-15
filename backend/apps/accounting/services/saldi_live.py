@@ -167,7 +167,7 @@ def calcola_saldi_correnti(property: Property, at_date: date) -> dict[OwnerProfi
     # pagato (la quota di dicembre bonificata a gennaio): è `data_competenza`
     # a dire a quale periodo appartiene, e i filtri seguono quella.
     led_qs = OwnerLedgerEntry.objects.annotate(
-        data_effettiva=Coalesce("data_competenza", "data"),
+        data_effettiva=Coalesce("bank_transaction__data_competenza", "data"),
     ).filter(
         property=property,
         bank_transaction__isnull=False,

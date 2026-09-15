@@ -580,7 +580,10 @@ class BankTransactionAdmin(_CleanAdvancedSearchLabelsMixin, ModalEditMixin, Jumb
     )
     fieldsets = (
         ("Transazione", {
-            "fields": ("data", "descrizione", "importo", "owner_account"),
+            "fields": (
+                "data", "data_competenza", "descrizione", "importo",
+                "owner_account",
+            ),
         }),
         ("Note", {
             "fields": ("note",),

@@ -40,20 +40,19 @@ from properties.context import get_request_property
 from properties.models import OwnerProfile
 
 
-def _imputa_anno(voci, anno, data) -> None:
-    """Dichiara l'anno di competenza sulle voci appena create.
+def _imputa_anno(bt, anno) -> None:
+    """Dichiara sul movimento l'anno a cui appartiene.
 
-    L'interfaccia ragiona per anni, il libro mastro per date: qui si traduce.
-    Anno assente o uguale a quello del pagamento significa «nessuna
-    dichiarazione», e la data resta l'unica verità.
+    L'interfaccia ragiona per anni, i conti per date: qui si traduce. Il dato
+    sta sulla `BankTransaction` e non sulle voci che ne derivano — sono due,
+    simmetriche, e terrebbero due volte la stessa verità; per le partite
+    bilaterali, che voci di libro mastro non ne hanno, si perderebbe del tutto.
+    Anno assente significa «nessuna dichiarazione»: vale la data.
     """
     if not anno:
         return
-    data_competenza = data_competenza_da_anno(anno, data)
-    for v in voci:
-        if isinstance(v, OwnerLedgerEntry):
-            v.data_competenza = data_competenza
-            v.save(update_fields=["data_competenza"])
+    bt.data_competenza = data_competenza_da_anno(anno, bt.data)
+    bt.save(update_fields=["data_competenza"])
 
 
 class OwnerLedgerEntryViewSet(ModelViewSet):
@@ -189,12 +188,12 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
                 descrizione=descrizione,
                 note=d.get("note", "") or "",
             )
+            _imputa_anno(bt, d.get("anno_competenza"))
             voci = marca_bt_come_ledger(
                 bt, property=prop, tipo=d["tipo"],
                 controparte_owner=controparte, settlement=settlement,
                 descrizione=descrizione, note=d.get("note", "") or "",
             )
-            _imputa_anno(voci, d.get("anno_competenza"), bt.data)
         return Response(
             {
                 "bank_transaction": bt.pk,
@@ -276,7 +275,9 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
                     controparte_owner=controparte, settlement=settlement,
                     descrizione=descrizione, note=d.get("note", "") or "",
                 )
-                _imputa_anno(voci, d.get("anno_competenza"), bt.data)
+                # L'anno vive sul movimento: si scrive qui, non come effetto
+                # collaterale della marcatura, che potrebbe non ripetersi.
+                _imputa_anno(bt, d.get("anno_competenza"))
                 if descrizione and descrizione != bt.descrizione:
                     bt.descrizione = descrizione
                     bt.save(update_fields=["descrizione"])

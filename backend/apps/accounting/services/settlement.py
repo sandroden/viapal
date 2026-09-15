@@ -246,7 +246,7 @@ def _collega_voci_da_bt(
     settlement è in quella baseline e sommarla due volte falserebbe i conti.
     """
     OwnerLedgerEntry.objects.annotate(
-        data_effettiva=Coalesce("data_competenza", "data"),
+        data_effettiva=Coalesce("bank_transaction__data_competenza", "data"),
     ).filter(
         property=settlement.property,
         bank_transaction__isnull=False,

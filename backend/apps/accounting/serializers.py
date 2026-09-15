@@ -14,7 +14,8 @@ class OwnerLedgerEntrySerializer(serializers.ModelSerializer):
 
     def get_anno_competenza(self, obj) -> int:
         """L'anno a cui il movimento appartiene, dichiarato o implicito."""
-        return (obj.data_competenza or obj.data).year
+        bt = obj.bank_transaction
+        return ((bt.data_competenza if bt else None) or obj.data).year
     tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
 
     class Meta:
@@ -24,7 +25,6 @@ class OwnerLedgerEntrySerializer(serializers.ModelSerializer):
             "owner",
             "owner_nominativo",
             "data",
-            "data_competenza",
             "anno_competenza",
             "descrizione",
             "importo",
@@ -41,6 +41,12 @@ class OwnerLedgerEntrySerializer(serializers.ModelSerializer):
 class InterOwnerEntrySerializer(serializers.ModelSerializer):
     owner_da_nominativo = serializers.CharField(source="owner_da.nominativo", read_only=True)
     owner_a_nominativo = serializers.CharField(source="owner_a.nominativo", read_only=True)
+    anno_competenza = serializers.SerializerMethodField()
+
+    def get_anno_competenza(self, obj) -> int:
+        """Anche le partite private appartengono a un anno."""
+        bt = obj.bank_transaction
+        return ((bt.data_competenza if bt else None) or obj.data).year
 
     class Meta:
         model = InterOwnerEntry
@@ -51,6 +57,7 @@ class InterOwnerEntrySerializer(serializers.ModelSerializer):
             "owner_a",
             "owner_a_nominativo",
             "data",
+            "anno_competenza",
             "importo",
             "descrizione",
             "riferimento_loan",

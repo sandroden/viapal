@@ -9,7 +9,7 @@ resources:
 tags: [models, accounting]
 generated:
   by: process:okf-migrate
-  at: 2026-09-15T03:00:00Z
+  at: 2026-09-15T11:00:00Z
 ---
 
 # Overview
@@ -24,7 +24,7 @@ immobili.
 
 | Modello | Campi chiave | Note |
 |---------|--------------|------|
-| `OwnerLedgerEntry` | `property`, `owner`, `data`, `data_competenza`, `descrizione`, `importo`, `tipo`, `riferimento_receivable`, `riferimento_expense`, `riferimento_settlement`, `bank_transaction`, `note` | voce di libro mastro per proprietario; `data_competenza` dichiara l'anno di appartenenza quando è diverso da quello del pagamento (vedi [saldi proprietari](/domain/saldi-proprietari.md)); `tipo` ∈ incasso_affitto, incasso_conguaglio, spesa, anticipo, distribuzione, aggiustamento; unica per `(riferimento_receivable, owner, tipo)` e `(riferimento_expense, owner, tipo)` — così `genera_settlement` è idempotente |
+| `OwnerLedgerEntry` | `property`, `owner`, `data`, `descrizione`, `importo`, `tipo`, `riferimento_receivable`, `riferimento_expense`, `riferimento_settlement`, `bank_transaction`, `note` | voce di libro mastro per proprietario; l'anno di appartenenza lo dichiara `BankTransaction.data_competenza`, sul movimento, non qui (vedi [saldi proprietari](/domain/saldi-proprietari.md)); `tipo` ∈ incasso_affitto, incasso_conguaglio, spesa, anticipo, distribuzione, aggiustamento; unica per `(riferimento_receivable, owner, tipo)` e `(riferimento_expense, owner, tipo)` — così `genera_settlement` è idempotente |
 | `OwnerSettlement` | `property`, `data`, `periodo_da`/`_a`, `descrizione`, `snapshot` (JSON), `note` | conguaglio periodico congelato in snapshot; è la baseline dei saldi live |
 | `InterOwnerLoan` | `property`, `owner_da`, `owner_a`, `data_apertura`, `importo_originale`, `chiuso` | prestito bilaterale |
 | `InterOwnerEntry` | `property`, `owner_da`, `owner_a`, `data`, `importo`, `riferimento_loan/_expense/_settlement`, `bank_transaction` | movimento bilaterale |

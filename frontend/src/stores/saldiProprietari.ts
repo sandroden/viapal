@@ -112,7 +112,6 @@ export interface OwnerLedgerEntryFE {
   owner: number;
   owner_nominativo: string;
   data: string;
-  data_competenza?: string | null;
   anno_competenza?: number | null;
   descrizione: string;
   importo: string;
@@ -132,6 +131,7 @@ export interface InterOwnerEntryFE {
   owner_a: number;
   owner_a_nominativo: string;
   data: string;
+  anno_competenza?: number | null;
   importo: string;
   descrizione: string;
   riferimento_loan?: number | null;

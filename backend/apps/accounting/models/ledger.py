@@ -12,6 +12,9 @@ from properties.models import TimestampedModel
 def data_competenza_da_anno(anno: int, data: datetime.date) -> datetime.date | None:
     """Traduce l'anno scelto dall'utente in una data di competenza.
 
+    La data vive su `BankTransaction.data_competenza`: è il movimento ad
+    appartenere a un anno, non le due voci simmetriche che ne derivano.
+
     In interfaccia si sceglie un anno — «questo bonifico è del 2025» — ma i
     conti si fanno su periodi con estremi liberi, quindi serve una data. Si
     prende l'estremo dell'anno più vicino alla data reale: il 31 dicembre se
@@ -51,14 +54,6 @@ class OwnerLedgerEntry(TimestampedModel):
     )
     data = models.DateField(
         verbose_name="data",
-    )
-    data_competenza = models.DateField(
-        null=True,
-        blank=True,
-        verbose_name="data di competenza",
-        help_text="Solo se il movimento appartiene a un anno diverso da quello "
-                  "in cui è stato pagato: il primo bonifico dell'anno è spesso "
-                  "la quota di dicembre. Vuoto = vale la data.",
     )
     descrizione = models.CharField(
         max_length=300,

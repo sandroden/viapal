@@ -11,7 +11,7 @@ resources:
 tags: [domain, accounting, settlement, saldi]
 generated:
   by: process:okf-migrate
-  at: 2026-09-15T03:00:00Z
+  at: 2026-09-15T11:00:00Z
 ---
 
 # Overview
@@ -69,11 +69,15 @@ Fabio).
 
 Un movimento può appartenere a un anno diverso da quello in cui è stato
 pagato: il primo bonifico dell'anno è di solito la quota di dicembre.
-`OwnerLedgerEntry.data_competenza` (nullable) lo dichiara; vuoto significa che
-vale la data. `saldi_live` e `genera_settlement` filtrano sul
-`Coalesce(data_competenza, data)`, quindi quel bonifico entra nella chiusura
-dell'anno prima e non nel periodo aperto — **il totale non cambia mai**: la
-competenza dice a quale periodo il movimento appartiene, non quanto vale.
+Il campo sta su **`BankTransaction.data_competenza`** — è il movimento ad
+appartenere a un anno, non le due voci simmetriche che ne derivano, e le
+partite bilaterali voci di libro mastro non ne hanno affatto (finché il campo
+stava sulla voce, per loro l'anno veniva accettato e perso). `saldi_live` e
+`genera_settlement` filtrano sul
+`Coalesce(bank_transaction__data_competenza, data)`, quindi quel bonifico entra
+nella chiusura dell'anno prima e non nel periodo aperto — **il totale non
+cambia mai**: la competenza dice a quale periodo il movimento appartiene, non
+quanto vale. In admin si vede sulla riga del movimento.
 
 In interfaccia si sceglie un anno, non una data: `data_competenza_da_anno`
 traduce nell'estremo più vicino (31 dicembre se l'anno è precedente, 1° gennaio

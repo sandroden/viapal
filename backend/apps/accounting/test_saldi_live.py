@@ -570,7 +570,6 @@ def test_anno_competenza_sposta_il_movimento_di_periodo(
     """
     import datetime as dt
 
-    from accounting.models.ledger import data_competenza_da_anno
     from accounting.services.settlement import genera_settlement
     from django.contrib.auth.models import Group
     from properties.models import PropertyMembership
@@ -597,8 +596,8 @@ def test_anno_competenza_sposta_il_movimento_di_periodo(
         content_type="application/json",
     )
     assert r.status_code == 201, r.content
-    voci = OwnerLedgerEntry.objects.filter(bank_transaction=r.json()["bank_transaction"])
-    assert {v.data_competenza for v in voci} == {dt.date(2024, 12, 31)}
+    bt = BankTransaction.objects.get(pk=r.json()["bank_transaction"])
+    assert bt.data_competenza == dt.date(2024, 12, 31)
 
     al = dt.date(2025, 6, 30)
     prima = calcola_saldi_correnti(immobile, al)
@@ -641,5 +640,61 @@ def test_anno_competenza_uguale_alla_data_non_si_dichiara(
         content_type="application/json",
     )
     assert r.status_code == 201, r.content
-    voci = OwnerLedgerEntry.objects.filter(bank_transaction=r.json()["bank_transaction"])
-    assert {v.data_competenza for v in voci} == {None}
+    bt = BankTransaction.objects.get(pk=r.json()["bank_transaction"])
+    assert bt.data_competenza is None
+
+
+def test_anno_competenza_di_una_partita_privata_si_rilegge(
+    db, client, immobile, quote_terzi, sandro, bruna, fabio, conto_bruna,
+):
+    """Il giro completo che non funzionava: dichiarare l'anno e ritrovarlo.
+
+    Per una partita bilaterale non esistono voci di libro mastro, quindi
+    finché l'anno stava lì veniva accettato e perso in silenzio.
+    """
+    import datetime as dt
+
+    from django.contrib.auth.models import Group
+    from properties.models import PropertyMembership
+
+    gruppo, _ = Group.objects.get_or_create(name="proprietari")
+    for owner in (sandro, bruna, fabio):
+        PropertyMembership.objects.get_or_create(
+            property=immobile, user=owner.user, defaults={"ruolo": "proprietario"},
+        )
+        owner.user.groups.add(gruppo)
+    conto_bruna.properties.add(immobile)
+    client.force_login(bruna.user)
+
+    creata = client.post(
+        "/api/v1/owner-ledger/trasferimento/",
+        data={
+            "owner_account": conto_bruna.pk,
+            "controparte_owner": sandro.pk,
+            "importo": "1707.00",
+            "data": "2026-02-02",
+            "descrizione": "Pareggio dei conti",
+        },
+        content_type="application/json",
+    )
+    assert creata.status_code == 201, creata.content
+    bt_id = creata.json()["bank_transaction"]
+
+    r = client.patch(
+        f"/api/v1/owner-ledger/bt-inter-owner/{bt_id}/",
+        data={
+            "tipo": "bilaterale",
+            "controparte_owner": sandro.pk,
+            "anno_competenza": 2025,
+            "descrizione": "Pareggio dei conti 2025",
+        },
+        content_type="application/json",
+    )
+    assert r.status_code == 200, r.content
+    assert BankTransaction.objects.get(pk=bt_id).data_competenza == dt.date(2025, 12, 31)
+
+    riletta = client.get("/api/v1/inter-owner-entries/").json()
+    voci = riletta["results"] if isinstance(riletta, dict) else riletta
+    nostra = [v for v in voci if v["bank_transaction"] == bt_id]
+    assert len(nostra) == 1
+    assert nostra[0]["anno_competenza"] == 2025

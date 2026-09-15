@@ -800,6 +800,7 @@ function apriCorrezioneDaBilaterale(b: InterOwnerEntryFE) {
     settlement: b.riferimento_settlement ?? null,
     descrizione: b.descrizione,
     data: b.data,
+    anno: b.anno_competenza ?? null,
     importo: Number(b.importo),
   });
 }

@@ -71,6 +71,14 @@ class BankTransaction(TimestampedModel):
     data = models.DateField(
         verbose_name="data",
     )
+    data_competenza = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="data di competenza",
+        help_text="Solo se il movimento appartiene a un anno diverso da quello "
+                  "in cui è stato pagato: il primo bonifico dell'anno è spesso "
+                  "la quota di dicembre. Vuoto = vale la data.",
+    )
     descrizione = models.TextField(
         verbose_name="descrizione",
     )
