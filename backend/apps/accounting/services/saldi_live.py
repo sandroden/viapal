@@ -30,6 +30,8 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.db.models.functions import Coalesce
+
 from accounting.models import OwnerLedgerEntry, OwnerSettlement
 from billing.models import Expense, Receivable
 from billing.models.payments import StatoPagamento
@@ -159,13 +161,18 @@ def calcola_saldi_correnti(property: Property, at_date: date) -> dict[OwnerProfi
                 contributo = -saldo.quota * e.importo
             _aggrega(saldo.spese_per_categoria, chiave, contributo)
 
-    led_qs = OwnerLedgerEntry.objects.filter(
+    # Un movimento può appartenere a un anno diverso da quello in cui è stato
+    # pagato (la quota di dicembre bonificata a gennaio): è `data_competenza`
+    # a dire a quale periodo appartiene, e i filtri seguono quella.
+    led_qs = OwnerLedgerEntry.objects.annotate(
+        data_effettiva=Coalesce("data_competenza", "data"),
+    ).filter(
         property=property,
         bank_transaction__isnull=False,
-        data__lte=at_date,
+        data_effettiva__lte=at_date,
     )
     if periodo_da:
-        led_qs = led_qs.filter(data__gte=periodo_da)
+        led_qs = led_qs.filter(data_effettiva__gte=periodo_da)
 
     for v in led_qs:
         if v.owner_id in {o.pk for o in saldi}:

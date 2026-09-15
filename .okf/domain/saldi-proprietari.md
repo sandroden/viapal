@@ -11,7 +11,7 @@ resources:
 tags: [domain, accounting, settlement, saldi]
 generated:
   by: process:okf-migrate
-  at: 2026-09-15T02:00:00Z
+  at: 2026-09-15T03:00:00Z
 ---
 
 # Overview
@@ -64,6 +64,21 @@ resta nel controllo per i dati storici.
 `Expense.riferimento_quota_owner` permette di imputare una spesa a un
 proprietario specifico anziché ripartirla per quote (es. Bruna paga l'IMU di
 Fabio).
+
+# Anno di competenza
+
+Un movimento può appartenere a un anno diverso da quello in cui è stato
+pagato: il primo bonifico dell'anno è di solito la quota di dicembre.
+`OwnerLedgerEntry.data_competenza` (nullable) lo dichiara; vuoto significa che
+vale la data. `saldi_live` e `genera_settlement` filtrano sul
+`Coalesce(data_competenza, data)`, quindi quel bonifico entra nella chiusura
+dell'anno prima e non nel periodo aperto — **il totale non cambia mai**: la
+competenza dice a quale periodo il movimento appartiene, non quanto vale.
+
+In interfaccia si sceglie un anno, non una data: `data_competenza_da_anno`
+traduce nell'estremo più vicino (31 dicembre se l'anno è precedente, 1° gennaio
+se successivo) e non scrive nulla quando l'anno coincide con quello del
+pagamento. Gli endpoint accettano `anno_competenza`.
 
 # Settlement
 

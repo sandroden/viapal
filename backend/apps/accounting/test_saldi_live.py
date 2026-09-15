@@ -557,3 +557,89 @@ def test_endpoint_modifica_marcatura(
     assert voci[sandro].importo == Decimal("-1707.00")
     # L'importo resta quello della banca: non è modificabile da qui.
     assert bt.importo == Decimal("-1707.00")
+
+
+def test_anno_competenza_sposta_il_movimento_di_periodo(
+    db, client, immobile, quote_terzi, sandro, bruna, fabio, conto_bruna,
+):
+    """Il bonifico di gennaio dichiarato dell'anno prima appartiene a quello.
+
+    Il totale non cambia mai — la competenza dice a quale periodo il
+    movimento appartiene, non quanto vale — ma la chiusura del 2024 se lo
+    porta dentro invece di lasciarlo al periodo aperto.
+    """
+    import datetime as dt
+
+    from accounting.models.ledger import data_competenza_da_anno
+    from accounting.services.settlement import genera_settlement
+    from django.contrib.auth.models import Group
+    from properties.models import PropertyMembership
+
+    gruppo, _ = Group.objects.get_or_create(name="proprietari")
+    for owner in (sandro, bruna, fabio):
+        PropertyMembership.objects.get_or_create(
+            property=immobile, user=owner.user, defaults={"ruolo": "proprietario"},
+        )
+        owner.user.groups.add(gruppo)
+    conto_bruna.properties.add(immobile)
+    client.force_login(bruna.user)
+
+    r = client.post(
+        "/api/v1/owner-ledger/trasferimento/",
+        data={
+            "owner_account": conto_bruna.pk,
+            "controparte_owner": fabio.pk,
+            "importo": "400.00",
+            "data": "2025-01-13",
+            "anno_competenza": 2024,
+            "descrizione": "Quota di dicembre",
+        },
+        content_type="application/json",
+    )
+    assert r.status_code == 201, r.content
+    voci = OwnerLedgerEntry.objects.filter(bank_transaction=r.json()["bank_transaction"])
+    assert {v.data_competenza for v in voci} == {dt.date(2024, 12, 31)}
+
+    al = dt.date(2025, 6, 30)
+    prima = calcola_saldi_correnti(immobile, al)
+    assert prima[fabio].totale == Decimal("-400.00")
+
+    genera_settlement(immobile, dt.date(2024, 1, 1), dt.date(2024, 12, 31))
+    dopo = calcola_saldi_correnti(immobile, al)
+    # Stessa posizione, ma ora è la baseline a portarla: il periodo aperto
+    # comincia dal 2025 e quel bonifico non ci appartiene più.
+    assert dopo[fabio].totale == prima[fabio].totale
+    assert dopo[fabio].baseline_settlement == Decimal("-400.00")
+    assert dopo[fabio].bt_inter_owner == Decimal("0")
+
+
+def test_anno_competenza_uguale_alla_data_non_si_dichiara(
+    db, client, immobile, quote_terzi, sandro, bruna, fabio, conto_bruna,
+):
+    """Dichiarare l'anno in cui il bonifico è stato fatto non scrive nulla."""
+    from django.contrib.auth.models import Group
+    from properties.models import PropertyMembership
+
+    gruppo, _ = Group.objects.get_or_create(name="proprietari")
+    for owner in (sandro, bruna, fabio):
+        PropertyMembership.objects.get_or_create(
+            property=immobile, user=owner.user, defaults={"ruolo": "proprietario"},
+        )
+        owner.user.groups.add(gruppo)
+    conto_bruna.properties.add(immobile)
+    client.force_login(bruna.user)
+
+    r = client.post(
+        "/api/v1/owner-ledger/trasferimento/",
+        data={
+            "owner_account": conto_bruna.pk,
+            "controparte_owner": fabio.pk,
+            "importo": "300.00",
+            "data": "2025-03-02",
+            "anno_competenza": 2025,
+        },
+        content_type="application/json",
+    )
+    assert r.status_code == 201, r.content
+    voci = OwnerLedgerEntry.objects.filter(bank_transaction=r.json()["bank_transaction"])
+    assert {v.data_competenza for v in voci} == {None}

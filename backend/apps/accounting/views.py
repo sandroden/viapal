@@ -22,6 +22,7 @@ from accounting.serializers import (
     SaldoLiveSerializer,
     TrasferimentoProprietariSerializer,
 )
+from accounting.models.ledger import data_competenza_da_anno
 from accounting.services.bt_inter_owner import (
     BTGiaMarcata,
     disfa_marcatura,
@@ -37,6 +38,22 @@ from accounts.permissions import IsProprietario
 from billing.models.payments import BankTransaction
 from properties.context import get_request_property
 from properties.models import OwnerProfile
+
+
+def _imputa_anno(voci, anno, data) -> None:
+    """Dichiara l'anno di competenza sulle voci appena create.
+
+    L'interfaccia ragiona per anni, il libro mastro per date: qui si traduce.
+    Anno assente o uguale a quello del pagamento significa «nessuna
+    dichiarazione», e la data resta l'unica verità.
+    """
+    if not anno:
+        return
+    data_competenza = data_competenza_da_anno(anno, data)
+    for v in voci:
+        if isinstance(v, OwnerLedgerEntry):
+            v.data_competenza = data_competenza
+            v.save(update_fields=["data_competenza"])
 
 
 class OwnerLedgerEntryViewSet(ModelViewSet):
@@ -177,6 +194,7 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
                 controparte_owner=controparte, settlement=settlement,
                 descrizione=descrizione, note=d.get("note", "") or "",
             )
+            _imputa_anno(voci, d.get("anno_competenza"), bt.data)
         return Response(
             {
                 "bank_transaction": bt.pk,
@@ -258,6 +276,7 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
                     controparte_owner=controparte, settlement=settlement,
                     descrizione=descrizione, note=d.get("note", "") or "",
                 )
+                _imputa_anno(voci, d.get("anno_competenza"), bt.data)
                 if descrizione and descrizione != bt.descrizione:
                     bt.descrizione = descrizione
                     bt.save(update_fields=["descrizione"])

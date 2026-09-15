@@ -10,6 +10,11 @@ from accounting.models import InterOwnerEntry, OwnerLedgerEntry, OwnerSettlement
 
 class OwnerLedgerEntrySerializer(serializers.ModelSerializer):
     owner_nominativo = serializers.CharField(source="owner.nominativo", read_only=True)
+    anno_competenza = serializers.SerializerMethodField()
+
+    def get_anno_competenza(self, obj) -> int:
+        """L'anno a cui il movimento appartiene, dichiarato o implicito."""
+        return (obj.data_competenza or obj.data).year
     tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
 
     class Meta:
@@ -19,6 +24,8 @@ class OwnerLedgerEntrySerializer(serializers.ModelSerializer):
             "owner",
             "owner_nominativo",
             "data",
+            "data_competenza",
+            "anno_competenza",
             "descrizione",
             "importo",
             "tipo",
@@ -60,6 +67,9 @@ class MarcaBtInterOwnerSerializer(serializers.Serializer):
     tipo = serializers.ChoiceField(
         choices=["distribuzione", "incasso_conguaglio", "bilaterale", "aggiustamento"],
     )
+    anno_competenza = serializers.IntegerField(
+        required=False, allow_null=True, min_value=2000, max_value=2100,
+    )
     controparte_owner = serializers.IntegerField(required=False, allow_null=True)
     settlement = serializers.IntegerField(required=False, allow_null=True)
     descrizione = serializers.CharField(required=False, allow_blank=True, default="")
@@ -80,6 +90,9 @@ class TrasferimentoProprietariSerializer(serializers.Serializer):
     tipo = serializers.ChoiceField(
         choices=["distribuzione", "incasso_conguaglio"], default="distribuzione",
     )
+    anno_competenza = serializers.IntegerField(
+        required=False, allow_null=True, min_value=2000, max_value=2100,
+    )
     settlement = serializers.IntegerField(required=False, allow_null=True)
     descrizione = serializers.CharField(required=False, allow_blank=True, default="")
     note = serializers.CharField(required=False, allow_blank=True, default="")
@@ -93,6 +106,9 @@ class ModificaInterOwnerSerializer(serializers.Serializer):
     """
     tipo = serializers.ChoiceField(
         choices=["distribuzione", "incasso_conguaglio", "bilaterale", "aggiustamento"],
+    )
+    anno_competenza = serializers.IntegerField(
+        required=False, allow_null=True, min_value=2000, max_value=2100,
     )
     controparte_owner = serializers.IntegerField(required=False, allow_null=True)
     settlement = serializers.IntegerField(required=False, allow_null=True)

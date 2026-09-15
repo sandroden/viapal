@@ -1,10 +1,29 @@
 """
 Partitario ufficiale tra i proprietari (Livello A).
 """
+import datetime
+
 from django.db import models
 from django.db.models import Q
 
 from properties.models import TimestampedModel
+
+
+def data_competenza_da_anno(anno: int, data: datetime.date) -> datetime.date | None:
+    """Traduce l'anno scelto dall'utente in una data di competenza.
+
+    In interfaccia si sceglie un anno — «questo bonifico è del 2025» — ma i
+    conti si fanno su periodi con estremi liberi, quindi serve una data. Si
+    prende l'estremo dell'anno più vicino alla data reale: il 31 dicembre se
+    l'anno è precedente (il caso comune: la quota di dicembre pagata a
+    gennaio), il 1° gennaio se è successivo. Se l'anno coincide con quello
+    della data non c'è nulla da dichiarare e si torna ``None``.
+    """
+    if anno == data.year:
+        return None
+    if anno < data.year:
+        return datetime.date(anno, 12, 31)
+    return datetime.date(anno, 1, 1)
 
 
 class OwnerLedgerEntry(TimestampedModel):
@@ -32,6 +51,14 @@ class OwnerLedgerEntry(TimestampedModel):
     )
     data = models.DateField(
         verbose_name="data",
+    )
+    data_competenza = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="data di competenza",
+        help_text="Solo se il movimento appartiene a un anno diverso da quello "
+                  "in cui è stato pagato: il primo bonifico dell'anno è spesso "
+                  "la quota di dicembre. Vuoto = vale la data.",
     )
     descrizione = models.CharField(
         max_length=300,

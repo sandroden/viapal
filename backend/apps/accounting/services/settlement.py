@@ -32,6 +32,7 @@ from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import Sum
+from django.db.models.functions import Coalesce
 
 from accounting.models import OwnerLedgerEntry, OwnerSettlement
 from billing.models import Expense, Receivable
@@ -242,12 +243,14 @@ def _collega_voci_da_bt(
     Si prendono solo quelle ancora libere: una voce già assegnata a un altro
     settlement è in quella baseline e sommarla due volte falserebbe i conti.
     """
-    OwnerLedgerEntry.objects.filter(
+    OwnerLedgerEntry.objects.annotate(
+        data_effettiva=Coalesce("data_competenza", "data"),
+    ).filter(
         property=settlement.property,
         bank_transaction__isnull=False,
         riferimento_settlement__isnull=True,
-        data__gte=periodo_da,
-        data__lte=periodo_a,
+        data_effettiva__gte=periodo_da,
+        data_effettiva__lte=periodo_a,
     ).update(riferimento_settlement=settlement)
 
 
