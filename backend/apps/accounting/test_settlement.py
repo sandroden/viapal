@@ -310,3 +310,73 @@ def test_command_genera_settlement(db, immobile, quote_due_e_uno, receivable_apr
     call_command("genera_settlement", "--anno", "2024", stdout=out)
     assert "generato" in out.getvalue()
     assert OwnerSettlement.objects.filter(periodo_da=datetime.date(2024, 1, 1)).exists()
+
+
+@pytest.fixture
+def conto_bruna_set(db, bruna):
+    from properties.models import OwnerBankAccount
+
+    return OwnerBankAccount.objects.create(
+        owner=bruna, banca="BPER", intestatario="Bruna",
+        iban="IT60X0542811101000000000222",
+    )
+
+
+def test_snapshot_include_le_bt_marcate(
+    db, immobile, quote_due_e_uno, sandro, bruna, fabio, conto_bruna_set, receivable_aprile,
+):
+    """Chiudere un periodo non deve dimenticare i bonifici fra proprietari.
+
+    Le voci nate dalla marcatura di una BT non derivano né da Receivable né da
+    Expense: se il settlement non le aggancia, la baseline le perde e i saldi
+    tornano indietro come se quel denaro non fosse mai stato girato.
+    """
+    from accounting.services.bt_inter_owner import marca_bt_come_ledger
+    from accounting.services.saldi_live import calcola_saldi_correnti
+    from billing.models.payments import BankTransaction
+
+    bt = BankTransaction.objects.create(
+        owner_account=conto_bruna_set,
+        data=datetime.date(2024, 5, 10),
+        descrizione="quota Fabio",
+        importo=Decimal("-100"),
+    )
+    marca_bt_come_ledger(
+        bt, property=immobile, tipo="distribuzione", controparte_owner=fabio,
+    )
+    prima = calcola_saldi_correnti(immobile, datetime.date(2025, 6, 30))
+
+    settlement = genera_settlement(
+        immobile, datetime.date(2024, 1, 1), datetime.date(2024, 12, 31),
+    )
+
+    voci_bt = OwnerLedgerEntry.objects.filter(bank_transaction=bt)
+    assert {v.riferimento_settlement_id for v in voci_bt} == {settlement.pk}
+    dopo = calcola_saldi_correnti(immobile, datetime.date(2025, 6, 30))
+    for owner in (sandro, bruna, fabio):
+        assert dopo[owner].totale == prima[owner].totale, owner
+
+
+def test_reset_non_cancella_le_voci_da_bt(
+    db, immobile, quote_due_e_uno, bruna, fabio, conto_bruna_set,
+):
+    """Rigenerare un settlement non deve smarcare le BT già attribuite."""
+    from accounting.services.bt_inter_owner import marca_bt_come_ledger
+    from billing.models.payments import BankTransaction
+
+    bt = BankTransaction.objects.create(
+        owner_account=conto_bruna_set,
+        data=datetime.date(2024, 5, 10),
+        descrizione="quota Fabio",
+        importo=Decimal("-100"),
+    )
+    marca_bt_come_ledger(
+        bt, property=immobile, tipo="distribuzione", controparte_owner=fabio,
+    )
+    genera_settlement(immobile, datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
+    settlement = genera_settlement(
+        immobile, datetime.date(2024, 1, 1), datetime.date(2024, 12, 31), reset=True,
+    )
+
+    assert OwnerLedgerEntry.objects.filter(bank_transaction=bt).count() == 2
+    assert bt.ledger_entries.filter(riferimento_settlement=settlement).count() == 2

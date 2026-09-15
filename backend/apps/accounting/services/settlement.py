@@ -89,7 +89,14 @@ def genera_settlement(
                 f"Settlement esistente per {periodo_da} → {periodo_a}. "
                 f"Passare reset=True per rigenerarlo.",
             )
-        settlement.ledger_entries.all().delete()
+        # Le voci generate qui si rifanno da capo; quelle nate da un
+        # movimento bancario marcato no — esistono per conto loro e
+        # cancellarle butterebbe via la marcatura della BT. Si scollegano
+        # soltanto, per essere riagganciate subito dopo.
+        settlement.ledger_entries.filter(bank_transaction__isnull=True).delete()
+        settlement.ledger_entries.filter(bank_transaction__isnull=False).update(
+            riferimento_settlement=None,
+        )
         if descrizione:
             settlement.descrizione = descrizione
 
@@ -102,6 +109,7 @@ def genera_settlement(
 
     _crea_voci_da_receivable(settlement, periodo_da, periodo_a, quote)
     _crea_voci_da_expense(settlement, periodo_da, periodo_a, quote)
+    _collega_voci_da_bt(settlement, periodo_da, periodo_a)
 
     settlement.snapshot = _calcola_snapshot(settlement, quote)
     settlement.save()
@@ -216,6 +224,31 @@ def _crea_voci_da_expense(
             riferimento_expense=e,
             riferimento_settlement=settlement,
         )
+
+
+def _collega_voci_da_bt(
+    settlement: OwnerSettlement,
+    periodo_da: date,
+    periodo_a: date,
+) -> None:
+    """Aggancia al settlement le voci nate da un movimento bancario marcato.
+
+    Distribuzioni, conguagli e aggiustamenti non derivano da un Receivable né
+    da una Expense: esistono già, create dalla marcatura della BT. Senza
+    questo passaggio resterebbero fuori dallo `snapshot`, e chiudere un
+    periodo cancellerebbe dai saldi tutti i soldi che i proprietari si sono
+    girati — nel caso reale, 15.007 € di bonifici a Fabio spariti in un colpo.
+
+    Si prendono solo quelle ancora libere: una voce già assegnata a un altro
+    settlement è in quella baseline e sommarla due volte falserebbe i conti.
+    """
+    OwnerLedgerEntry.objects.filter(
+        property=settlement.property,
+        bank_transaction__isnull=False,
+        riferimento_settlement__isnull=True,
+        data__gte=periodo_da,
+        data__lte=periodo_a,
+    ).update(riferimento_settlement=settlement)
 
 
 def _calcola_snapshot(

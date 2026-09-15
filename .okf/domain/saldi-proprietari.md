@@ -11,7 +11,7 @@ resources:
 tags: [domain, accounting, settlement, saldi]
 generated:
   by: process:okf-migrate
-  at: 2026-09-15T00:00:00Z
+  at: 2026-09-15T02:00:00Z
 ---
 
 # Overview
@@ -71,6 +71,15 @@ Fabio).
 un `OwnerSettlement` (con `snapshot` JSON) su un periodo, creando le
 `OwnerLedgerEntry` da Receivable ed Expense (ripartite per quota,
 `_ripartisci`); rifiuta un periodo già coperto (`SettlementGiaEsistente`).
+
+Le voci nate dalla **marcatura di una BT** non derivano da Receivable o
+Expense: esistono già, e `_collega_voci_da_bt` le aggancia al settlement (solo
+quelle ancora libere) perché entrino nello `snapshot`. Senza, chiudere un
+periodo cancellava dalla baseline tutti i trasferimenti fra proprietari — nel
+caso reale 15.007 € di bonifici a Fabio, con il suo credito che risaliva da
+9.864 a 21.701. Per lo stesso motivo `reset=True` **non** le cancella: le
+scollega soltanto. Restano scarti di centesimi fra saldo live e saldo
+post-chiusura, dovuti al riparto per quote.
 Comando: `genera_settlement` (con `--property`); azionabile anche da UI
 (`POST owner-settlements/genera/`).
 
