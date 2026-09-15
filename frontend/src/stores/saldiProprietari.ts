@@ -54,12 +54,27 @@ interface SaldiLiveResponse {
   piano_rientro: PianoRientroVoceFE[];
 }
 
+export type TipoInterOwner =
+  | 'distribuzione'
+  | 'incasso_conguaglio'
+  | 'bilaterale'
+  | 'aggiustamento';
+
 export interface TrasferimentoPayload {
   owner_account: number;
   controparte_owner: number;
   importo: string;
   data: string;
   direzione: 'uscita' | 'entrata';
+  tipo?: TipoInterOwner;
+  settlement?: number | null;
+  descrizione?: string;
+}
+
+export interface ModificaInterOwnerPayload {
+  tipo: TipoInterOwner;
+  controparte_owner?: number | null;
+  settlement?: number | null;
   descrizione?: string;
 }
 
@@ -201,6 +216,14 @@ export const useSaldiProprietariStore = defineStore('saldiProprietari', {
      *  spetta a chi chiama: solo lui sa a che data li sta guardando. */
     async registraTrasferimento(payload: TrasferimentoPayload): Promise<void> {
       await api.post('/api/v1/owner-ledger/trasferimento/', payload);
+    },
+    /** Corregge causale e attribuzione di un movimento già registrato:
+     *  importo e data restano quelli della banca. */
+    async modificaInterOwner(
+      btId: number,
+      payload: ModificaInterOwnerPayload,
+    ): Promise<void> {
+      await api.patch(`/api/v1/owner-ledger/bt-inter-owner/${btId}/`, payload);
     },
     async fetchLedgerBySettlement(settlementId: number): Promise<OwnerLedgerEntryFE[]> {
       const { data } = await api.get<

@@ -79,12 +79,9 @@
           dense
           outlined
           :label="etichettaCampoSettlement"
+          :hint="hintSettlement"
           class="vp-bt-led__select"
-        >
-          <template #hint>
-            <span class="vp-bt-led__hint">{{ hintSettlement }}</span>
-          </template>
-        </q-select>
+        />
 
         <q-input
           v-model="form.descrizione"
@@ -390,10 +387,6 @@ function onHide() {
 .vp-bt-led__select,
 .vp-bt-led__input {
   background: var(--vp-paper-2);
-}
-.vp-bt-led__hint {
-  color: var(--vp-ink-2);
-  font-size: 0.75rem;
 }
 .vp-bt-led__avviso {
   color: var(--vp-ink-2);

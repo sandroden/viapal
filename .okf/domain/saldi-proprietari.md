@@ -92,9 +92,18 @@ reversibile, `BTGiaMarcata` se già marcata); dal FE via
 
 `POST owner-ledger/trasferimento/` fa il gesto completo: crea la
 `BankTransaction` sul conto indicato (`direzione` uscita/entrata, importo
-sempre positivo) e la marca `distribuzione` nella stessa transazione. Serve
-perché il movimento bancario "libero" non si crea da nessun'altra parte del
+sempre positivo) e la marca nella stessa transazione, con `tipo`
+(distribuzione o incasso_conguaglio) e `settlement` facoltativo. Serve perché
+il movimento bancario "libero" non si crea da nessun'altra parte del
 frontend, e un bonifico fra proprietari altrimenti richiedeva l'admin.
+
+`PATCH owner-ledger/bt-inter-owner/<bt_id>/` corregge un movimento già
+marcato — tipo, controparte, settlement, causale — rifacendo la marcatura in
+una transazione sola e aggiornando la descrizione della BT (per questi
+movimenti la scriviamo noi, non la banca). Importo e data restano intoccabili:
+[banca vince sempre](/decisions/banca-vince-sempre.md). È così che un bonifico
+registrato come distribuzione diventa il conguaglio di un periodo chiuso, o
+una partita privata.
 
 **Segno**: la voce vale `-bt.importo` per il proprietario del conto e
 `+bt.importo` per la controparte, la stessa convenzione di `genera_settlement`

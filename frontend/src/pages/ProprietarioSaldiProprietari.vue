@@ -286,7 +286,10 @@
         <q-item
           v-for="v in ledgerEntriesAggregate"
           :key="v.bank_transaction!"
+          v-ripple
+          clickable
           dense
+          @click="apriCorrezioneDaLedger(v)"
         >
           <q-item-section>
             <q-item-label>
@@ -313,7 +316,14 @@
     <section class="vp-saldi__sezione">
       <div class="vp-eyebrow">Movimenti bilaterali (privati)</div>
       <q-list separator bordered class="vp-saldi__lista">
-        <q-item v-for="b in store.bilaterali" :key="b.id" dense>
+        <q-item
+          v-for="b in store.bilaterali"
+          :key="b.id"
+          v-ripple
+          :clickable="b.bank_transaction != null"
+          dense
+          @click="apriCorrezioneDaBilaterale(b)"
+        >
           <q-item-section>
             <q-item-label>
               {{ formattaData(b.data) }} —
@@ -427,35 +437,60 @@
         <q-card-section class="row items-center q-pb-none">
           <div>
             <div class="vp-eyebrow">Fra proprietari</div>
-            <div class="vp-display vp-saldi__dialog-titolo">Registra bonifico</div>
+            <div class="vp-display vp-saldi__dialog-titolo">
+              {{ inModifica ? 'Correggi movimento' : 'Registra bonifico' }}
+            </div>
           </div>
           <q-space />
           <q-btn icon="close" flat round dense v-close-popup />
         </q-card-section>
         <q-card-section class="q-gutter-md">
+          <div v-if="inModifica" class="vp-saldi__trasf-fisso">
+            {{ formattaData(trasfData) }} ·
+            <span class="vp-mono">{{ formattaEuro(trasfImporto) }}</span>
+            <div class="vp-saldi__trasf-fisso-nota">
+              Importo e data restano quelli della banca: qui si correggono
+              causale e attribuzione.
+            </div>
+          </div>
+          <template v-else>
+            <q-select
+              v-model="trasfConto"
+              :options="opzioniConti"
+              option-label="label"
+              option-value="value"
+              emit-value
+              map-options
+              outlined
+              dense
+              label="Conto del movimento"
+            />
+            <q-select
+              v-model="trasfDirezione"
+              :options="opzioniDirezione"
+              option-label="label"
+              option-value="value"
+              emit-value
+              map-options
+              outlined
+              dense
+              label="Verso"
+            />
+          </template>
           <q-select
-            v-model="trasfConto"
-            :options="opzioniConti"
+            v-model="trasfTipo"
+            :options="opzioniTipo"
             option-label="label"
             option-value="value"
             emit-value
             map-options
             outlined
             dense
-            label="Conto del movimento"
+            label="Che movimento è"
+            :hint="aiutoTipo"
           />
           <q-select
-            v-model="trasfDirezione"
-            :options="opzioniDirezione"
-            option-label="label"
-            option-value="value"
-            emit-value
-            map-options
-            outlined
-            dense
-            label="Verso"
-          />
-          <q-select
+            v-if="trasfTipo !== 'aggiustamento'"
             v-model="trasfControparte"
             :options="opzioniControparte"
             option-label="label"
@@ -466,15 +501,40 @@
             dense
             label="L'altro proprietario"
           />
-          <q-input
-            v-model.number="trasfImporto"
-            type="number"
-            step="0.01"
+          <q-select
+            v-if="opzioniSettlement.length > 0"
+            v-model="trasfSettlement"
+            :options="opzioniSettlement"
+            option-label="label"
+            option-value="value"
+            emit-value
+            map-options
+            clearable
             outlined
             dense
-            label="Importo (€)"
+            label="Periodo che questo movimento chiude"
           />
-          <q-input v-model="trasfData" type="date" outlined dense label="Data" />
+          <q-banner
+            v-else-if="trasfTipo === 'incasso_conguaglio'"
+            class="bg-amber-1 text-amber-9"
+            rounded
+            dense
+          >
+            Nessun periodo chiuso a cui agganciarlo: chiudilo con «Chiudi
+            periodo…», poi torna qui e collega il movimento. Finché non lo
+            fai, i conti continuano a partire dall'inizio della storia.
+          </q-banner>
+          <template v-if="!inModifica">
+            <q-input
+              v-model.number="trasfImporto"
+              type="number"
+              step="0.01"
+              outlined
+              dense
+              label="Importo (€)"
+            />
+            <q-input v-model="trasfData" type="date" outlined dense label="Data" />
+          </template>
           <q-input
             v-model="trasfDescrizione"
             outlined
@@ -491,7 +551,7 @@
           <q-btn
             unelevated
             color="primary"
-            label="Registra"
+            :label="inModifica ? 'Salva correzione' : 'Registra'"
             no-caps
             :disable="!trasfValido"
             :loading="trasfInCorso"
@@ -548,15 +608,19 @@ import {
   type OwnerLedgerEntryFE,
   type OwnerSettlementFE,
   type PianoRientroVoceFE,
+  type InterOwnerEntryFE,
+  type TipoInterOwner,
 } from 'stores/saldiProprietari';
 import { useOwnersStore } from 'stores/owners';
 import { useOwnerBankAccountsStore } from 'stores/ownerBankAccounts';
+import { useAuthStore } from 'stores/auth';
 import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
 const store = useSaldiProprietariStore();
 const ownersStore = useOwnersStore();
 const contiStore = useOwnerBankAccountsStore();
+const auth = useAuthStore();
 const { formattaEuro } = useFormatoEuro();
 const { formattaData } = useFormatoData();
 
@@ -578,9 +642,49 @@ const trasfControparte = ref<number | null>(null);
 const trasfImporto = ref<number>(0);
 const trasfData = ref<string>(isoOggi());
 const trasfDirezione = ref<'uscita' | 'entrata'>('uscita');
+const trasfTipo = ref<TipoInterOwner>('distribuzione');
+const trasfSettlement = ref<number | null>(null);
 const trasfDescrizione = ref('');
 const trasfInCorso = ref(false);
 const trasfErrore = ref<string | null>(null);
+/** Valorizzato = stiamo correggendo quel movimento, non creandone uno. */
+const trasfModificaBt = ref<number | null>(null);
+const inModifica = computed(() => trasfModificaBt.value != null);
+
+const opzioniTipo = computed(() => {
+  const base = [
+    {
+      value: 'distribuzione' as TipoInterOwner,
+      label: 'Distribuzione utili',
+      help: 'La quota di incassi girata a un altro proprietario.',
+    },
+    {
+      value: 'incasso_conguaglio' as TipoInterOwner,
+      label: 'Conguaglio di chiusura',
+      help: 'Regola i conti di un periodo chiuso: collegalo a quel periodo.',
+    },
+  ];
+  if (!inModifica.value) return base;
+  // Correggendo si può anche dire che non era affatto un movimento della
+  // cassa comune, ma una partita privata fra due proprietari.
+  return [
+    ...base,
+    {
+      value: 'bilaterale',
+      label: 'Partita privata',
+      help: 'Prestito o rimborso personale: resta fuori dai saldi comuni.',
+    },
+  ];
+});
+const aiutoTipo = computed(
+  () => opzioniTipo.value.find((o) => o.value === trasfTipo.value)?.help ?? '',
+);
+const opzioniSettlement = computed(() =>
+  store.settlements.map((s) => ({
+    value: s.id,
+    label: `${s.descrizione} (${formattaData(s.periodo_da)} → ${formattaData(s.periodo_a)})`,
+  })),
+);
 
 const opzioniConti = computed(() =>
   contiStore.accounts.map((a) => ({
@@ -602,31 +706,96 @@ const opzioniControparte = computed(() =>
     .filter((o) => o.id !== ownerDelConto.value)
     .map((o) => ({ value: o.id, label: o.nominativo })),
 );
-const trasfValido = computed(
-  () =>
-    trasfConto.value != null &&
-    trasfControparte.value != null &&
-    trasfImporto.value > 0 &&
-    !!trasfData.value,
+const trasfValido = computed(() => {
+  if (trasfControparte.value == null && trasfTipo.value !== 'aggiustamento') {
+    return false;
+  }
+  if (inModifica.value) return true;
+  return trasfConto.value != null && trasfImporto.value > 0 && !!trasfData.value;
+});
+
+/** Senza indicazioni il conto proposto è il proprio: chi apre il dialog di
+ *  solito registra un bonifico che ha fatto lui. */
+const contoPredefinito = computed(
+  () => auth.user?.bank_accounts?.[0]?.id ?? contiStore.accounts[0]?.id ?? null,
 );
 
 /** Dalla riga del piano di rientro: chi deve pagare è `da`, e il conto
  *  proposto è il suo, così resta solo da confermare. */
 function apriTrasferimento(voce?: PianoRientroVoceFE) {
   trasfErrore.value = null;
+  trasfModificaBt.value = null;
   trasfData.value = isoOggi();
   trasfDescrizione.value = '';
   trasfDirezione.value = 'uscita';
+  trasfTipo.value = 'distribuzione';
+  trasfSettlement.value = null;
   if (voce) {
     const contoDa = contiStore.accounts.find((a) => a.owner_id === voce.da.id);
-    trasfConto.value = contoDa?.id ?? contiStore.accounts[0]?.id ?? null;
+    trasfConto.value = contoDa?.id ?? contoPredefinito.value;
     trasfControparte.value = voce.a.id;
     trasfImporto.value = Math.round(Number(voce.importo) * 100) / 100;
   } else {
-    trasfConto.value = contiStore.accounts[0]?.id ?? null;
+    trasfConto.value = contoPredefinito.value;
     trasfControparte.value = null;
     trasfImporto.value = 0;
   }
+  dialogTrasferimentoAperto.value = true;
+}
+
+/** Correzione di un movimento già a libro: la controparte è l'altro owner
+ *  delle due voci simmetriche nate dalla stessa BT. */
+function apriCorrezioneDaLedger(v: OwnerLedgerEntryFE) {
+  if (v.bank_transaction == null) return;
+  const gemelle = store.ledgerEntries.filter(
+    (x) => x.bank_transaction === v.bank_transaction && x.owner !== v.owner,
+  );
+  apriCorrezione({
+    bt: v.bank_transaction,
+    tipo: (v.tipo as TipoInterOwner) ?? 'distribuzione',
+    controparte: gemelle[0]?.owner ?? null,
+    settlement: v.riferimento_settlement ?? null,
+    descrizione: v.descrizione,
+    data: v.data,
+    importo: Number(v.importo),
+  });
+}
+
+function apriCorrezioneDaBilaterale(b: InterOwnerEntryFE) {
+  if (b.bank_transaction == null) return;
+  // Nel bilaterale le due parti sono esplicite: la controparte è quella che
+  // non possiede il conto, cioè il beneficiario quando il denaro esce.
+  const proprietarioConto = contiStore.accounts.find(
+    (a) => a.owner_id === b.owner_da || a.owner_id === b.owner_a,
+  )?.owner_id;
+  apriCorrezione({
+    bt: b.bank_transaction,
+    tipo: 'bilaterale',
+    controparte: proprietarioConto === b.owner_da ? b.owner_a : b.owner_da,
+    settlement: b.riferimento_settlement ?? null,
+    descrizione: b.descrizione,
+    data: b.data,
+    importo: Number(b.importo),
+  });
+}
+
+function apriCorrezione(dati: {
+  bt: number;
+  tipo: TipoInterOwner;
+  controparte: number | null;
+  settlement: number | null;
+  descrizione: string;
+  data: string;
+  importo: number;
+}) {
+  trasfErrore.value = null;
+  trasfModificaBt.value = dati.bt;
+  trasfTipo.value = dati.tipo;
+  trasfControparte.value = dati.controparte;
+  trasfSettlement.value = dati.settlement;
+  trasfDescrizione.value = dati.descrizione;
+  trasfData.value = dati.data;
+  trasfImporto.value = dati.importo;
   dialogTrasferimentoAperto.value = true;
 }
 
@@ -635,15 +804,30 @@ async function salvaTrasferimento() {
   trasfInCorso.value = true;
   trasfErrore.value = null;
   try {
-    await store.registraTrasferimento({
-      owner_account: trasfConto.value as number,
-      controparte_owner: trasfControparte.value as number,
-      importo: trasfImporto.value.toFixed(2),
-      data: trasfData.value,
-      direzione: trasfDirezione.value,
-      ...(trasfDescrizione.value ? { descrizione: trasfDescrizione.value } : {}),
+    if (inModifica.value) {
+      await store.modificaInterOwner(trasfModificaBt.value as number, {
+        tipo: trasfTipo.value,
+        controparte_owner: trasfControparte.value,
+        settlement: trasfSettlement.value,
+        ...(trasfDescrizione.value ? { descrizione: trasfDescrizione.value } : {}),
+      });
+    } else {
+      await store.registraTrasferimento({
+        owner_account: trasfConto.value as number,
+        controparte_owner: trasfControparte.value as number,
+        importo: trasfImporto.value.toFixed(2),
+        data: trasfData.value,
+        direzione: trasfDirezione.value,
+        tipo: trasfTipo.value,
+        settlement: trasfSettlement.value,
+        ...(trasfDescrizione.value ? { descrizione: trasfDescrizione.value } : {}),
+      });
+    }
+    Notify.create({
+      type: 'positive',
+      message: inModifica.value ? 'Movimento corretto' : 'Bonifico registrato',
+      icon: 'check_circle',
     });
-    Notify.create({ type: 'positive', message: 'Bonifico registrato', icon: 'check_circle' });
     dialogTrasferimentoAperto.value = false;
     await ricarica();
   } catch (e: unknown) {
@@ -923,6 +1107,17 @@ watch(atDate, () => {
 }
 .vp-saldi__empty {
   background: var(--vp-paper-2);
+  color: var(--vp-ink-2);
+}
+.vp-saldi__trasf-fisso {
+  padding: var(--vp-gap-2);
+  border-radius: var(--vp-r-md);
+  background: var(--vp-paper-2);
+}
+.vp-saldi__trasf-fisso-nota {
+  margin-top: var(--vp-gap-1);
+  font-size: 0.85rem;
+  line-height: 1.35;
   color: var(--vp-ink-2);
 }
 .vp-saldi__dialog {

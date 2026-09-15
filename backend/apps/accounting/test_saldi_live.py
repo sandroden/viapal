@@ -506,3 +506,54 @@ def test_endpoint_trasferimento_rifiuta_se_stesso(
     )
     assert r.status_code == 400
     assert BankTransaction.objects.filter(owner_account=conto_bruna).count() == 0
+
+
+def test_endpoint_modifica_marcatura(
+    db, client, immobile, quote_terzi, sandro, bruna, fabio, conto_bruna,
+):
+    """Causale e tipologia di un movimento già registrato si correggono."""
+    from django.contrib.auth.models import Group
+    from properties.models import PropertyMembership
+
+    gruppo, _ = Group.objects.get_or_create(name="proprietari")
+    for owner in (sandro, bruna, fabio):
+        PropertyMembership.objects.get_or_create(
+            property=immobile, user=owner.user, defaults={"ruolo": "proprietario"},
+        )
+        owner.user.groups.add(gruppo)
+    conto_bruna.properties.add(immobile)
+    client.force_login(bruna.user)
+
+    creata = client.post(
+        "/api/v1/owner-ledger/trasferimento/",
+        data={
+            "owner_account": conto_bruna.pk,
+            "controparte_owner": fabio.pk,
+            "importo": "1707.00",
+            "data": "2026-02-02",
+            "descrizione": "Bonifico",
+        },
+        content_type="application/json",
+    )
+    assert creata.status_code == 201, creata.content
+    bt_id = creata.json()["bank_transaction"]
+
+    r = client.patch(
+        f"/api/v1/owner-ledger/bt-inter-owner/{bt_id}/",
+        data={
+            "tipo": "incasso_conguaglio",
+            "controparte_owner": sandro.pk,
+            "descrizione": "Conguaglio 2025",
+        },
+        content_type="application/json",
+    )
+    assert r.status_code == 200, r.content
+    bt = BankTransaction.objects.get(pk=bt_id)
+    assert bt.descrizione == "Conguaglio 2025"
+    voci = {v.owner: v for v in bt.ledger_entries.all()}
+    assert set(voci) == {bruna, sandro}          # la controparte è cambiata
+    assert voci[bruna].tipo == OwnerLedgerEntry.TipoVoce.INCASSO_CONGUAGLIO
+    assert voci[bruna].importo == Decimal("1707.00")
+    assert voci[sandro].importo == Decimal("-1707.00")
+    # L'importo resta quello della banca: non è modificabile da qui.
+    assert bt.importo == Decimal("-1707.00")

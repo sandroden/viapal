@@ -77,6 +77,25 @@ class TrasferimentoProprietariSerializer(serializers.Serializer):
     importo = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.01"))
     data = serializers.DateField()
     direzione = serializers.ChoiceField(choices=["uscita", "entrata"], default="uscita")
+    tipo = serializers.ChoiceField(
+        choices=["distribuzione", "incasso_conguaglio"], default="distribuzione",
+    )
+    settlement = serializers.IntegerField(required=False, allow_null=True)
+    descrizione = serializers.CharField(required=False, allow_blank=True, default="")
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class ModificaInterOwnerSerializer(serializers.Serializer):
+    """Payload per PATCH /api/v1/owner-ledger/bt-inter-owner/<bt_id>/.
+
+    Si correggono causale e attribuzione, non l'importo né la data: quelli
+    li dice la banca (cfr. decisione «banca vince sempre»).
+    """
+    tipo = serializers.ChoiceField(
+        choices=["distribuzione", "incasso_conguaglio", "bilaterale", "aggiustamento"],
+    )
+    controparte_owner = serializers.IntegerField(required=False, allow_null=True)
+    settlement = serializers.IntegerField(required=False, allow_null=True)
     descrizione = serializers.CharField(required=False, allow_blank=True, default="")
     note = serializers.CharField(required=False, allow_blank=True, default="")
 

@@ -14,6 +14,7 @@ from accounting.serializers import (
     GeneraSettlementSerializer,
     InterOwnerEntrySerializer,
     MarcaBtInterOwnerSerializer,
+    ModificaInterOwnerSerializer,
     OwnerLedgerEntrySerializer,
     OwnerSettlementSerializer,
     PianoRientroVoceSerializer,
@@ -154,6 +155,11 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        settlement = None
+        if d.get("settlement"):
+            settlement = get_object_or_404(
+                OwnerSettlement, pk=d["settlement"], property=prop,
+            )
         segno = -1 if d["direzione"] == "uscita" else 1
         descrizione = d.get("descrizione", "") or (
             f"Quota {'a' if segno < 0 else 'da'} {controparte.nominativo}"
@@ -167,8 +173,9 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
                 note=d.get("note", "") or "",
             )
             voci = marca_bt_come_ledger(
-                bt, property=prop, tipo="distribuzione",
-                controparte_owner=controparte, descrizione=descrizione,
+                bt, property=prop, tipo=d["tipo"],
+                controparte_owner=controparte, settlement=settlement,
+                descrizione=descrizione, note=d.get("note", "") or "",
             )
         return Response(
             {
@@ -194,6 +201,76 @@ class OwnerLedgerEntryViewSet(ModelViewSet):
             )
         n = disfa_marcatura(bt)
         return Response({"voci_cancellate": n}, status=status.HTTP_200_OK)
+
+    @bt_inter_owner_delete.mapping.patch
+    def bt_inter_owner_update(self, request, bt_id=None):
+        """Corregge causale e attribuzione di un movimento già marcato.
+
+        Un bonifico fra proprietari registrato male non si poteva più
+        toccare dal frontend: restava disfare la marcatura e rifarla, in due
+        passaggi e perdendo la causale. Qui la marcatura viene rifatta in
+        una transazione sola, e la causale aggiorna anche la descrizione del
+        movimento bancario — che per questi movimenti è scritta da noi, non
+        dalla banca. Importo e data non si toccano: quelli li dice la banca.
+        """
+        from django.db import transaction as db_transaction
+
+        ser = ModificaInterOwnerSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        d = ser.validated_data
+        prop = get_request_property(request)
+        bt = get_object_or_404(BankTransaction, pk=bt_id)
+        if not bt.owner_account.properties.filter(pk=prop.pk).exists():
+            return Response(
+                {"detail": "La transazione sta su un conto non in uso su questo immobile."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        estranee = (
+            bt.ledger_entries.exclude(property=prop).exists()
+            or bt.inter_owner_entries.exclude(property=prop).exists()
+        )
+        if estranee:
+            return Response(
+                {"detail": "La transazione ha marcature di un altro immobile."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        membri = prop.memberships.values_list("user_id", flat=True)
+        controparte = None
+        if d.get("controparte_owner"):
+            controparte = get_object_or_404(OwnerProfile, pk=d["controparte_owner"])
+            if controparte.user_id not in membri:
+                return Response(
+                    {"detail": "La controparte non è membro di questo immobile."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        settlement = None
+        if d.get("settlement"):
+            settlement = get_object_or_404(
+                OwnerSettlement, pk=d["settlement"], property=prop,
+            )
+
+        descrizione = d.get("descrizione", "") or ""
+        try:
+            with db_transaction.atomic():
+                disfa_marcatura(bt)
+                voci = marca_bt_come_ledger(
+                    bt, property=prop, tipo=d["tipo"],
+                    controparte_owner=controparte, settlement=settlement,
+                    descrizione=descrizione, note=d.get("note", "") or "",
+                )
+                if descrizione and descrizione != bt.descrizione:
+                    bt.descrizione = descrizione
+                    bt.save(update_fields=["descrizione"])
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        out = []
+        for v in voci:
+            if isinstance(v, OwnerLedgerEntry):
+                out.append({"kind": "ledger_a", **OwnerLedgerEntrySerializer(v).data})
+            else:
+                out.append({"kind": "ledger_b", **InterOwnerEntrySerializer(v).data})
+        return Response(out, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="saldi-live")
     def saldi_live(self, request):
