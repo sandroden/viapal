@@ -450,3 +450,56 @@ class TestUtilityBillUploadTo:
 
         bill = SimpleNamespace(immobile_id=None, periodo_a=datetime.date(2026, 12, 1))
         assert utility_bill_upload_to(bill, "x.pdf") == "bollette/2026/12/x.pdf"
+
+
+class TestAnnoDiCompetenza:
+    """La data del pagamento e l'anno di bilancio sono due cose diverse."""
+
+    def test_spesa_pesa_sull_anno_dichiarato(self, db, immobile):
+        """L'IMU pagata in ritardo pesa sull'anno a cui si riferisce."""
+        import datetime
+
+        from django.contrib.auth.models import Group, User
+        from django.test import Client
+
+        from billing.models import Expense, ExpenseCategory
+        from properties.models import OwnerProfile, OwnershipShare, PropertyMembership
+
+        u = User.objects.create_user("prop_comp", email="pc@v.it", password="pwd")
+        gruppo, _ = Group.objects.get_or_create(name="proprietari")
+        u.groups.add(gruppo)
+        owner = OwnerProfile.objects.create(user=u, nominativo="Tizio")
+        OwnershipShare.objects.create(
+            property=immobile, owner=owner, quota=Decimal("1"),
+            valid_from=datetime.date(2020, 1, 1),
+        )
+        PropertyMembership.objects.get_or_create(
+            property=immobile, user=u, defaults={"ruolo": "proprietario"},
+        )
+        categoria = ExpenseCategory.objects.create(
+            property=immobile, nome="IMU", codice="imu",
+        )
+        Expense.objects.create(
+            property=immobile, data=datetime.date(2023, 12, 15),
+            data_competenza=datetime.date(2022, 12, 16),
+            category=categoria, importo=Decimal("317"),
+            descrizione="IMU 2022 versata in ritardo", anticipata_da_owner=owner,
+        )
+
+        client = Client()
+        client.force_login(u)
+        del_2022 = client.get("/api/v1/dashboard/conto-economico/?anno=2022").json()
+        del_2023 = client.get("/api/v1/dashboard/conto-economico/?anno=2023").json()
+        assert del_2022["cassa"]["spese_ordinarie"] == 317.0
+        assert del_2023["cassa"]["spese_ordinarie"] == 0.0
+
+    def test_anno_uguale_alla_data_non_scrive_competenza(self, db, immobile):
+        """Dichiarare l'anno del pagamento equivale a non dichiarare nulla."""
+        import datetime
+
+        from accounting.models.ledger import data_competenza_da_anno
+
+        data = datetime.date(2026, 3, 2)
+        assert data_competenza_da_anno(2026, data) is None
+        assert data_competenza_da_anno(2025, data) == datetime.date(2025, 12, 31)
+        assert data_competenza_da_anno(2027, data) == datetime.date(2027, 1, 1)

@@ -9,7 +9,7 @@ resources:
 tags: [domain, conto-economico, cassa, competenza]
 generated:
   by: process:okf-migrate
-  at: 2026-09-15T00:00:00Z
+  at: 2026-09-15T03:30:00Z
 ---
 
 # Overview
@@ -30,7 +30,7 @@ Endpoint: `GET /api/v1/dashboard/conto-economico/?anno=YYYY`
 |--------|--------|
 | ricavi per **cassa** | Receivable `pagato` con `data_pagamento` nell'anno, sommati per `importo_pagato` |
 | ricavi per **competenza** | Receivable il cui anno di competenza è quello richiesto (affitti/extra per `competenza_da`, utenze per il periodo bolletta, fallback `scadenza`); il residuo non incassato è esposto a parte (`non_incassato`, `non_incassato_voci`) |
-| spese | `Expense` per `data` (unica data disponibile) in **entrambe** le letture, separate in ordinarie e straordinarie |
+| spese | `Expense` per `Coalesce(data_competenza, data)` in **entrambe** le letture, separate in ordinarie e straordinarie |
 | voci | `VOCE_PER_CAUSALE`: AFFITTO→`rent`, UTENZE→`utility`, EXTRA e REGISTRAZIONE→`extra`; **DEPOSITO è fuori** da entrambe le letture (non è un ricavo) |
 | utile pro-quota | per proprietario, con le quote attive al 31/12 dell'anno (o a oggi se l'anno è in corso): `utile_cassa` e `utile_competenza` |
 | serie multi-anno | solo per cassa: ricavi/spese/utile per ogni anno con dati |
@@ -39,6 +39,21 @@ Endpoint: `GET /api/v1/dashboard/conto-economico/?anno=YYYY`
 Un deposito **trattenuto** è di fatto un ricavo ma resta invisibile qui finché
 non viene riclassificato su EXTRA: nessun automatismo lo fa (vedi
 [deposito](/domain/deposito.md)).
+
+# Anno di competenza
+
+Data del pagamento e anno di bilancio sono due cose diverse: l'IMU 2022
+versata nel dicembre 2023 pesa sul 2022. `Expense.data_competenza` (nullable)
+lo dichiara e il conto economico raggruppa sul `Coalesce` delle due, così il
+libro conserva la data vera del pagamento invece di falsarla. Stessa cosa per
+i [saldi fra proprietari](/domain/saldi-proprietari.md), dove la competenza
+decide a quale chiusura appartiene una spesa.
+
+Su `Receivable` esiste `data_competenza` come **eccezione dichiarata a mano**:
+per affitti e utenze la fonte resta `competenza_da`/`competenza_a` (e il
+periodo bolletta), l'override serve ai soli casi anomali e, quando c'è, vince
+sull'anno di bilancio. In interfaccia si sceglie sempre un anno, tradotto in
+data da `data_competenza_da_anno`.
 
 # Imposte dei proprietari
 
@@ -51,9 +66,9 @@ spostano nulla fra i proprietari. Se un proprietario le anticipa per un altro,
 quel denaro è un trasferimento a parte (`distribuzione`), non una seconda
 spesa. Comando di popolamento storico: `inserisci_imposte_proprietari`.
 
-Poiché `Expense` ha una sola data per cassa e competenza, le imposte portano
-la data dell'anno di competenza anche quando il versamento è avvenuto in
-ritardo (il caso reale: l'IMU 2022 di Fabio, pagata nel dicembre 2023).
+Le imposte versate in ritardo tengono la data vera del pagamento e dichiarano
+l'anno in `data_competenza` (il caso reale: l'IMU 2022 di Fabio, pagata nel
+dicembre 2023 insieme a quella del 2023).
 
 # Il ponte competenza ↔ cassa
 

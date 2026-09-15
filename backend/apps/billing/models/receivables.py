@@ -52,6 +52,14 @@ class Receivable(TimestampedModel):
         verbose_name="competenza al",
         help_text="Nullo per causale=extra (addebito puntuale).",
     )
+    data_competenza = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="anno di competenza (forzato)",
+        help_text="Solo per i casi anomali in cui l'anno di bilancio non è "
+                  "quello che competenza_da lascerebbe intendere. Vuoto = "
+                  "vale il periodo di competenza normale.",
+    )
     scadenza = models.DateField(
         verbose_name="scadenza",
     )

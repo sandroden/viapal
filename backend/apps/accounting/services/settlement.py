@@ -169,10 +169,12 @@ def _crea_voci_da_expense(
 ) -> None:
     exp_qs = Expense.objects.select_related(
         "category", "anticipata_da_owner", "riferimento_quota_owner"
+    ).annotate(
+        data_effettiva=Coalesce("data_competenza", "data"),
     ).filter(
         property=settlement.property,
-        data__gte=periodo_da,
-        data__lte=periodo_a,
+        data_effettiva__gte=periodo_da,
+        data_effettiva__lte=periodo_a,
     )
     owner_per_pk = {o.pk: o for o in quote}
     for e in exp_qs:

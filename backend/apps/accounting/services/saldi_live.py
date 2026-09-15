@@ -131,12 +131,14 @@ def calcola_saldi_correnti(property: Property, at_date: date) -> dict[OwnerProfi
                 contributo = saldo.quota * importo
             _aggrega(saldo.incassi_per_causale, r.causale, contributo)
 
-    exp_qs = Expense.objects.select_related("category", "anticipata_da_owner").filter(
+    exp_qs = Expense.objects.select_related("category", "anticipata_da_owner").annotate(
+        data_effettiva=Coalesce("data_competenza", "data"),
+    ).filter(
         property=property,
-        data__lte=at_date,
+        data_effettiva__lte=at_date,
     )
     if periodo_da:
-        exp_qs = exp_qs.filter(data__gte=periodo_da)
+        exp_qs = exp_qs.filter(data_effettiva__gte=periodo_da)
 
     owner_pks = {o.pk for o in saldi}
     for e in exp_qs:
@@ -234,12 +236,14 @@ def verifica_quadratura(property: Property, at_date: date, saldi: dict[OwnerProf
         })
 
     expense_orfane: list[dict] = []
-    exp_qs = Expense.objects.select_related("category", "anticipata_da_owner").filter(
+    exp_qs = Expense.objects.select_related("category", "anticipata_da_owner").annotate(
+        data_effettiva=Coalesce("data_competenza", "data"),
+    ).filter(
         property=property,
-        data__lte=at_date,
+        data_effettiva__lte=at_date,
     )
     if periodo_da:
-        exp_qs = exp_qs.filter(data__gte=periodo_da)
+        exp_qs = exp_qs.filter(data_effettiva__gte=periodo_da)
     for e in exp_qs:
         if e.anticipata_da_owner_id in owner_pks:
             continue

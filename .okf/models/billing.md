@@ -40,7 +40,7 @@ Dalla multiproprietà (2026-07) `Supplier`, `ExpenseCategory`, `Expense`,
 | `UtilityChargePeriod` | `property`, `periodo_da`/`_a`, `criterio_ripartizione`, `stato`, `tot_luce/gas/tari/altro` (netti), `giorni_totali`, `quota_esclusa_tari` + `motivo_esclusione_tari`, `nota_calcolo`, `utility_bills` (M2M), `annual_utility_costs` (M2M), `data_invio`, `avvisi_inviati_at` | periodo di addebito utenze; `data_invio` valorizzato = congelato |
 | `Supplier` | `property`, `nome`, `tipo`, `partita_iva`, `contatto` | fornitore |
 | `ExpenseCategory` | `property`, `nome`, `codice`, `ripartibile_inquilini` | categoria spesa, unica per `(property, codice)` |
-| `Expense` | `property`, `data`, `category`, `supplier`, `importo`, `anticipata_da_owner`, `ripartibile_su_inquilini`, `is_straordinaria`, `riferimento_quota_owner`, `allegato` (media-private `spese/`, validator PDF/JPG/PNG ≤10 MB) | spesa; l'allegato è la fattura arrivata dopo, caricabile da /p/spese (il PATCH non pretende il conto) |
+| `Expense` | `property`, `data`, `data_competenza`, `category`, `supplier`, `importo`, `anticipata_da_owner`, `ripartibile_su_inquilini`, `is_straordinaria`, `riferimento_quota_owner`, `allegato` (media-private `spese/`, validator PDF/JPG/PNG ≤10 MB) | spesa; `data_competenza` dichiara l'anno di bilancio quando è diverso da quello del pagamento; l'allegato è la fattura arrivata dopo, caricabile da /p/spese (il PATCH non pretende il conto) |
 | `TenantCondominioRate` | `property`, `tenant` (opz.), `contract` (opz., SET_NULL), `valid_from`/`_to`, `importo_mensile` | quota condominio a carico inquilino (data-driven); appartiene all'immobile, il contratto è solo il documento in cui è pattuita |
 
 # Vedi anche

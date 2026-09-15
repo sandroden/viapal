@@ -5,6 +5,7 @@ import datetime
 from decimal import Decimal
 
 from django.db.models import Sum
+from django.db.models.functions import Coalesce
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -74,7 +75,9 @@ class ContoEconomicoView(APIView):
             causale__in=CAUSALI_OPERATIVE,
         ).select_related("utility_period")
         for r in comp_qs:
-            base = _competenza_base(r) or r.scadenza
+            # `data_competenza` è l'eccezione dichiarata a mano: quando c'è,
+            # decide l'anno di bilancio al posto del periodo di competenza.
+            base = r.data_competenza or _competenza_base(r) or r.scadenza
             if base is None or base.year != anno:
                 continue
             dovuto = r.importo_dovuto or Decimal("0")
@@ -88,10 +91,14 @@ class ContoEconomicoView(APIView):
                     non_incassato_voci += 1
 
         # --- Spese: ordinarie e straordinarie per categoria -----------------
+        # L'anno è quello di competenza dichiarato, se c'è: l'IMU 2022 versata
+        # in ritardo nel dicembre 2023 pesa sul 2022, non sul 2023.
         spese_ord: dict[str, Decimal] = {}
         spese_straord: dict[str, Decimal] = {}
-        for sp in Expense.objects.filter(
-            property=prop, data__year=anno,
+        for sp in Expense.objects.annotate(
+            data_effettiva=Coalesce("data_competenza", "data"),
+        ).filter(
+            property=prop, data_effettiva__year=anno,
         ).select_related("category"):
             target = spese_straord if sp.is_straordinaria else spese_ord
             cat = sp.category.nome if sp.category else "Senza categoria"
@@ -148,7 +155,7 @@ class ContoEconomicoView(APIView):
         spese_per_anno = {
             row["y"]: row["t"] or Decimal("0")
             for row in Expense.objects.filter(property=prop)
-            .annotate(y=ExtractYear("data"))
+            .annotate(y=ExtractYear(Coalesce("data_competenza", "data")))
             .values("y").annotate(t=Sum("importo"))
         }
         anni = sorted(set(ricavi_per_anno) | set(spese_per_anno))

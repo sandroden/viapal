@@ -29,6 +29,9 @@ export interface NuovaSpesa {
   importo: number;
   category: number | null;
   note?: string | undefined;
+  /** Anno a cui la spesa appartiene, se diverso da quello del pagamento:
+   *  l'IMU 2022 versata in ritardo nel 2023 pesa sul 2022. */
+  anno_competenza?: number | null | undefined;
   /** Chi ha messo i soldi. Senza movimento bancario va indicato: il backend
    *  lo deriva dal conto solo quando la BT viene creata contestualmente. */
   anticipata_da_owner?: number | null | undefined;

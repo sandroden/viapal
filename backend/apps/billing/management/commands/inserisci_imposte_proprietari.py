@@ -27,9 +27,9 @@ Due eccezioni:
 
 Le date sono quelle di competenza: la scadenza dell'anno, o il pagamento
 reale dove noto. L'IMU 2022 di Fabio, versata in ritardo il 2023-12-15
-insieme a quella del 2023, viene riportata al 2022 perché il conto economico
-usa un'unica data per cassa e competenza, e leggere due anni di IMU dentro il
-2023 sarebbe fuorviante; la data reale resta nelle note.
+insieme a quella del 2023, tiene la sua data vera e dichiara la competenza
+2022 in `data_competenza`: così pesa sul 2022 nel conto economico senza che
+il libro racconti un pagamento mai avvenuto in quella data.
 
 Idempotente sulla chiave (immobile, data, categoria, proprietario, importo):
 rilanciare non duplica. Default dry-run, `--apply` per scrivere.
@@ -52,10 +52,11 @@ from properties.models import Property
 
 @dataclass(frozen=True)
 class Imposta:
-    data: date
+    data: date              # quando è stata pagata davvero
     importo: Decimal
     categoria: str          # codice ExpenseCategory
     descrizione: str        # senza il nome del proprietario, aggiunto dopo
+    competenza: date | None = None   # se l'anno di appartenenza è un altro
     solo: tuple[str, ...] = ()   # se valorizzato, i soli proprietari indicati
     nota: str = ""
 
@@ -67,8 +68,9 @@ CATEGORIE = {
 
 IMPOSTE: list[Imposta] = [
     Imposta(
-        date(2022, 12, 16), Decimal("317"), "imu", "IMU 2022 (set-dic)",
-        nota="Fabio l'ha versata il 2023-12-15 insieme a quella del 2023.",
+        date(2023, 12, 15), Decimal("317"), "imu", "IMU 2022 (set-dic)",
+        competenza=date(2022, 12, 16),
+        nota="Versata in ritardo il 2023-12-15 insieme a quella del 2023.",
     ),
     Imposta(date(2023, 12, 15), Decimal("904"), "imu", "IMU 2023"),
     Imposta(date(2024, 6, 17), Decimal("877"), "imu", "IMU 2024"),
@@ -158,6 +160,7 @@ class Command(BaseCommand):
                     defaults={
                         "descrizione": f"{imposta.descrizione} — {owner.nominativo}",
                         "ripartibile_su_inquilini": False,
+                        "data_competenza": imposta.competenza,
                         "note": imposta.nota,
                     },
                 )
@@ -170,20 +173,29 @@ class Command(BaseCommand):
         return creati
 
     def _allinea_date(self, immobile, categorie) -> int:
-        """Riporta al 2022 l'IMU 2022 di Fabio, versata in ritardo nel 2023."""
+        """Dichiara al 2022 l'IMU 2022 di Fabio, versata in ritardo nel 2023.
+
+        Le prime esecuzioni di questo command spostavano la `data`, quando la
+        competenza non esisteva ancora come campo: se trovano una voce già
+        spostata la riportano alla data vera, dichiarando la competenza.
+        """
         spostate = 0
-        for e in Expense.objects.filter(
-            property=immobile, category=categorie["imu"],
-            data=date(2023, 12, 15), importo=Decimal("317.00"),
-        ):
-            e.data = date(2022, 12, 16)
+        candidate = Expense.objects.filter(
+            property=immobile, category=categorie["imu"], importo=Decimal("317.00"),
+            data__in=[date(2023, 12, 15), date(2022, 12, 16)],
+            data_competenza__isnull=True,
+        )
+        for e in candidate:
+            e.data = date(2023, 12, 15)
+            e.data_competenza = date(2022, 12, 16)
             e.note = (f"{e.note}\n" if e.note else "") + (
-                "Versata in ritardo il 2023-12-15; data riportata all'anno di "
-                "competenza perché il conto economico usa un'unica data."
+                "Versata in ritardo il 2023-12-15, di competenza 2022."
             )
-            e.save(update_fields=["data", "note"])
+            e.save(update_fields=["data", "data_competenza", "note"])
             spostate += 1
-            self.stdout.write(f"  ~ Expense {e.pk} «{e.descrizione}» → 2022-12-16")
+            self.stdout.write(
+                f"  ~ Expense {e.pk} «{e.descrizione}»: competenza 2022"
+            )
         return spostate
 
     # -- output ------------------------------------------------------------
@@ -191,18 +203,19 @@ class Command(BaseCommand):
     def _riepilogo(self, immobile) -> None:
         from django.db.models import Sum
         self.stdout.write("\nImposte a bilancio per anno:")
+        from django.db.models.functions import Coalesce, ExtractYear
         righe = (
             Expense.objects.filter(
                 property=immobile, category__codice__in=CATEGORIE,
             )
-            .values("data__year", "category__nome")
+            .annotate(anno=ExtractYear(Coalesce("data_competenza", "data")))
+            .values("anno", "category__nome")
             .annotate(totale=Sum("importo"))
-            .order_by("data__year", "category__nome")
+            .order_by("anno", "category__nome")
         )
         for r in righe:
             self.stdout.write(
-                f"  {r['data__year']}  {r['category__nome']:16} "
-                f"{r['totale']:>9,.2f}"
+                f"  {r['anno']}  {r['category__nome']:16} {r['totale']:>9,.2f}"
             )
 
     # -- risoluzione -------------------------------------------------------

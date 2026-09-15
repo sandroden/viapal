@@ -68,6 +68,8 @@ export interface TrasferimentoPayload {
   direzione: 'uscita' | 'entrata';
   tipo?: TipoInterOwner;
   settlement?: number | null;
+  /** Anno a cui il movimento appartiene, se diverso da quello del bonifico. */
+  anno_competenza?: number | null;
   descrizione?: string;
 }
 
@@ -75,6 +77,7 @@ export interface ModificaInterOwnerPayload {
   tipo: TipoInterOwner;
   controparte_owner?: number | null;
   settlement?: number | null;
+  anno_competenza?: number | null;
   descrizione?: string;
 }
 
@@ -109,6 +112,8 @@ export interface OwnerLedgerEntryFE {
   owner: number;
   owner_nominativo: string;
   data: string;
+  data_competenza?: string | null;
+  anno_competenza?: number | null;
   descrizione: string;
   importo: string;
   tipo: string;

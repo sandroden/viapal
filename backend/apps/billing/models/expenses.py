@@ -103,6 +103,14 @@ class Expense(TimestampedModel):
     data = models.DateField(
         verbose_name="data",
     )
+    data_competenza = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="data di competenza",
+        help_text="Solo se la spesa appartiene a un anno diverso da quello in "
+                  "cui è stata pagata: es. l'IMU 2022 versata in ritardo nel "
+                  "2023. Vuoto = vale la data.",
+    )
     category = models.ForeignKey(
         ExpenseCategory,
         on_delete=models.PROTECT,

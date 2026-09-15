@@ -238,6 +238,17 @@
               :error="!!errorOf('data')"
               :error-message="errorOf('data')"
             />
+            <q-select
+              v-model="form.anno_competenza"
+              :options="anniCompetenza"
+              outlined
+              emit-value
+              map-options
+              label="Anno di competenza"
+              :hint="annoDiversoDallaData
+                ? 'La spesa pesa su questo anno, non su quello del pagamento.'
+                : 'Di norma è l\'anno del pagamento: cambialo per una spesa pagata in ritardo o in anticipo.'"
+            />
             <q-input
               v-model="form.descrizione"
               outlined
@@ -459,12 +470,26 @@ interface FormSpesa extends NuovaSpesa {
   bt_descrizione: string;
 }
 
+const annoDi = (iso: string): number =>
+  Number(iso.slice(0, 4)) || new Date().getFullYear();
+
+/** Qualche anno attorno a quello del pagamento: le spese in ritardo sono
+ *  di uno o due anni prima, gli anticipi dell'anno dopo. */
+const anniCompetenza = computed(() => {
+  const anno = annoDi(form.data);
+  return [anno - 2, anno - 1, anno, anno + 1].map((a) => ({ label: String(a), value: a }));
+});
+const annoDiversoDallaData = computed(
+  () => form.anno_competenza != null && form.anno_competenza !== annoDi(form.data),
+);
+
 const form = reactive<FormSpesa>({
   data: new Date().toISOString().slice(0, 10),
   descrizione: '',
   importo: 0,
   category: null,
   note: '',
+  anno_competenza: new Date().getFullYear(),
   anticipata_da_owner: null,
   riferimento_quota_owner: null,
   crea_bank_transaction: true,
@@ -504,8 +529,14 @@ watch(contoDefaultBT, (id) => {
 });
 watch(
   () => form.data,
-  (d) => {
-    if (d) form.bt_data = d;
+  (d, precedente) => {
+    if (!d) return;
+    form.bt_data = d;
+    // L'anno segue la data finché l'utente non lo tocca: se coincideva con
+    // quello di prima non era una scelta, era il valore predefinito.
+    if (form.anno_competenza === annoDi(precedente ?? d)) {
+      form.anno_competenza = annoDi(d);
+    }
   },
 );
 
@@ -770,6 +801,7 @@ async function salva() {
       importo: form.importo,
       category: form.category,
       note: form.note || undefined,
+      anno_competenza: form.anno_competenza,
       riferimento_quota_owner: form.riferimento_quota_owner,
       crea_bank_transaction: form.crea_bank_transaction,
     };
@@ -810,6 +842,7 @@ async function salva() {
       importo: 0,
       category: null,
       note: '',
+      anno_competenza: new Date().getFullYear(),
       anticipata_da_owner: contoOwnerId(contoDefaultBT.value),
       riferimento_quota_owner: null,
       crea_bank_transaction: true,

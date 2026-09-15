@@ -535,6 +535,18 @@
             />
             <q-input v-model="trasfData" type="date" outlined dense label="Data" />
           </template>
+          <q-select
+            v-model="trasfAnno"
+            :options="anniCompetenza"
+            outlined
+            dense
+            emit-value
+            map-options
+            label="Anno di competenza"
+            :hint="trasfAnno !== annoDi(trasfData)
+              ? 'Il movimento appartiene a questo anno, non a quello del bonifico.'
+              : 'Di norma è l\'anno del bonifico: il primo dell\'anno è spesso la quota di dicembre.'"
+          />
           <q-input
             v-model="trasfDescrizione"
             outlined
@@ -643,6 +655,7 @@ const trasfImporto = ref<number>(0);
 const trasfData = ref<string>(isoOggi());
 const trasfDirezione = ref<'uscita' | 'entrata'>('uscita');
 const trasfTipo = ref<TipoInterOwner>('distribuzione');
+const trasfAnno = ref<number>(new Date().getFullYear());
 const trasfSettlement = ref<number | null>(null);
 const trasfDescrizione = ref('');
 const trasfInCorso = ref(false);
@@ -679,6 +692,16 @@ const opzioniTipo = computed(() => {
 const aiutoTipo = computed(
   () => opzioniTipo.value.find((o) => o.value === trasfTipo.value)?.help ?? '',
 );
+function annoDi(iso: string): number {
+  return Number(iso.slice(0, 4)) || new Date().getFullYear();
+}
+/** Qualche anno attorno a quello del bonifico: quello prima è il caso
+ *  ricorrente (la quota di dicembre pagata a gennaio). */
+const anniCompetenza = computed(() => {
+  const anno = annoDi(trasfData.value);
+  return [anno - 2, anno - 1, anno, anno + 1].map((a) => ({ label: String(a), value: a }));
+});
+
 const opzioniSettlement = computed(() =>
   store.settlements.map((s) => ({
     value: s.id,
@@ -730,6 +753,7 @@ function apriTrasferimento(voce?: PianoRientroVoceFE) {
   trasfDirezione.value = 'uscita';
   trasfTipo.value = 'distribuzione';
   trasfSettlement.value = null;
+  trasfAnno.value = annoDi(trasfData.value);
   if (voce) {
     const contoDa = contiStore.accounts.find((a) => a.owner_id === voce.da.id);
     trasfConto.value = contoDa?.id ?? contoPredefinito.value;
@@ -757,6 +781,7 @@ function apriCorrezioneDaLedger(v: OwnerLedgerEntryFE) {
     settlement: v.riferimento_settlement ?? null,
     descrizione: v.descrizione,
     data: v.data,
+    anno: v.anno_competenza ?? null,
     importo: Number(v.importo),
   });
 }
@@ -786,6 +811,7 @@ function apriCorrezione(dati: {
   settlement: number | null;
   descrizione: string;
   data: string;
+  anno?: number | null;
   importo: number;
 }) {
   trasfErrore.value = null;
@@ -795,6 +821,7 @@ function apriCorrezione(dati: {
   trasfSettlement.value = dati.settlement;
   trasfDescrizione.value = dati.descrizione;
   trasfData.value = dati.data;
+  trasfAnno.value = dati.anno ?? annoDi(dati.data);
   trasfImporto.value = dati.importo;
   dialogTrasferimentoAperto.value = true;
 }
@@ -809,6 +836,7 @@ async function salvaTrasferimento() {
         tipo: trasfTipo.value,
         controparte_owner: trasfControparte.value,
         settlement: trasfSettlement.value,
+        anno_competenza: trasfAnno.value,
         ...(trasfDescrizione.value ? { descrizione: trasfDescrizione.value } : {}),
       });
     } else {
@@ -820,6 +848,7 @@ async function salvaTrasferimento() {
         direzione: trasfDirezione.value,
         tipo: trasfTipo.value,
         settlement: trasfSettlement.value,
+        anno_competenza: trasfAnno.value,
         ...(trasfDescrizione.value ? { descrizione: trasfDescrizione.value } : {}),
       });
     }

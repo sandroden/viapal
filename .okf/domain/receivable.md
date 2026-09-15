@@ -29,7 +29,10 @@ Prima esistevano tre modelli separati (`RentPayment`, `UtilityCharge`,
 - **Cosa è dovuto**: `importo_dovuto`, `causale`, `descrizione` (obbligatoria
   per EXTRA, opzionale altrove), `competenza_da`/`competenza_a` (nulla per
   EXTRA: addebito puntuale), `scadenza`, `assignment` (a chi/quale stanza,
-  FK `PROTECT`: un'assegnazione con addebiti non si cancella).
+  FK `PROTECT`: un'assegnazione con addebiti non si cancella). `data_competenza`
+  è un'eccezione dichiarata a mano per i casi anomali: quando c'è, vince
+  sull'anno di bilancio nel [conto economico](/domain/conto-economico.md),
+  altrimenti valgono `competenza_da`/`competenza_a` come sempre.
 - **Cosa è stato pagato**: `importo_pagato`, `stato`, `data_pagamento`,
   `incassato_da_owner`. Questi sono derivati dalle allocazioni bancarie,
   **non** inseriti a mano.

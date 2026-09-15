@@ -436,12 +436,19 @@ class ExpenseSerializer(serializers.ModelSerializer):
     bt_descrizione = serializers.CharField(
         write_only=True, required=False, allow_blank=True, max_length=300,
     )
+    anno_competenza = serializers.IntegerField(
+        required=False, allow_null=True, min_value=2000, max_value=2100,
+        help_text="Anno a cui la spesa appartiene, se diverso da quello del "
+                  "pagamento. Tradotto in `data_competenza`.",
+    )
 
     class Meta:
         model = Expense
         fields = [
             "id",
             "data",
+            "data_competenza",
+            "anno_competenza",
             "category",
             "category_nome",
             "supplier",
@@ -476,8 +483,23 @@ class ExpenseSerializer(serializers.ModelSerializer):
             return obj.allegato.url
         return None
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # In lettura l'anno è sempre valorizzato: quello dichiarato o, in
+        # mancanza, quello del pagamento.
+        riferimento = instance.data_competenza or instance.data
+        data["anno_competenza"] = riferimento.year
+        return data
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        anno = attrs.pop("anno_competenza", None)
+        if anno is not None:
+            from accounting.models.ledger import data_competenza_da_anno
+
+            data = attrs.get("data") or getattr(self.instance, "data", None)
+            if data is not None:
+                attrs["data_competenza"] = data_competenza_da_anno(anno, data)
         # Il movimento bancario contestuale esiste solo in creazione: in
         # aggiornamento (es. PATCH del solo allegato) i campi bt_* non
         # arrivano e non devono essere pretesi. Con partial=True DRF non
