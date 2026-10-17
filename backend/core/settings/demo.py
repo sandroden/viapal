@@ -32,7 +32,8 @@ _PORTE_FRONTEND.append('9022')  # noqa: F821
 _ORIGINI_DEMO = [f'http://{host}:9022' for host in ('localhost', '127.0.0.1')]
 CSRF_TRUSTED_ORIGINS = CSRF_TRUSTED_ORIGINS + _ORIGINI_DEMO  # noqa: F821
 CORS_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS + _ORIGINI_DEMO  # noqa: F821
-APP_BASE_URL = 'http://localhost:9022'
+# Link nelle email: nel video si vedono, niente localhost
+APP_BASE_URL = 'https://viapal.e-den.it'
 SPA_INDEX_URL = 'http://localhost:9022/'
 
 # Le email non escono: finiscono sulla console del runserver
