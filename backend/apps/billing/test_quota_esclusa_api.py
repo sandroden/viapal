@@ -83,6 +83,17 @@ def _client(immobile):
     return c
 
 
+def test_lettura_espone_nome_fornitore(immobile):
+    c = _client(immobile)
+    bill = _bolletta(
+        immobile, "gas", "80.00",
+        datetime.date(2025, 6, 1), datetime.date(2025, 6, 30),
+    )
+    resp = c.get(f"/api/v1/utility-bills/{bill.id}/")
+    assert resp.status_code == 200, resp.content
+    assert resp.json()["supplier_nome"] == "Forn-gas"
+
+
 class TestPatchQuotaEsclusa:
     def test_patch_valido(self, immobile):
         c = _client(immobile)

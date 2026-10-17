@@ -383,6 +383,14 @@ class UtilityBillSerializer(serializers.ModelSerializer):
             )
         return attrs
 
+    def to_representation(self, instance):
+        # ``supplier_nome`` è un campo senza source (serve in scrittura): DRF
+        # lo salterebbe in lettura e il frontend ripiegherebbe su chi ha
+        # pagato la bolletta, mostrandolo come fornitore.
+        data = super().to_representation(instance)
+        data["supplier_nome"] = instance.supplier.nome if instance.supplier_id else ""
+        return data
+
 
 class ExpenseCategorySerializer(serializers.ModelSerializer):
     # La property è assegnata dal server (immobile attivo): mai in scrittura.
