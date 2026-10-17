@@ -73,11 +73,11 @@
       >
         <q-tooltip>Periodo successivo · Ctrl-click: allarga avanti</q-tooltip>
       </q-btn>
-      <q-btn flat dense no-caps size="sm" label="Quest'anno" @click="presetQuestAnno" />
-      <q-btn flat dense no-caps size="sm" label="Anno scorso" @click="presetAnnoScorso" />
-      <q-btn flat dense no-caps size="sm" label="Ultimo trimestre" @click="presetUltimoTrimestre" />
-      <q-btn flat dense no-caps size="sm" label="Ultimi 12 mesi" @click="presetUltimi12Mesi" />
-      <q-btn flat dense no-caps size="sm" label="Tutto" @click="presetReset" />
+      <q-btn flat dense no-caps class="vp-p-rec__preset-btn" label="Quest'anno" @click="presetQuestAnno" />
+      <q-btn flat dense no-caps class="vp-p-rec__preset-btn" label="Anno scorso" @click="presetAnnoScorso" />
+      <q-btn flat dense no-caps class="vp-p-rec__preset-btn" label="Ultimo trimestre" @click="presetUltimoTrimestre" />
+      <q-btn flat dense no-caps class="vp-p-rec__preset-btn" label="Ultimi 12 mesi" @click="presetUltimi12Mesi" />
+      <q-btn flat dense no-caps class="vp-p-rec__preset-btn" label="Tutto" @click="presetReset" />
     </section>
 
     <div class="vp-p-rec__grid">
@@ -112,7 +112,6 @@
             </q-btn>
             <q-btn-toggle
               v-model="filtroImportoBt"
-              size="xs"
               dense
               no-caps
               unelevated
@@ -127,7 +126,6 @@
             <span class="vp-eyebrow vp-p-rec__resti-label">Resti</span>
             <q-btn-toggle
               v-model="sogliaMicroResidui"
-              size="xs"
               dense
               no-caps
               unelevated
@@ -1367,8 +1365,14 @@ watch([filtroRiconciliato, filtroDataDa, filtroDataA], () => {
   gap: var(--vp-gap-2);
   flex-wrap: wrap;
 }
-.vp-p-rec__filtro-importo {
-  font-size: 0.7rem;
+/* `size` di Quasar scala il font del bottone (xs = 8px, sm = 10px): sulle
+   etichette di testo diventa illeggibile. Compatti via dense + font esplicito. */
+.vp-p-rec__filtro-importo :deep(.q-btn) {
+  font-size: 12px;
+  padding: 0 8px;
+}
+.vp-p-rec__preset-btn {
+  font-size: 13px;
 }
 .vp-p-rec__resti-label {
   margin-left: var(--vp-gap-1);
