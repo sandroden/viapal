@@ -3122,6 +3122,10 @@ class TestContoEconomico:
         assert anni[2025]["ricavi"] == 400.0
         assert anni[2025]["spese"] == 1300.0
         assert anni[2026]["ricavi"] == 400.0
+        # Competenza: entrambi i canoni maturano nel 2025, nulla nel 2026.
+        assert anni[2025]["ricavi_competenza"] == 800.0
+        assert anni[2025]["utile_competenza"] == -500.0
+        assert anni[2026]["ricavi_competenza"] == 0.0
         assert 2025 in body["anni_disponibili"] and 2026 in body["anni_disponibili"]
 
     def test_non_incassato_in_competenza(self, client_prop, quote_ce, assignment_1):

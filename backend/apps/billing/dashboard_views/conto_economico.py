@@ -70,6 +70,9 @@ class ContoEconomicoView(APIView):
         non_incassato = Decimal("0")
         non_incassato_voci = 0
         insoluti = Decimal("0")
+        # Il loop scorre comunque tutti gli addebiti dell'immobile: ne esce
+        # gratis anche la serie multi-anno per competenza.
+        ricavi_comp_per_anno: dict[int, Decimal] = {}
         comp_qs = Receivable.objects.filter(
             assignment__room__property=prop,
             causale__in=CAUSALI_OPERATIVE,
@@ -78,9 +81,14 @@ class ContoEconomicoView(APIView):
             # `data_competenza` è l'eccezione dichiarata a mano: quando c'è,
             # decide l'anno di bilancio al posto del periodo di competenza.
             base = r.data_competenza or _competenza_base(r) or r.scadenza
-            if base is None or base.year != anno:
+            if base is None:
                 continue
             dovuto = r.importo_dovuto or Decimal("0")
+            ricavi_comp_per_anno[base.year] = (
+                ricavi_comp_per_anno.get(base.year, Decimal("0")) + dovuto
+            )
+            if base.year != anno:
+                continue
             ricavi_comp[self.VOCE_PER_CAUSALE[r.causale]] += dovuto
             if r.stato == StatoPagamento.INSOLUTO:
                 insoluti += dovuto - (r.importo_pagato or Decimal("0"))
@@ -142,7 +150,9 @@ class ContoEconomicoView(APIView):
             for owner, quota in sorted(quote.items(), key=lambda kv: kv[0].nominativo)
         ]
 
-        # --- Serie multi-anno (per cassa) ------------------------------------
+        # --- Serie multi-anno (cassa e competenza) ---------------------------
+        # `ricavi`/`utile` restano per cassa (retrocompatibilità); le spese
+        # sono le stesse nelle due letture, come nel blocco dell'anno.
         ricavi_per_anno = {
             row["y"]: row["t"] or Decimal("0")
             for row in Receivable.objects.filter(
@@ -158,16 +168,20 @@ class ContoEconomicoView(APIView):
             .annotate(y=ExtractYear(Coalesce("data_competenza", "data")))
             .values("y").annotate(t=Sum("importo"))
         }
-        anni = sorted(set(ricavi_per_anno) | set(spese_per_anno))
-        serie_anni = [
-            {
+        anni = sorted(set(ricavi_per_anno) | set(spese_per_anno) | set(ricavi_comp_per_anno))
+        serie_anni = []
+        for y in anni:
+            ricavi_y = ricavi_per_anno.get(y, Decimal("0"))
+            ricavi_comp_y = ricavi_comp_per_anno.get(y, Decimal("0"))
+            spese_y = spese_per_anno.get(y, Decimal("0"))
+            serie_anni.append({
                 "anno": y,
-                "ricavi": float(ricavi_per_anno.get(y, Decimal("0"))),
-                "spese": float(spese_per_anno.get(y, Decimal("0"))),
-                "utile": float(ricavi_per_anno.get(y, Decimal("0")) - spese_per_anno.get(y, Decimal("0"))),
-            }
-            for y in anni
-        ]
+                "ricavi": float(ricavi_y),
+                "spese": float(spese_y),
+                "utile": float(ricavi_y - spese_y),
+                "ricavi_competenza": float(ricavi_comp_y),
+                "utile_competenza": float(ricavi_comp_y - spese_y),
+            })
 
         # --- Occupazione stanze ----------------------------------------------
         finestra_da = datetime.date(anno, 1, 1)

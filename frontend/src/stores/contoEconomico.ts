@@ -37,9 +37,13 @@ export interface UtileProQuota {
 
 export interface SerieAnno {
   anno: number;
+  /** Per cassa. */
   ricavi: number;
   spese: number;
+  /** Per cassa. */
   utile: number;
+  ricavi_competenza: number;
+  utile_competenza: number;
 }
 
 export interface OccupazioneStanza {

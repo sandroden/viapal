@@ -188,7 +188,7 @@
 
       <!-- Serie multi-anno -->
       <section class="vp-ce__sezione">
-        <div class="vp-eyebrow">Andamento per anno (cassa)</div>
+        <div class="vp-eyebrow">Andamento per anno ({{ basis }})</div>
         <div class="vp-ce__serie">
           <BarChartAnni :righe="righeGrafico" :height="220" />
           <q-markup-table flat bordered dense class="vp-ce__tabella-anni">
@@ -203,10 +203,10 @@
             <tbody>
               <tr v-for="r in serieOrdinata" :key="r.anno">
                 <td>{{ r.anno }}</td>
-                <td class="text-right vp-mono">{{ formattaEuro(r.ricavi) }}</td>
+                <td class="text-right vp-mono">{{ formattaEuro(ricaviSerie(r)) }}</td>
                 <td class="text-right vp-mono">{{ formattaEuro(r.spese) }}</td>
-                <td class="text-right vp-mono" :class="segnoClass(r.utile)">
-                  {{ formattaEuro(r.utile) }}
+                <td class="text-right vp-mono" :class="segnoClass(utileSerie(r))">
+                  {{ formattaEuro(utileSerie(r)) }}
                 </td>
               </tr>
             </tbody>
@@ -248,6 +248,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import BarChartAnni from 'src/components/BarChartAnni.vue';
 import {
   useContoEconomicoStore,
+  type SerieAnno,
   type UtileProQuota,
   type VoceCategoria,
 } from 'stores/contoEconomico';
@@ -273,10 +274,19 @@ const serieOrdinata = computed(() =>
   [...(data.value?.serie_anni ?? [])].sort((a, b) => b.anno - a.anno),
 );
 
+// La serie segue il selettore cassa/competenza; le spese sono le stesse
+// nelle due letture.
+function ricaviSerie(r: SerieAnno): number {
+  return basis.value === 'cassa' ? r.ricavi : r.ricavi_competenza;
+}
+function utileSerie(r: SerieAnno): number {
+  return basis.value === 'cassa' ? r.utile : r.utile_competenza;
+}
+
 const righeGrafico = computed(() =>
   (data.value?.serie_anni ?? []).map((r) => ({
     anno: r.anno,
-    perCategoria: { Ricavi: r.ricavi },
+    perCategoria: { Ricavi: ricaviSerie(r) },
   })),
 );
 

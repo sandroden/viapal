@@ -9,7 +9,7 @@ resources:
 tags: [domain, conto-economico, cassa, competenza]
 generated:
   by: process:okf-migrate
-  at: 2026-09-15T03:30:00Z
+  at: 2026-10-18T12:00:00Z
 ---
 
 # Overview
@@ -20,7 +20,7 @@ Il conto economico per i proprietari esiste in due letture:
 - **Competenza**: cosa è di competenza del periodo, a prescindere dall'incasso.
 
 Endpoint: `GET /api/v1/dashboard/conto-economico/?anno=YYYY`
-(`ContoEconomicoView` in `billing/dashboard_views.py`, permesso
+(`ContoEconomicoView` in `billing/dashboard_views/conto_economico.py`, permesso
 `IsPropertyMember`, scoping sull'immobile attivo). Frontend:
 `/p/conto-economico` (`ProprietarioContoEconomico.vue`).
 
@@ -33,7 +33,7 @@ Endpoint: `GET /api/v1/dashboard/conto-economico/?anno=YYYY`
 | spese | `Expense` per `Coalesce(data_competenza, data)` in **entrambe** le letture, separate in ordinarie e straordinarie |
 | voci | `VOCE_PER_CAUSALE`: AFFITTO→`rent`, UTENZE→`utility`, EXTRA e REGISTRAZIONE→`extra`; **DEPOSITO è fuori** da entrambe le letture (non è un ricavo) |
 | utile pro-quota | per proprietario, con le quote attive al 31/12 dell'anno (o a oggi se l'anno è in corso): `utile_cassa` e `utile_competenza` |
-| serie multi-anno | solo per cassa: ricavi/spese/utile per ogni anno con dati |
+| serie multi-anno | in doppia lettura: `ricavi`/`utile` per cassa (nomi storici), `ricavi_competenza`/`utile_competenza` con la stessa regola del blocco annuale, spese uguali nelle due; il frontend segue il selettore cassa/competenza. La competenza per anno esce dallo stesso loop che scorre tutti gli addebiti dell'immobile, senza query in più |
 | occupazione | giorni-stanza occupati da `RoomAssignment` nella finestra dell'anno |
 
 Un deposito **trattenuto** è di fatto un ricavo ma resta invisibile qui finché
