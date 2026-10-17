@@ -10,12 +10,14 @@ si crea la ``BankTransaction`` sul conto dell'incassante e la si alloca
 all'addebito. ``incassato_da_owner`` lo valorizza poi il signal di
 riallineamento a partire dal conto del movimento — nessuno lo scrive a mano.
 """
+import datetime
 from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import Sum
 
 from billing.models import BankTransaction, BankTransactionAllocation, Receivable
+from billing.models.payments import StatoPagamento
 
 
 class IncassoRifiutato(Exception):
@@ -95,3 +97,53 @@ def registra_incasso(
         _riallinea_receivable(receivable.id)
 
     return bt, quota
+
+
+def nota_dichiarazione(estremi, oggi: datetime.date | None = None) -> str:
+    """Riga di nota con gli estremi del pagamento dichiarato dall'inquilino.
+
+    ``estremi`` è il payload di ``dichiara_pagato`` (``importo_pagato``,
+    ``metodo_pagamento``, ``riferimento``, ``note``, tutti facoltativi).
+    """
+    parti = []
+    try:
+        importo = Decimal(str(estremi.get("importo_pagato")))
+        parti.append(f"{importo:.2f} €".replace(".", ","))
+    except Exception:
+        pass
+    for campo in ("metodo_pagamento", "riferimento", "note"):
+        valore = str(estremi.get(campo) or "").strip()
+        if valore:
+            parti.append(valore[:200])
+    if not parti:
+        return ""
+    oggi = oggi or datetime.date.today()
+    return f"[Dichiarato il {oggi.isoformat()}] " + " — ".join(parti)
+
+
+def dichiara_pagamento(
+    receivable: Receivable,
+    *,
+    data_pagamento: datetime.date | None = None,
+    estremi=None,
+) -> Receivable:
+    """Porta l'addebito a DICHIARATO: l'inquilino afferma di aver pagato.
+
+    NON tocca ``importo_pagato``: quel campo riflette la copertura reale
+    (allocazioni bonifico) e sovrascriverlo qui azzererebbe il residuo di un
+    addebito pagato solo in parte. Gli estremi dichiarati finiscono nelle
+    note, a beneficio del proprietario che deve confermare.
+
+    Solo il cambio di stato: l'avviso ai proprietari
+    (``billing._notifiche.notifica_dichiarazione_pagamento``) lo manda chi
+    chiama, cioè l'endpoint ``dichiara_pagato``.
+    """
+    receivable.stato = StatoPagamento.DICHIARATO
+    receivable.data_pagamento = data_pagamento or datetime.date.today()
+    riga_nota = nota_dichiarazione(estremi or {})
+    if riga_nota:
+        receivable.note = (
+            f"{receivable.note}\n{riga_nota}" if receivable.note else riga_nota
+        )
+    receivable.save(update_fields=["stato", "data_pagamento", "note"])
+    return receivable

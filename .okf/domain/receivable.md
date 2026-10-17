@@ -14,7 +14,7 @@ resources:
 tags: [domain, receivable, billing]
 generated:
   by: process:okf-migrate
-  at: 2026-09-13T00:00:00Z
+  at: 2026-10-18T00:00:00Z
 ---
 
 # Overview
@@ -99,8 +99,10 @@ Il signal **non** scatta sul salvataggio del Receivable stesso: correggere
 
 L'inquilino può **dichiarare** di aver pagato (`dichiara_pagato`): lo stato passa
 a DICHIARATO ma `importo_pagato` **non viene toccato** — resta la copertura
-reale da allocazioni; gli estremi dichiarati finiscono in `note`. Il
-proprietario poi **conferma** (`conferma_pagato`, ammesso da DICHIARATO,
+reale da allocazioni; gli estremi dichiarati finiscono in `note`. Il cambio
+di stato vive in `calc/incassi.py: dichiara_pagamento`, senza notifiche:
+l'endpoint lo chiama e poi avvisa, `cura_demo_video` lo riusa per preparare
+il db demo senza mandare push. Il proprietario poi **conferma** (`conferma_pagato`, ammesso da DICHIARATO,
 ATTESO e IN_RITARDO) oppure **rifiuta** (`rifiuta_pagato` → riallineamento
 dalla verità bancaria, l'addebito torna da pagare). Confermare non è una
 spunta: richiede il conto su cui è entrato il denaro e delega a

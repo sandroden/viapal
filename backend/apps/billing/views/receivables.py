@@ -5,7 +5,6 @@ I tre endpoint storici (rent-payments, utility-charges, extra-charges)
 ora si appoggiano al modello unico Receivable filtrando per causale.
 """
 import datetime
-from decimal import Decimal
 
 from accounts.permissions import (
     IsInquilinoSelf,
@@ -24,6 +23,7 @@ from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from billing._notifiche import notifica_dichiarazione_pagamento
 from billing.calc.incassi import (
     IncassoRifiutato,
+    dichiara_pagamento,
     registra_incasso,
     residuo_da_incassare,
 )
@@ -116,24 +116,6 @@ class _ReceivableMixin:
         except ValueError:
             return None
 
-    @staticmethod
-    def _nota_dichiarazione(data) -> str:
-        """Riga di nota con gli estremi del pagamento dichiarato dall'inquilino."""
-        parti = []
-        try:
-            importo = Decimal(str(data.get("importo_pagato")))
-            parti.append(f"{importo:.2f} €".replace(".", ","))
-        except Exception:
-            pass
-        for campo in ("metodo_pagamento", "riferimento", "note"):
-            valore = str(data.get(campo) or "").strip()
-            if valore:
-                parti.append(valore[:200])
-        if not parti:
-            return ""
-        oggi = datetime.date.today().isoformat()
-        return f"[Dichiarato il {oggi}] " + " — ".join(parti)
-
     @action(detail=True, methods=["post"], url_path="dichiara_pagato")
     def dichiara_pagato(self, request, pk=None):
         """Inquilino marca come dichiarato. Solo l'inquilino del receivable."""
@@ -152,22 +134,13 @@ class _ReceivableMixin:
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # La dichiarazione NON tocca ``importo_pagato``: quel campo riflette
-        # la copertura reale (allocazioni bonifico) e sovrascriverlo qui
-        # azzererebbe il residuo di un addebito pagato solo in parte.
-        # Gli estremi dichiarati finiscono nelle note, a beneficio del
-        # proprietario che deve confermare.
-        receivable.stato = StatoPagamento.DICHIARATO
-        receivable.data_pagamento = (
-            self._parse_data(request.data.get("data_pagamento"))
-            or datetime.date.today()
+        # Stato, data e note: vedi ``dichiara_pagamento`` (importo_pagato
+        # resta la copertura reale).
+        dichiara_pagamento(
+            receivable,
+            data_pagamento=self._parse_data(request.data.get("data_pagamento")),
+            estremi=request.data,
         )
-        riga_nota = self._nota_dichiarazione(request.data)
-        if riga_nota:
-            receivable.note = (
-                f"{receivable.note}\n{riga_nota}" if receivable.note else riga_nota
-            )
-        receivable.save(update_fields=["stato", "data_pagamento", "note"])
 
         # I proprietari devono sapere che c'è un incasso da confermare: senza
         # questo avviso la dichiarazione resta muta fino a quando qualcuno non
