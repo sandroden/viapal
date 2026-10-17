@@ -14,7 +14,7 @@
           <q-input
             v-model="nome"
             label="Nome dell'immobile"
-            hint="Es. «Appartamento Como», «Via Palestrina»"
+            hint="Es. «Casa al mare», «Via Roma 12»"
             outlined
             :rules="[(v) => !!v?.trim() || 'Il nome è obbligatorio']"
             data-testid="nuova-nome"
