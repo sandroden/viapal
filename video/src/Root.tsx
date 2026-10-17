@@ -39,7 +39,7 @@ export const RemotionRoot: React.FC = () => {
           height={ALTEZZA}
           defaultProps={{
             titolo: "I soldi",
-            contenuto: ["Riconciliazione", "Ritardi e solleciti", "Spese e conto economico"],
+            contenuto: ["Riconciliazione", "Ritardi e solleciti", "Notifiche", "Spese e conto economico"],
           }}
         />
         <Composition

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Scena 08 — saldi tra proprietari: chi ha anticipato cosa, chi deve a chi.
+# Scena 09 — saldi tra proprietari: chi ha anticipato cosa, chi deve a chi.
 # Didascalia: "Più proprietari? Chi ha anticipato cosa, e chi deve a chi."
 set -euo pipefail
 
 aiuto() {
   cat <<EOF
 Uso: $0 [-h]
-  Gira la scena 08 in public/clips/08-saldi-proprietari.mp4.
+  Gira la scena 09 in public/clips/09-saldi-proprietari.mp4.
   Richiede just demo attivo. CDP_PORTA (default 9343) sceglie il Chrome.
   Sola lettura: nessun clic su "Registra bonifico" o "Chiudi periodo".
 EOF
@@ -43,7 +43,7 @@ main() {
   attendi_testo 'Tocca per registrarlo'
   nascondi_sezioni_tecniche
   pausa 1.5
-  ciak 08-saldi-proprietari
+  ciak 09-saldi-proprietari
   T0=$(date +%s.%N)
   pausa 0.3
   # un saldo per proprietario

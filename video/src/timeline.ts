@@ -18,6 +18,13 @@ export type DidascaliaFotogrammi = {
   readonly posizione: Posizione;
 };
 
+export type NotificaFotogrammi = {
+  readonly titolo: string;
+  readonly corpo: string;
+  readonly da: number;
+  readonly durata: number;
+};
+
 export type ScenaRisolta = {
   readonly scena: Scena;
   readonly disponibile: boolean;
@@ -27,6 +34,7 @@ export type ScenaRisolta = {
   readonly durata: number;
   readonly zoom: Required<Zoom> | null;
   readonly didascalie: readonly DidascaliaFotogrammi[];
+  readonly notifiche: readonly NotificaFotogrammi[];
 };
 
 export type Blocco =
@@ -76,13 +84,19 @@ export const risolviScena = (scena: Scena, m: Manifest = manifest, fps = FPS): S
   const minimo = m.transizioneFotogrammi * 2 + 1;
   const durata = Math.max(minimo, Math.floor(((fine - inizio) * fps) / velocita));
 
+  // secondi della clip tagliata (sul tempo sorgente) → fotogrammi del montaggio
+  const intervallo = (da: number, a: number) => {
+    const inizioF = Math.max(0, Math.round((da * fps) / velocita));
+    return { da: inizioF, durata: Math.min(durata, Math.round((a * fps) / velocita)) - inizioF };
+  };
+
   const didascalie = scena.didascalie
-    .map((d) => {
-      const da = Math.max(0, Math.round((d.da * fps) / velocita));
-      const a = Math.min(durata, Math.round((d.a * fps) / velocita));
-      return { testo: d.testo, da, durata: a - da, posizione: d.posizione ?? "basso-sx" };
-    })
+    .map((d) => ({ testo: d.testo, ...intervallo(d.da, d.a), posizione: d.posizione ?? "basso-sx" }))
     .filter((d) => d.durata > 0);
+
+  const notifiche = (scena.notifiche ?? [])
+    .map((n) => ({ titolo: n.titolo, corpo: n.corpo, ...intervallo(n.da, n.a) }))
+    .filter((n) => n.durata > 0);
 
   return {
     scena,
@@ -92,6 +106,7 @@ export const risolviScena = (scena: Scena, m: Manifest = manifest, fps = FPS): S
     durata,
     zoom: risolviZoom(scena, m),
     didascalie,
+    notifiche,
   };
 };
 

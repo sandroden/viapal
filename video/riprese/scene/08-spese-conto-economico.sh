@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scena 07 — spese (grafico per anno, dialog Aggiungi annullato) e conto
+# Scena 08 — spese (grafico per anno, dialog Aggiungi annullato) e conto
 # economico: lettura per cassa, poi per competenza, occupazione camere.
 # Didascalia: "Spese e conto economico, per cassa o per competenza."
 set -euo pipefail
@@ -7,7 +7,7 @@ set -euo pipefail
 aiuto() {
   cat <<EOF
 Uso: $0 [-h]
-  Gira la scena 07 in public/clips/07-spese-conto-economico.mp4.
+  Gira la scena 08 in public/clips/08-spese-conto-economico.mp4.
   Richiede just demo attivo. CDP_PORTA (default 9343) sceglie il Chrome.
   Nessun salvataggio: il dialog "Aggiungi spesa" si chiude con Annulla.
 EOF
@@ -56,7 +56,7 @@ main() {
   apri /p/spese
   attendi_testo '12,3k'
   pausa 1.5
-  ciak 07-spese-conto-economico
+  ciak 08-spese-conto-economico
   T0=$(date +%s.%N)
   pausa 0.3
   # grafico per anno e tabella per categoria

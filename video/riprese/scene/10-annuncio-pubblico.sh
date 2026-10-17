@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scena 09 — annuncio pubblico /g/casa-dei-tigli: copertina, planimetria con
+# Scena 10 — annuncio pubblico /g/casa-dei-tigli: copertina, planimetria con
 # i numeri delle stanze, foto di una camera libera in grande.
 # Didascalia: "Un annuncio pronto da condividere."
 # Fuori campo per scelta: la sezione Posizione con mappa.jpg (mappa reale,
@@ -11,7 +11,7 @@ SLUG="${SLUG:-casa-dei-tigli}"
 aiuto() {
   cat <<EOF
 Uso: $0 [-h]
-  Gira la scena 09 in public/clips/09-annuncio-pubblico.mp4.
+  Gira la scena 10 in public/clips/10-annuncio-pubblico.mp4.
   Richiede just demo attivo. CDP_PORTA (default 9343) sceglie il Chrome,
   SLUG (default $SLUG) la galleria. Nessuna modifica alla galleria.
 EOF
@@ -51,7 +51,7 @@ main() {
     scrollTo(0, y); await new Promise(r => setTimeout(r, 120)); } scrollTo(0, 0); return 1; })()" >/dev/null
   attendi_foto
   pausa 1.5
-  ciak 09-annuncio-pubblico
+  ciak 10-annuncio-pubblico
   T0=$(date +%s.%N)
   # copertina
   punta_testo 'posti letto'

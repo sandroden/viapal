@@ -12,6 +12,9 @@
 //                   "\n" nel testo forza un a capo. `posizione` (default
 //                   "basso-sx") sposta la card dove non copre l'azione:
 //                   "alto-dx", "alto-sx", "basso-dx" o { left/right/top/bottom } in px.
+//   notifiche       { titolo, corpo, da, a } notifica push simulata in alto a
+//                   destra (componente NotificaPush), tempi come le didascalie;
+//                   testo da tenere fedele a billing/_notifiche.py
 //   zoom            Ken Burns lento (default attivo, vedi `zoomPredefinito`);
 //                   false per disattivarlo, oppure { da, a, origine }
 //   sezione         se presente, cartello di sezione di ~2 s prima della scena
@@ -38,6 +41,13 @@ export type Didascalia = {
   readonly posizione?: Posizione;
 };
 
+export type Notifica = {
+  readonly titolo: string;
+  readonly corpo: string;
+  readonly da: number;
+  readonly a: number;
+};
+
 export type Zoom = {
   readonly da?: number;
   readonly a?: number;
@@ -58,6 +68,7 @@ export type Scena = {
   /** promemoria mostrato solo nel segnaposto */
   readonly nota?: string;
   readonly didascalie: readonly Didascalia[];
+  readonly notifiche?: readonly Notifica[];
 };
 
 export type Manifest = {
@@ -213,10 +224,58 @@ export const manifest: Manifest = {
       velocita: 1.2,
       didascalie: [{ testo: "e un sollecito pronto da inviare.", da: 0.6, a: 8.4 }],
     },
+    // Notifiche: l'addebito dichiarato da Karthik Pillai (cura_demo_video) nei
+    // ritardi, con sopra la push che il proprietario riceverebbe; poi chi la
+    // riceve (Immobile → Avvisi) e il dispositivo (Area personale). Tagliato il
+    // giro dal menu utente (17,6–22,5). La clip finisce sul registro degli
+    // inviati (da 30,9): fuori montaggio per stare nei 2'50", rimontabile come
+    // terzo taglio con `inizio: 30.9`.
     {
-      id: "07",
+      id: "07a",
+      titolo: "Notifiche",
+      clip: "07-notifiche.mp4",
+      inizio: 0.3,
+      fine: 17.5,
+      velocita: 1.6,
+      notifiche: [
+        {
+          // billing/_notifiche.py: "{nominativo} dichiara di aver pagato" /
+          // "{addebito}: {importo} €. Tocca per confermare l'incasso."
+          titolo: "Karthik Pillai dichiara di aver pagato",
+          corpo: "Utenze Ago 2026: 39,26 €. Tocca per confermare l'incasso.",
+          da: 1.6,
+          a: 7.0,
+        },
+      ],
+      didascalie: [
+        // la tabella dei ritardi sta in alto: in basso a sinistra c'è posto
+        {
+          testo: "L'inquilino segnala il pagamento:\nti arriva una notifica.",
+          da: 2.2,
+          a: 9.3,
+        },
+        // a destra sotto le stanze: a sinistra in basso c'è il menu "Avvisa"
+        {
+          testo: "Decidi chi riceve\nle notifiche,",
+          da: 11.0,
+          a: 17.2,
+          posizione: { right: 60, bottom: 190 },
+        },
+      ],
+    },
+    {
+      id: "07b",
+      titolo: "Notifiche",
+      clip: "07-notifiche.mp4",
+      inizio: 22.5,
+      fine: 26.5,
+      velocita: 1.25,
+      didascalie: [{ testo: "e su quale dispositivo.", da: 0.3, a: 3.9 }],
+    },
+    {
+      id: "08",
       titolo: "Spese e conto economico",
-      clip: "07-spese-conto-economico.mp4",
+      clip: "08-spese-conto-economico.mp4",
       inizio: 0.3,
       fine: 22,
       velocita: 1.5,
@@ -230,9 +289,9 @@ export const manifest: Manifest = {
       ],
     },
     {
-      id: "08",
+      id: "09",
       titolo: "Saldi proprietari",
-      clip: "08-saldi-proprietari.mp4",
+      clip: "09-saldi-proprietari.mp4",
       inizio: 0.3,
       fine: 9.8,
       didascalie: [
@@ -240,25 +299,14 @@ export const manifest: Manifest = {
       ],
     },
     {
-      id: "09",
+      id: "10",
       titolo: "Annuncio pubblico",
-      clip: "09-annuncio-pubblico.mp4",
-      sezione: "Trovare inquilini",
+      clip: "10-annuncio-pubblico.mp4",
+      sezione: "La casa",
       inizio: 0.3,
       fine: 17.5,
       velocita: 1.35,
       didascalie: [{ testo: "Un annuncio pronto da condividere.", da: 0.5, a: 10.5 }],
-    },
-    {
-      id: "10",
-      titolo: "Cerca inquilini",
-      clip: "10-cerca-inquilini.mp4",
-      inizio: 0.2,
-      fine: 10.4,
-      velocita: 1.1,
-      didascalie: [
-        { testo: "I contatti da Facebook e Subito, già riassunti.", da: 0.5, a: 9.9 },
-      ],
     },
     {
       id: "11",

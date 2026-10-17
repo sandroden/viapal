@@ -12,6 +12,7 @@ import {
 import type { ScenaRisolta } from "../timeline";
 import { colori, fontSans, fontSerif } from "../tema";
 import { Didascalia } from "./Didascalia";
+import { NotificaPush } from "./NotificaPush";
 
 type Props = {
   readonly risolta: ScenaRisolta;
@@ -134,6 +135,11 @@ export const Scena: React.FC<Props> = ({ risolta }) => {
       {risolta.didascalie.map((d) => (
         <Sequence key={`${d.da}-${d.testo}`} name={d.testo} from={d.da} durationInFrames={d.durata}>
           <Didascalia testo={d.testo} etichetta={risolta.scena.titolo} posizione={d.posizione} />
+        </Sequence>
+      ))}
+      {risolta.notifiche.map((n) => (
+        <Sequence key={`notifica-${n.da}`} name={`Notifica · ${n.titolo}`} from={n.da} durationInFrames={n.durata}>
+          <NotificaPush titolo={n.titolo} corpo={n.corpo} />
         </Sequence>
       ))}
     </AbsoluteFill>
