@@ -17,7 +17,14 @@ racconta la cosa sbagliata:
 * i documenti generati dal sistema (atti, cessioni) dell'inquilino delle
   riprese, cosi' il dialog "Genera" non dice "verra' sostituito";
 * il membro tecnico ``bot`` (lead del bot Facebook) nella lista membri;
-* le notifiche push fallite nel registro degli inviati.
+* le notifiche push fallite nel registro degli inviati;
+* nessun addebito "in attesa di conferma": per la scena delle notifiche
+  l'ultimo addebito aperto di ``INQUILINO_DICHIARANTE`` (Casa dei Tigli)
+  passa a ``dichiarato`` con ``billing.calc.incassi.dichiara_pagamento``,
+  lo stesso servizio dell'endpoint ``dichiara_pagato`` (residuo intatto,
+  badge "In attesa di conferma"), senza l'avviso push/email ai proprietari
+  che l'endpoint aggiunge. Si evita Hamza Tazi, protagonista delle scene
+  02-06: il suo riepilogo e la sua home inquilino devono restare uguali.
 
 Gira solo su ``viapal_demo`` con ``ENV=demo``; idempotente.
 """
@@ -30,6 +37,7 @@ from django.db import transaction
 from django.db.models import Max, Q, Sum
 
 from billing.dashboard_views import CAUSALI_OPERATIVE, STATI_DA_PAGARE
+from billing.calc.incassi import dichiara_pagamento
 from billing.models import Receivable
 from billing.models.payments import StatoPagamento
 from notifications.models import Notification
@@ -39,6 +47,9 @@ from properties.models.tenant import assegnazione_in_corso_q
 LIMITE_STORICO = date(2026, 1, 1)
 # inquilini delle riprese: i documenti generati si tolgono per mostrare "Genera" pulito
 USERNAME_RIPRESE = ("daniela",)
+# inquilino attivo della Casa dei Tigli con un addebito "dichiarato" (scena notifiche)
+INQUILINO_DICHIARANTE = "Karthik Pillai"
+IMMOBILE_DICHIARANTE = "Casa dei Tigli"
 
 
 class Command(BaseCommand):
@@ -70,13 +81,16 @@ class Command(BaseCommand):
 
             n_doc = self._documenti_generati()
 
+            dichiarato = self._dichiarato()
+
             self.stdout.write(
                 f"arretrati ex inquilini eliminati: {rimossi}, saldati: {saldati}, "
                 f"irrisolti: {irrisolti}\n"
                 f"documenti generati rimossi: {n_doc}\n"
                 f"addebiti storici → insoluto: {n_insoluti}\n"
                 f"membership del bot rimosse: {n_bot}\n"
-                f"notifiche push fallite rimosse: {n_push}")
+                f"notifiche push fallite rimosse: {n_push}\n"
+                f"addebito dichiarato: {dichiarato}")
             if opts["dry_run"]:
                 transaction.set_rollback(True)
                 self.stdout.write("dry-run: annullato")
@@ -126,3 +140,26 @@ class Command(BaseCommand):
             d.file.delete(save=False)
             d.delete()
         return n
+
+    def _dichiarato(self):
+        """Un addebito "in attesa di conferma" per la scena delle notifiche.
+
+        Idempotente: se l'inquilino ne ha già uno dichiarato non si tocca
+        nulla (data e nota restano quelle del primo giro).
+        """
+        suoi = Receivable.objects.filter(
+            assignment__tenant__nominativo=INQUILINO_DICHIARANTE,
+            assignment__room__property__nome=IMMOBILE_DICHIARANTE,
+        )
+        gia = suoi.filter(stato=StatoPagamento.DICHIARATO).first()
+        if gia:
+            return f"{gia.pk} (già) {gia}"
+        r = (suoi.filter(stato__in=[StatoPagamento.ATTESO, StatoPagamento.IN_RITARDO],
+                         causale__in=CAUSALI_OPERATIVE, allocations__isnull=True)
+             .order_by("-scadenza").first())
+        if r is None:
+            return "nessun addebito aperto da dichiarare"
+        # niente notifica_dichiarazione_pagamento: nessuna push/email esce
+        dichiara_pagamento(r, estremi={
+            "importo_pagato": r.importo_dovuto, "metodo_pagamento": "bonifico"})
+        return f"{r.pk} {r}"

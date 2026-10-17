@@ -99,7 +99,8 @@ produzione, non toccata da `jmb-sync`), media in `media-demo/` e
 viene letto** (`settings/__init__.py`): così il `FallbackStorage` verso S3 di
 produzione non può servire documenti veri dietro ai nomi finti.
 
-Il video demo si gira e si monta da `video/` (vedi `video/STORYBOARD.md`):
+Il video demo si gira e si monta da `video/` (vedi `video/STORYBOARD.md`;
+lanciare prima `cura_demo_video`, vedi sotto):
 `video/riprese/scene/NN-*.sh` registrano le clip (Chrome headless pilotato da
 agent-browser, screencast CDP a 30 fps; `bash video/riprese/lib.sh -h`),
 `video/src/manifest.ts` le taglia e mette le didascalie, `npm run render`
@@ -126,7 +127,14 @@ ENV=demo uv run python manage.py cura_demo_video            # ritocchi per le ri
   il dovuto scende all'incassato e diventano pagati col proprietario
   incassante), documenti generati (atti/cessioni) di Daniela (il dialog
   "Genera" resta pulito), addebiti storici residui → `insoluto`, membership
-  del `bot`, notifiche push fallite.
+  del `bot`, notifiche push fallite. Aggiunge anche l'unico addebito
+  "in attesa di conferma" del db: l'ultimo aperto di Karthik Pillai (Casa dei
+  Tigli, Utenze Ago 2026, 39,26 €) passa a `dichiarato` con
+  `billing.calc.incassi.dichiara_pagamento`, lo stesso servizio
+  dell'endpoint `dichiara_pagato`, ma **senza** l'avviso push ai proprietari
+  che l'endpoint manda dopo. Serve alla scena 07 "Notifiche" (nei ritardi
+  compare "Da confermare"); Hamza Tazi, protagonista delle scene 02–06, resta
+  com'era.
 
 * `anonimizza_demo` gira solo su `viapal_demo` con `ENV=demo` e **una volta
   sola** per db: gli importi vengono scalati (x 0,7) e la tabella
