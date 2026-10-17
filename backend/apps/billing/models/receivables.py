@@ -218,18 +218,23 @@ class Receivable(TimestampedModel):
                 )
             })
 
-    def __str__(self):
+    @property
+    def etichetta(self):
+        """Nome breve dell'addebito, es. "Affitto Set 2026": senza inquilino,
+        importo e stato, adatto ai testi rivolti alle persone."""
         if self.descrizione:
-            etichetta = self.descrizione
-        else:
-            etichetta = self.get_causale_display()
-            # Per affitto/utenze, aggiungi il periodo di competenza
-            if self.competenza_da:
-                m = self._MESI_ABBR[self.competenza_da.month]
-                y = self.competenza_da.year
-                etichetta = f"{etichetta} {m} {y}"
+            return self.descrizione
+        etichetta = self.get_causale_display()
+        # Per affitto/utenze, aggiungi il periodo di competenza
+        if self.competenza_da:
+            m = self._MESI_ABBR[self.competenza_da.month]
+            y = self.competenza_da.year
+            etichetta = f"{etichetta} {m} {y}"
+        return etichetta
+
+    def __str__(self):
         return (
-            f"{self.assignment.tenant} — {etichetta} "
+            f"{self.assignment.tenant} — {self.etichetta} "
             f"({self.importo_dovuto}€) [{self.stato}]"
         )
 

@@ -71,6 +71,11 @@ def destinatari_dichiarazione(receivable, escludi=None) -> list:
     return tutti
 
 
+def _euro(importo) -> str:
+    """1234.5 → "1.234,50"."""
+    return f"{importo:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def notifica_dichiarazione_pagamento(receivable, autore=None) -> dict:
     """Avvisa i proprietari che un inquilino dichiara di aver pagato.
 
@@ -89,8 +94,10 @@ def notifica_dichiarazione_pagamento(receivable, autore=None) -> dict:
             esito["inviate"] += invia_push(
                 user,
                 titolo=f"{nominativo} dichiara di aver pagato",
+                # Etichetta e non str(receivable): la notifica è già intestata
+                # all'inquilino, e stato e importo con il punto non servono.
                 corpo=(
-                    f"{receivable}: {receivable.importo_dovuto:.2f} €. "
+                    f"{receivable.etichetta}: {_euro(receivable.importo_dovuto)} €. "
                     "Tocca per confermare l'incasso."
                 ),
                 url="/p/ritardi",

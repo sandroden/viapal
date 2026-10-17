@@ -124,6 +124,9 @@ intestatario del conto risolto da `conto_per_receivable`, con **ripiego su
 tutti** se non risolvibile). Escluso chi ha premuto il bottone: `dichiara_pagato`
 è aperta anche ai proprietari, che possono dichiarare per conto dell'inquilino.
 Il canale è accessorio: non solleva mai e non fa fallire la dichiarazione.
+Il testo è intestato all'inquilino («X dichiara di aver pagato») e nel corpo
+usa `Receivable.etichetta` («Utenze Ago 2026: 39,26 €»), non `str()`, che
+ripeterebbe inquilino, importo col punto e stato.
 
 # Conto di destinazione
 

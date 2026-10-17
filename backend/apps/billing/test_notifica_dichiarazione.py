@@ -149,6 +149,8 @@ class TestInvio:
         assert esito == {"destinatari": 2, "inviate": 2}
         assert [c[0] for c in chiamate] == [anna, bruno]
         assert "Carla Inquilina" in chiamate[0][1]["titolo"]
+        assert chiamate[0][1]["corpo"] == (
+            "Affitto Set 2026: 400,00 €. Tocca per confermare l'incasso.")
         assert chiamate[0][1]["url"] == "/p/ritardi"
 
     def test_non_solleva_se_il_canale_esplode(self, addebito, anna, monkeypatch):
