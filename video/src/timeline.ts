@@ -40,6 +40,9 @@ export type ScenaRisolta = {
 export type Blocco =
   | { readonly tipo: "apertura"; readonly chiave: string; readonly durata: number }
   | { readonly tipo: "chiusura"; readonly chiave: string; readonly durata: number }
+  | { readonly tipo: "cheCose"; readonly chiave: string; readonly durata: number }
+  | { readonly tipo: "viste"; readonly chiave: string; readonly durata: number }
+  | { readonly tipo: "passaggio"; readonly chiave: string; readonly durata: number }
   | {
       readonly tipo: "sezione";
       readonly chiave: string;
@@ -110,9 +113,20 @@ export const risolviScena = (scena: Scena, m: Manifest = manifest, fps = FPS): S
   };
 };
 
+/** I tre cartelli dell'introduzione, fra l'apertura e la prima sezione. */
+export const blocchiIntroduzione = (m: Manifest = manifest, fps = FPS): Blocco[] => {
+  const { cheCose, viste, passaggio } = m.introduzione;
+  return [
+    { tipo: "cheCose", chiave: "intro-checose", durata: secondiInFotogrammi(cheCose.durata, fps) },
+    { tipo: "viste", chiave: "intro-viste", durata: secondiInFotogrammi(viste.durata, fps) },
+    { tipo: "passaggio", chiave: "intro-passaggio", durata: secondiInFotogrammi(passaggio.durata, fps) },
+  ];
+};
+
 export const costruisciBlocchi = (m: Manifest = manifest, fps = FPS): Blocco[] => {
   const blocchi: Blocco[] = [
     { tipo: "apertura", chiave: "apertura", durata: secondiInFotogrammi(m.apertura.durata, fps) },
+    ...blocchiIntroduzione(m, fps),
   ];
   m.scene.forEach((scena, i) => {
     if (scena.sezione) {
@@ -140,8 +154,10 @@ export const costruisciBlocchi = (m: Manifest = manifest, fps = FPS): Blocco[] =
 };
 
 /** Somma dei blocchi meno le sovrapposizioni delle dissolvenze. */
-export const durataTotale = (m: Manifest = manifest, fps = FPS): number => {
-  const blocchi = costruisciBlocchi(m, fps);
+export const durataBlocchi = (blocchi: readonly Blocco[], m: Manifest = manifest): number => {
   const somma = blocchi.reduce((tot, b) => tot + b.durata, 0);
   return somma - (blocchi.length - 1) * m.transizioneFotogrammi;
 };
+
+export const durataTotale = (m: Manifest = manifest, fps = FPS): number =>
+  durataBlocchi(costruisciBlocchi(m, fps), m);

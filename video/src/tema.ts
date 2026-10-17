@@ -17,6 +17,11 @@ export const colori = {
   terracotta: "#9b5a3a",
   terracottaTenue: "oklch(0.88 0.045 40)",
   ombra: "oklch(0.30 0.02 50 / 0.16)",
+  /** dispositivi disegnati nell'introduzione: cornice scura calda, base chiara */
+  cornice: "oklch(0.23 0.010 50)",
+  corniceFilo: "oklch(0.36 0.012 50)",
+  baseChiara: "oklch(0.87 0.008 70)",
+  baseScura: "oklch(0.70 0.010 60)",
 } as const;
 
 export const { fontFamily: fontSerif } = caricaSerif("normal", {

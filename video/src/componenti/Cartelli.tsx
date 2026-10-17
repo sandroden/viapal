@@ -11,7 +11,7 @@ import {
 import { colori, fontSans, fontSerif } from "../tema";
 
 // Entrata morbida dal basso, sfalsata di `ritardo` secondi.
-const useSalita = (ritardo: number, distanza = 26): React.CSSProperties => {
+export const useSalita = (ritardo: number, distanza = 26): React.CSSProperties => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const opzioni = {
@@ -30,7 +30,7 @@ const useSalita = (ritardo: number, distanza = 26): React.CSSProperties => {
   };
 };
 
-const Filetto: React.FC<{ readonly style?: React.CSSProperties }> = ({ style }) => (
+export const Filetto: React.FC<{ readonly style?: React.CSSProperties }> = ({ style }) => (
   <div
     style={{
       width: 72,
@@ -42,7 +42,7 @@ const Filetto: React.FC<{ readonly style?: React.CSSProperties }> = ({ style }) 
   />
 );
 
-const sfondoCartello: React.CSSProperties = {
+export const sfondoCartello: React.CSSProperties = {
   backgroundColor: colori.lino,
   backgroundImage: `radial-gradient(ellipse at 50% 42%, ${colori.lino} 0%, ${colori.lino} 45%, oklch(0.91 0.03 70) 100%)`,
   alignItems: "center",

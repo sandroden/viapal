@@ -19,6 +19,15 @@
 //                   false per disattivarlo, oppure { da, a, origine }
 //   sezione         se presente, cartello di sezione di ~2 s prima della scena
 //
+// Introduzione (fra l'apertura e la prima sezione), tre cartelli in fila:
+//   cheCose         che cos'è Viapal: titolo (serif grande, "\n" = a capo) e
+//                   sottotitolo facoltativo
+//   viste           le due viste affiancate: a sinistra il proprietario su un
+//                   portatile, a destra l'inquilino su un tablet; per ciascuna
+//                   titolo, voci (3-4, compaiono una alla volta) e immagine
+//                   (percorso in public/, fotogrammi estratti dalle clip)
+//   passaggio       frase-ponte che sfuma nel cartello della prima sezione
+//
 // Una stessa clip può comparire in più scene con tagli diversi (es. per
 // saltare un tratto in mezzo o accelerarne solo una parte).
 
@@ -71,12 +80,37 @@ export type Scena = {
   readonly notifiche?: readonly Notifica[];
 };
 
+export type Vista = {
+  readonly titolo: string;
+  readonly voci: readonly string[];
+  /** percorso in public/, es. "intro/proprietario-cruscotto.jpg" */
+  readonly immagine: string;
+};
+
+export type Introduzione = {
+  readonly cheCose: {
+    readonly durata: number;
+    readonly titolo: string;
+    readonly sottotitolo?: string;
+  };
+  readonly viste: {
+    readonly durata: number;
+    readonly proprietario: Vista;
+    readonly inquilino: Vista;
+  };
+  readonly passaggio: {
+    readonly durata: number;
+    readonly testo: string;
+  };
+};
+
 export type Manifest = {
   readonly apertura: {
     readonly durata: number;
     readonly titolo: string;
     readonly sottotitolo: string;
   };
+  readonly introduzione: Introduzione;
   readonly chiusura: {
     readonly durata: number;
     readonly titolo: string;
@@ -101,6 +135,34 @@ export const manifest: Manifest = {
     durata: 6,
     titolo: "Affitti a stanze, senza fogli Excel.",
     sottotitolo: "Viapal — il gestionale per chi affitta camere",
+  },
+  // Testi provvisori: da rifinire.
+  introduzione: {
+    cheCose: {
+      durata: 4,
+      titolo: "Viapal gestisce l'affitto di una casa:\nintera, o divisa in stanze.",
+      sottotitolo: "Per chi la possiede e per chi ci abita.",
+    },
+    viste: {
+      durata: 7,
+      proprietario: {
+        titolo: "Per chi affitta",
+        voci: ["Incassi e ritardi", "Bollette divise per presenza", "Spese e conti fra comproprietari"],
+        // 01-cruscotto.mp4 a 1,0 s: indicatori in vista, nessun cursore
+        immagine: "intro/proprietario-cruscotto.jpg",
+      },
+      inquilino: {
+        titolo: "Per chi abita",
+        voci: ["Quanto deve e perché", "Paga con un QR", "I suoi documenti"],
+        // 04-lato-inquilino.mp4 a 3,5 s, senza la barra "Torna a te"
+        // dell'impersonation e ritagliata a 16:10 (cursore fuori campo)
+        immagine: "intro/inquilino-home.jpg",
+      },
+    },
+    passaggio: {
+      durata: 2,
+      testo: "Vediamo come funziona.",
+    },
   },
   chiusura: {
     durata: 6,

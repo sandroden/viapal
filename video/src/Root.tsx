@@ -3,8 +3,16 @@ import { Composition, Folder } from "remotion";
 import { Apertura, Chiusura, Sezione } from "./componenti/Cartelli";
 import { Scena } from "./componenti/Scena";
 import { manifest } from "./manifest";
-import { ALTEZZA, FPS, LARGHEZZA, durataTotale, risolviScena } from "./timeline";
-import { ViapalDemo } from "./ViapalDemo";
+import {
+  ALTEZZA,
+  FPS,
+  LARGHEZZA,
+  blocchiIntroduzione,
+  durataBlocchi,
+  durataTotale,
+  risolviScena,
+} from "./timeline";
+import { IntroduzioneDemo, ViapalDemo } from "./ViapalDemo";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -29,6 +37,14 @@ export const RemotionRoot: React.FC = () => {
             titolo: manifest.apertura.titolo,
             sottotitolo: manifest.apertura.sottotitolo,
           }}
+        />
+        <Composition
+          id="Introduzione"
+          component={IntroduzioneDemo}
+          durationInFrames={durataBlocchi(blocchiIntroduzione(manifest, FPS), manifest)}
+          fps={FPS}
+          width={LARGHEZZA}
+          height={ALTEZZA}
         />
         <Composition
           id="Sezione"

@@ -2,7 +2,7 @@
 
 Pubblico: proprietari che potrebbero provare Viapal gratis. Formato desktop
 1920x1080, 30 fps, italiano, nessuna voce: didascalie a schermo. Durata
-obiettivo ~2'50". Dati: db `viapal_demo` anonimizzato (importi x0,7, Novara),
+obiettivo ~3'. Dati: db `viapal_demo` anonimizzato (importi x0,7, Novara),
 utente `massimo`, immobile "Casa dei Tigli" (a stanze).
 
 Le clip si girano con `riprese/scene/NN-*.sh` (richiede `just demo`), finiscono
@@ -12,6 +12,7 @@ il montaggio può accelerare i tratti morti.
 | # | Scena | Durata | Didascalia | Azione |
 |---|---|---|---|---|
 | — | Apertura | 6 s | **Affitti a stanze, senza fogli Excel.** | cartello Remotion, logo |
+| — | Introduzione | 13 s | **Viapal gestisce l'affitto di una casa: intera, o divisa in stanze.** / Per chi affitta · Per chi abita / Vediamo come funziona. | tre cartelli Remotion (`introduzione` nel manifest): che cos'è (4 s); le due viste affiancate (7 s), portatile col cruscotto proprietario e tablet con la home inquilino, voci una alla volta; frase-ponte (2 s) che esce prima della dissolvenza su "Il quadro". Fotogrammi in `public/intro/` (versionati), estratti da 01 a 1,0 s e da 04 a 3,5 s (senza la barra "Torna a te", ritaglio 16:10) |
 | 01 | Cruscotto | 12 s | Tutto l'anno a colpo d'occhio: incassi, spese, ritardi. | `/p/`: indicatori, scroll a ritardi ed entrate/uscite |
 | 02 | Inquilini | 14 s | Ogni inquilino: contratto, pagamenti, documenti. | `/p/inquilini` → scheda di un inquilino attivo → tab Pagamenti e Documenti |
 | 03 | Utenze | 30 s | Carichi la bolletta: importi e periodo letti in automatico. / Divisa per i giorni di presenza di ciascuno. / Ognuno riceve il suo conto. | `/p/utenze` su un mese chiuso: passo 1 bollette, passo 2 ripartizione con grafico, passo 3 anteprima email; tab Andamento |
