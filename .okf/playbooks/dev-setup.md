@@ -10,6 +10,7 @@ resources:
   - backend/apps/properties/management/commands/seed_demo.py
   - backend/core/settings/demo.py
   - backend/core/settings/__init__.py
+  - backend/apps/properties/management/commands/cura_demo_video.py
   - backend/apps/properties/management/commands/anonimizza_demo.py
   - backend/apps/properties/management/commands/copia_media_demo.py
   - backend/apps/properties/anonimizza_demo.py
@@ -109,7 +110,13 @@ ENV=demo uv run python manage.py migrate
 ENV=demo uv run python manage.py anonimizza_demo --dry-run   # report + rollback
 ENV=demo uv run python manage.py anonimizza_demo             # per davvero
 ENV=dev VIAPAL_DB_NAME=viapal_demo uv run python manage.py copia_media_demo
+ENV=demo uv run python manage.py cura_demo_video            # ritocchi per le riprese
 ```
+
+* `cura_demo_video` (idempotente) toglie le code della storia vera che in un
+  video stonano: addebiti aperti di ex inquilini anteriori al 2026 →
+  `insoluto` (cruscotto e ritardi già li escludono), membership del `bot`,
+  notifiche push fallite.
 
 * `anonimizza_demo` gira solo su `viapal_demo` con `ENV=demo` e **una volta
   sola** per db: gli importi vengono scalati (x 0,7) e la tabella
