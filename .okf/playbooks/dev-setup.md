@@ -10,10 +10,14 @@ resources:
   - backend/apps/properties/management/commands/seed_demo.py
   - backend/core/settings/demo.py
   - backend/core/settings/__init__.py
+  - backend/apps/properties/management/commands/anonimizza_demo.py
+  - backend/apps/properties/management/commands/copia_media_demo.py
+  - backend/apps/properties/anonimizza_demo.py
+  - backend/apps/properties/test_anonimizza_demo.py
 tags: [playbook, dev, setup]
 generated:
   by: process:okf-migrate
-  at: 2026-10-17T00:00:00Z
+  at: 2026-10-17T21:30:00Z
 ---
 
 # Prerequisiti
@@ -88,11 +92,91 @@ di prod. Spento sotto pytest. Non richiede di copiare la `media/`.
 # Ambiente demo (riprese video)
 
 `just demo` avvia backend `:8022` e frontend `:9022` con `ENV=demo`
-(`settings/demo.py`): db fisso `viapal_demo` (copia della produzione da
-anonimizzare, non toccata da `jmb-sync`), media in `media-demo/` e
+(`settings/demo.py`): db fisso `viapal_demo` (copia **anonimizzata** della
+produzione, non toccata da `jmb-sync`), media in `media-demo/` e
 `media-private-demo/`, email sulla console. Con `ENV=demo` `local.py` **non
 viene letto** (`settings/__init__.py`): così il `FallbackStorage` verso S3 di
 produzione non può servire documenti veri dietro ai nomi finti.
+
+## Ricetta di ricostruzione (da zero)
+
+```bash
+jmb-sync                                   # aggiorna il db `viapal` dalla produzione
+dropdb -p 5434 viapal_demo && createdb -p 5434 -T viapal viapal_demo
+                                           # -T fallisce se ci sono connessioni a `viapal`
+cd backend && rm -rf media-private-demo
+ENV=demo uv run python manage.py migrate
+ENV=demo uv run python manage.py anonimizza_demo --dry-run   # report + rollback
+ENV=demo uv run python manage.py anonimizza_demo             # per davvero
+ENV=dev VIAPAL_DB_NAME=viapal_demo uv run python manage.py copia_media_demo
+```
+
+* `anonimizza_demo` gira solo su `viapal_demo` con `ENV=demo` e **una volta
+  sola** per db: gli importi vengono scalati (x 0,7) e la tabella
+  `demo_anonimizzazione` (SQL grezzo, nessuna migrazione) rifiuta il secondo
+  giro. Una sola transazione; se la verifica finale trova dati reali residui
+  (token reali in qualsiasi colonna testuale, email/IBAN/CF/telefoni/P.IVA non
+  finti) fallisce e fa rollback (`--ignora-residui` per scavalcare).
+* `--campioni FILE` scrive le parole "non italiane" rimaste nei testi e
+  un dump leggibile delle tabelle anagrafiche: serve a cercare **a occhio** i
+  nomi di terzi sfuggiti. Il dizionario conosce solo ciò che è in anagrafica
+  (utenti, profili, luoghi, vie); chi paga un bonifico o compare in una nota
+  senza avere un profilo va nell'elenco locale `~/.config/viapal-demo/nomi-terzi.txt`
+  (un nome per riga, **fuori dal repo**, opzione `--nomi-terzi`). Dopo ogni
+  `jmb-sync` conviene un giro di `--dry-run --campioni` per vedere se sono
+  comparsi nomi nuovi.
+* `copia_media_demo` copia in `backend/media-demo/` le sole foto vere
+  (galleria, stanze, immobile: `Property.foto_hero/planimetria/mappa`,
+  `GalleryImage.image`, `Room.foto`) dallo storage di dev (che legge da S3 di
+  produzione). Tutti gli altri file (documenti identità, bollette, allegati,
+  documenti generati) sono sostituiti da PDF/immagini segnaposto "Documento di
+  esempio - dati fittizi" in `media-private-demo/`, con i percorsi riscritti
+  col nome finto (es. `documenti/70-daniela/`).
+
+## Cosa viene trasformato
+
+Mappatura deterministica (seed fisso: due giri su un db fresco danno gli
+stessi nomi). Persone: nomi/cognomi, username (nome finto in minuscolo),
+email `nome.cognome@example.com`, telefoni, codici fiscali e IBAN con
+checksum valido, date di nascita (spostate), luoghi di nascita e residenza,
+documenti. Gli stranieri restano stranieri (nomi di un mix di provenienze,
+coerenti con cittadinanza e luogo di nascita), i fratelli proprietari
+condividono il cognome. Immobili: Novara, "Via dei Tigli", CAP 28100, nomi
+"Casa dei Tigli" / "Casa dei Gelsomini" (Galliate), testi della galleria
+riscritti. Testo libero di ogni modello (movimenti bancari, note, notifiche,
+modelli di documento) passato dal dizionario con confini di parola; lead del
+bot Facebook rigenerati da template (autori, post, URL, fotina azzerata).
+Cancellati: sessioni, log admin, push, token, conferme email. Il nome del
+prodotto "Viapal" resta.
+
+Importi x 0,7 (arrotondamento al centesimo, mezzo in su) su tutti i
+`DecimalField` tranne `OwnershipShare.quota`, `Room.superficie_mq`,
+`UtilityBill.consumo`; stessa scalatura per gli importi scritti accanto a "€"
+nei testi. Gli invarianti sono riparati al centesimo: un movimento saldato
+resta pari alla somma delle sue allocazioni, un addebito saldato pari alle
+sue, i parziali restano parziali (stessa classe rispetto alla tolleranza di
+1 euro / 0,01), il deposito versato resta pari ai versamenti, il costo
+cessione pari al doppio della quota inquilino. Il comando stampa conteggi
+prima/dopo (identici o fallisce) e le somme per campo (~0,7x).
+
+Limite noto: le cifre scritte nella causale bancaria *senza* simbolo
+(`FITTO 450+70`) restano quelle originali.
+
+## Login nell'ambiente demo
+
+Password di **tutti** gli utenti: `demo2026`.
+
+| Username | Ruolo |
+|---|---|
+| `admin` | superuser (admin Django) |
+| `massimo` | proprietario principale: proprietario di Casa dei Tigli, gestore di Casa dei Gelsomini |
+| `irene`, `ettore` | proprietari di Casa dei Tigli |
+| `greta` | proprietario di Casa dei Gelsomini |
+| `daniela` | inquilino, subentrata in Camera 1 (ha pagamenti dichiarati) |
+| `karthik`, `shanika`, `camila`, `tarek`, `hamza`, `serkan`, `silvia`, `francesca`, `filippo`, `tommaso`, `valeria`, `nyasha`, `roberto`, `lucia`, `ilaria`, `veronica` | inquilini (attuali e passati) |
+| `storico_simone`, `storico_samuele`, `storico_roberta`, `storico_luca` | inquilini storici (solo anagrafica) |
+| `demir-serkan` | duplicato di `serkan` (stessa persona, secondo utente) |
+| `bot` | tecnico (membership del bot dei lead) |
 
 # Vedi anche
 
