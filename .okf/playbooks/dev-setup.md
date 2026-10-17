@@ -114,9 +114,13 @@ ENV=demo uv run python manage.py cura_demo_video            # ritocchi per le ri
 ```
 
 * `cura_demo_video` (idempotente) toglie le code della storia vera che in un
-  video stonano: addebiti aperti di ex inquilini anteriori al 2026 →
-  `insoluto` (cruscotto e ritardi già li escludono), membership del `bot`,
-  notifiche push fallite.
+  video stonano: arretrati degli ex inquilini (la pagina Notifiche addebiti
+  conta tutti gli addebiti "da pagare", `insoluto` compreso, di chi non ha
+  un'assegnazione in corso; senza allocazioni si eliminano, con allocazioni
+  il dovuto scende all'incassato e diventano pagati col proprietario
+  incassante), documenti generati (atti/cessioni) di Daniela (il dialog
+  "Genera" resta pulito), addebiti storici residui → `insoluto`, membership
+  del `bot`, notifiche push fallite.
 
 * `anonimizza_demo` gira solo su `viapal_demo` con `ENV=demo` e **una volta
   sola** per db: gli importi vengono scalati (x 0,7) e la tabella
@@ -143,9 +147,12 @@ ENV=demo uv run python manage.py cura_demo_video            # ritocchi per le ri
 ## Cosa viene trasformato
 
 Mappatura deterministica (seed fisso: due giri su un db fresco danno gli
-stessi nomi). Persone: nomi/cognomi, username (nome finto in minuscolo),
+stessi nomi). Persone: nomi/cognomi (anche su `User.first_name/last_name`, che
+la home inquilino usa per il saluto; chi aveva solo il nome riceve un cognome
+finto), username (nome finto in minuscolo),
 email `nome.cognome@example.com`, telefoni, codici fiscali e IBAN con
-checksum valido, date di nascita (spostate), luoghi di nascita e residenza,
+checksum valido (ABI `99999`, non assegnato: il QR di pagamento non può
+puntare a un conto vero; banche con nomi fittizi), date di nascita (spostate), luoghi di nascita e residenza,
 documenti. Gli stranieri restano stranieri (nomi di un mix di provenienze,
 coerenti con cittadinanza e luogo di nascita), i fratelli proprietari
 condividono il cognome. Immobili: Novara, "Via dei Tigli", CAP 28100, nomi
@@ -155,6 +162,18 @@ modelli di documento) passato dal dizionario con confini di parola; lead del
 bot Facebook rigenerati da template (autori, post, URL, fotina azzerata).
 Cancellati: sessioni, log admin, push, token, conferme email. Il nome del
 prodotto "Viapal" resta.
+
+Ritocchi di presentazione (tutti in `anonimizza_demo`): telefoni finti
+`333 000 NNNN`; alias di stanza "mamma"/"papà" → "Camera 2"/"Camera 3" e
+pratiche di successione → "imposta" (`FRASI_NEUTRE`, anche nei percorsi file);
+note lunghe o che citano i fogli storici → "Nota di archivio."; descrizioni dei
+movimenti fra proprietari sostituite da etichette neutre ("Bonifico fra
+proprietari (luglio 2024)"); numeri di bolletta rigenerati (11 cifre) con
+nomi file `bollette/<slug>/<anno>/<mese>/<prodotto>-<numero>.pdf`; gruppi dei
+lead con un nome finto sempre valorizzato e coppie nome/cognome della stessa
+provenienza; titolo galleria = nome della casa. La verifica residui fallisce
+anche se restano parole di parentela/successione, "monza" o "-mz-".
+I segnaposto immagine usano solo ASCII (il font di PIL non ha gli accenti).
 
 Importi x 0,7 (arrotondamento al centesimo, mezzo in su) su tutti i
 `DecimalField` tranne `OwnershipShare.quota`, `Room.superficie_mq`,

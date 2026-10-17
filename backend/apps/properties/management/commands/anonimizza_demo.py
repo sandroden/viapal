@@ -27,6 +27,7 @@ Rifare da zero (dopo ``jmb-sync``, che aggiorna ``viapal``)::
     cd backend && ENV=demo uv run python manage.py migrate
     ENV=demo uv run python manage.py anonimizza_demo [--dry-run]
     ENV=dev VIAPAL_DB_NAME=viapal_demo uv run python manage.py copia_media_demo
+    ENV=demo uv run python manage.py cura_demo_video
 
 ``--dry-run`` esegue tutto in una transazione e fa rollback, stampando il
 report (nessun file scritto, nessun marcatore).
@@ -56,6 +57,9 @@ from properties import anonimizza_demo as an
 
 NOMI_TERZI_DEFAULT = os.path.expanduser("~/.config/viapal-demo/nomi-terzi.txt")
 PASSWORD_DEMO = "demo2026"
+# l'ABI dell'IBAN finto non e' assegnato: la banca non puo' essere una vera
+BANCHE_FITTIZIE = ["Banca del Novarese", "Cassa di Risparmio Demo", "Banca Popolare dei Tigli",
+                   "Credito Piemontese Demo"]
 SEED = "viapal-demo-2026"
 
 CAMPI_FOTO = an.CAMPI_FOTO  # foto che restano vere (le copia copia_media_demo)
@@ -214,6 +218,8 @@ class Command(BaseCommand):
         self._persone(ctx)
         self._immobili(ctx)
         self._lead(ctx)
+        self._bollette(ctx)
+        self._contabilita_proprietari()
 
         self.out(self.style.MIGRATE_HEADING("5. Importi x 0,7"))
         self._importi()
@@ -580,7 +586,12 @@ class Command(BaseCommand):
                     ctx.usati_cognomi) or f"Cognome{len(ctx.usati_cognomi)}"
             pers.f_cognome = ctx.cognomi_cache[chiave_c]
         else:
-            pers.f_cognome = ""
+            # nominativo con il solo nome ("Silvia"): un cognome finto lo si da' lo
+            # stesso (la home saluta col nome, il resto mostra nome e cognome)
+            pers.f_cognome = self._scegli(
+                ctx, pool_cogn, ctx.usati_cognomi) or self._scegli(
+                ctx, rng.sample(an.COGNOMI_IT, len(an.COGNOMI_IT)),
+                ctx.usati_cognomi) or f"Cognome{len(ctx.usati_cognomi)}"
         # nascita
         if pers.estera:
             citt = an.CATEGORIE_ESTERE[pers.categoria]
@@ -755,6 +766,8 @@ class Command(BaseCommand):
         if re.search(r"Contabilit[àa]\.xlsx|\[conti2023|ContiAffittoUtenze", valore):
             # note di importazione dai fogli storici: citano importi e file privati
             return "Importato dall'archivio storico."
+        if nome_campo == "note":
+            valore = an.nota_neutra(valore)
         testo = scr.scrub(valore, importi=importi)
         if label == "billing.BankTransaction" and nome_campo in ("descrizione", "note"):
             testo = scr.scrub_ordinanti(testo)
@@ -771,8 +784,11 @@ class Command(BaseCommand):
             for uid in pers.user_ids:
                 u = utenti[uid]
                 u.username = scr.nomi.get(u.username.lower(), u.username)
+                # la home saluta con first_name: senza, ripiega sullo username
+                u.first_name = pers.f_nome
+                u.last_name = pers.f_cognome
                 da_salvare_u.append(u)
-        User.objects.bulk_update(da_salvare_u, ["username"])
+        User.objects.bulk_update(da_salvare_u, ["username", "first_name", "last_name"])
         # EmailAddress: la email e' gia' stata sostituita dal passaggio generico
 
         for pers in ctx.persone:
@@ -784,10 +800,11 @@ class Command(BaseCommand):
         # conti bancari: IBAN finti validi, intestatario = proprietario finto
         for a in OBA.objects.select_related("owner"):
             a.iban = scr.iban_finto(a.iban) if a.iban else a.iban
+            a.banca = BANCHE_FITTIZIE[a.pk % len(BANCHE_FITTIZIE)]
             pers = next((p for p in ctx.persone if p.owner and p.owner.pk == a.owner_id), None)
             if pers:
                 a.intestatario = _norm(f"{pers.f_nome} {pers.f_cognome}")
-            a.save(update_fields=["iban", "intestatario"])
+            a.save(update_fields=["iban", "intestatario", "banca"])
 
     def _anagrafica(self, ctx, pers: Persona, prof):
         scr = ctx.scr
@@ -795,9 +812,7 @@ class Command(BaseCommand):
         prof.nome = pers.f_nome if prof.nome else prof.nome
         prof.cognome = pers.f_cognome if prof.cognome else prof.cognome
         nomin = _norm(f"{pers.f_nome} {pers.f_cognome}")
-        if prof.nominativo and len(prof.nominativo.split()) == 1 and not pers.cognome:
-            nomin = pers.f_nome
-        elif prof.nominativo:
+        if prof.nominativo and len(prof.nominativo.split()) > 1:
             nomin = scr.scrub(prof.nominativo, importi=False)
         prof.nominativo = nomin
         # nascita
@@ -889,7 +904,8 @@ class Command(BaseCommand):
                 })
                 tp["posizione"] = {k: v for k, v in pos.items()}
                 if tp.get("hero_titolo"):
-                    tp["hero_titolo"] = f"Via {fp['via_nome']} {p.civico} - {fp['comune']}"
+                    # il titolo non deve ripetere l'indirizzo che la pagina mostra sotto
+                    tp["hero_titolo"] = fp["nome"]
                 p.testi_pubblici = tp
             p.save()
         for c in Contract.objects.all():
@@ -908,17 +924,8 @@ class Command(BaseCommand):
         Lead = apps.get_model("leads", "Lead")
         scr = ctx.scr
         gruppi: dict = {}
-        persone_pool = [(n, c) for n in an.NOMI_M + an.NOMI_F for c in (an.COGNOMI_IT[0],)]
-        nomi_tutti = an.NOMI_M + an.NOMI_F
-        for cat in an.CATEGORIE_ESTERE.values():
-            nomi_tutti += cat[3] + cat[4]
-        cogn_tutti = list(an.COGNOMI_IT)
-        for cat in an.CATEGORIE_ESTERE.values():
-            cogn_tutti += cat[5]
-        del persone_pool
+        nomi_gruppi: dict = {}
         reali = ctx.reali_nomi
-        nomi_tutti = [n for n in dict.fromkeys(nomi_tutti) if n.lower() not in reali]
-        cogn_tutti = [n for n in dict.fromkeys(cogn_tutti) if n.lower() not in reali]
         prof = ["lavoro nella sanità", "studio all'università", "lavoro nella logistica",
                 "lavoro in un'azienda della zona", "faccio un tirocinio", "lavoro nel commercio",
                 "lavoro nel settore informatico", "lavoro in un ufficio", "insegno",
@@ -928,8 +935,8 @@ class Command(BaseCommand):
         for lead in Lead.objects.select_related("property").order_by("pk"):
             rng = random.Random(f"{SEED}|lead|{lead.pk}")
             slug = ctx.fake_prop.get(lead.property_id, {}).get("slug", "casa")
-            nome = rng.choice(nomi_tutti)
-            autore = f"{nome} {rng.choice(cogn_tutti)}"
+            nome, cognome, _origine = an.genera_nome_lead(rng, reali)
+            autore = f"{nome} {cognome}"
             uid = str(100000000000000 + int(hashlib.sha256(f"{SEED}u{lead.pk}".encode())
                                               .hexdigest()[:10], 16) % 899999999999999)
             pid = str(3000000000000000 + int(hashlib.sha256(f"{SEED}p{lead.pk}".encode())
@@ -945,12 +952,20 @@ class Command(BaseCommand):
                     else:
                         gruppi[v] = f"AFFITTI.NOVARA.ZONA{len(gruppi) + 1}"
                 return gruppi[v]
+
+            def etichetta(v):
+                """Nome finto del gruppo, stabile per id (il bot spesso non lo conosce)."""
+                chiave = v or "__senza_id__"
+                if chiave not in nomi_gruppi:
+                    nomi_gruppi[chiave] = an.nome_gruppo_finto(len(nomi_gruppi))
+                return nomi_gruppi[chiave]
             con_riga_autore = bool(lead.author_name) and lead.testo.startswith(
                 lead.author_name + "\n")
             gid = gruppo(lead.group_id)
             gid_url = gid or gruppo("__predefinito__")
-            if lead.group_label:
-                lead.group_label = "Affitti Novara e dintorni"
+            if lead.group_id or lead.group_label:
+                # sempre un nome: senza, le statistiche mostrerebbero "gruppo <id>"
+                lead.group_label = etichetta(lead.group_id or lead.group_label)
             lead.group_id = gid
             if lead.post_id:
                 lead.post_id = pid
@@ -1001,6 +1016,84 @@ class Command(BaseCommand):
             lead.save()
             n += 1
         self.out(f"   lead riscritti: {n}")
+
+    # ================================================================== bollette
+    def _bollette(self, ctx):
+        """Numeri e nomi file delle bollette in un formato da fattura vera.
+
+        I numeri originali sono nomi di file importati ("utenze-mz-gas-...") e
+        tradiscono luogo e provenienza; la descrizione della spesa collegata
+        (che li cita) viene riscritta con la stessa funzione dell'app.
+        """
+        from billing.signals import _descrizione_expense_da_bolletta
+        UtilityBill = apps.get_model("billing", "UtilityBill")
+        Expense = apps.get_model("billing", "Expense")
+        usati: set = set()
+        mappa: dict = {}
+        n = 0
+        for b in UtilityBill.objects.select_related("supplier").order_by("pk"):
+            num = an.numero_bolletta_finto(SEED, b.pk, b.periodo_da)
+            k = 0
+            while num in usati:
+                k += 1
+                num = an.numero_bolletta_finto(SEED, f"{b.pk}-{k}", b.periodo_da)
+            usati.add(num)
+            vecchio_numero = b.numero_fattura
+            b.numero_fattura = num
+            campi = {"numero_fattura": num}
+            if re.match(r"tipo=\w+,\s*file=", b.note or ""):
+                campi["note"] = ""   # residuo dell'import: cita il nome del file originale
+            mappa[vecchio_numero] = num
+            if b.file_pdf:
+                slug = ctx.fake_prop.get(b.immobile_id, {}).get("slug", "casa")
+                nome = (f"bollette/{slug}/{b.periodo_da:%Y}/{b.periodo_da:%m}/"
+                        f"{b.prodotto}-{num}.pdf")
+                campi["file_pdf"] = nome
+            # update(): niente signal (non si risincronizza la spesa)
+            UtilityBill.objects.filter(pk=b.pk).update(**campi)
+            if b.expense_id:
+                Expense.objects.filter(pk=b.expense_id).update(
+                    descrizione=_descrizione_expense_da_bolletta(b))
+            n += 1
+        # spese che citano il numero senza essere collegate alla bolletta (duplicati d'import)
+        orfane = 0
+        for e in Expense.objects.filter(descrizione__contains=" n. "):
+            nuova = e.descrizione
+            for vecchio, num in mappa.items():
+                nuova = nuova.replace(f"n. {vecchio} ", f"n. {num} ")
+            if nuova != e.descrizione:
+                Expense.objects.filter(pk=e.pk).update(descrizione=nuova)
+                orfane += 1
+        self.out(f"   bollette rinumerate: {n} (spese non collegate riscritte: {orfane})")
+
+    # ============================================= contabilita' fra proprietari
+    def _contabilita_proprietari(self):
+        """Le note libere dei proprietari raccontano fatti privati: etichette neutre."""
+        InterOwnerEntry = apps.get_model("accounting", "InterOwnerEntry")
+        voci = list(InterOwnerEntry.objects.all())
+        for e in voci:
+            e.descrizione = an.descrizione_fra_proprietari(
+                e.importo, e.data, spesa=bool(e.riferimento_expense_id),
+                prestito=bool(e.riferimento_loan_id),
+                regolazione=bool(e.riferimento_settlement_id),
+                bonifico=bool(e.bank_transaction_id))
+            e.note = ""
+        InterOwnerEntry.objects.bulk_update(voci, ["descrizione", "note"])
+        altri = 0
+        for label in ("accounting.InterOwnerLoan", "accounting.OwnerLedgerEntry",
+                      "accounting.OwnerSettlement", "accounting.WithholdingRule"):
+            model = apps.get_model(label)
+            campi = [f.name for f in model._meta.concrete_fields
+                     if f.name in ("descrizione", "note")]
+            oggetti = list(model.objects.all())
+            for o in oggetti:
+                for nome in campi:
+                    v = getattr(o, nome)
+                    setattr(o, nome, "" if nome == "note" else an.nota_neutra(v, massimo=60))
+            if oggetti and campi:
+                model.objects.bulk_update(oggetti, campi)
+            altri += len(oggetti)
+        self.out(f"   movimenti fra proprietari: {len(voci)} riscritti (+{altri} altri registri)")
 
     # ================================================================== importi
     def _importi(self):
@@ -1164,8 +1257,8 @@ class Command(BaseCommand):
                 if ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
                     fh.write(immagine_segnaposto(titolo, righe, ext))
                 elif ext in (".xml", ".txt", ".csv"):
-                    fh.write(("Documento di esempio — dati fittizi\n" + titolo + "\n"
-                              + "\n".join(righe)).encode())
+                    fh.write(an.ascii_sicuro("Documento di esempio - dati fittizi\n" + titolo + "\n"
+                                             + "\n".join(righe)).encode())
                 else:
                     fh.write(pdf_segnaposto(titolo, righe))
             scritti += 1
@@ -1306,6 +1399,11 @@ class Command(BaseCommand):
                     n, tok, es = c.fetchone()
                     if n:
                         residui.append((t, col, nome_rx, n, f"[{tok}] {es}"))
+                c.execute(f'SELECT count(*), min(left({cast}, 90)) FROM "{t}" '
+                          f'WHERE {cast} ~* %s', [an.RE_PRIVATI_SQL])
+                n, es = c.fetchone()
+                if n:
+                    residui.append((t, col, "privato", n, es))
                 if rx_medi:
                     c.execute(f'SELECT count(*), min((regexp_match({cast}, %s, \'i\'))[1]), '
                               f'min(left({cast}, 90)) FROM "{t}" WHERE {cast} ~* %s',
@@ -1488,14 +1586,15 @@ def pdf_segnaposto(titolo: str, righe: list) -> bytes:
     from html import escape
 
     from weasyprint import HTML
-    corpo = "".join(f"<p>{escape(r)}</p>" for r in righe if r)
+    titolo = an.ascii_sicuro(titolo)
+    corpo = "".join(f"<p>{escape(an.ascii_sicuro(r))}</p>" for r in righe if r)
     html = f"""<html><head><meta charset='utf-8'><style>
       @page {{ size: A4; margin: 2.5cm }}
       body {{ font-family: sans-serif; color: #222 }}
       h1 {{ font-size: 20pt; margin-bottom: 4pt }}
       .avviso {{ border: 1px dashed #888; padding: 10pt; color: #666; margin: 14pt 0 }}
     </style></head><body>
-      <h1>Documento di esempio — dati fittizi</h1>
+      <h1>Documento di esempio - dati fittizi</h1>
       <div class='avviso'>Ambiente demo: nessun dato reale in questo file.</div>
       <h2>{escape(titolo)}</h2>{corpo}
     </body></html>"""
@@ -1513,11 +1612,11 @@ def immagine_segnaposto(titolo: str, righe: list, ext: str) -> bytes:
     except TypeError:
         grande = medio = ImageFont.load_default()
     d.rectangle([20, 20, 880, 540], outline=(150, 155, 165), width=3)
-    d.text((50, 60), "Documento di esempio — dati fittizi", fill=(40, 40, 50), font=grande)
-    d.text((50, 130), titolo, fill=(60, 60, 70), font=medio)
+    d.text((50, 60), "Documento di esempio - dati fittizi", fill=(40, 40, 50), font=grande)
+    d.text((50, 130), an.ascii_puro(titolo), fill=(60, 60, 70), font=medio)
     y = 190
     for r in righe:
-        d.text((50, y), r[:60], fill=(80, 80, 90), font=medio)
+        d.text((50, y), an.ascii_puro(r)[:60], fill=(80, 80, 90), font=medio)
         y += 40
     buf = io.BytesIO()
     fmt = {".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG", ".webp": "WEBP",

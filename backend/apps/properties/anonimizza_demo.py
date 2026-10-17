@@ -224,6 +224,11 @@ def _numerico(s: str) -> str:
     return "".join(str(int(c, 36)) for c in s.upper())
 
 
+def telefono_fittizio(rng: random.Random) -> str:
+    """Cellulare chiaramente finto: ``333 000 NNNN`` (mai un numero vero)."""
+    return f"333 000 {rng.randrange(1, 10000):04d}"
+
+
 def iban_check_digits(paese: str, bban: str) -> str:
     resto = int(_numerico(bban + paese + "00")) % 97
     return f"{98 - resto:02d}"
@@ -240,11 +245,14 @@ def iban_valido(iban: str) -> bool:
     return True
 
 
-ABI_FINTI = ["03069", "05034", "03332", "03015", "05387", "06230", "03127"]
+# ABI chiaramente non assegnato: nessun IBAN finto puo' coincidere con un conto
+# vero (il QR di pagamento EPC codifica l'IBAN). Il formato resta valido: CIN e
+# cifre di controllo mod 97 sono calcolati normalmente.
+ABI_FITTIZIO = "99999"
 
 
 def genera_iban(rng: random.Random) -> str:
-    abi = rng.choice(ABI_FINTI)
+    abi = ABI_FITTIZIO
     cab = f"{rng.randrange(1000, 99999):05d}"
     conto = f"{rng.randrange(10**11, 10**12)}"
     cin = _lettera_di_controllo(abi + cab + conto)
@@ -376,6 +384,160 @@ PARTICELLE = {"di", "de", "del", "della", "dal", "da", "d", "la", "lo", "le", "e
 
 
 # ---------------------------------------------------------------------------
+# Frasi da neutralizzare (parentela, pratiche private, fogli storici)
+# ---------------------------------------------------------------------------
+
+_SEP = r"[\s_-]+"
+_BORDO_I = r"(?<![^\W_])"
+_BORDO_F = r"(?![^\W_])"
+
+
+def _frase(nuovo: str):
+    """Sostituto che rispetta maiuscola iniziale e separatori (spazi/trattini)."""
+
+    def _sub(m: re.Match) -> str:
+        orig = m.group(0)
+        res = nuovo
+        if " " not in orig and ("-" in orig or "_" in orig):
+            res = res.replace(" ", "-" if "-" in orig else "_").lower()
+        elif orig[:1].islower():
+            res = res[:1].lower() + res[1:]
+        return res
+    return _sub
+
+
+# I due alias di stanza ("mamma", "papa") diventano camere con numero; le
+# pratiche di successione diventano imposte generiche. Vale per testi e percorsi.
+_STANZA = rf"(?:camera|stanza){_SEP}(?:(?:di|del|della){_SEP})?"
+FRASI_NEUTRE: list = [
+    (re.compile(rf"{_BORDO_I}sanzion[ei]{_SEP}(?:ritardo{_SEP})?successione"
+                rf"(?:{_SEP}suppletiva)?(?:{_SEP}(?:mamma|madre))?{_BORDO_F}", re.IGNORECASE),
+     _frase("Sanzione ritardo pagamento imposta")),
+    (re.compile(rf"{_BORDO_I}successione(?:{_SEP}suppletiva)?{_BORDO_F}", re.IGNORECASE),
+     _frase("imposta")),
+    (re.compile(rf"{_BORDO_I}eredit[àa]{_BORDO_F}", re.IGNORECASE), _frase("pratica")),
+    (re.compile(rf"{_BORDO_I}{_STANZA}(?:mamma|madre){_BORDO_F}", re.IGNORECASE),
+     _frase("Camera 2")),
+    (re.compile(rf"{_BORDO_I}{_STANZA}(?:pap[àa]|padre){_BORDO_F}", re.IGNORECASE),
+     _frase("Camera 3")),
+    (re.compile(rf"{_BORDO_I}(?:mamma|madre){_BORDO_F}", re.IGNORECASE), _frase("Camera 2")),
+    (re.compile(rf"{_BORDO_I}(?:pap[àa]|padre){_BORDO_F}", re.IGNORECASE), _frase("Camera 3")),
+    # note di importazione dai fogli storici ("da libro mano «conti 2023» (riga 186)")
+    (re.compile(r"\s*[—–-]?\s*da libro mano\s*«[^»]*»(?:\s*\(?riga\s*\d+\)?)?", re.IGNORECASE),
+     lambda m: ""),
+    (re.compile(rf"{_BORDO_I}libro mano{_BORDO_F}", re.IGNORECASE), lambda m: "archivio"),
+    # riferimenti alle righe del foglio storico: "(righe 164+165)", "(riga 12)"
+    (re.compile(r"\s*\(righe?\s*[\d+/, -]+\)", re.IGNORECASE), lambda m: ""),
+]
+
+# Parole che non devono restare in nessun testo del db demo (verifica finale,
+# espressione per PostgreSQL: ``\\y`` = confine di parola)
+PAROLE_PRIVATE = ("mamma", "madre", "pap[àa]", "padre", "successione", "eredit[àa]",
+                  "libro mano", "conti ?2023", "nonn[oa]", "suocer[oa]", "defunt[oa]",
+                  "monza")
+RE_PRIVATI_SQL = r"\y(" + "|".join(PAROLE_PRIVATE) + r")\y|-mz-|[-_]mz\y|\ymz[-_]"
+
+RE_NOTA_PRIVATA = re.compile(r"libro mano|conti ?2023|\briga \d+|Contabilit", re.IGNORECASE)
+NOTA_NEUTRA = "Nota di archivio."
+
+
+def applica_frasi(testo: str) -> str:
+    for rx, repl in FRASI_NEUTRE:
+        testo = rx.sub(repl, testo)
+    return testo
+
+
+def nota_neutra(testo: str, massimo: int = 150) -> str:
+    """Le note lunghe scritte a mano (o che citano i fogli storici) diventano neutre."""
+    if testo and (len(testo) > massimo or RE_NOTA_PRIVATA.search(testo)):
+        return NOTA_NEUTRA
+    return testo
+
+
+MESI_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio",
+           "agosto", "settembre", "ottobre", "novembre", "dicembre"]
+
+
+def descrizione_fra_proprietari(importo: Decimal, data: date | None, *, spesa: bool = False,
+                                prestito: bool = False, regolazione: bool = False,
+                                bonifico: bool = False) -> str:
+    """Descrizione breve e neutra di un movimento fra proprietari.
+
+    Sostituisce il testo libero scritto dai proprietari (che racconta fatti
+    privati) con una etichetta ricavata dal tipo di collegamento.
+    """
+    if spesa:
+        base = "Spesa anticipata"
+    elif prestito:
+        base = "Movimento su prestito"
+    elif regolazione:
+        base = "Regolazione periodica"
+    elif bonifico:
+        base = "Bonifico fra proprietari" if importo >= 0 else "Bonifico di rientro"
+    else:
+        base = "Quota anticipata" if importo >= 0 else "Rimborso quota"
+    if data:
+        return f"{base} ({MESI_IT[data.month - 1]} {data.year})"
+    return base
+
+
+def numero_bolletta_finto(seed: str, chiave, periodo: date) -> str:
+    """Numero di fattura credibile (11 cifre, le prime due = anno)."""
+    h = int(hashlib.sha256(f"{seed}|bolletta|{chiave}".encode()).hexdigest(), 16)
+    return f"{periodo.year % 100:02d}{h % 10**9:09d}"
+
+
+NOMI_GRUPPI_FINTI = [
+    "Affitti Novara e dintorni",
+    "Stanze e posti letto Novara",
+    "Studenti UPO - cerco casa",
+    "Cerco casa Novara e provincia",
+    "Camere in affitto Piemonte Orientale",
+    "Annunci affitto stanze Novara",
+]
+
+
+def nome_gruppo_finto(indice: int) -> str:
+    """Nome plausibile (deterministico) per l'N-esimo gruppo incontrato."""
+    nome = NOMI_GRUPPI_FINTI[indice % len(NOMI_GRUPPI_FINTI)]
+    giro = indice // len(NOMI_GRUPPI_FINTI)
+    return nome if giro == 0 else f"{nome} {giro + 1}"
+
+
+def genera_nome_lead(rng: random.Random, escludi=frozenset()) -> tuple:
+    """``(nome, cognome, origine)`` con nome e cognome della stessa provenienza.
+
+    Il 45% circa italiani, il resto ripartito fra le provenienze estere; i
+    nomi in ``escludi`` (minuscoli, persone vere) non escono mai.
+    """
+    origini = [("italia", NOMI_M, NOMI_F, COGNOMI_IT)]
+    origini += [(k, v[3], v[4], v[5]) for k, v in CATEGORIE_ESTERE.items()]
+    pesi = [6] + [1] * (len(origini) - 1)
+    origine, nm, nf, cogn = rng.choices(origini, weights=pesi)[0]
+    nomi = nm if rng.random() < 0.5 else nf
+
+    def _filtra(pool):
+        buoni = [x for x in pool if x.lower() not in escludi]
+        return buoni or list(pool)
+    return rng.choice(_filtra(nomi)), rng.choice(_filtra(cogn)), origine
+
+
+def ascii_sicuro(testo: str) -> str:
+    """Testo per i segnaposto: il font di default non ha trattini lunghi, frecce..."""
+    mappa = {"—": "-", "–": "-", "→": "->", "’": "'", "‘": "'", "«": '"', "»": '"',
+             "“": '"', "”": '"', "€": "EUR", "³": "3", "²": "2", "…": "..."}
+    for k, v in mappa.items():
+        testo = testo.replace(k, v)
+    return testo.encode("latin-1", "ignore").decode("latin-1")
+
+
+def ascii_puro(testo: str) -> str:
+    """Solo ASCII (accenti tolti): il font di default di PIL non ha le lettere accentate."""
+    testo = unicodedata.normalize("NFKD", ascii_sicuro(testo))
+    return "".join(c for c in testo if ord(c) < 128)
+
+
+# ---------------------------------------------------------------------------
 # Scrubber: sostituzione deterministica nel testo libero
 # ---------------------------------------------------------------------------
 
@@ -504,8 +666,7 @@ class Scrubber:
         k = normalizza_telefono(reale)
         if k in self.telefoni:
             return self.telefoni[k]
-        rng = self._rng("tel", k)
-        finto = f"3{rng.randrange(20, 99)} {rng.randrange(100, 999)} {rng.randrange(1000, 9999)}"
+        finto = telefono_fittizio(self._rng("tel", k))
         if reale.strip().startswith(("+", "00", "39")):
             finto = "+39 " + finto
         self.telefoni[k] = finto
@@ -628,6 +789,7 @@ class Scrubber:
         """Anonimizza un testo libero (nomi, recapiti, codici, importi)."""
         if not testo:
             return testo
+        testo = applica_frasi(testo)
         for pattern, repl in self.regex_extra:
             testo = re.sub(pattern, repl, testo)
         testo = RE_TOKEN_PASSWORD.sub(
@@ -697,7 +859,7 @@ class Scrubber:
 
     def scrub_percorso(self, percorso: str) -> str:
         """Per i path dei file: solo nomi e luoghi, nessun codice o importo."""
-        nuovo = RE_PIVA.sub(self._piva_finta, self.scrub_nomi(percorso))
+        nuovo = RE_PIVA.sub(self._piva_finta, self.scrub_nomi(applica_frasi(percorso)))
         for vecchio, finto in self.percorsi.items():
             nuovo = re.sub(rf"(?<![A-Za-z0-9]){re.escape(vecchio)}(?![A-Za-z0-9])", finto,
                            nuovo, flags=re.IGNORECASE)

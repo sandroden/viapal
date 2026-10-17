@@ -257,3 +257,110 @@ def test_scrub_percorso_slug_con_la_via(scr):
 def test_scrub_percorso_partita_iva(scr):
     t = scr.scrub_percorso("spese/IT03336420967_ynipr.xml.p7m.pdf")
     assert "03336420967" not in t and t.startswith("spese/IT") and t.endswith("_ynipr.xml.p7m.pdf")
+
+
+# --- ritocchi per le riprese -------------------------------------------------
+
+
+def test_iban_finti_hanno_abi_non_assegnato_e_restano_validi():
+    for i in range(100):
+        iban = an.genera_iban(random.Random(i))
+        assert iban[5:10] == "99999" and an.iban_valido(iban)
+
+
+def test_telefono_fittizio_chiaramente_finto_e_riconosciuto_dalla_regex():
+    s = an.Scrubber(seed="t")
+    tel = s.telefono_finto("376 333 2514")
+    assert tel.startswith("333 000 ") and len(an.normalizza_telefono(tel)) == 10
+    assert s.telefono_finto("376 333 2514") == tel          # deterministico
+    # i formati con spazi (e +39) sono presi dalla regex e riscritti
+    for reale in ("376 333 2514", "+39 376 333 2514", "376-333-2514", "3763332514"):
+        out = s.scrub(f"Tel: {reale}.")
+        assert "376" not in out and "333 000" in out, (reale, out)
+    # un finto non viene riscritto (idempotenza)
+    assert s.scrub(f"Tel: {tel}.") == f"Tel: {tel}."
+
+
+@pytest.mark.parametrize("src,atteso", [
+    ("letto stanza mamma", "letto camera 2"),
+    ("Cessione Camera Papà — Luca", "Cessione Camera 3 — Luca"),
+    ("Sanzione ritardo successione suppletiva mamma", "Sanzione ritardo pagamento imposta"),
+    ("Contratto nuovo: tommaso -> mamma", "Contratto nuovo: tommaso -> camera 2"),
+    ("eredità di famiglia", "pratica di famiglia"),
+    ("Affitto Ilaria — da libro mano «conti 2023» (riga 186)", "Affitto Ilaria"),
+    ("TARI 2023 — da libro mano «conti 2023» riga 121", "TARI 2023"),
+    ("Affitto Ilaria (righe 164+165)", "Affitto Ilaria"),
+    ("mammone e papaveri", "mammone e papaveri"),   # niente falsi positivi
+])
+def test_frasi_neutre(src, atteso):
+    assert an.applica_frasi(src) == atteso
+
+
+def test_frasi_neutre_nei_percorsi():
+    s = an.Scrubber(seed="t")
+    assert s.scrub_percorso("spese/sanzione-successione-mamma.pdf") == \
+        "spese/sanzione-ritardo-pagamento-imposta.pdf"
+
+
+def test_nota_neutra():
+    assert an.nota_neutra("Pagato in contanti") == "Pagato in contanti"
+    assert an.nota_neutra("x" * 200) == an.NOTA_NEUTRA
+    assert an.nota_neutra("Importo dal libro mano riga 88") == an.NOTA_NEUTRA
+    assert an.nota_neutra("x" * 80, massimo=60) == an.NOTA_NEUTRA
+    assert an.nota_neutra("") == ""
+
+
+def test_descrizione_fra_proprietari_neutra():
+    d = date(2024, 7, 3)
+    assert an.descrizione_fra_proprietari(D("10"), d) == "Quota anticipata (luglio 2024)"
+    assert an.descrizione_fra_proprietari(D("-10"), d) == "Rimborso quota (luglio 2024)"
+    assert an.descrizione_fra_proprietari(D("5"), None, spesa=True) == "Spesa anticipata"
+    assert an.descrizione_fra_proprietari(D("5"), d, bonifico=True).startswith("Bonifico")
+
+
+def test_numero_bolletta_finto():
+    n = an.numero_bolletta_finto("s", 144, date(2026, 7, 1))
+    assert n.isdigit() and len(n) == 11 and n.startswith("26")
+    assert n == an.numero_bolletta_finto("s", 144, date(2026, 7, 1))
+    assert n != an.numero_bolletta_finto("s", 145, date(2026, 7, 1))
+    assert "mz" not in n
+
+
+def test_nomi_gruppo_finti_distinti_e_deterministici():
+    nomi = [an.nome_gruppo_finto(i) for i in range(len(an.NOMI_GRUPPI_FINTI) + 3)]
+    assert len(set(nomi)) == len(nomi)
+    assert nomi[0] == an.nome_gruppo_finto(0)
+    assert not any(c.isdigit() for c in nomi[0])
+
+
+def test_nome_lead_coerente_per_provenienza():
+    pool = {"italia": (set(an.NOMI_M + an.NOMI_F), set(an.COGNOMI_IT))}
+    for k, v in an.CATEGORIE_ESTERE.items():
+        pool[k] = (set(v[3] + v[4]), set(v[5]))
+    viste = set()
+    for i in range(300):
+        nome, cognome, origine = an.genera_nome_lead(random.Random(i))
+        assert nome in pool[origine][0] and cognome in pool[origine][1], (nome, cognome)
+        viste.add(origine)
+    assert len(viste) > 3
+    assert an.genera_nome_lead(random.Random(5)) == an.genera_nome_lead(random.Random(5))
+
+
+def test_nome_lead_rispetta_i_nomi_reali():
+    escludi = {n.lower() for n in an.NOMI_M[:-1] + an.NOMI_F[:-1]}
+    for i in range(100):
+        nome, _c, origine = an.genera_nome_lead(random.Random(i), escludi)
+        if origine == "italia":
+            assert nome in (an.NOMI_M[-1], an.NOMI_F[-1])
+
+
+def test_ascii_sicuro_toglie_i_glifi_mancanti():
+    assert an.ascii_sicuro("Documento di esempio — dati fittizi") == \
+        "Documento di esempio - dati fittizi"
+    assert an.ascii_sicuro("2026-01-01 → 2026-01-31") == "2026-01-01 -> 2026-01-31"
+    assert an.ascii_sicuro("è così") == "è così"
+
+
+def test_ascii_puro_per_il_font_senza_accenti():
+    assert an.ascii_puro("Carta d'identità — è") == "Carta d'identita - e"
+    assert an.ascii_puro("1 → 2") == "1 -> 2"
