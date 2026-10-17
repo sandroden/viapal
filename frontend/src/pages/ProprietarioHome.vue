@@ -196,7 +196,7 @@
           v-if="data.in_scadenza.length === 0"
           icon="schedule"
           title="Nessuna scadenza imminente"
-          message="Nei prossimi 7 giorni non ci sono pagamenti attesi."
+          :message="`Nei prossimi ${data.finestra_scadenza_giorni ?? 14} giorni non ci sono pagamenti attesi.`"
         />
 
         <q-list v-else bordered separator class="vp-p-home__lista">
