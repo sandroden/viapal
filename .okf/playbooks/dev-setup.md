@@ -18,7 +18,7 @@ resources:
 tags: [playbook, dev, setup]
 generated:
   by: process:okf-migrate
-  at: 2026-10-17T21:30:00Z
+  at: 2026-10-17T23:30:00Z
 ---
 
 # Prerequisiti
@@ -98,6 +98,12 @@ produzione, non toccata da `jmb-sync`), media in `media-demo/` e
 `media-private-demo/`, email sulla console. Con `ENV=demo` `local.py` **non
 viene letto** (`settings/__init__.py`): così il `FallbackStorage` verso S3 di
 produzione non può servire documenti veri dietro ai nomi finti.
+
+Il video demo si gira e si monta da `video/` (vedi `video/STORYBOARD.md`):
+`video/riprese/scene/NN-*.sh` registrano le clip (Chrome headless pilotato da
+agent-browser, screencast CDP a 30 fps; `bash video/riprese/lib.sh -h`),
+`video/src/manifest.ts` le taglia e mette le didascalie, `npm run render`
+produce `video/out/viapal-demo.mp4`. Clip e render non sono versionati.
 
 ## Ricetta di ricostruzione (da zero)
 
