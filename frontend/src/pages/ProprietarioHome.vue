@@ -137,8 +137,8 @@
         <KpiCard
           v-if="!data.is_storico"
           label="Pagamenti in ritardo"
-          :value="data.kpi.ritardi_count"
-          :sublabel="data.kpi.ritardi_count === 0 ? 'Nessuno' : 'Da sollecitare'"
+          :value="ritardiAttivi.length"
+          :sublabel="sublabelRitardi"
         />
         <KpiCard
           v-if="!data.is_storico"
@@ -158,14 +158,14 @@
         </div>
 
         <EmptyState
-          v-if="data.ritardi.length === 0"
+          v-if="ritardiAttivi.length === 0"
           icon="check_circle"
           title="Nessun ritardo"
           message="Tutti i pagamenti sono in regola."
         />
 
         <q-list v-else bordered separator class="vp-p-home__lista">
-          <q-item v-for="r in data.ritardi.slice(0, 5)" :key="`${r.tipo}-${r.id}`">
+          <q-item v-for="r in ritardiAttivi.slice(0, 5)" :key="`${r.tipo}-${r.id}`">
             <q-item-section>
               <q-item-label>{{ r.tenant }} · {{ r.descrizione }}</q-item-label>
               <q-item-label caption>
@@ -439,6 +439,16 @@ function nomeMese(m: number): string {
 
 const saluto = computed(() => auth.user?.first_name || auth.user?.username || 'Proprietario');
 const data = computed(() => store.proprietarioData);
+
+// Stesso criterio del filtro di default di /p/ritardi: gli scoperti di chi
+// non occupa più una stanza sono storia da ricostruire, non solleciti da
+// mandare. Restano raggiungibili da lì col filtro "Usciti".
+const ritardiAttivi = computed(() => (data.value?.ritardi ?? []).filter((r) => r.tenant_attivo));
+const sublabelRitardi = computed(() => {
+  const usciti = (data.value?.ritardi.length ?? 0) - ritardiAttivi.value.length;
+  const base = ritardiAttivi.value.length === 0 ? 'Nessuno' : 'Da sollecitare';
+  return usciti > 0 ? `${base} · più ${usciti} di ex inquilini` : base;
+});
 
 onMounted(() => {
   void store.loadProprietario(annoSelezionato.value, meseSelezionato.value);
