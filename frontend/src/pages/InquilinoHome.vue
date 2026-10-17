@@ -498,13 +498,11 @@ useRefreshOnResume(() => store.loadInquilino(true));
   flex-shrink: 0;
 }
 @media (min-width: 1024px) {
-  /* Sfonda il container stretto del layout per dare respiro alle 2 colonne,
-     ri-centrando il contenuto a max ~1040px (solo questa schermata). */
+  /* Il layout toglie il cap stretto (meta `full` della route): qui si
+     ri-centra il contenuto a max ~1040px per dare respiro alle 2 colonne. */
   .vp-th {
-    width: 100vw;
-    margin-left: calc(50% - 50vw);
-    padding-left: max(28px, calc(50vw - 520px));
-    padding-right: max(28px, calc(50vw - 520px));
+    padding-left: max(28px, calc(50% - 520px));
+    padding-right: max(28px, calc(50% - 520px));
   }
   .vp-th__titolo {
     font-size: 30px;

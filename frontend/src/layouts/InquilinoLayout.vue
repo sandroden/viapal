@@ -28,7 +28,10 @@
 
     <q-page-container>
       <InstallaBanner />
-      <div class="vp-i-shell" :class="{ 'vp-i-shell--wide': isWide }">
+      <div
+        class="vp-i-shell"
+        :class="{ 'vp-i-shell--wide': isWide, 'vp-i-shell--full': isFull }"
+      >
         <router-view />
       </div>
     </q-page-container>
@@ -70,6 +73,7 @@ const activeTab = ref<string>('home');
 
 // Pagine "documento" (es. rendiconto): più larghe del cap app-like.
 const isWide = computed(() => route.meta.wide === true);
+const isFull = computed(() => route.meta.full === true);
 
 // Durante l'impersonation il "logout" non scollega la sessione del
 // proprietario: termina solo l'impersonation e torna all'area proprietari.
@@ -104,6 +108,14 @@ async function logout() {
    proprietario, senza il cap stretto pensato per le card app-like. */
 .vp-i-shell--wide {
   max-width: 960px;
+}
+/* Schermate a due colonne (home, utenze): su desktop niente cap, la pagina
+   si ricentra col proprio padding. Qui e non con un 100vw nella pagina, che
+   conta anche la scrollbar verticale e produce scroll orizzontale. */
+@media (min-width: 1024px) {
+  .vp-i-shell--full {
+    max-width: none;
+  }
 }
 .vp-header {
   background: var(--vp-sage-deep);

@@ -407,12 +407,11 @@ useRefreshOnResume(() => {
   color: var(--vp-terra-deep);
 }
 @media (min-width: 1024px) {
-  /* Sfonda il container stretto del layout inquilino per la torta affiancata. */
+  /* Il layout toglie il cap stretto (meta `full` della route): qui si
+     ri-centra il contenuto a max ~1040px per la torta affiancata. */
   .vp-iu {
-    width: 100vw;
-    margin-left: calc(50% - 50vw);
-    padding-left: max(28px, calc(50vw - 520px));
-    padding-right: max(28px, calc(50vw - 520px));
+    padding-left: max(28px, calc(50% - 520px));
+    padding-right: max(28px, calc(50% - 520px));
   }
   .vp-iu__titolo {
     font-size: 30px;

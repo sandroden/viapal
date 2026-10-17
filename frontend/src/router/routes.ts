@@ -217,7 +217,13 @@ const routes: RouteRecordRaw[] = [
     component: () => import('layouts/InquilinoLayout.vue'),
     meta: { role: 'inquilino' },
     children: [
-      { path: '', name: 'i-home', component: () => import('pages/InquilinoHome.vue') },
+      {
+        path: '',
+        name: 'i-home',
+        // su desktop la pagina usa tutta la larghezza e si ricentra da sé
+        meta: { full: true },
+        component: () => import('pages/InquilinoHome.vue'),
+      },
       {
         path: 'situazione',
         name: 'i-situazione',
@@ -238,6 +244,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'utenze',
         name: 'i-utenze-list',
+        meta: { full: true },
         component: () => import('pages/InquilinoUtenze.vue'),
       },
       {
