@@ -103,6 +103,30 @@ up:
     trap "kill $B $F 2>/dev/null || true" EXIT INT TERM
     wait
 
+# === Demo (riprese video): DB viapal_demo anonimizzato, porte 8022/9022 ===
+# ENV=demo non legge local.py: niente media di produzione (vedi settings/demo.py)
+
+# Backend demo su :8022
+demo-backend:
+    cd backend && ENV=demo uv run python manage.py runserver 0.0.0.0:8022
+
+# Frontend demo su :9022 (proxy verso :8022)
+demo-frontend:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source ~/.nvm/nvm.sh
+    cd frontend && nvm use > /dev/null
+    VIAPAL_BACKEND_PORT=8022 VIAPAL_FRONTEND_PORT=9022 bun run dev
+
+# Stack demo completo (Ctrl-C per fermare entrambi)
+demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just demo-backend & B=$!
+    just demo-frontend & F=$!
+    trap "kill $B $F 2>/dev/null || true" EXIT INT TERM
+    wait
+
 # Lint completo
 lint: lint-backend lint-frontend
 

@@ -89,7 +89,7 @@ export default defineConfig((/* ctx */) => {
 
     // Full list of options: https://v2.quasar.dev/quasar-cli-vite/quasar-config-file#devserver
     devServer: {
-      port: 9020,
+      port: Number(process.env.VIAPAL_FRONTEND_PORT ?? 9020),
       strictPort: false,
       // host alternativi accettati da Vite (oltre a localhost/127.0.0.1)
       allowedHosts: ['viapal.local', 'viapal.localhost'],

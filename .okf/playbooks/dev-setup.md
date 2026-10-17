@@ -8,10 +8,12 @@ resources:
   - backend/core/settings/dev.py
   - frontend/quasar.config.ts
   - backend/apps/properties/management/commands/seed_demo.py
+  - backend/core/settings/demo.py
+  - backend/core/settings/__init__.py
 tags: [playbook, dev, setup]
 generated:
   by: process:okf-migrate
-  at: 2026-09-13T00:00:00Z
+  at: 2026-10-17T00:00:00Z
 ---
 
 # Prerequisiti
@@ -50,8 +52,9 @@ cd .. && just up
 # Porte e worktree paralleli
 
 - `VIAPAL_BACKEND_PORT` sposta il target del proxy Quasar (default 8020),
-  `VIAPAL_FRONTEND_PORT` aggiunge un'origine CSRF/CORS fidata (default
-  9020, anche 9200): un secondo worktree parte senza toccare i file.
+  `VIAPAL_FRONTEND_PORT` sposta la porta del dev server Quasar e aggiunge
+  un'origine CSRF/CORS fidata (default 9020, anche 9200): un secondo
+  worktree parte senza toccare i file.
 - `VIAPAL_DB_NAME` sceglie un database (e quindi un test DB) distinto per
   pytest in parallelo.
 - Il dev server Quasar proxa `/api`, `/admin`, `/static`, `/media-private`,
@@ -81,6 +84,15 @@ SMTP catcher Docker su `:1025` (SMTP) e `:8025` (UI), configurato in `local.py`;
 `jmb.core` `FallbackStorage`, configurato in `local.py` (`MEDIA_FALLBACK_S3_*`):
 legge prima dal filesystem locale e, se il file manca, dal proxy S3 read-only
 di prod. Spento sotto pytest. Non richiede di copiare la `media/`.
+
+# Ambiente demo (riprese video)
+
+`just demo` avvia backend `:8022` e frontend `:9022` con `ENV=demo`
+(`settings/demo.py`): db fisso `viapal_demo` (copia della produzione da
+anonimizzare, non toccata da `jmb-sync`), media in `media-demo/` e
+`media-private-demo/`, email sulla console. Con `ENV=demo` `local.py` **non
+viene letto** (`settings/__init__.py`): così il `FallbackStorage` verso S3 di
+produzione non può servire documenti veri dietro ai nomi finti.
 
 # Vedi anche
 

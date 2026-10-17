@@ -20,6 +20,8 @@ backend/core/settings/settings.py
 backend/static/
 backend/media/
 backend/media-private/
+backend/media-demo/
+backend/media-private-demo/
 
 # Frontend
 node_modules/

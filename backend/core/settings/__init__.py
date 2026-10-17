@@ -32,7 +32,9 @@ if os.path.exists(settings_env_file):
     exec(compile(open(settings_env_file, encoding='utf-8').read(),
                  settings_env_file, 'exec'), globals())
 
-if os.path.exists(local_settings):
+# In demo local.py si salta: porta il FallbackStorage verso i media di
+# produzione, che non devono mai comparire dietro i dati anonimizzati.
+if os.path.exists(local_settings) and os.environ.get('ENV') != 'demo':
     exec(compile(open(local_settings, encoding='utf-8').read(),
                  local_settings, 'exec'), globals())
 
