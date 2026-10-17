@@ -39,6 +39,9 @@ const emit = defineEmits<{
 
 const incompleto = computed(() => props.periodo.stato === 'incompleto');
 const mancanti = computed(() => props.mancantiTipi.length);
+// Un fornitore può emettere più bollette nello stesso periodo (es. luce e
+// gas entrambe Acea): nel riepilogo lo si nomina una volta sola.
+const fornitori = computed(() => [...new Set(props.bollette.map((b) => b.fornitore))].join(', '));
 </script>
 
 <template>
@@ -75,7 +78,7 @@ const mancanti = computed(() => props.mancantiTipi.length);
           >
           <template v-else
             >{{ bollette.length }} bollette lette ·
-            {{ bollette.map((b) => b.fornitore).join(', ') }}</template
+            {{ fornitori }}</template
           >
         </div>
         <div class="strip-sub">
