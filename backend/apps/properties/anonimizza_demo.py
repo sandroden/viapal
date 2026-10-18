@@ -359,6 +359,144 @@ COMUNI_NASCITA = [("Novara", "NO", "F952"), ("Milano", "MI", "F205"),
                   ("Bologna", "BO", "A944"), ("Firenze", "FI", "D612"),
                   ("Padova", "PD", "G224"), ("Parma", "PR", "G337")]
 
+
+# ---------------------------------------------------------------------------
+# Inquilini: tutti italiani tranne uno
+# ---------------------------------------------------------------------------
+#
+# Pool separati da quelli sopra (che restano di proprietari, lead e terzi):
+# nessun nome o cognome in comune, cosi' un inquilino non puo' mai prendere il
+# cognome di un proprietario o di un terzo, e i finti di proprietari, lead e
+# terzi non cambiano. Nomi per generazione (un nato nel 1962 non si chiama
+# Mattia), cognomi e luoghi di nascita da tutta Italia.
+
+GENERAZIONI = ("adulta", "media", "giovane")
+NOMI_INQUILINI = {
+    # nati prima del 1975
+    "adulta": {
+        "M": ["Giuseppe", "Antonio", "Salvatore", "Vincenzo", "Franco", "Mario", "Sergio",
+              "Maurizio", "Raffaele", "Domenico", "Gaetano", "Renato", "Rocco", "Gianni",
+              "Carmine", "Angelo"],
+        "F": ["Carmela", "Rosaria", "Anna", "Patrizia", "Rita", "Antonella", "Loredana",
+              "Giovanna", "Concetta", "Rosanna", "Donatella", "Gabriella", "Graziella",
+              "Nunzia", "Marisa", "Lorella"],
+    },
+    # 1975-1994
+    "media": {
+        "M": ["Francesco", "Alessandro", "Giovanni", "Fabio", "Gianluca", "Vito", "Pasquale",
+              "Emiliano", "Dario", "Mirko", "Valerio", "Luigi", "Mauro", "Cristian",
+              "Antonino", "Ivano"],
+        "F": ["Alessandra", "Simona", "Barbara", "Manuela", "Stefania", "Tiziana", "Rossella",
+              "Annalisa", "Claudia", "Sabrina", "Raffaella", "Ilenia", "Angela", "Marta",
+              "Mariangela", "Erica"],
+    },
+    # dal 1995
+    "giovane": {
+        "M": ["Mattia", "Alessio", "Christian", "Jacopo", "Diego", "Elia", "Gennaro",
+              "Manuel", "Ciro", "Kevin", "Pierpaolo", "Cristiano", "Samuel", "Nicolas"],
+        "F": ["Giorgia", "Noemi", "Aurora", "Gaia", "Sofia", "Arianna", "Alice", "Miriam",
+              "Ludovica", "Benedetta", "Asia", "Desiree", "Melissa", "Jessica"],
+    },
+}
+
+COGNOMI_INQUILINI = [
+    # Campania, Puglia, Basilicata, Calabria
+    "Esposito", "Russo", "Romano", "Greco", "Marino", "Ferrara", "Sorrentino", "Cirillo",
+    "Capasso", "Napolitano", "Caputo", "Pastore", "Colucci", "Laterza", "Lisi", "Romeo",
+    "Foti", "Pugliese", "Mazzei", "Iannone", "Cuomo", "Iovine", "Palmieri",
+    # Sicilia, Sardegna
+    "Catalano", "Scalia", "Pappalardo", "Musumeci", "Sciacca", "Nicotra", "Iacono",
+    "Melis", "Pinna", "Cossu", "Deiana", "Murgia",
+    # centro
+    "Proietti", "Santini", "Ceccarelli", "Mariani", "Bartolini", "Paoletti", "Rossi",
+    # nord
+    "Brambilla", "Fumagalli", "Zanella", "Bertolini", "Pavan", "Bonetti", "Tosi", "Gatti",
+]
+
+# (comune, sigla, belfiore): nascite di tutta Italia, piu' fitte dove una casa
+# in affitto a Novara pesca davvero (Piemonte e Lombardia, Sud e isole)
+COMUNI_NASCITA_INQUILINI = [
+    ("Novara", "NO", "F952"), ("Novara", "NO", "F952"), ("Vercelli", "VC", "L750"),
+    ("Torino", "TO", "L219"), ("Milano", "MI", "F205"), ("Genova", "GE", "D969"),
+    ("Venezia", "VE", "L736"), ("Bologna", "BO", "A944"), ("Modena", "MO", "F257"),
+    ("Firenze", "FI", "D612"), ("Perugia", "PG", "G478"), ("Ancona", "AN", "A271"),
+    ("Roma", "RM", "H501"), ("Latina", "LT", "E472"), ("Pescara", "PE", "G482"),
+    ("Napoli", "NA", "F839"), ("Caserta", "CE", "B963"), ("Salerno", "SA", "H703"),
+    ("Avellino", "AV", "A509"), ("Bari", "BA", "A662"), ("Foggia", "FG", "D643"),
+    ("Taranto", "TA", "L049"), ("Lecce", "LE", "E506"), ("Brindisi", "BR", "B180"),
+    ("Potenza", "PZ", "G942"), ("Cosenza", "CS", "D086"), ("Catanzaro", "CZ", "C352"),
+    ("Reggio Calabria", "RC", "H224"), ("Palermo", "PA", "G273"), ("Catania", "CT", "C351"),
+    ("Messina", "ME", "F158"), ("Siracusa", "SR", "I754"), ("Agrigento", "AG", "A089"),
+    ("Trapani", "TP", "L331"), ("Cagliari", "CA", "B354"), ("Sassari", "SS", "I452"),
+]
+
+
+def anno_nascita(data_nascita: date | None, cf: str, oggi: date | None = None) -> int | None:
+    """Anno di nascita dalla data (se plausibile) o dal codice fiscale."""
+    oggi = oggi or date.today()
+    if data_nascita and data_nascita.year <= oggi.year:
+        return data_nascita.year
+    cf = re.sub(r"[^A-Za-z0-9]", "", cf or "").upper()
+    if len(cf) >= 8 and cf[6:8].isdigit():
+        aa = int(cf[6:8])
+        return 2000 + aa if 2000 + aa <= oggi.year - 16 else 1900 + aa
+    return None
+
+
+def generazione(anno: int | None) -> str:
+    """Generazione dei nomi: senza anno si ripiega sulla media."""
+    if anno is None:
+        return "media"
+    if anno < 1975:
+        return "adulta"
+    return "media" if anno < 1995 else "giovane"
+
+
+def pool_nomi_inquilino(sesso: str, anno: int | None, rng: random.Random) -> list[str]:
+    """Nomi italiani della generazione in ordine casuale, poi quelli delle altre
+    generazioni (ripiego quando i primi sono finiti o coincidono con nomi veri)."""
+    g = generazione(anno)
+    s = "F" if sesso == "F" else "M"
+    primi = list(NOMI_INQUILINI[g][s])
+    altri = [n for x in GENERAZIONI if x != g for n in NOMI_INQUILINI[x][s]]
+    rng.shuffle(primi)
+    rng.shuffle(altri)
+    return primi + altri
+
+
+def origine_estera(*, proprietario: bool, cittadinanza: str, belfiore: str,
+                   straniero_scelto: bool) -> bool:
+    """Se la persona finta e' straniera.
+
+    I proprietari seguono i dati: stranieri se la cittadinanza dichiarata non e'
+    italiana (senza cittadinanza sono italiani anche se nati all'estero). Gli
+    inquilini sono tutti italiani tranne quello scelto per restare straniero.
+    """
+    if not proprietario:
+        return straniero_scelto
+    citt = (cittadinanza or "").strip().lower()
+    return bool(citt) and not citt.startswith("ital")
+
+
+def documento_coerente(tipo: str, autorita: str, *, estera: bool,
+                       comune: str) -> tuple[str, str]:
+    """Documento d'identita' coerente con la cittadinanza finta.
+
+    Per un italiano il permesso di soggiorno diventa carta d'identita' del
+    comune di residenza, il passaporto lo rilascia la Questura; per uno
+    straniero non cambia nulla.
+    """
+    if estera or not tipo:
+        return tipo, autorita
+    comune = comune or "Novara"
+    if tipo == "permesso_soggiorno":
+        return "carta_identita", f"Comune di {comune}"
+    if tipo == "passaporto" and not autorita.lower().startswith("questura"):
+        return tipo, "Questura di Novara"
+    if tipo == "carta_identita" and autorita and not autorita.lower().startswith("comune"):
+        return tipo, f"Comune di {comune}"
+    return tipo, autorita
+
 # (comune, CAP) della provincia di Novara per residenze e luoghi finti
 COMUNI_NO = [("Novara", "28100"), ("Trecate", "28069"), ("Galliate", "28066"),
              ("Oleggio", "28047"), ("Borgomanero", "28021"), ("Arona", "28041"),

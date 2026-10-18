@@ -18,7 +18,7 @@ resources:
 tags: [playbook, dev, setup]
 generated:
   by: process:okf-migrate
-  at: 2026-10-17T23:30:00Z
+  at: 2026-10-18T12:00:00Z
 ---
 
 # Prerequisiti
@@ -125,16 +125,17 @@ ENV=demo uv run python manage.py cura_demo_video            # ritocchi per le ri
   conta tutti gli addebiti "da pagare", `insoluto` compreso, di chi non ha
   un'assegnazione in corso; senza allocazioni si eliminano, con allocazioni
   il dovuto scende all'incassato e diventano pagati col proprietario
-  incassante), documenti generati (atti/cessioni) di Daniela (il dialog
+  incassante), documenti generati (atti/cessioni) di Miriam Tosi (il dialog
   "Genera" resta pulito), addebiti storici residui → `insoluto`, membership
   del `bot`, notifiche push fallite. Aggiunge anche l'unico addebito
-  "in attesa di conferma" del db: l'ultimo aperto di Karthik Pillai (Casa dei
+  "in attesa di conferma" del db: l'ultimo aperto di Luigi Cirillo (Casa dei
   Tigli, Utenze Ago 2026, 39,26 €) passa a `dichiarato` con
   `billing.calc.incassi.dichiara_pagamento`, lo stesso servizio
   dell'endpoint `dichiara_pagato`, ma **senza** l'avviso push ai proprietari
   che l'endpoint manda dopo. Serve alla scena 07 "Notifiche" (nei ritardi
-  compare "Da confermare"); Hamza Tazi, protagonista delle scene 02–06, resta
-  com'era.
+  compare "Da confermare"); Diego Palmieri, protagonista delle scene 02–06,
+  resta com'era. Le costanti `USERNAME_RIPRESE` e `INQUILINO_DICHIARANTE`
+  usano i nomi finti: se l'anonimizzazione cambia, vanno aggiornate.
 
 * `anonimizza_demo` gira solo su `viapal_demo` con `ENV=demo` e **una volta
   sola** per db: gli importi vengono scalati (x 0,7) e la tabella
@@ -156,7 +157,7 @@ ENV=demo uv run python manage.py cura_demo_video            # ritocchi per le ri
   produzione). Tutti gli altri file (documenti identità, bollette, allegati,
   documenti generati) sono sostituiti da PDF/immagini segnaposto "Documento di
   esempio - dati fittizi" in `media-private-demo/`, con i percorsi riscritti
-  col nome finto (es. `documenti/70-daniela/`).
+  col nome finto (es. `documenti/70-miriam/`).
 
 ## Cosa viene trasformato
 
@@ -167,9 +168,19 @@ finto), username (nome finto in minuscolo),
 email `nome.cognome@example.com`, telefoni, codici fiscali e IBAN con
 checksum valido (ABI `99999`, non assegnato: il QR di pagamento non può
 puntare a un conto vero; banche con nomi fittizi), date di nascita (spostate), luoghi di nascita e residenza,
-documenti. Gli stranieri restano stranieri (nomi di un mix di provenienze,
-coerenti con cittadinanza e luogo di nascita), i fratelli proprietari
-condividono il cognome. Immobili: Novara, "Via dei Tigli", CAP 28100, nomi
+documenti. Gli inquilini diventano tutti **italiani tranne uno**
+(`INQUILINO_STRANIERO_USER_ID`, oggi Tarek Saleh, egiziano: ex inquilino
+giugno–settembre 2026, visibile solo nella ripartizione utenze di luglio; gli
+inquilini attivi sono tutti protagonisti delle scene): nomi per generazione
+(l'anno di nascita viene dal codice fiscale vero, spostato di qualche mese),
+cognomi e luoghi di nascita da tutta Italia, cittadinanza e codice fiscale
+coerenti; il permesso di soggiorno di un italiano diventa carta d'identità e il
+passaporto lo rilascia la Questura. I loro pool (`NOMI_INQUILINI`,
+`COGNOMI_INQUILINI`, `COMUNI_NASCITA_INQUILINI`) sono disgiunti da quelli di
+proprietari, lead e terzi, che restano come prima: un inquilino non può avere
+il cognome di un proprietario. Fra i proprietari gli stranieri restano
+stranieri (nomi coerenti con cittadinanza e luogo di nascita), i fratelli
+proprietari condividono il cognome. Immobili: Novara, "Via dei Tigli", CAP 28100, nomi
 "Casa dei Tigli" / "Casa dei Gelsomini" (Galliate), testi della galleria
 riscritti. Testo libero di ogni modello (movimenti bancari, note, notifiche,
 modelli di documento) passato dal dizionario con confini di parola; lead del
@@ -212,10 +223,14 @@ Password di **tutti** gli utenti: `demo2026`.
 | `massimo` | proprietario principale: proprietario di Casa dei Tigli, gestore di Casa dei Gelsomini |
 | `irene`, `ettore` | proprietari di Casa dei Tigli |
 | `greta` | proprietario di Casa dei Gelsomini |
-| `daniela` | inquilino, subentrata in Camera 1 (ha pagamenti dichiarati) |
-| `karthik`, `shanika`, `camila`, `tarek`, `hamza`, `serkan`, `silvia`, `francesca`, `filippo`, `tommaso`, `valeria`, `nyasha`, `roberto`, `lucia`, `ilaria`, `veronica` | inquilini (attuali e passati) |
-| `storico_simone`, `storico_samuele`, `storico_roberta`, `storico_luca` | inquilini storici (solo anagrafica) |
-| `demir-serkan` | duplicato di `serkan` (stessa persona, secondo utente) |
+| `diego` | inquilino attivo, Camera 4 (Diego Palmieri: scene 02–06, home inquilino) |
+| `luigi` | inquilino attivo, Camera 3 (Luigi Cirillo: addebito "dichiarato" della scena 07) |
+| `miriam` | inquilina attiva, subentrata in Camera 1 (Miriam Tosi: scena 11, ha pagamenti dichiarati) |
+| `christian` | inquilino di Casa dei Gelsomini (Christian Brambilla: scene 05 e 12) |
+| `tarek` | ex inquilino, l'unico straniero (Tarek Saleh) |
+| `erica`, `sergio`, `ilenia`, `rossella`, `ciro`, `claudia`, `mirko`, `angela`, `barbara`, `marta`, `raffaella`, `concetta` | ex inquilini |
+| `storico_emiliano`, `storico_antonino`, `storico_annalisa`, `storico_gianluca` | inquilini storici (solo anagrafica) |
+| `brambilla-christian` | duplicato di `christian` (stessa persona, secondo utente) |
 | `bot` | tecnico (membership del bot dei lead) |
 
 # Vedi anche

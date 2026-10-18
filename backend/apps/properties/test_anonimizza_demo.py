@@ -364,3 +364,92 @@ def test_ascii_sicuro_toglie_i_glifi_mancanti():
 def test_ascii_puro_per_il_font_senza_accenti():
     assert an.ascii_puro("Carta d'identità — è") == "Carta d'identita - e"
     assert an.ascii_puro("1 → 2") == "1 -> 2"
+
+
+# --- inquilini italiani tranne uno ------------------------------------------------
+
+
+def _tutti_nomi_inquilini():
+    return [n for g in an.NOMI_INQUILINI.values() for s in ("M", "F") for n in g[s]]
+
+
+def test_pool_inquilini_disgiunti_da_proprietari_lead_e_terzi():
+    nomi = {n.lower() for n in _tutti_nomi_inquilini()}
+    cognomi = {c.lower() for c in an.COGNOMI_INQUILINI}
+    altri_nomi = {n.lower() for n in an.NOMI_M + an.NOMI_F}
+    altri_cognomi = {c.lower() for c in an.COGNOMI_IT + an.POOL_TERZI}
+    for v in an.CATEGORIE_ESTERE.values():
+        altri_nomi |= {n.lower() for n in v[3] + v[4]}
+        altri_cognomi |= {c.lower() for c in v[5]}
+    assert not nomi & altri_nomi
+    assert not cognomi & altri_cognomi
+    assert not nomi & cognomi
+    # un token solo, nessun doppione
+    assert all(" " not in x for x in nomi | cognomi)
+    assert len(nomi) == len(_tutti_nomi_inquilini())
+    assert len(cognomi) == len(an.COGNOMI_INQUILINI)
+
+
+def test_comuni_nascita_inquilini_da_tutta_italia_e_cf_valido():
+    sigle = {s for _c, s, _b in an.COMUNI_NASCITA_INQUILINI}
+    assert {"NA", "PA", "BA", "CA", "RM", "NO"} <= sigle
+    for comune, sigla, belf in an.COMUNI_NASCITA_INQUILINI:
+        assert len(sigla) == 2 and sigla != "EE"
+        assert len(belf) == 4 and belf[0].isalpha() and belf[0] != "Z" and belf[1:].isdigit()
+        assert an.cf_valido(an.codice_fiscale("Esposito", "Ciro", date(1990, 3, 4), "M", belf))
+
+
+@pytest.mark.parametrize("data,cf,atteso", [
+    (date(1980, 6, 1), "", 1980),
+    (date(2099, 1, 1), "RSSMRA62C10F839X", 1962),   # data refusa: vale il codice fiscale
+    (None, "RSSMRA04C10F839X", 2004),
+    (None, "RSSMRA62C10F839X", 1962),
+    (None, "", None),
+])
+def test_anno_nascita(data, cf, atteso):
+    assert an.anno_nascita(data, cf, oggi=date(2026, 10, 18)) == atteso
+
+
+def test_pool_nomi_per_generazione():
+    assert an.generazione(1961) == "adulta"
+    assert an.generazione(1975) == "media"
+    assert an.generazione(1994) == "media"
+    assert an.generazione(1999) == "giovane"
+    assert an.generazione(None) == "media"
+    pool = an.pool_nomi_inquilino("M", 1961, random.Random(1))
+    n = len(an.NOMI_INQUILINI["adulta"]["M"])
+    assert set(pool[:n]) == set(an.NOMI_INQUILINI["adulta"]["M"])
+    assert set(pool[n:]) == set(an.NOMI_INQUILINI["media"]["M"] + an.NOMI_INQUILINI["giovane"]["M"])
+    assert pool == an.pool_nomi_inquilino("M", 1961, random.Random(1))
+    assert set(an.pool_nomi_inquilino("F", 2001, random.Random(2))[:3]) <= set(
+        an.NOMI_INQUILINI["giovane"]["F"])
+
+
+def test_origine_estera_solo_lo_straniero_scelto_fra_gli_inquilini():
+    kw = {"proprietario": False, "cittadinanza": "marocchina", "belfiore": "Z330"}
+    assert an.origine_estera(**kw, straniero_scelto=False) is False
+    assert an.origine_estera(**kw, straniero_scelto=True) is True
+    assert an.origine_estera(proprietario=False, cittadinanza="", belfiore="F952",
+                             straniero_scelto=True) is True
+    # proprietari: decide la cittadinanza dichiarata, senza sono italiani
+    assert an.origine_estera(proprietario=True, cittadinanza="Turca", belfiore="Z243",
+                             straniero_scelto=False) is True
+    assert an.origine_estera(proprietario=True, cittadinanza="", belfiore="Z243",
+                             straniero_scelto=False) is False
+    assert an.origine_estera(proprietario=True, cittadinanza="Italiana", belfiore="Z243",
+                             straniero_scelto=True) is False
+
+
+@pytest.mark.parametrize("tipo,autorita,estera,atteso", [
+    ("permesso_soggiorno", "Questura di Novara", False, ("carta_identita", "Comune di Trecate")),
+    ("passaporto", "Marocco", False, ("passaporto", "Questura di Novara")),
+    ("passaporto", "Questura di Novara", False, ("passaporto", "Questura di Novara")),
+    ("carta_identita", "Repubblica di Turchia", False, ("carta_identita", "Comune di Trecate")),
+    ("carta_identita", "Comune di Cameri", False, ("carta_identita", "Comune di Cameri")),
+    ("carta_identita", "", False, ("carta_identita", "")),
+    ("", "", False, ("", "")),
+    ("passaporto", "Marocco", True, ("passaporto", "Marocco")),
+    ("permesso_soggiorno", "Questura di Novara", True, ("permesso_soggiorno", "Questura di Novara")),
+])
+def test_documento_coerente(tipo, autorita, estera, atteso):
+    assert an.documento_coerente(tipo, autorita, estera=estera, comune="Trecate") == atteso

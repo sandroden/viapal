@@ -9,7 +9,9 @@ Che cosa fa, in una sola transazione:
 
 * persone (utenti, proprietari, inquilini, conti bancari) -> nomi, username,
   email, telefoni, codici fiscali, IBAN (checksum valido), nascita, residenza
-  finti, coerenti ovunque; password di tutti = ``demo2026``;
+  finti, coerenti ovunque; password di tutti = ``demo2026``. Gli inquilini
+  diventano italiani (nomi per generazione, nascite da tutta Italia) tranne
+  ``INQUILINO_STRANIERO_USER_ID``, che resta straniero;
 * immobili e luoghi -> Novara, "Via dei Tigli", testi della galleria;
 * testo libero di ogni modello (descrizioni dei movimenti, note, notifiche,
   modelli di documento...) con dizionario reale->finto + regex di pulizia;
@@ -61,6 +63,11 @@ PASSWORD_DEMO = "demo2026"
 BANCHE_FITTIZIE = ["Banca del Novarese", "Cassa di Risparmio Demo", "Banca Popolare dei Tigli",
                    "Credito Piemontese Demo"]
 SEED = "viapal-demo-2026"
+# Gli inquilini finti sono tutti italiani tranne uno (id dell'utente in
+# produzione): un ex inquilino recente della Casa dei Tigli (giugno-settembre
+# 2026), visibile nella ripartizione utenze di luglio ma non protagonista di
+# nessuna scena. Gli inquilini attivi sono tutti protagonisti delle riprese.
+INQUILINO_STRANIERO_USER_ID = 95
 
 CAMPI_FOTO = an.CAMPI_FOTO  # foto che restano vere (le copia copia_media_demo)
 
@@ -521,12 +528,9 @@ class Command(BaseCommand):
         cf = re.sub(r"[^A-Za-z0-9]", "", (prof.codice_fiscale if prof else "") or "").upper()
         belfiore = cf[11:15] if len(cf) >= 15 else ""
         citt = (getattr(prof, "cittadinanza", "") or "").strip().lower()
-        if citt:
-            pers.estera = not citt.startswith("ital")
-        else:
-            # senza cittadinanza dichiarata: i proprietari sono italiani anche se nati
-            # all'estero, gli inquilini con codice nato all'estero no
-            pers.estera = pers.owner is None and belfiore.startswith("Z")
+        pers.estera = an.origine_estera(
+            proprietario=pers.owner is not None, cittadinanza=citt, belfiore=belfiore,
+            straniero_scelto=INQUILINO_STRANIERO_USER_ID in pers.user_ids)
         if pers.estera:
             pers.categoria = self.ZMAP.get(belfiore, "") or next(
                 (cat for key, cat in self.CITTMAP if key in citt), "")
@@ -555,6 +559,10 @@ class Command(BaseCommand):
         scr = ctx.scr
         rng = random.Random(f"{SEED}|{min(pers.user_ids)}")
         cats = list(an.CATEGORIE_ESTERE)
+        # inquilino italiano: pool propri (nomi per generazione, cognomi e nascite
+        # di tutta Italia), disgiunti da quelli di proprietari, lead e terzi
+        inquilino_it = pers.owner is None and pers.tenant is not None and not pers.estera
+        nomi_ripiego, cogn_ripiego = an.NOMI_F + an.NOMI_M, an.COGNOMI_IT
         if pers.estera:
             if not pers.categoria:
                 pers.categoria = cats[ctx.cat_i % len(cats)]
@@ -562,27 +570,38 @@ class Command(BaseCommand):
             _citt, _z, _citta, nm, nf, cogn_pool = an.CATEGORIE_ESTERE[pers.categoria]
             pool_nomi = list(nf if pers.sesso == "F" else nm)
             pool_cogn = list(cogn_pool)
+            rng.shuffle(pool_nomi)
+            rng.shuffle(pool_cogn)
+        elif inquilino_it:
+            anno = an.anno_nascita(pers.tenant.data_nascita, pers.tenant.codice_fiscale)
+            pool_nomi = an.pool_nomi_inquilino(pers.sesso, anno, rng)
+            pool_cogn = list(an.COGNOMI_INQUILINI)
+            rng.shuffle(pool_cogn)
+            nomi_ripiego = pool_nomi
+            cogn_ripiego = an.COGNOMI_INQUILINI
         else:
             pool_nomi = list(an.NOMI_F if pers.sesso == "F" else an.NOMI_M)
             pool_cogn = list(an.COGNOMI_IT)
-        rng.shuffle(pool_nomi)
-        rng.shuffle(pool_cogn)
+            rng.shuffle(pool_nomi)
+            rng.shuffle(pool_cogn)
         # nomi
         n_tok = max(1, min(2, len(an.tokens_nome(pers.nome))))
         f_tokens = []
         for _ in range(n_tok):
             c = self._scegli(ctx, pool_nomi, ctx.usati_nomi) or self._scegli(
-                ctx, rng.sample(an.NOMI_F + an.NOMI_M, len(an.NOMI_F + an.NOMI_M)),
+                ctx, rng.sample(nomi_ripiego, len(nomi_ripiego)),
                 ctx.usati_nomi) or f"Nome{len(ctx.usati_nomi)}"
             f_tokens.append(c)
         pers.f_nome = " ".join(f_tokens)
         # cognome (stesso cognome reale -> stesso cognome finto)
+        # (un inquilino che ha il cognome vero di un proprietario non ne prende il finto)
         chiave_c = re.sub(r"\W", "", pers.cognome.lower())
         if chiave_c:
+            chiave_c = ("inquilino|" if inquilino_it else "") + chiave_c
             if chiave_c not in ctx.cognomi_cache:
                 ctx.cognomi_cache[chiave_c] = self._scegli(
                     ctx, pool_cogn, ctx.usati_cognomi) or self._scegli(
-                    ctx, rng.sample(an.COGNOMI_IT, len(an.COGNOMI_IT)),
+                    ctx, rng.sample(cogn_ripiego, len(cogn_ripiego)),
                     ctx.usati_cognomi) or f"Cognome{len(ctx.usati_cognomi)}"
             pers.f_cognome = ctx.cognomi_cache[chiave_c]
         else:
@@ -590,12 +609,14 @@ class Command(BaseCommand):
             # stesso (la home saluta col nome, il resto mostra nome e cognome)
             pers.f_cognome = self._scegli(
                 ctx, pool_cogn, ctx.usati_cognomi) or self._scegli(
-                ctx, rng.sample(an.COGNOMI_IT, len(an.COGNOMI_IT)),
+                ctx, rng.sample(cogn_ripiego, len(cogn_ripiego)),
                 ctx.usati_cognomi) or f"Cognome{len(ctx.usati_cognomi)}"
         # nascita
         if pers.estera:
             citt = an.CATEGORIE_ESTERE[pers.categoria]
             pers.comune_nascita = (rng.choice(citt[2]), "EE", citt[1])
+        elif inquilino_it:
+            pers.comune_nascita = rng.choice(an.COMUNI_NASCITA_INQUILINI)
         else:
             pers.comune_nascita = rng.choice(an.COMUNI_NASCITA)
         pers.shift = rng.choice([-1, 1]) * rng.randrange(20, 400)
@@ -795,8 +816,19 @@ class Command(BaseCommand):
             for prof in (pers.owner, pers.tenant):
                 if prof is None:
                     continue
+                # per gli inquilini l'eta' viene dal codice fiscale vero (in memoria):
+                # quello nel db e' gia' finto (passaggio generico) e darebbe un anno
+                # a caso, incoerente con la generazione del nome scelto
+                cf_nascita = (prof.codice_fiscale
+                              if prof is pers.tenant and pers.owner is None else None)
                 prof = type(prof).objects.get(pk=prof.pk)
-                self._anagrafica(ctx, pers, prof)
+                self._anagrafica(ctx, pers, prof, cf_nascita)
+        # documenti caricati: niente permesso di soggiorno fra gli inquilini italiani
+        TenantDocument = apps.get_model("properties", "TenantDocument")
+        italiani = [p.tenant.pk for p in ctx.persone if p.tenant and not p.estera]
+        n = TenantDocument.objects.filter(tenant_id__in=italiani,
+                                          tipo="permesso_soggiorno").update(tipo="carta_identita")
+        self.out(f"   permessi di soggiorno di inquilini italiani -> carta d'identita': {n}")
         # conti bancari: IBAN finti validi, intestatario = proprietario finto
         for a in OBA.objects.select_related("owner"):
             a.iban = scr.iban_finto(a.iban) if a.iban else a.iban
@@ -806,20 +838,23 @@ class Command(BaseCommand):
                 a.intestatario = _norm(f"{pers.f_nome} {pers.f_cognome}")
             a.save(update_fields=["iban", "intestatario", "banca"])
 
-    def _anagrafica(self, ctx, pers: Persona, prof):
+    def _anagrafica(self, ctx, pers: Persona, prof, cf_nascita=None):
         scr = ctx.scr
         rng = random.Random(f"{SEED}|ana|{type(prof).__name__}|{prof.pk}")
         prof.nome = pers.f_nome if prof.nome else prof.nome
         prof.cognome = pers.f_cognome if prof.cognome else prof.cognome
         nomin = _norm(f"{pers.f_nome} {pers.f_cognome}")
-        if prof.nominativo and len(prof.nominativo.split()) > 1:
+        # inquilini: nominativo pulito (nome finto + cognome finto), senza i pezzi
+        # corti del vero che il dizionario non tocca ("Jo-")
+        if (prof.nominativo and len(prof.nominativo.split()) > 1
+                and cf_nascita is None):
             nomin = scr.scrub(prof.nominativo, importi=False)
         prof.nominativo = nomin
         # nascita
         nascita = prof.data_nascita
         if nascita and nascita.year > date.today().year:
             nascita = None  # refuso nei dati originali: si ricava dal codice fiscale
-        cf = re.sub(r"[^A-Za-z0-9]", "", prof.codice_fiscale or "").upper()
+        cf = re.sub(r"[^A-Za-z0-9]", "", cf_nascita or prof.codice_fiscale or "").upper()
         if nascita is None and len(cf) >= 11 and cf[6:8].isdigit() and cf[9:11].isdigit():
             mese = an.MESI_CF.find(cf[8]) + 1
             giorno = int(cf[9:11]) % 40 or 1
@@ -876,6 +911,11 @@ class Command(BaseCommand):
             m = re.match(r"(?i)\s*comune di\s+(.+)", prof.documento_autorita)
             prof.documento_autorita = (f"Comune di {ctx.luogo_finto(m.group(1))}" if m
                                        else scr.scrub(prof.documento_autorita, importi=False))
+        if hasattr(prof, "documento_tipo"):
+            # un italiano non ha il permesso di soggiorno, il passaporto lo da' la Questura
+            prof.documento_tipo, prof.documento_autorita = an.documento_coerente(
+                prof.documento_tipo, prof.documento_autorita, estera=pers.estera,
+                comune=prof.residenza_comune)
         if hasattr(prof, "documento_data_rilascio") and prof.documento_data_rilascio:
             prof.documento_data_rilascio += timedelta(days=rng.randrange(-30, 30))
         prof.save()

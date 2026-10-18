@@ -23,7 +23,7 @@ racconta la cosa sbagliata:
   passa a ``dichiarato`` con ``billing.calc.incassi.dichiara_pagamento``,
   lo stesso servizio dell'endpoint ``dichiara_pagato`` (residuo intatto,
   badge "In attesa di conferma"), senza l'avviso push/email ai proprietari
-  che l'endpoint aggiunge. Si evita Hamza Tazi, protagonista delle scene
+  che l'endpoint aggiunge. Si evita Diego Palmieri, protagonista delle scene
   02-06: il suo riepilogo e la sua home inquilino devono restare uguali.
 
 Gira solo su ``viapal_demo`` con ``ENV=demo``; idempotente.
@@ -46,9 +46,9 @@ from properties.models.tenant import assegnazione_in_corso_q
 
 LIMITE_STORICO = date(2026, 1, 1)
 # inquilini delle riprese: i documenti generati si tolgono per mostrare "Genera" pulito
-USERNAME_RIPRESE = ("daniela",)
+USERNAME_RIPRESE = ("miriam",)
 # inquilino attivo della Casa dei Tigli con un addebito "dichiarato" (scena notifiche)
-INQUILINO_DICHIARANTE = "Karthik Pillai"
+INQUILINO_DICHIARANTE = "Luigi Cirillo"
 IMMOBILE_DICHIARANTE = "Casa dei Tigli"
 
 
