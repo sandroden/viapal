@@ -13,6 +13,7 @@ import type { ScenaRisolta } from "../timeline";
 import { colori, fontSans, fontSerif } from "../tema";
 import { Didascalia } from "./Didascalia";
 import { NotificaPush } from "./NotificaPush";
+import { TelefonoNotifica } from "./TelefonoNotifica";
 
 type Props = {
   readonly risolta: ScenaRisolta;
@@ -139,7 +140,19 @@ export const Scena: React.FC<Props> = ({ risolta }) => {
       ))}
       {risolta.notifiche.map((n) => (
         <Sequence key={`notifica-${n.da}`} name={`Notifica · ${n.titolo}`} from={n.da} durationInFrames={n.durata}>
-          <NotificaPush titolo={n.titolo} corpo={n.corpo} />
+          {n.stile === "desktop" ? (
+            <NotificaPush titolo={n.titolo} corpo={n.corpo} lato={n.lato} />
+          ) : (
+            <TelefonoNotifica
+              titolo={n.titolo}
+              corpo={n.corpo}
+              ora={n.ora}
+              data={n.data}
+              etichetta={n.etichetta}
+              lato={n.lato}
+              alto={n.alto}
+            />
+          )}
         </Sequence>
       ))}
     </AbsoluteFill>

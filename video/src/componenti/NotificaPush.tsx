@@ -1,5 +1,6 @@
 import type React from "react";
 import { Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import type { LatoNotifica } from "../manifest";
 import { fontSans } from "../tema";
 
 type Props = {
@@ -9,6 +10,8 @@ type Props = {
   readonly app?: string;
   /** tempo relativo accanto al nome dell'app */
   readonly quando?: string;
+  /** angolo in alto: destra (default) o sinistra */
+  readonly lato?: LatoNotifica;
 };
 
 // Palette neutra da notifica di sistema (Android/Chrome in tema chiaro):
@@ -25,9 +28,15 @@ const sistema = {
 
 const MARGINE = 22;
 
-// Notifica push simulata in alto a destra: scivola dentro dall'alto, resta e
-// esce verso destra. Va messa dentro una <Sequence> lunga quanto deve restare.
-export const NotificaPush: React.FC<Props> = ({ titolo, corpo, app = "Viapal", quando = "ora" }) => {
+// Notifica push "desktop" in un angolo in alto: scivola dentro dall'alto,
+// resta ed esce verso il bordo. Va messa dentro una <Sequence> lunga quanto deve restare.
+export const NotificaPush: React.FC<Props> = ({
+  titolo,
+  corpo,
+  app = "Viapal",
+  quando = "ora",
+  lato = "destra",
+}) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
   const uscita = durationInFrames - 0.4 * fps;
@@ -39,7 +48,7 @@ export const NotificaPush: React.FC<Props> = ({ titolo, corpo, app = "Viapal", q
       style={{
         position: "absolute",
         top: MARGINE,
-        right: MARGINE,
+        [lato === "destra" ? "right" : "left"]: MARGINE,
         width: 620,
         display: "flex",
         flexDirection: "column",
@@ -58,7 +67,7 @@ export const NotificaPush: React.FC<Props> = ({ titolo, corpo, app = "Viapal", q
         translate: interpolate(
           frame,
           [0, 0.55 * fps, uscita, durationInFrames],
-          ["0px -150px", "0px 0px", "0px 0px", "120px 0px"],
+          ["0px -150px", "0px 0px", "0px 0px", `${lato === "destra" ? 120 : -120}px 0px`],
           {
             extrapolateLeft: "clamp",
             extrapolateRight: "clamp",

@@ -54,7 +54,7 @@ main() {
   pausa 0.2
   clicca_testo 'Casa dei Gelsomini' '.q-menu .q-item *'
   # il cambio ricarica l'app sulla dashboard del nuovo immobile
-  attendi_testo 'Serkan Demir'
+  attendi_testo 'Christian Brambilla'
   # dopo il ricaricamento il cursore va rimesso dov'era
   $AB mouse move $PUNTO >/dev/null
   segna 'Gelsomini: dashboard, ruolo Gestore'

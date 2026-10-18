@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scena 04 — lato inquilino: dalla scheda di Hamza Tazi "Vedi come questo
+# Scena 04 — lato inquilino: dalla scheda di Diego Palmieri "Vedi come questo
 # inquilino" → home inquilino → Paga con bonifico (QR) → Utenze → Torna a te.
 #
 # Viewport 1280x720: l'area inquilino è impaginata per telefono e a 1920 resta
@@ -32,7 +32,7 @@ main() {
   $AB set viewport 1280 720 >/dev/null
   accedi massimo
   rinvia_banner
-  apri '/p/inquilini/64?anno=2026'            # Hamza Tazi, Casa dei Tigli
+  apri '/p/inquilini/64?anno=2026'            # Diego Palmieri, Casa dei Tigli
   $AB wait --text "Profilo & contratto" >/dev/null
   $AB mouse move 900 420 >/dev/null
   pausa 1.5

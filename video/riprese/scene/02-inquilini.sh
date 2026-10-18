@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scena 02 — inquilini: elenco → scheda di Hamza Tazi (Casa dei Tigli) →
+# Scena 02 — inquilini: elenco → scheda di Diego Palmieri (Casa dei Tigli) →
 # pagamenti, profilo & contratto, documenti con anteprima dell'atto.
 # Nessun salvataggio: solo navigazione tra le schede.
 set -euo pipefail
@@ -26,12 +26,12 @@ main() {
   accedi massimo
   rinvia_banner
   apri /p/inquilini
-  $AB wait --text "Hamza Tazi" >/dev/null
+  $AB wait --text "Diego Palmieri" >/dev/null
   $AB mouse move 1150 640 >/dev/null        # cursore già in campo al ciak
   pausa 1.5
   ciak 02-inquilini
   pausa 0.2
-  clicca_testo 'Hamza Tazi' 'td'
+  clicca_testo 'Diego Palmieri' 'td'
   $AB wait --text "Profilo & contratto" >/dev/null
   pausa 0.3
   # via dagli importi in alto: il cursore va sull'affitto ancora atteso

@@ -4,7 +4,7 @@
 #
 # Immobile: Casa dei Gelsomini (IMMOBILE=2). Su Casa dei Tigli non c'è nel db
 # demo una coppia bonifico/addebito dello stesso inquilino che chiuda a zero.
-# Qui il bonifico Serkan Demir 1.134 € ha già 259 € sull'affitto di ottobre:
+# Qui il bonifico Christian Brambilla 1.134 € ha già 259 € sull'affitto di ottobre:
 # cliccandolo il pannello mostra l'abbinamento esistente (niente avviso rosso
 # "Cancella abbinamenti", che compare solo con pannello vuoto) e la spunta sul
 # deposito da 875 € porta il residuo a 0,00.
@@ -49,7 +49,7 @@ main() {
   apri /p/riconciliazione
   $AB wait 2500 >/dev/null
   $AB eval "!!($(_voce 'Deposito Nov 2025'))" | grep -q true \
-    || { echo "bonifico di Serkan non trovato" >&2; return 1; }
+    || { echo "bonifico di Christian non trovato" >&2; return 1; }
   $AB mouse move 700 200 >/dev/null
   pausa 1
 

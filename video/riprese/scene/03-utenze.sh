@@ -3,7 +3,7 @@
 # presenza, avviso email pronto, andamento dei costi.
 #
 # Mese: luglio 2026, chiuso e inviato. Agosto ha tutti a 31 giorni; luglio ha
-# Hamza entrato a fine mese (10 giorni, quota ridotta), che racconta il
+# Diego entrato a fine mese (10 giorni, quota ridotta), che racconta il
 # pro-rata meglio di qualsiasi didascalia. Nessun salvataggio: si naviga solo
 # tra i passi del wizard (il bottone "Invia di nuovo" non si tocca).
 set -euo pipefail
@@ -72,16 +72,16 @@ main() {
   # Passo 2 — ripartizione per giorni di presenza (didascalia 2)
   clicca_testo 'Ripartizione' button
   pausa 0.6
-  punta_js "$(_cella 'Hamza Tazi' 1)"
+  punta_js "$(_cella 'Diego Palmieri' 1)"
   pausa 1.8
   punta '.pie-wrap svg'
   pausa 0.6
   # Passo 3 — l'avviso di ciascuno (didascalia 3)
   clicca_testo 'Invio' button
   pausa 0.4
-  clicca_js "$(_riga_avviso 'Camila Luisa Restrepo')"
+  clicca_js "$(_riga_avviso 'Rossella Stefania Foti')"
   pausa 0.2
-  clicca_js "$(_riga_avviso 'Hamza Tazi')"
+  clicca_js "$(_riga_avviso 'Diego Palmieri')"
   pausa 0.4
   punta_frase 'Giorni di presenza nel periodo: 10'
   pausa 2

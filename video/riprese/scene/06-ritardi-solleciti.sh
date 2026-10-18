@@ -51,7 +51,7 @@ main() {
   # Il sollecito pronto
   clicca_testo 'Notifiche addebiti' '.vp-drawer__item'
   pausa 0.8
-  clicca_js "$(_riga_avviso 'Hamza Tazi')"
+  clicca_js "$(_riga_avviso 'Diego Palmieri')"
   pausa 0.4
   punta_frase 'scaduta il 27/07/2026 · 106,13 €'
   pausa 1.6

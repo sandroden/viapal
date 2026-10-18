@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scena 11 — documenti generati: scheda di Daniela Ferraris (Casa dei Tigli)
+# Scena 11 — documenti generati: scheda di Miriam Tosi (Casa dei Tigli)
 # → tab Documenti → Genera → riepilogo dell'atto di subentro → Annulla.
 # Nessun salvataggio: il riepilogo si chiude senza premere "Rigenera PDF".
 set -euo pipefail
@@ -24,7 +24,7 @@ main() {
   avvia_chrome
   accedi massimo
   rinvia_banner
-  apri '/p/inquilini/70?anno=2026&tab=documenti'   # Daniela Ferraris
+  apri '/p/inquilini/70?anno=2026&tab=documenti'   # Miriam Tosi
   $AB wait --text "Profilo & contratto" >/dev/null
   $AB mouse move 1100 700 >/dev/null
   pausa 1.5

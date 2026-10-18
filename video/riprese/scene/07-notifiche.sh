@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scena 07 — notifiche: l'addebito che Karthik Pillai dichiara di aver pagato
+# Scena 07 — notifiche: l'addebito che Luigi Cirillo dichiara di aver pagato
 # (stato "dichiarato", preparato da `cura_demo_video`) è nei ritardi come "Da
 # confermare"; in montaggio ci cade sopra la notifica push simulata
 # (componente NotificaPush). Poi Immobile → Avvisi (chi riceve l'avviso: menu

@@ -1,6 +1,15 @@
 // Traduce il manifest (secondi) in blocchi del montaggio (fotogrammi).
 import clipsDisponibili from "./clips-disponibili.json";
-import { manifest, type Manifest, type Posizione, type Scena, type Zoom } from "./manifest";
+import {
+  manifest,
+  type LatoNotifica,
+  type Manifest,
+  type Notifica,
+  type Posizione,
+  type Scena,
+  type StileNotifica,
+  type Zoom,
+} from "./manifest";
 
 export const FPS = 30;
 export const LARGHEZZA = 1920;
@@ -18,9 +27,9 @@ export type DidascaliaFotogrammi = {
   readonly posizione: Posizione;
 };
 
-export type NotificaFotogrammi = {
-  readonly titolo: string;
-  readonly corpo: string;
+export type NotificaFotogrammi = Omit<Notifica, "da" | "a" | "stile" | "lato"> & {
+  readonly stile: StileNotifica;
+  readonly lato: LatoNotifica;
   readonly da: number;
   readonly durata: number;
 };
@@ -98,7 +107,12 @@ export const risolviScena = (scena: Scena, m: Manifest = manifest, fps = FPS): S
     .filter((d) => d.durata > 0);
 
   const notifiche = (scena.notifiche ?? [])
-    .map((n) => ({ titolo: n.titolo, corpo: n.corpo, ...intervallo(n.da, n.a) }))
+    .map(({ da, a, stile, lato, ...resto }) => ({
+      ...resto,
+      stile: stile ?? "telefono",
+      lato: lato ?? "destra",
+      ...intervallo(da, a),
+    }))
     .filter((n) => n.durata > 0);
 
   return {
