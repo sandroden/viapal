@@ -204,7 +204,7 @@ export const manifest: Manifest = {
   zoomPredefinito: { da: 1, a: 1.04, origine: "50% 40%" },
   musica: {
     file: "musica.mp3",
-    volume: 0.35,
+    volume: 0.25,
     dissolvenzaEntrata: 1.5,
     dissolvenzaUscita: 3,
   },

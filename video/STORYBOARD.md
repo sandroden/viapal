@@ -42,3 +42,20 @@ dipende dal bot che gira su una macchina privata.
 - Elementi da sviluppo e banner nascosti da `riprese/scena.js`.
 - Prima di girare: `cd backend && ENV=demo uv run python manage.py cura_demo_video`
   (idempotente), che fra l'altro prepara l'addebito "dichiarato" della scena 07.
+
+## Musica
+
+"Trumpet Jazz – Study Music" di alex-morgan (generata con AI, dichiarato dalla
+pagina), Pixabay Content License: uso commerciale, nessuna attribuzione, non
+ridistribuibile da sola — per questo `public/musica.mp3` non è versionata.
+Pagina: <https://pixabay.com/music/modern-jazz-trumpet-jazz-study-music-564260/>.
+Il brano dura 2'34", il video ~3'03": `musica.mp3` è il brano tagliato a 151 s
+e riattaccato a sé stesso con 3 s di dissolvenza incrociata:
+
+```bash
+ffmpeg -i trumpet.mp3 -i trumpet.mp3 -filter_complex \
+  "[0]atrim=0:151,asetpts=PTS-STARTPTS[a];[a][1]acrossfade=d=3:c1=tri:c2=tri" \
+  -c:a libmp3lame -b:a 192k public/musica.mp3
+```
+
+Volume nel manifest 0,25 (la tromba ha personalità, non deve rubare le didascalie).

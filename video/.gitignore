@@ -11,3 +11,6 @@ public/clips/
 
 # Generato da scripts/elenca-clip.mjs (npm run clips)
 src/clips-disponibili.json
+
+# Musica: licenza Pixabay, non si ridistribuisce da sola (vedi STORYBOARD.md)
+public/musica.mp3
