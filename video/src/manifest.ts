@@ -197,7 +197,7 @@ export const manifest: Manifest = {
   chiusura: {
     durata: 6,
     titolo: "Prova Viapal gratis.",
-    contatto: "viapal.e-den.it", // segnaposto, da confermare
+    contatto: "viapal.e-den.it",
   },
   durataSezione: 2,
   transizioneFotogrammi: 12,
