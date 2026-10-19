@@ -206,6 +206,15 @@
         @click="router.push(auth.homePath)"
       />
     </div>
+
+    <!-- Chi arriva qui senza conoscere l'app (link inoltrato) trova la
+         presentazione; il video non sta in questa pagina perché chi la
+         segue ha un compito preciso e spesso la legge sul telefono. -->
+    <p class="vp-inst__scopri" data-testid="installa-scopri">
+      Cos'è Viapal?
+      <router-link :to="{ name: 'scopri' }">Guarda il video di presentazione</router-link>
+      (3 minuti).
+    </p>
   </q-page>
 </template>
 
@@ -552,5 +561,14 @@ async function copiaLink() {
 .vp-inst__fine {
   margin: var(--vp-gap-6) 0 var(--vp-gap-5);
   text-align: center;
+}
+.vp-inst__scopri {
+  margin: var(--vp-gap-6) 0 var(--vp-gap-4);
+  text-align: center;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-ink-3);
+}
+.vp-inst__scopri a {
+  color: var(--vp-terra-deep);
 }
 </style>

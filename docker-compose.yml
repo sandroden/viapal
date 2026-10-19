@@ -4,6 +4,7 @@
 # al container `django`; il resto va a `quasar`. Anche `/g/` (galleria
 # pubblica) va a Django: serve l'index.html della SPA con i meta Open
 # Graph dell'annuncio, che i crawler social non saprebbero ricavare.
+# Lo stesso vale per `/scopri` (video di presentazione).
 #
 # Postgres gira sull'HOST (non in Docker): il container raggiunge l'host
 # via `host.docker.internal` grazie a `extra_hosts: host-gateway`.
@@ -44,7 +45,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=web"
-      - "traefik.http.routers.viapal-django.rule=Host(`${HOST:-viapal.e-den.it}`) && PathPrefix(`/admin`, `/static`, `/media`, `/media-private`, `/api`, `/accounts`, `/g/`)"
+      - "traefik.http.routers.viapal-django.rule=Host(`${HOST:-viapal.e-den.it}`) && PathPrefix(`/admin`, `/static`, `/media`, `/media-private`, `/api`, `/accounts`, `/g/`, `/scopri`)"
       - "traefik.http.routers.viapal-django.entrypoints=web-secured"
       - "traefik.http.routers.viapal-django.tls=true"
       - "traefik.http.routers.viapal-django.tls.certresolver=leresolver"

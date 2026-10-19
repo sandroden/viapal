@@ -18,7 +18,7 @@ resources:
 tags: [playbook, dev, setup]
 generated:
   by: process:okf-migrate
-  at: 2026-10-18T12:00:00Z
+  at: 2026-10-19T21:00:00Z
 ---
 
 # Prerequisiti
@@ -63,7 +63,7 @@ cd .. && just up
 - `VIAPAL_DB_NAME` sceglie un database (e quindi un test DB) distinto per
   pytest in parallelo.
 - Il dev server Quasar proxa `/api`, `/admin`, `/static`, `/media-private`,
-  `/media` e `/g/` verso Django.
+  `/media`, `/g/` e `/scopri` verso Django.
 
 # Utenti dev (creati da `seed_demo`, non dal migrate)
 

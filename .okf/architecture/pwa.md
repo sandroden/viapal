@@ -17,7 +17,7 @@ resources:
 tags: [architecture, pwa, service-worker, push]
 generated:
   by: process:okf-migrate
-  at: 2026-09-14T11:00:00Z
+  at: 2026-10-19T21:00:00Z
 ---
 
 # Overview
@@ -65,6 +65,12 @@ client con bundle pre-fix richiedono una pulizia SW manuale una tantum.
 Pagina pubblica `/installa` (`PublicLayout`, come `/g/` e `/d/`): il link si
 manda a chi non ha ancora fatto il primo accesso, quindi non può richiedere
 la sessione.
+
+In fondo alla pagina un rimando discreto a `/scopri` (video di
+presentazione, vedi [overview](overview.md#presentazione-scopri)) per chi
+riceve il link senza conoscere l'app. Il video **non** sta qui: chi segue
+`/installa` ha un compito preciso, spesso sul telefono, e 10 MB di
+presentazione commerciale davanti alle istruzioni lo intralcerebbero.
 
 # Installazione e notifiche sono due cose distinte
 

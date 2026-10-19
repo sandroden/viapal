@@ -3,10 +3,14 @@ type: Architecture
 title: Architecture overview
 description: Stack, monorepo, deploy e convenzioni del progetto Viapal.
 resource: https://github.com/sandroden/viapal
+resources:
+  - backend/core/scopri.py
+  - frontend/src/pages/ScopriViapal.vue
+  - backend/uwsgi.ini
 tags: [architecture, stack, deploy]
 generated:
   by: process:okf-migrate
-  at: 2026-07-08T00:00:00Z
+  at: 2026-10-19T21:00:00Z
 ---
 
 # Overview
@@ -54,6 +58,26 @@ inquilini. Serve due tipi di utente: **proprietari** (`/p/`) e **inquilini** (`/
   `apps/properties/test_media_private.py`. Migrazione file:
   `manage.py migra_media_private`.
 - Adempimenti GDPR e documenti da far firmare: `docs/privacy/PIANO-GDPR.md`.
+
+## Presentazione (/scopri)
+
+Pagina pubblica con il video demo (sorgente Remotion in `video/`), pensata
+per i proprietari che potrebbero provare Viapal; contatto `viapal.e-den.it`.
+Come `/g/`, passa da Django (`core/scopri.py`, label Traefik `/scopri`) solo
+per iniettare i meta Open Graph nell'index della SPA; i meta sono fissi.
+
+- I file **non sono nel repository**: stanno in `MEDIA_ROOT/scopri/`
+  (`viapal-demo.mp4` 720p leggero per la riproduzione, `viapal-demo-hd.mp4`
+  1080p da scaricare, `copertina.jpg` 1280x720, `anteprima.jpg` 1200x630
+  per i social) e in prod si caricano a mano in `data/media/scopri/`
+  rispettando i permessi del proxy S3 (sotto). Rifatto il video, si
+  ricopiano gli stessi nomi; se cambiano le misure va aggiornato `core/scopri.py`.
+- uwsgi serve `/media/` con `honour-range = true`: senza richieste Range
+  Safari non riproduce il video e altrove non si salta avanti. Il
+  `static()` di Django in dev le ignora (risponde 200 intero): Chrome
+  riproduce lo stesso, ma la prova su Safari va fatta in prod.
+- `/installa` rimanda a `/scopri` con una riga in fondo; il video non sta lì
+  (vedi [PWA](pwa.md)).
 
 ## Media di produzione visibili in dev (proxy S3)
 

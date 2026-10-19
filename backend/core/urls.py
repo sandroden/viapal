@@ -7,6 +7,7 @@ from django.views.generic import RedirectView
 from properties.og import galleria_og
 
 from core.media_private import media_private_view
+from core.scopri import scopri_og
 
 # Header admin con l'ambiente: in produzione resta pulito, altrove segnala
 # a chiare lettere dove si sta operando.
@@ -38,6 +39,9 @@ urlpatterns = [
     # tag server-side il link condiviso resta un URL nudo.
     path('g/<slug:slug>', galleria_og, name='galleria-og'),
     path('g/<slug:slug>/', galleria_og),
+    # Video di presentazione: stessa ragione della galleria (meta OG).
+    path('scopri', scopri_og, name='scopri-og'),
+    path('scopri/', scopri_og),
     # Media riservati: sempre via Django con controllo permessi (dev e prod).
     path('media-private/<path:path>', media_private_view, name='media-private'),
     path('', RedirectView.as_view(url='/admin/', permanent=False)),

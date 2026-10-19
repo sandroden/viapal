@@ -124,6 +124,11 @@ export default defineConfig((/* ctx */) => {
           // URL assoluti dei meta tag sono quelli che il visitatore usa.
           target: backendUrl,
           changeOrigin: false
+        },
+        // Stesso discorso per il video di presentazione.
+        '/scopri': {
+          target: backendUrl,
+          changeOrigin: false
         }
       }
     },

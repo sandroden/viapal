@@ -64,6 +64,21 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // Video di presentazione per i proprietari che potrebbero provare
+    // Viapal. Pubblica; in produzione passa da Django (core/scopri.py) per
+    // i meta Open Graph, poi è una normale pagina della SPA.
+    path: '/scopri',
+    component: () => import('layouts/PublicLayout.vue'),
+    meta: { public: true },
+    children: [
+      {
+        path: '',
+        name: 'scopri',
+        component: () => import('pages/ScopriViapal.vue'),
+      },
+    ],
+  },
+  {
     // Guida all'installazione della PWA e all'attivazione delle notifiche.
     // Pubblica di proposito: il link si manda a chi non ha ancora fatto il
     // primo accesso, e la pagina stessa porta al login quando serve.
