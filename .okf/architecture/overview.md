@@ -10,7 +10,7 @@ resources:
 tags: [architecture, stack, deploy]
 generated:
   by: process:okf-migrate
-  at: 2026-10-19T21:00:00Z
+  at: 2026-10-19T22:00:00Z
 ---
 
 # Overview
@@ -73,7 +73,10 @@ per iniettare i meta Open Graph nell'index della SPA; i meta sono fissi.
   rispettando i permessi del proxy S3 (sotto). Rifatto il video, si
   ricopiano gli stessi nomi; se cambiano le misure va aggiornato `core/scopri.py`.
 - uwsgi serve `/media/` con `honour-range = true`: senza richieste Range
-  Safari non riproduce il video e altrove non si salta avanti. Il
+  Safari non riproduce il video e altrove non si salta avanti. Non basta:
+  a una richiesta che copre tutto il file (`bytes=0-`, la prima di Chrome)
+  uwsgi risponde 200 senza `Accept-Ranges`, e Chrome rende il video non
+  navigabile (`seekable` 0–0). Perciò `route = ^/media/ addheader:Accept-Ranges: bytes`. Il
   `static()` di Django in dev le ignora (risponde 200 intero): Chrome
   riproduce lo stesso, ma la prova su Safari va fatta in prod.
 - `/installa` rimanda a `/scopri` con una riga in fondo; il video non sta lì
