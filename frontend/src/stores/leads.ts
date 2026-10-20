@@ -60,6 +60,9 @@ export interface RiepilogoLead {
   per_stato: Record<StatoLead, number>;
   gruppi: { id: string; nome: string }[];
   canali: { id: CanaleLead; nome: string; n: number }[];
+  /** Impronta dell'insieme dei lead (quanti + ultimo aggiornamento): la
+   *  pagina rilegge la lista solo quando cambia. */
+  versione: string;
 }
 
 /** Una riga delle statistiche. `contattati` e `risposto` contano le date

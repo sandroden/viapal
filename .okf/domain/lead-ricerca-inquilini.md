@@ -130,7 +130,8 @@ nomina e l'upsert non lo azzera.
   serve a evitare: due messaggi alla stessa persona.
 - `POST /leads/<id>/rilascia/` — solo chi l'ha preso (o superuser).
 - `GET /leads/riepilogo/` — conteggi per stato, `attivi`, gruppi e canali
-  presenti (con conteggio).
+  presenti (con conteggio), e `versione`: l'impronta dei lead dell'immobile
+  (quanti + ultimo `updated_at`) su cui la pagina decide se rileggere la lista.
 - `GET /leads/statistiche/` — per canale: `totale`, `contattati`, `risposto`,
   `attivi`, `persi`, `scartati`, `ultimo_at`; per `fb_gruppo` anche una riga
   per gruppo. Solo i canali con almeno un lead, per totale decrescente.
@@ -160,8 +161,22 @@ giro del bot né far perdere un contatto:
 - niente sezione `[api]` nella config del bot = push spento, comportamento di
   prima.
 
-# Avviso push (dal 2026-10-20)
+# Aggiornamento automatico e avviso push (dal 2026-10-20)
 
+Si lavora in due e il bot deposita a ogni giro, quindi la pagina aperta deve
+vedere le novità senza che nessuno la ricarichi. **Niente websocket, per
+scelta**: uwsgi gira in WSGI con due worker, e Channels vorrebbe un server
+ASGI, Redis e una rotta `/ws` nel proxy per una pagina che cambia qualche
+volta l'ora. Valutato anche SSE: ogni pagina aperta occuperebbe un worker.
+
+- **Polling sul riepilogo**: ogni 30 s la pagina chiede `riepilogo/` (leggero)
+  e rilegge la lista solo se `versione` è cambiata. Con la scheda nascosta non
+  interroga nulla; tornando visibile controlla subito. La versione registrata
+  è quella letta *prima* della lista: una modifica arrivata in mezzo fa
+  rileggere al giro dopo, invece di perdersi. Se il totale cresce compare
+  "N contatti nuovi". Il conteggio nella versione serve per le cancellazioni,
+  che non lasciano un `updated_at`; ogni upsert del bot la sposta anche a dati
+  invariati, ed è un costo accettato: una rilettura per giro.
 - **Push quando la pagina è chiusa** (`leads/notifiche.py`): il bulk-upsert,
   se ha **creato** lead, manda un solo Web Push per giro ai membri
   proprietario/gestore dell'immobile, escluso l'utente del bot. Gli

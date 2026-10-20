@@ -398,7 +398,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Dialog, Notify } from 'quasar';
 import {
   useLeadsStore,
@@ -517,15 +517,66 @@ async function copia(testo: string, messaggio: string) {
   }
 }
 
+// --- aggiornamento automatico ----------------------------------------------
+// Si lavora in due e il bot deposita a ogni giro: la pagina aperta deve
+// vedere gli uni e l'altro senza che nessuno ricarichi. Niente websocket
+// (uwsgi è WSGI, con due worker): a intervalli si chiede il riepilogo, che è
+// leggero e porta `versione`, e la lista si rilegge solo se è cambiata.
+// Con la scheda nascosta non si interroga nulla; tornando visibile si
+// controlla subito.
+const INTERVALLO_MS = 30_000;
+/** Versione del riepilogo letto *prima* della lista che si sta mostrando:
+ *  una modifica arrivata in mezzo sposta la versione, e al giro dopo la
+ *  lista si rilegge. Al contrario la si perderebbe fino alla modifica
+ *  successiva. */
+let versioneLista: string | null = null;
+let timer: ReturnType<typeof setInterval> | undefined;
+let inCorso = false;
+
 async function ricarica() {
-  await Promise.all([
-    store.fetch({ stato: filtroStato.value, canale: filtroCanale.value }),
-    store.fetchRiepilogo(),
-  ]);
+  await store.fetchRiepilogo();
+  versioneLista = store.riepilogo?.versione ?? null;
+  await store.fetch({ stato: filtroStato.value, canale: filtroCanale.value });
+}
+
+async function controllaNovita() {
+  if (document.hidden || inCorso || store.loading) return;
+  inCorso = true;
+  try {
+    const totalePrima = store.riepilogo?.totale ?? 0;
+    await store.fetchRiepilogo();
+    const versione = store.riepilogo?.versione;
+    // Riepilogo non arrivato (rete giù): si riprova al giro dopo.
+    if (!versione || versione === versioneLista) return;
+    versioneLista = versione;
+    await store.fetch({ stato: filtroStato.value, canale: filtroCanale.value });
+    const nuovi = (store.riepilogo?.totale ?? 0) - totalePrima;
+    if (nuovi > 0) {
+      Notify.create({
+        type: 'info',
+        icon: 'person_add',
+        message: nuovi === 1 ? 'Un contatto nuovo' : `${nuovi} contatti nuovi`,
+      });
+    }
+  } finally {
+    inCorso = false;
+  }
+}
+
+function quandoVisibile() {
+  if (!document.hidden) void controllaNovita();
 }
 
 watch([filtroStato, filtroCanale], ricarica);
-onMounted(ricarica);
+onMounted(() => {
+  void ricarica();
+  timer = setInterval(() => void controllaNovita(), INTERVALLO_MS);
+  document.addEventListener('visibilitychange', quandoVisibile);
+});
+onBeforeUnmount(() => {
+  clearInterval(timer);
+  document.removeEventListener('visibilitychange', quandoVisibile);
+});
 
 /** Il lead resta nell'elenco che si sta guardando? "Attivi" copre tre
  *  stati, "Tutti" tutti quanti: sparire va deciso sul filtro, non sul

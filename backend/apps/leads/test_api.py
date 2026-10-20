@@ -324,6 +324,30 @@ def test_riepilogo(api, immobile, sandro):
     assert r.data["gruppi"] == [{"id": "999", "nome": "Affitti Monza"}]
 
 
+def _versione(api, immobile):
+    return api.get(f"{URL}riepilogo/", HTTP_X_PROPERTY_ID=immobile.pk).data["versione"]
+
+
+def test_versione_cambia_a_ogni_modifica(api, immobile, sandro):
+    """La pagina rilegge la lista solo quando la versione cambia: deve
+    cambiare per un lead nuovo, una modifica e una cancellazione."""
+    api.force_authenticate(sandro)
+    vuota = _versione(api, immobile)
+    assert _versione(api, immobile) == vuota  # stabile se non cambia nulla
+
+    lead = _lead(immobile, post_id="a")
+    dopo_creazione = _versione(api, immobile)
+    assert dopo_creazione != vuota
+
+    api.patch(f"{URL}{lead.pk}/", {"note": "scritto"}, format="json",
+              HTTP_X_PROPERTY_ID=immobile.pk)
+    dopo_modifica = _versione(api, immobile)
+    assert dopo_modifica != dopo_creazione
+
+    lead.delete()
+    assert _versione(api, immobile) not in (dopo_modifica, dopo_creazione)
+
+
 # --- avviso push dei lead nuovi --------------------------------------------
 
 

@@ -162,9 +162,20 @@ class LeadViewSet(ModelViewSet):
 
     @action(detail=False)
     def riepilogo(self, request):
-        """Conteggi per stato e canali presenti — i numeri sui filtri."""
+        """Conteggi per stato e canali presenti — i numeri sui filtri.
+
+        ``versione`` è l'impronta dell'insieme dei lead dell'immobile (quanti
+        sono + l'ultimo ``updated_at``): la pagina la interroga a intervalli e
+        rilegge la lista solo quando cambia. Il conteggio copre le
+        cancellazioni, che non lasciano un ``updated_at``; ogni upsert del bot
+        la sposta anche a dati invariati, ed è un costo accettabile: un giro
+        ogni tanto, non a ogni intervallo.
+        """
         prop = get_request_property(request)
         qs = Lead.objects.filter(property=prop)
+        impronta = qs.aggregate(n=Count("id"), ultimo=Max("updated_at"))
+        ultimo = impronta["ultimo"]
+        versione = f"{impronta['n']}:{ultimo.isoformat() if ultimo else ''}"
         per_stato = {s: 0 for s, _ in Lead.Stato.choices}
         for riga in qs.values("stato").annotate(n=Count("id")):
             per_stato[riga["stato"]] = riga["n"]
@@ -186,6 +197,7 @@ class LeadViewSet(ModelViewSet):
                 "per_stato": per_stato,
                 "gruppi": [{"id": g, "nome": n} for g, n in gruppi],
                 "canali": canali,
+                "versione": versione,
             }
         )
 
