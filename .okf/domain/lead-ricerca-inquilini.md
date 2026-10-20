@@ -7,6 +7,7 @@ resources:
   - backend/apps/leads/models.py
   - backend/apps/leads/serializers.py
   - backend/apps/leads/views.py
+  - backend/apps/leads/notifiche.py
   - frontend/src/pages/ProprietarioLeads.vue
   - frontend/src/pages/ProprietarioLeadsStatistiche.vue
   - frontend/src/components/leads/LeadManualeDialog.vue
@@ -14,7 +15,7 @@ resources:
 tags: [feature, leads, campagna, bot, canali, gdpr]
 generated:
   by: process:okf-migrate
-  at: 2026-09-07T00:00:00Z
+  at: 2026-10-20T00:00:00Z
 ---
 
 # Overview
@@ -158,6 +159,18 @@ giro del bot né far perdere un contatto:
   rivedere il classificatore — e meno dati di terzi arrivano sul server, meglio è;
 - niente sezione `[api]` nella config del bot = push spento, comportamento di
   prima.
+
+# Avviso push (dal 2026-10-20)
+
+- **Push quando la pagina è chiusa** (`leads/notifiche.py`): il bulk-upsert,
+  se ha **creato** lead, manda un solo Web Push per giro ai membri
+  proprietario/gestore dell'immobile, escluso l'utente del bot. Gli
+  aggiornamenti di post già noti non avvisano. È best-effort, fuori dalla
+  transazione, e non fa mai fallire il deposito. Nel testo ci sono **solo i
+  numeri e il nome dell'immobile, mai nomi di persone**: ogni push lascia una
+  `Notification` nel registro, e `chiudi-campagna` cancella i lead ma non quel
+  registro. I lead manuali non avvisano: li inserisce una persona dalla pagina,
+  e l'altra li vede col polling.
 
 # Chiusura di campagna
 

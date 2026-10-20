@@ -324,6 +324,56 @@ def test_riepilogo(api, immobile, sandro):
     assert r.data["gruppi"] == [{"id": "999", "nome": "Affitti Monza"}]
 
 
+# --- avviso push dei lead nuovi --------------------------------------------
+
+
+@pytest.fixture
+def push_inviate(monkeypatch):
+    """Registra le push invece di mandarle."""
+    inviate = []
+
+    def finta(user, **kwargs):
+        inviate.append((user, kwargs))
+        return {"inviate": 1, "rimosse": 0, "errori": 0}
+
+    monkeypatch.setattr("leads.notifiche.invia_push", finta)
+    return inviate
+
+
+def test_upsert_avvisa_i_membri_tranne_il_bot(api, immobile, bot_user, sandro, bruna,
+                                              push_inviate):
+    _membro(immobile, "lead_ospite", PropertyMembership.Ruolo.SOLA_LETTURA)
+    api.force_authenticate(bot_user)
+    api.post(URL_UPSERT, {"leads": [_payload("a"), _payload("b")]}, format="json")
+    assert {u.username for u, _ in push_inviate} == {"lead_sandro", "lead_bruna"}
+    titolo = push_inviate[0][1]["titolo"]
+    assert titolo == "Cerca inquilini: 2 contatti nuovi"
+    # Nessun nome di chi cerca stanza: il registro delle notifiche
+    # sopravvive alla chiusura della campagna.
+    assert "Giulia" not in titolo + push_inviate[0][1]["corpo"]
+    assert push_inviate[0][1]["url"] == "/p/cerca-inquilini"
+
+
+def test_upsert_senza_lead_nuovi_non_avvisa(api, immobile, bot_user, sandro, push_inviate):
+    api.force_authenticate(bot_user)
+    api.post(URL_UPSERT, {"leads": [_payload()]}, format="json")
+    push_inviate.clear()
+    r = api.post(URL_UPSERT, {"leads": [_payload()]}, format="json")
+    assert r.data["aggiornati"] == 1
+    assert push_inviate == []
+
+
+def test_upsert_regge_se_il_push_esplode(api, immobile, bot_user, sandro, monkeypatch):
+    def esplode(*args, **kwargs):
+        raise RuntimeError("push service giù")
+
+    monkeypatch.setattr("leads.notifiche.invia_push", esplode)
+    api.force_authenticate(bot_user)
+    r = api.post(URL_UPSERT, {"leads": [_payload()]}, format="json")
+    assert r.status_code == 200
+    assert Lead.objects.count() == 1
+
+
 def test_chiudi_campagna_vuole_la_conferma(api, immobile, sandro):
     _lead(immobile)
     api.force_authenticate(sandro)

@@ -20,6 +20,7 @@ from billing.views import BillingPagination
 from properties.context import get_request_property
 
 from .models import Lead
+from .notifiche import notifica_nuovi_lead
 from .serializers import (
     CAMPI_BOT,
     LeadBotSerializer,
@@ -306,6 +307,9 @@ class LeadBulkUpsertView(APIView):
                 )
                 creati += nuovo
                 aggiornati += not nuovo
+        # Fuori dalla transazione: il push è una POST HTTPS per device, e il
+        # deposito è già salvo comunque vada.
+        notifica_nuovi_lead(prop, creati, escludi=request.user)
         return Response(
             {"creati": creati, "aggiornati": aggiornati, "scartati": scartati},
             status=status.HTTP_200_OK,
