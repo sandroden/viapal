@@ -31,6 +31,7 @@ from billing.serializers import (
     AnnualUtilityCostSerializer,
     PropertyUtilityServiceSerializer,
     UtilityBillSerializer,
+    UtilityChargePeriodDettaglioSerializer,
     UtilityChargePeriodSerializer,
 )
 
@@ -60,6 +61,13 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
         return super().get_queryset().filter(
             property=get_request_property(self.request)
         )
+
+    def get_serializer_class(self):
+        # Il wizard lavora su un periodo alla volta e gli servono i valori
+        # calcolati (tari_lorda); la lista resta senza, niente N+1.
+        if self.action == "list":
+            return UtilityChargePeriodSerializer
+        return UtilityChargePeriodDettaglioSerializer
 
     def _completezza(self, period) -> dict:
         """Quali voci sono attese per il periodo e quali sono presenti.
@@ -311,7 +319,7 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
         contabile finché non si rigenera il periodo. Il frontend lo dice
         esplicitamente dopo il salvataggio.
         """
-        from billing.calc.utility import _raccoglie_voci_annual
+        from billing.calc.utility import tari_lorda_periodo
 
         period = self.get_object()
 
@@ -332,9 +340,7 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
         # Tetto: la TARI lorda del mese. Non è un campo del periodo ma un
         # calcolo (importo annuale / 12 × mesi coperti), quindi il controllo
         # sta qui e non nel clean() del modello.
-        tari_lorda = _raccoglie_voci_annual(
-            period.property_id, period.periodo_da, period.periodo_a
-        ).get("tari", Decimal("0.00"))
+        tari_lorda = tari_lorda_periodo(period)
         if quota > tari_lorda:
             return Response(
                 {
@@ -352,7 +358,7 @@ class UtilityChargePeriodViewSet(ReadOnlyModelViewSet):
         return Response(
             {
                 "period": self.get_serializer(period).data,
-                "tari_lorda": tari_lorda.quantize(Decimal("0.01")),
+                "tari_lorda": tari_lorda,
             }
         )
 

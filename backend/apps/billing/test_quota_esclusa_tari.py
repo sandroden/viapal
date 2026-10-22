@@ -412,3 +412,74 @@ class TestVistaInquilinoTari:
         avviso = resp.json()["avvisi"][0]
         assert "esclusi 10,00 € a carico della proprietà" in avviso["corpo"]
         assert "Stanza sfitta" in avviso["corpo"]
+
+
+class TestTariLordaDelPeriodo:
+    """Il lordo della card TARI arriva dal periodo, non dall'anteprima.
+
+    Regressione (settembre 2026): la card lo ricostruiva come "TARI netta
+    dell'anteprima + quota salvata"; subito dopo il salvataggio l'anteprima
+    era ancora quella di prima e il lordo risultava gonfiato della quota
+    (44,58 + 20 = 64,58), senza anteprima invece crollava alla sola quota.
+    """
+
+    def test_lordo_non_cambia_con_la_quota(self, immobile):
+        _tari(immobile)  # 50 €/mese
+        c = _client(immobile)
+        period = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
+        ).json()["period"]
+        assert period["tari_lorda"] == "50.00"
+
+        resp = c.post(
+            f"/api/v1/utility-periods/{period['id']}/esclusione-tari/",
+            {"quota_esclusa": "20.00", "motivo": "Due stanze sfitte"},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        assert resp.json()["period"]["tari_lorda"] == "50.00"
+        assert resp.json()["period"]["quota_esclusa_tari"] == "20.00"
+
+        # Anche senza ripartizione sbloccata (niente bollette, niente
+        # anteprima) il periodo porta il lordo vero, non la sola quota.
+        di_nuovo = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
+        ).json()["period"]
+        assert di_nuovo["tari_lorda"] == "50.00"
+
+    def test_lordo_arrotondato_al_centesimo(self, immobile):
+        _tari(immobile, importo_annuale="535.00")  # 44,5833… €/mese
+        c = _client(immobile)
+        period = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 9}
+        ).json()["period"]
+        assert period["tari_lorda"] == "44.58"
+
+    def test_tari_dell_inquilino_lordo_zero_e_niente_esclusione(self, immobile):
+        from billing.models import PropertyUtilityService
+
+        PropertyUtilityService.objects.create(
+            property=immobile, voce="tari", gestione="inquilino"
+        )
+        _tari(immobile)
+        c = _client(immobile)
+        period = c.get(
+            "/api/v1/utility-periods/per-mese/", {"anno": 2025, "mese": 6}
+        ).json()["period"]
+        assert period["tari_lorda"] == "0.00"
+
+        resp = c.post(
+            f"/api/v1/utility-periods/{period['id']}/esclusione-tari/",
+            {"quota_esclusa": "10.00"},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_la_lista_non_calcola_il_lordo(self, immobile):
+        _tari(immobile)
+        c = _client(immobile)
+        _periodo(c)
+        resp = c.get("/api/v1/utility-periods/")
+        righe = resp.json()
+        righe = righe["results"] if isinstance(righe, dict) else righe
+        assert righe and "tari_lorda" not in righe[0]

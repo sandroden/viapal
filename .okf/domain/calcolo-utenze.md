@@ -12,7 +12,7 @@ resources:
 tags: [domain, utenze, utility, billing]
 generated:
   by: process:okf-migrate
-  at: 2026-09-05T00:00:00Z
+  at: 2026-10-22T00:00:00Z
 ---
 
 # Overview
@@ -115,6 +115,17 @@ pagina dell'inquilino come le esclusioni delle bollette. Su un periodo già
 `inviato` la modifica è ammessa ma gli addebiti creati non si aggiornano da
 soli (il dialog `EsclusioneTariDialog` e la notifica lo dicono). Nel wizard la
 card TARI è editabile con aiuto al calcolo (n posti sfitti su m → quota).
+
+Il **lordo** della card arriva dal periodo (`tari_lorda`, calcolato da
+`tari_lorda_periodo`, che fa anche da tetto all'endpoint), mai dall'anteprima.
+Il frontend lo ricostruiva come "TARI netta dell'anteprima + quota salvata",
+ma le due fonti non si aggiornano insieme. Subito dopo il salvataggio
+l'anteprima era ancora la vecchia: 44,58 + 20 = 64,58, cioè la quota "si
+aggiungeva" invece di togliersi. Senza anteprima, a ripartizione non ancora
+sbloccata, il lordo crollava alla sola quota. `tari_lorda` sta solo nel
+serializer di dettaglio (`UtilityChargePeriodDettaglioSerializer`): la lista
+dei periodi non lo calcola, per non fare N+1. La vista inquilino non ha il
+problema: lordo e quota vengono dallo stesso calcolo.
 
 # Pinning: "una volta inviato non si tocca più"
 

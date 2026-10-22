@@ -158,6 +158,23 @@ class UtilityChargePeriodSerializer(serializers.ModelSerializer):
         ]
 
 
+class UtilityChargePeriodDettaglioSerializer(UtilityChargePeriodSerializer):
+    """Il periodo come lo usa il wizard utenze, con i valori calcolati.
+
+    ``tari_lorda`` costa un paio di query: per questo non sta nella lista.
+    """
+
+    tari_lorda = serializers.SerializerMethodField()
+
+    class Meta(UtilityChargePeriodSerializer.Meta):
+        fields = UtilityChargePeriodSerializer.Meta.fields + ["tari_lorda"]
+
+    def get_tari_lorda(self, obj) -> str:
+        from billing.calc.utility import tari_lorda_periodo
+
+        return str(tari_lorda_periodo(obj))
+
+
 class SupplierSerializer(serializers.ModelSerializer):
     tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
     # La property è assegnata dal server (immobile attivo): mai in scrittura.

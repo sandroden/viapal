@@ -276,24 +276,18 @@ const periodoCorrenteView = computed<PeriodoView | null>(() => {
 });
 
 // ── TARI del periodo: lordo, quota a carico proprietà, netto ─────────
-// La quota esclusa arriva dall'anteprima (già applicata al calcolo); sul
-// periodo saltato — TARI interamente esclusa e nessuna bolletta — l'anteprima
-// non riporta esclusioni e si legge il valore salvato sul periodo.
-const esclusaTari = computed(() => {
-  const dallAnteprima = (store.anteprima?.esclusioni ?? []).find(
-    (e) => e.prodotto === 'tari',
-  );
-  if (dallAnteprima) return num(dallAnteprima.quota_esclusa);
-  return num(store.period?.quota_esclusa_tari);
-});
+// Tutto dal periodo, mai dall'anteprima: l'anteprima c'è solo a ripartizione
+// sbloccata e si ricalcola dopo ogni salvataggio, quindi "TARI netta
+// dell'anteprima + quota appena salvata" gonfiava il lordo della quota
+// stessa. Il clamp ripete quello del calcolo: la quota non supera il lordo.
+const tariLorda = computed(() => num(store.period?.tari_lorda));
+
+const esclusaTari = computed(() =>
+  Math.min(num(store.period?.quota_esclusa_tari), tariLorda.value),
+);
 
 const motivoEsclusioneTari = computed(
   () => store.period?.motivo_esclusione_tari ?? '',
-);
-
-// Lordo = quello che resta da ripartire + quello che si è già escluso.
-const tariLorda = computed(
-  () => num(store.anteprima?.totali_per_voce?.tari) + esclusaTari.value,
 );
 
 // Modificabile come le bollette, anche a periodo emesso: lì il salvataggio

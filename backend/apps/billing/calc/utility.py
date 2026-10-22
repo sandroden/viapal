@@ -341,6 +341,23 @@ def _raccoglie_voci_annual(property_id: int, periodo_da: date, periodo_a: date) 
     return totali
 
 
+def tari_lorda_periodo(period) -> Decimal:
+    """TARI del periodo **prima** della quota a carico proprietà.
+
+    È il tetto di ``quota_esclusa_tari`` e il lordo della card TARI nel
+    wizard. Sta sul periodo e non si ricava dall'anteprima: quella esiste
+    solo a ripartizione sbloccata e si ricalcola in differita, così
+    "anteprima + quota appena salvata" mostrava un lordo gonfiato della
+    quota stessa. Zero se la TARI non è gestita dalla proprietà.
+    """
+    if "tari" in _voci_annuali_escluse(period.property_id):
+        return Decimal("0.00")
+    tari = _raccoglie_voci_annual(
+        period.property_id, period.periodo_da, period.periodo_a
+    ).get("tari", Decimal("0.00"))
+    return _arrotonda(tari)
+
+
 def calcola_conguaglio_periodo(
     period_id: int,
     persist: bool = False,

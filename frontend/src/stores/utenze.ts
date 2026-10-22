@@ -21,6 +21,8 @@ export interface PeriodFE {
   /** Quota di TARI a carico della proprietà (es. posti sfitti), non ripartita. */
   quota_esclusa_tari?: string;
   motivo_esclusione_tari?: string;
+  /** TARI del periodo prima della quota esclusa (solo nel dettaglio, non nella lista). */
+  tari_lorda?: string;
 }
 
 export interface Completezza {
