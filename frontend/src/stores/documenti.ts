@@ -202,6 +202,8 @@ function creaDocumentiStore(
         pagine: { file: File; descrizione?: string }[];
         tipo: string;
         dataScadenza?: string | null;
+        /** Solo documenti firmati (atto di subentro, cessione di fabbricato). */
+        statoFirma?: string;
         visibileInquilini?: boolean;
         targetId?: number;
       }): Promise<{ ok: number; falliti: number }> {
@@ -258,6 +260,7 @@ function creaDocumentiStore(
         tipo: string;
         descrizione?: string;
         dataScadenza?: string | null;
+        statoFirma?: string;
         visibileInquilini?: boolean;
         contract?: number | null;
         targetId?: number;
@@ -268,6 +271,9 @@ function creaDocumentiStore(
           form.append('tipo', payload.tipo);
           if (payload.descrizione) form.append('descrizione', payload.descrizione);
           if (payload.dataScadenza) form.append('data_scadenza', payload.dataScadenza);
+          // Omesso, il backend sceglie il passo di chi carica (proprietà →
+          // firmata dalla proprietà, inquilino → definitiva).
+          if (payload.statoFirma) form.append('stato_firma', payload.statoFirma);
           if (payload.visibileInquilini !== undefined)
             form.append('visibile_inquilini', payload.visibileInquilini ? 'true' : 'false');
           if (payload.contract) form.append('contract', String(payload.contract));
@@ -294,6 +300,8 @@ function creaDocumentiStore(
           visibile_inquilini?: boolean;
           esponibile?: boolean;
           data_scadenza?: string | null;
+          /** Documenti inquilino firmati: corregge il passo del giro. */
+          stato_firma?: string;
         },
       ): Promise<boolean> {
         this.errore = null;

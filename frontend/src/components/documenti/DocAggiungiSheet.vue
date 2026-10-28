@@ -34,6 +34,23 @@
         class="vp-dadd__descr"
       />
 
+      <!-- I documenti firmati sono versioni: chi carica dice a che punto
+           del giro è questa copia. Il default è il passo che tocca a lui. -->
+      <template v-if="firmato">
+        <div class="vp-eyebrow vp-dadd__label">A che punto è la firma</div>
+        <div class="vp-dadd__tipi">
+          <button
+            v-for="s in STATI_FIRMA"
+            :key="s.value"
+            class="vp-dadd__tipo"
+            :class="{ 'vp-dadd__tipo--on': s.value === statoFirma }"
+            @click="statoFirma = s.value"
+          >
+            {{ s.label }}
+          </button>
+        </div>
+      </template>
+
       <div class="vp-eyebrow vp-dadd__label">
         {{ fronteRetro ? 'Fronte e retro' : 'Immagine o PDF' }}
       </div>
@@ -60,7 +77,9 @@
         </label>
       </div>
 
-      <div class="vp-dadd__scadenza">
+      <!-- Un atto firmato non scade: la scadenza vale per i documenti
+           d'identità e simili. -->
+      <div v-if="!firmato" class="vp-dadd__scadenza">
         <q-icon name="event" size="18px" class="vp-dadd__scadenza-ic" />
         <div class="vp-dadd__scadenza-txt">
           <div>Scadenza</div>
@@ -94,7 +113,8 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import type { DocumentiStore, TipoDocumentoOption } from 'stores/documenti';
-import { TIPI_FRONTE_RETRO } from 'src/utils/statoDocumento';
+import type { StatoFirma } from 'stores/fascicolo';
+import { STATI_FIRMA, TIPI_FIRMATI, TIPI_FRONTE_RETRO } from 'src/utils/statoDocumento';
 
 interface SlotFile {
   chiave: string;
@@ -139,6 +159,14 @@ const dataScadenza = ref('');
 const slots = ref<SlotFile[]>([]);
 
 const fronteRetro = computed(() => TIPI_FRONTE_RETRO.includes(tipo.value));
+const firmato = computed(() => TIPI_FIRMATI.includes(tipo.value));
+
+/** Chi carica senza pensarci sta facendo il proprio passo: la proprietà
+ *  (che passa ``targetId``, l'inquilino non lo fa mai) mette a disposizione
+ *  la sua firma, l'inquilino chiude il giro. Stessa regola del backend. */
+const statoFirmaPredefinito = (): StatoFirma =>
+  props.targetId ? 'firmata_proprieta' : 'definitiva';
+const statoFirma = ref<StatoFirma>(statoFirmaPredefinito());
 
 function creaSlots() {
   liberaAnteprime();
@@ -169,6 +197,7 @@ watch(
     tipo.value = props.tipoIniziale ?? props.tipi[0]?.value ?? 'altro';
     descrizioneLibera.value = '';
     dataScadenza.value = '';
+    statoFirma.value = statoFirmaPredefinito();
     creaSlots();
   },
   { immediate: true },
@@ -206,7 +235,9 @@ async function salva() {
   const { ok, falliti } = await props.store.caricaPagine({
     pagine,
     tipo: tipo.value,
-    dataScadenza: dataScadenza.value || null,
+    dataScadenza: firmato.value ? null : dataScadenza.value || null,
+    // Il backend rifiuta lo stato sui tipi che non si firmano.
+    ...(firmato.value ? { statoFirma: statoFirma.value } : {}),
     ...(props.targetId ? { targetId: props.targetId } : {}),
   });
   if (ok > 0) {

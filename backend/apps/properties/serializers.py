@@ -364,6 +364,9 @@ class TenantSelfUpdateSerializer(serializers.ModelSerializer):
 
 class TenantDocumentSerializer(serializers.ModelSerializer):
     tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
+    stato_firma_display = serializers.CharField(
+        source="get_stato_firma_display", read_only=True
+    )
     tenant_nominativo = serializers.CharField(source="tenant.nominativo", read_only=True)
     scaduto = serializers.BooleanField(read_only=True)
 
@@ -379,12 +382,26 @@ class TenantDocumentSerializer(serializers.ModelSerializer):
             "descrizione",
             "data_scadenza",
             "scaduto",
+            "stato_firma",
+            "stato_firma_display",
+            "generato",
             "created_at",
         ]
+        read_only_fields = ["generato"]
         # Il tenant è imposto dalla view (per l'inquilino il proprio, per il
         # proprietario quello indicato): mai derivabile dal client per gli
         # inquilini.
         extra_kwargs = {"tenant": {"required": False}}
+
+    def validate(self, attrs):
+        tipo = attrs.get("tipo", getattr(self.instance, "tipo", None))
+        stato = attrs.get("stato_firma", getattr(self.instance, "stato_firma", ""))
+        if stato and tipo not in TenantDocument.TIPI_FIRMATI:
+            raise serializers.ValidationError(
+                {"stato_firma": "Lo stato della firma vale solo per i documenti "
+                 "che si firmano a più mani."}
+            )
+        return attrs
 
 
 class PropertyDocumentSerializer(serializers.ModelSerializer):

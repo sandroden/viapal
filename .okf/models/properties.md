@@ -12,7 +12,7 @@ resources:
 tags: [models, properties]
 generated:
   by: process:okf-migrate
-  at: 2026-09-13T00:00:00Z
+  at: 2026-10-28T00:00:00Z
 ---
 
 # Overview
@@ -41,7 +41,7 @@ residenza).
 | `OwnershipShare` | `property`, `owner`, `valid_from`/`valid_to`, `quota` | quota di proprietà temporale; vincolo DB anti-duplicato + lock su `POST /quote` |
 | `OwnerBankAccount` | `owner`, `banca`, `iban`, `intestatario`, `attivo`, `ordinamento`, `properties` (M2M) | conto proprietario; l'anagrafica è unica e globale, `properties` dice **dove** è in uso — vedi [Conti bancari per immobile](/domain/conti-per-immobile.md) |
 | `TenantProfile` | `user` (1:1), `property` (FK), `nominativo`, `codice_fiscale`, `telefono`, `email_alt`, `giorno_pagamento_affitto`, `frequenza_conguagli`, `ciclo_fatturazione`, `note_pagamento`, `deposito_versato`, `data_versamento_deposito`, `deposito_da_restituire`, `data_restituzione_prevista`, + `AnagraficaPersonaMixin` e `documento_tipo/numero/autorita/data_rilascio` | inquilino; `TenantProfileQuerySet` porta l'unico predicato "attivo ora" (esclude le rinunce) |
-| `TenantDocument` | `tenant`, `tipo`, `file`, `descrizione`, `data_scadenza`, `generato`, `caricato_da` | `tipo` ∈ `carta_identita`, `codice_fiscale`, `passaporto`, `permesso_soggiorno`, `contratto_lavoro`, `ricevuta_registrazione` (ricevuta telematica dell'Agenzia, vale per registrazione e subentro), `atto_subentro_locazione`, `cessione_fabbricato` (i due generati), `altro`; nessuno è obbligatorio. `generato=True` = prodotto dall'app: solo questi vengono sostituiti rigenerando |
+| `TenantDocument` | `tenant`, `tipo`, `file`, `descrizione`, `data_scadenza`, `generato`, `caricato_da`, `stato_firma` | `tipo` ∈ `carta_identita`, `codice_fiscale`, `passaporto`, `permesso_soggiorno`, `contratto_lavoro`, `ricevuta_registrazione` (ricevuta telematica dell'Agenzia, vale per registrazione e subentro), `atto_subentro_locazione`, `cessione_fabbricato` (i due generati), `altro`; nessuno è obbligatorio. `generato=True` = prodotto dall'app: solo questi vengono sostituiti rigenerando. `stato_firma` (`bozza`/`firmata_proprieta`/`definitiva`, solo per `TIPI_FIRMATI`): i file di quei tipi sono versioni, non pagine |
 | `PropertyDocument` | `property`, `contract`, `tipo`, `file`, `descrizione`, `data_scadenza`, `visibile_inquilini`, `copia_di` (self-FK), `esponibile`, `caricato_da` | `tipo`: `contratto`/`side_letter`/`registrazione_contratto` (carte **di un contratto**: `contract` obbligatorio), `regolamento_condominiale`/`regole_convivenza`/`altro` (carte della casa), `fac_simile` (generato senza dati personali). Lettura inquilini dei soli `visibile_inquilini=True` ("Documenti della casa" in /i/documenti), esclusi i rinunciatari. `copia_di`/`esponibile` = copie oscurate per i [link di lettura](/domain/link-lettura.md) |
 | `DocumentTemplate` | `property`, `codice` (univoco per immobile), `nome`, `corpo_html`, `note` | modello HTML dei documenti generati; `carica_modelli_documenti --property <id>` |
 | `DocumentShare` | `property`, `token`, `destinatario`, `tenant` (FK opz.), `introduzione`(+`_html`), `attivo`, `visite`, `ultima_visita`, `creato_da` | pacchetto a token `/d/<token>` (`share.py`) |

@@ -1,7 +1,7 @@
 ---
 type: Domain Logic
 title: Fascicolo documenti
-description: "Elenco dei documenti dell'inquilino con stati derivati (valido/in scadenza/scaduto), servito a inquilino e proprietario dallo stesso servizio. Nessun documento è obbligatorio e nessuna voce è vuota: compare solo ciò che esiste. Include chi vede le carte della casa, che dal 2026-08-06 dipendono dal contratto."
+description: "Elenco dei documenti dell'inquilino con stati derivati (valido/in scadenza/scaduto), servito a inquilino e proprietario dallo stesso servizio. Nessun documento è obbligatorio e nessuna voce è vuota: compare solo ciò che esiste. Include chi vede le carte della casa, che dal 2026-08-06 dipendono dal contratto, e le versioni firmate di atto di subentro e cessione (2026-10-28)."
 resource: backend/apps/properties/fascicolo.py
 resources:
   - backend/apps/properties/fascicolo.py
@@ -11,7 +11,7 @@ resources:
 tags: [domain, documenti, inquilini, frontend]
 generated:
   by: process:okf-migrate
-  at: 2026-08-06T00:00:00Z
+  at: 2026-10-28T00:00:00Z
 ---
 
 # Overview
@@ -89,8 +89,9 @@ non correlati non devono fondersi in una voce sola.
 
 Payload: `voci[]`, `altri[]`, `riepilogo` (conteggi per stato +
 `da_sistemare` = scaduti + in scadenza). Ogni voce porta `pagine[]` con `file`
-(URL `/media-private/…`), `etichetta`, `is_pdf`, e `generabile` (codice del
-generatore o `null`, per il "Rigenera").
+(URL `/media-private/…`), `etichetta`, `is_pdf`, `stato_firma`, `generato`,
+`modificabile`, e a livello voce `generabile` (codice del generatore o
+`null`, per il "Rigenera"), `versioni` e `stato_firma` della principale.
 
 `GET /api/v1/tenant-documents/generabili/?tenant=<id>` (`IsPropertyMember`)
 elenca invece **cosa si può produrre**: `codice`, `titolo`, `tipo`,
@@ -99,6 +100,44 @@ fascicolo non mostra più voci vuote, senza questo elenco non ci sarebbe
 modo di scoprire quali documenti l'applicazione sa fare. È una GET — non
 produce nulla — così anche `sola_lettura` vede l'elenco, mentre generare
 resta una POST vietata a quel ruolo.
+
+# Versioni firmate (2026-10-28)
+
+Per l'atto di subentro e la cessione di fabbricato
+(`TenantDocument.TIPI_FIRMATI`) più file dello stesso tipo **non sono
+pagine ma versioni**: il giro reale è *genera → la proprietà firma e mette a
+disposizione → l'inquilino firma e ricarica*. Prima del 2026-10-28 la copia
+firmata finiva come "pagina 2" della bozza, con miniatura e data della bozza:
+Sandro l'ha cercata e non l'ha trovata (caso Noemi).
+
+`TenantDocument.stato_firma` ∈ `bozza` / `firmata_proprieta` / `definitiva`
+(vuoto = non indicato; vale solo per i tipi firmati, il serializer rifiuta
+gli altri). Il generato nasce `bozza`; un upload senza stato prende il passo
+di chi carica: la gestione `firmata_proprieta`, l'inquilino `definitiva`. La
+migrazione `0044` marca `bozza` i generati esistenti e lascia vuote le copie
+caricate a mano: chi le abbia firmate non lo sappiamo.
+
+**Nessuna sostituzione automatica**: la copia firmata dalla proprietà non è
+l'ultima finché l'inquilino non ha firmato, quindi le versioni convivono e si
+eliminano a mano. La voce ha `versioni: true`, le `pagine` ordinate dalla
+più avanzata (definitiva > firmata dalla proprietà > senza stato > bozza,
+poi la più recente) e `caricato_il`/`stato_firma` della principale.
+
+Nella UI (`FascicoloVoce`, badge `DocBadgeFirma`) la card si espande al clic e
+mostra le versioni come sotto-righe, ciascuna con stato, data, scarica e
+cestino (solo se `modificabile`). Su desktop il primo clic apre anche la
+principale nel visore laterale; su mobile e in `/i/documenti` il clic
+espande soltanto, e si apre a schermo intero toccando una versione —
+altrimenti il dialog coprirebbe l'elenco appena aperto. Il visore mostra lo
+stato della versione corrente e, alla gestione non in sola lettura, tre chip
+"Firma" per correggerlo (PATCH). Nel caricamento, per i tipi firmati, il
+foglio chiede lo stato (default secondo chi carica) e nasconde la scadenza.
+
+**Chi tocca cosa**: la gestione modifica ed elimina tutto; l'inquilino sui
+documenti personali resta padrone di tutto, ma fra le versioni firmate solo
+di quelle che ha caricato lui (`caricato_da`). Regola in
+`fascicolo.modificabile_da`, usata sia dal viewset (403 su PATCH/DELETE) sia
+dal fascicolo (`modificabile` per ogni file, che decide il cestino).
 
 # Visualizzazione
 

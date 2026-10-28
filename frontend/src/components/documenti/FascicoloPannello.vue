@@ -45,10 +45,15 @@
           :key="voce.tipo"
           :voce="voce"
           :selezionata="!compatto && voce.tipo === tipoSelezionato"
+          :pagina-attiva-id="paginaCorrente?.id ?? null"
+          :apri-subito="!compatto"
+          :solo-lettura="soloLettura"
           badge-con-data
           :larghezza="38"
           :altezza="48"
           @apri="seleziona"
+          @apri-versione="selezionaVersione"
+          @elimina="elimina"
         >
           <template #azioni>
             <a
@@ -97,14 +102,30 @@
             <div class="vp-fasc__vnome">{{ selezionata.titolo ?? selezionata.tipo_display }}</div>
             <div class="vp-fasc__vmeta">{{ metaSelezionata }}</div>
           </div>
-          <DocBadgeStato :stato="selezionata.stato" />
+          <!-- Per le versioni il badge è la firma di quella aperta; la
+               scadenza si aggiunge solo se c'è qualcosa da dire. -->
+          <div class="vp-fasc__vbadge">
+            <DocBadgeFirma
+              v-if="selezionata.versioni && paginaCorrente"
+              :stato="paginaCorrente.stato_firma"
+            />
+            <DocBadgeStato
+              v-if="!selezionata.versioni || selezionata.stato !== 'ok'"
+              :stato="selezionata.stato"
+            />
+          </div>
         </header>
 
         <div class="vp-fasc__vcorpo">
           <DocPagina v-if="paginaCorrente" :key="paginaCorrente.id" :pagina="paginaCorrente" />
         </div>
 
-        <div v-if="selezionata.pagine.length > 1" class="vp-fasc__vpagine">
+        <!-- Schede solo per le pagine (fronte/retro): le versioni si scelgono
+             dalla voce espansa a sinistra. -->
+        <div
+          v-if="!selezionata.versioni && selezionata.pagine.length > 1"
+          class="vp-fasc__vpagine"
+        >
           <button
             v-for="(p, i) in selezionata.pagine"
             :key="p.id"
@@ -113,6 +134,28 @@
             @click="indicePagina = i"
           >
             {{ p.etichetta }}
+          </button>
+        </div>
+
+        <!-- Correzione dello stato della firma: il default al caricamento
+             indovina il passo, ma una copia può arrivare per altre strade. -->
+        <div
+          v-if="selezionata.versioni && paginaCorrente && puoCorreggereFirma"
+          class="vp-fasc__vpagine vp-fasc__vfirma"
+        >
+          <span class="vp-fasc__vfirma-lab">Firma</span>
+          <button
+            v-for="s in STATI_FIRMA"
+            :key="s.value"
+            class="vp-fasc__vtab"
+            :class="{ 'vp-fasc__vtab--on': s.value === paginaCorrente.stato_firma }"
+            :aria-pressed="s.value === paginaCorrente.stato_firma"
+            @click="
+              s.value !== paginaCorrente.stato_firma &&
+                cambiaStatoFirma(paginaCorrente.id, s.value)
+            "
+          >
+            {{ s.label }}
           </button>
         </div>
 
@@ -130,7 +173,7 @@
             Scarica
           </a>
           <button
-            v-if="!soloLettura"
+            v-if="!soloLettura && paginaCorrente.modificabile"
             class="vp-btn vp-btn--ghost vp-fasc__vcestino"
             aria-label="Elimina"
             @click="confermaElimina(paginaCorrente)"
@@ -152,9 +195,12 @@
     <DocVisoreDialog
       v-model="visoreAperto"
       :voce="selezionata"
+      :pagina-id="paginaCorrente?.id ?? null"
       :solo-lettura="soloLettura"
+      :correggi-firma="puoCorreggereFirma"
       @sostituisci="aggiungi"
       @elimina="elimina"
+      @stato-firma="cambiaStatoFirma"
     />
 
     <DocAggiungiSheet
@@ -189,13 +235,20 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import FascicoloVoce from './FascicoloVoce.vue';
 import DocBadgeStato from './DocBadgeStato.vue';
+import DocBadgeFirma from './DocBadgeFirma.vue';
 import DocPagina from './DocPagina.vue';
 import DocVisoreDialog from './DocVisoreDialog.vue';
 import DocAggiungiSheet from './DocAggiungiSheet.vue';
 import GeneraDocumentiSheet from './GeneraDocumentiSheet.vue';
 import GeneraDocumentoDialog from './GeneraDocumentoDialog.vue';
 import { useDocumentiStore, TIPI_DOCUMENTO_INQUILINO } from 'stores/documenti';
-import { useFascicoloStore, type VoceFascicolo } from 'stores/fascicolo';
+import {
+  useFascicoloStore,
+  type PaginaDocumento,
+  type StatoFirma,
+  type VoceFascicolo,
+} from 'stores/fascicolo';
+import { STATI_FIRMA, confermaEliminaFile } from 'src/utils/statoDocumento';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
 const props = defineProps<{
@@ -244,10 +297,23 @@ const selezionata = computed<VoceFascicolo | null>(() => {
 
 const paginaCorrente = computed(() => selezionata.value?.pagine[indicePagina.value] ?? null);
 
+/** La proprietà corregge lo stato della firma; il ruolo in sola lettura no. */
+const puoCorreggereFirma = computed(
+  () => !props.soloLettura && !!paginaCorrente.value?.modificabile,
+);
+
 const metaSelezionata = computed(() => {
   const voce = selezionata.value;
   if (!voce) return '';
   const parti: string[] = [];
+  // Per le versioni: la data di quella aperta (lo stato è nel badge).
+  const pagina = paginaCorrente.value;
+  if (voce.versioni && pagina) {
+    const verbo = pagina.generato ? 'generata' : 'caricata';
+    parti.push(`${verbo} il ${formattaData(pagina.created_at)}`);
+    if (voce.pagine.length > 1) parti.push(`${voce.pagine.length} versioni`);
+    return parti.join(' · ');
+  }
   if (voce.caricato_il) parti.push(`caricato il ${formattaData(voce.caricato_il)}`);
   if (voce.data_scadenza) parti.push(`scadenza ${formattaData(voce.data_scadenza)}`);
   return parti.join(' · ');
@@ -282,6 +348,28 @@ function seleziona(voce: VoceFascicolo) {
   if (compatto.value) visoreAperto.value = true;
 }
 
+/** Una versione scelta dalla voce espansa: si apre lei, non la principale. */
+function selezionaVersione(voce: VoceFascicolo, pagina: PaginaDocumento) {
+  tipoSelezionato.value = voce.tipo;
+  paginaSelezionataId.value = voce.pagine[0]?.id ?? null;
+  indicePagina.value = Math.max(
+    voce.pagine.findIndex((p) => p.id === pagina.id),
+    0,
+  );
+  if (compatto.value) visoreAperto.value = true;
+}
+
+async function cambiaStatoFirma(id: number, stato: StatoFirma) {
+  const ok = await store.aggiorna(id, { stato_firma: stato });
+  if (!ok) {
+    $q.notify({ type: 'negative', message: store.errore ?? 'Errore aggiornamento.' });
+    return;
+  }
+  // Lo stato decide l'ordine delle versioni: si ricarica restando su quella
+  // appena corretta, ovunque sia finita.
+  await ricarica(id);
+}
+
 function ingrandisci() {
   visoreAperto.value = true;
 }
@@ -299,20 +387,10 @@ function apriGenerazione(codice: string, titolo: string) {
   dialogGenerazione.value = true;
 }
 
-function confermaElimina(pagina: { id: number; etichetta: string }) {
+function confermaElimina(pagina: PaginaDocumento) {
   const voce = selezionata.value;
-  const cosa =
-    voce && voce.pagine.length > 1
-      ? `la pagina "${pagina.etichetta}"`
-      : `"${voce?.tipo_display}"`;
-  $q.dialog({
-    title: 'Elimina documento',
-    message: `Eliminare ${cosa}? L'operazione non è reversibile.`,
-    cancel: { label: 'Annulla', flat: true, noCaps: true },
-    ok: { label: 'Elimina', color: 'negative', unelevated: true, noCaps: true },
-  }).onOk(() => {
-    void elimina(pagina.id);
-  });
+  if (!voce) return;
+  confermaEliminaFile($q, voce, pagina, () => void elimina(pagina.id));
 }
 
 async function elimina(id: number) {
@@ -328,11 +406,14 @@ async function elimina(id: number) {
   }
 }
 
-async function ricarica() {
+/** Ricarica il fascicolo; con ``restaSu`` il visore resta su quel file
+ *  (una versione appena corretta può aver cambiato posto). */
+async function ricarica(restaSu?: number) {
   await fascicoloStore.fetch(props.tenantId);
-  indicePagina.value = 0;
   if (!selezionata.value) preseleziona();
   paginaSelezionataId.value = selezionata.value?.pagine[0]?.id ?? null;
+  const i = restaSu ? (selezionata.value?.pagine.findIndex((p) => p.id === restaSu) ?? -1) : -1;
+  indicePagina.value = Math.max(i, 0);
 }
 
 /** Apre da subito il documento che chiede attenzione: il visore vuoto non
@@ -370,6 +451,11 @@ watch(
   .vp-fasc {
     grid-template-columns: 1fr;
   }
+}
+.vp-fasc__elenco {
+  /* Una colonna di griglia non scende sotto il suo contenuto senza questo:
+     una riga larga farebbe scorrere di lato tutto il pannello. */
+  min-width: 0;
 }
 .vp-fasc__banner-ic {
   flex: none;
@@ -500,6 +586,25 @@ watch(
   border-color: var(--vp-terra);
   background: var(--vp-cream);
   color: var(--vp-terra-deep);
+}
+.vp-fasc__vfirma .vp-fasc__vtab--on {
+  font-weight: 500;
+  cursor: default;
+}
+.vp-fasc__vbadge {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--vp-gap-1);
+}
+.vp-fasc__vfirma {
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 0 var(--vp-gap-3) var(--vp-gap-3);
+}
+.vp-fasc__vfirma-lab {
+  font-size: 12.5px;
+  color: var(--vp-ink-3);
 }
 .vp-fasc__vazioni {
   display: flex;

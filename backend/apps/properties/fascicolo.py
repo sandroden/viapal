@@ -29,6 +29,12 @@ inquilino. Generare è quindi un'**azione che si invoca** (l'elenco dei
 documenti producibili sta in ``documenti.GENERATORI``, servito
 dall'endpoint ``generabili/``), non un posto vuoto che chiede di essere
 riempito.
+
+**Versioni, non pagine** (2026-10-28): per i documenti che si firmano a più
+mani (``TenantDocument.TIPI_FIRMATI``) i file dello stesso tipo sono le
+tappe di un giro — bozza generata, copia firmata dalla proprietà, copia
+definitiva firmata dall'inquilino. La voce le espone come ``versioni``, la
+più avanzata per prima: è quella che si apre e si scarica.
 """
 from dataclasses import dataclass
 
@@ -97,6 +103,37 @@ STATI_DISPLAY = {
 #: Ordine di gravità: lo stato di una voce è il peggiore delle sue pagine.
 _GRAVITA = {"ok": 0, "scadenza": 1, "scaduto": 2}
 
+StatoFirma = TenantDocument.StatoFirma
+
+#: Avanzamento della firma: la versione principale è la più avanzata. Una
+#: copia caricata a mano senza stato è comunque oltre la bozza generata.
+_AVANZAMENTO = {
+    StatoFirma.BOZZA: 0,
+    "": 1,
+    StatoFirma.FIRMATA_PROPRIETA: 2,
+    StatoFirma.DEFINITIVA: 3,
+}
+
+
+def _gestione(utente):
+    return bool(
+        utente.is_superuser or utente.property_memberships.exists()
+    )
+
+
+def modificabile_da(doc, utente):
+    """Se ``utente`` può modificare o eliminare il documento.
+
+    La gestione sì (il ruolo in sola lettura lo filtra l'interfaccia). Lo
+    stesso l'inquilino sui propri documenti, tranne le versioni firmate che
+    ha caricato qualcun altro: la copia della proprietà non è sua.
+    """
+    if utente is None or _gestione(utente):
+        return True
+    if doc.tipo not in TenantDocument.TIPI_FIRMATI:
+        return True
+    return doc.caricato_da_id == utente.pk
+
 
 def _estensione(doc):
     nome = doc.file.name or ""
@@ -115,9 +152,13 @@ def _stato_documento(doc, oggi):
     return "ok"
 
 
-def _pagina(doc, indice, oggi):
+def _pagina(doc, indice, oggi, utente=None):
     """Un file del fascicolo, come lo consuma il visore."""
     ext = _estensione(doc)
+    if doc.tipo in TenantDocument.TIPI_FIRMATI:
+        etichetta = doc.get_stato_firma_display() or "senza stato"
+    else:
+        etichetta = doc.descrizione or f"pagina {indice}"
     return {
         "id": doc.pk,
         "file": doc.file.url,
@@ -125,16 +166,29 @@ def _pagina(doc, indice, oggi):
         "estensione": ext,
         "is_pdf": ext == "pdf",
         "descrizione": doc.descrizione,
-        "etichetta": doc.descrizione or f"pagina {indice}",
+        "etichetta": etichetta,
         "data_scadenza": doc.data_scadenza,
         "stato": _stato_documento(doc, oggi),
+        "stato_firma": doc.stato_firma,
+        "stato_firma_display": doc.get_stato_firma_display(),
+        "generato": doc.generato,
+        "modificabile": modificabile_da(doc, utente),
         "created_at": doc.created_at,
     }
 
 
-def _voce(definizione, documenti, oggi):
+def _voce(definizione, documenti, oggi, utente=None):
     """Voce della checklist per un tipo, con le sue pagine (mai vuota)."""
-    pagine = [_pagina(d, i + 1, oggi) for i, d in enumerate(documenti)]
+    versioni = definizione.tipo in TenantDocument.TIPI_FIRMATI
+    if versioni:
+        # La più avanzata per prima, a parità la più recente: è quella che
+        # la riga mostra, apre e scarica.
+        documenti = sorted(
+            documenti,
+            key=lambda d: (_AVANZAMENTO[d.stato_firma], d.created_at, d.pk),
+            reverse=True,
+        )
+    pagine = [_pagina(d, i + 1, oggi, utente) for i, d in enumerate(documenti)]
     stato = max((p["stato"] for p in pagine), key=lambda s: _GRAVITA[s])
     scadenze = [d.data_scadenza for d in documenti if d.data_scadenza]
     data_scadenza = min(scadenze) if scadenze else None
@@ -147,16 +201,24 @@ def _voce(definizione, documenti, oggi):
         "stato_display": STATI_DISPLAY[stato],
         "data_scadenza": data_scadenza,
         "giorni_alla_scadenza": (data_scadenza - oggi).days if data_scadenza else None,
+        # Per le versioni conta la data della principale, non della bozza.
         "caricato_il": timezone.localtime(
-            min(d.created_at for d in documenti)
+            documenti[0].created_at
+            if versioni
+            else min(d.created_at for d in documenti)
         ).date(),
+        "versioni": versioni,
+        "stato_firma": documenti[0].stato_firma if versioni else "",
+        "stato_firma_display": (
+            documenti[0].get_stato_firma_display() if versioni else ""
+        ),
         "pagine": pagine,
     }
 
 
-def _altro(doc, oggi):
+def _altro(doc, oggi, utente=None):
     """Documento fuori checklist: una voce per file, senza stato di completezza."""
-    pagina = _pagina(doc, 1, oggi)
+    pagina = _pagina(doc, 1, oggi, utente)
     return {
         "tipo": doc.tipo,
         "tipo_display": doc.get_tipo_display(),
@@ -170,15 +232,19 @@ def _altro(doc, oggi):
         ),
         "caricato_il": timezone.localtime(doc.created_at).date(),
         "titolo": doc.descrizione or doc.get_tipo_display(),
+        "versioni": False,
+        "stato_firma": "",
+        "stato_firma_display": "",
         "pagine": [pagina],
     }
 
 
-def costruisci_fascicolo(tenant, documenti=None, oggi=None):
+def costruisci_fascicolo(tenant, documenti=None, oggi=None, utente=None):
     """Fascicolo di un inquilino: checklist per tipo + riepilogo.
 
     ``documenti`` permette di passare un queryset già filtrato/prefetchato
     (evita una query per inquilino quando si costruiscono più fascicoli).
+    ``utente`` è chi guarda: decide il ``modificabile`` di ogni file.
     """
     # Ora locale, non del server: un documento caricato alle 00:30 a Roma è
     # delle 22:30 del giorno prima in UTC, e mostrerebbe la data sbagliata.
@@ -201,9 +267,9 @@ def costruisci_fascicolo(tenant, documenti=None, oggi=None):
         # generazione è un'azione a parte, non un vuoto da riempire.
         if not docs:
             continue
-        voci.append(_voce(definizione, docs, oggi))
+        voci.append(_voce(definizione, docs, oggi, utente))
 
-    altri = [_altro(d, oggi) for d in liberi]
+    altri = [_altro(d, oggi, utente) for d in liberi]
 
     conteggi = {stato: 0 for stato in STATI_DISPLAY}
     for voce in voci:

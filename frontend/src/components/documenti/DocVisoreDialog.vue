@@ -8,6 +8,7 @@
           <div class="vp-dvis__nome">{{ voce.titolo ?? voce.tipo_display }}</div>
           <div class="vp-dvis__meta">{{ meta }}</div>
         </div>
+        <DocBadgeFirma v-if="voce.versioni && pagina" :stato="pagina.stato_firma" />
         <DocBadgeStato v-if="voce.stato !== 'ok'" :stato="voce.stato" />
       </header>
 
@@ -16,8 +17,10 @@
         <DocPagina v-if="pagina" :key="pagina.id" :pagina="pagina" />
       </div>
 
-      <!-- Fronte e retro: due pagine dello stesso documento, non due file -->
-      <div v-if="voce.pagine.length > 1" class="vp-dvis__pagine">
+      <!-- Fronte e retro: due pagine dello stesso documento, non due file.
+           Le versioni dei documenti firmati no: si scelgono dalla voce
+           espansa nell'elenco, qui si guarda quella aperta. -->
+      <div v-if="!voce.versioni && voce.pagine.length > 1" class="vp-dvis__pagine">
         <button
           v-for="(p, i) in voce.pagine"
           :key="p.id"
@@ -29,18 +32,34 @@
         </button>
       </div>
 
+      <!-- Correzione dello stato della firma (solo la proprietà): il default
+           al caricamento indovina il passo, ma non sempre. -->
+      <div v-if="voce.versioni && pagina && correggiFirma" class="vp-dvis__pagine">
+        <button
+          v-for="s in STATI_FIRMA"
+          :key="s.value"
+          class="vp-dvis__tab"
+          :class="{ 'vp-dvis__tab--on': s.value === pagina.stato_firma }"
+          :aria-pressed="s.value === pagina.stato_firma"
+          @click="s.value !== pagina.stato_firma && emit('statoFirma', pagina.id, s.value)"
+        >
+          {{ s.label }}
+        </button>
+      </div>
+
       <!-- Azioni -->
       <footer class="vp-dvis__azioni">
         <a :href="pagina?.file" :download="pagina?.nome_file" class="vp-dvis__azione">
           <q-icon name="download" size="20px" />
           Scarica
         </a>
+        <!-- Una versione nuova non sostituisce nulla: si aggiunge al giro. -->
         <button v-if="!soloLettura" class="vp-dvis__azione" @click="emit('sostituisci', voce)">
-          <q-icon name="photo_camera" size="20px" />
-          Sostituisci
+          <q-icon :name="voce.versioni ? 'upload' : 'photo_camera'" size="20px" />
+          {{ voce.versioni ? 'Carica nuova versione' : 'Sostituisci' }}
         </button>
         <button
-          v-if="!soloLettura"
+          v-if="!soloLettura && pagina?.modificabile"
           class="vp-dvis__azione vp-dvis__azione--rischio"
           @click="confermaElimina"
         >
@@ -57,20 +76,28 @@ import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import DocPagina from './DocPagina.vue';
 import DocBadgeStato from './DocBadgeStato.vue';
-import type { VoceFascicolo } from 'stores/fascicolo';
+import DocBadgeFirma from './DocBadgeFirma.vue';
+import type { StatoFirma, VoceFascicolo } from 'stores/fascicolo';
+import { STATI_FIRMA, confermaEliminaFile } from 'src/utils/statoDocumento';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
 const props = defineProps<{
   modelValue: boolean;
   /** Voce da visualizzare (con almeno una pagina). */
   voce: VoceFascicolo | null;
+  /** File da mostrare all'apertura (una versione scelta dall'elenco, la
+   *  pagina già aperta nel visore affiancato); assente = il primo. */
+  paginaId?: number | null;
   soloLettura?: boolean;
+  /** Offre la correzione dello stato della firma (lato proprietà). */
+  correggiFirma?: boolean;
 }>();
 
 const emit = defineEmits<{
   'update:modelValue': [valore: boolean];
   sostituisci: [voce: VoceFascicolo];
   elimina: [id: number];
+  statoFirma: [id: number, stato: StatoFirma];
 }>();
 
 const $q = useQuasar();
@@ -83,10 +110,12 @@ const aperto = computed({
 
 const indice = ref(0);
 watch(
-  () => props.voce,
-  () => {
-    indice.value = 0;
+  () => [props.voce, props.paginaId] as const,
+  ([voce, id]) => {
+    const i = voce && id != null ? voce.pagine.findIndex((p) => p.id === id) : -1;
+    indice.value = Math.max(i, 0);
   },
+  { immediate: true },
 );
 
 const pagina = computed(() => props.voce?.pagine[indice.value] ?? null);
@@ -95,6 +124,13 @@ const meta = computed(() => {
   const voce = props.voce;
   if (!voce) return '';
   const parti: string[] = [];
+  // Per le versioni lo stato sta nel badge: qui la data di quella aperta.
+  if (voce.versioni && pagina.value) {
+    const verbo = pagina.value.generato ? 'generata' : 'caricata';
+    parti.push(`${verbo} il ${formattaData(pagina.value.created_at)}`);
+    if (voce.pagine.length > 1) parti.push(`${voce.pagine.length} versioni`);
+    return parti.join(' · ');
+  }
   if (voce.pagine.length > 1 && pagina.value) parti.push(pagina.value.etichetta);
   if (voce.data_scadenza) {
     parti.push(
@@ -113,19 +149,8 @@ function chiudi() {
 
 function confermaElimina() {
   const corrente = pagina.value;
-  if (!corrente) return;
-  const cosa =
-    props.voce && props.voce.pagine.length > 1
-      ? `la pagina "${corrente.etichetta}"`
-      : `"${props.voce?.tipo_display}"`;
-  $q.dialog({
-    title: 'Elimina documento',
-    message: `Eliminare ${cosa}? L'operazione non è reversibile.`,
-    cancel: { label: 'Annulla', flat: true, noCaps: true },
-    ok: { label: 'Elimina', color: 'negative', unelevated: true, noCaps: true },
-  }).onOk(() => {
-    emit('elimina', corrente.id);
-  });
+  if (!corrente || !props.voce) return;
+  confermaEliminaFile($q, props.voce, corrente, () => emit('elimina', corrente.id));
 }
 </script>
 
@@ -190,6 +215,10 @@ function confermaElimina() {
   background: var(--vp-cream);
   color: var(--vp-ink);
 }
+.vp-dvis__tab--on {
+  font-weight: 500;
+  cursor: default;
+}
 .vp-dvis__azioni {
   display: grid;
   grid-auto-flow: column;
@@ -210,6 +239,7 @@ function confermaElimina() {
   color: var(--vp-cream);
   font-family: var(--vp-font-ui);
   font-size: var(--vp-text-xs);
+  text-align: center;
   text-decoration: none;
   cursor: pointer;
 }

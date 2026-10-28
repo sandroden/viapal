@@ -17,7 +17,17 @@
     <div class="vp-eyebrow vp-idoc__sezione">Il tuo fascicolo</div>
     <div class="vp-card vp-idoc__lista">
       <q-inner-loading :showing="fascicoloStore.loading" />
-      <FascicoloVoce v-for="voce in voci" :key="voce.tipo" :voce="voce" @apri="apriVisore" />
+      <!-- Senza visore affiancato il clic su un documento firmato apre
+           l'elenco delle versioni: ognuna si guarda a schermo intero. -->
+      <FascicoloVoce
+        v-for="voce in voci"
+        :key="voce.tipo"
+        :voce="voce"
+        :apri-subito="false"
+        @apri="apriVisore"
+        @apri-versione="apriVersione"
+        @elimina="elimina"
+      />
       <div v-if="!voci.length && !fascicoloStore.loading" class="vp-idoc__vuoto">
         Non hai ancora caricato documenti.
       </div>
@@ -72,6 +82,7 @@
     <DocVisoreDialog
       v-model="visoreAperto"
       :voce="voceAperta"
+      :pagina-id="paginaApertaId"
       :solo-lettura="visoreSoloLettura"
       @sostituisci="sostituisci"
       @elimina="elimina"
@@ -99,7 +110,7 @@ import {
   useDocumentiProprietaStore,
   TIPI_DOCUMENTO_INQUILINO,
 } from 'stores/documenti';
-import { useFascicoloStore, type VoceFascicolo } from 'stores/fascicolo';
+import { useFascicoloStore, type PaginaDocumento, type VoceFascicolo } from 'stores/fascicolo';
 import { voceDaDocumento } from 'src/utils/statoDocumento';
 import { useFormatoData } from 'src/composables/useFormatoData';
 
@@ -112,6 +123,8 @@ const fascicoloStore = useFascicoloStore();
 
 const visoreAperto = ref(false);
 const voceAperta = ref<VoceFascicolo | null>(null);
+/** Versione scelta dall'elenco (documenti firmati); null = la principale. */
+const paginaApertaId = ref<number | null>(null);
 /** I documenti della casa si consultano soltanto: niente sostituisci/elimina. */
 const visoreSoloLettura = ref(false);
 const aggiungiAperto = ref(false);
@@ -139,8 +152,14 @@ function iconaCasa(tipo: string): string {
 
 function apriVisore(voce: VoceFascicolo, soloLettura = false) {
   voceAperta.value = voce;
+  paginaApertaId.value = null;
   visoreSoloLettura.value = soloLettura;
   visoreAperto.value = true;
+}
+
+function apriVersione(voce: VoceFascicolo, pagina: PaginaDocumento) {
+  apriVisore(voce);
+  paginaApertaId.value = pagina.id;
 }
 
 function apriAggiungi(voce?: VoceFascicolo) {

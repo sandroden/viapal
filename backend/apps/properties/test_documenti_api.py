@@ -358,6 +358,125 @@ class TestFascicoloDopoGenerazione:
 
 
 # ---------------------------------------------------------------------------
+# Versioni firmate: bozza → firmata dalla proprietà → definitiva
+# ---------------------------------------------------------------------------
+
+DOCUMENTI = "/api/v1/tenant-documents/"
+
+
+def _carica(client, mondo, tipo=ATTO, **extra):
+    return client.post(
+        DOCUMENTI,
+        {
+            "tenant": mondo["tenant"].pk,
+            "tipo": tipo,
+            "file": ContentFile(b"%PDF-1.4 scansione", name="firmato.pdf"),
+            **extra,
+        },
+        format="multipart",
+    )
+
+
+class TestVersioni:
+    """L'atto passa di mano: genera, firma la proprietà, firma l'inquilino.
+    Tre file dello stesso tipo sono tre versioni, non tre pagine."""
+
+    def _genera(self, client, mondo):
+        return client.post(URL, _payload(mondo, dry_run=False), format="json")
+
+    def _voce(self, client, mondo):
+        resp = client.get(FASCICOLO, {"tenant": mondo["tenant"].pk})
+        return {v["tipo"]: v for v in resp.json()["voci"]}[ATTO]
+
+    def test_il_generato_e_una_bozza(self, client_prop, mondo):
+        self._genera(client_prop, mondo)
+        assert TenantDocument.objects.get().stato_firma == "bozza"
+
+    def test_caricato_dalla_proprieta_e_firmato_dalla_proprieta(
+        self, client_prop, mondo
+    ):
+        resp = _carica(client_prop, mondo)
+        assert resp.status_code == 201, resp.content
+        assert resp.json()["stato_firma"] == "firmata_proprieta"
+
+    def test_caricato_dallinquilino_e_definitivo(self, client_inq, mondo):
+        resp = _carica(client_inq, mondo)
+        assert resp.status_code == 201, resp.content
+        assert resp.json()["stato_firma"] == "definitiva"
+
+    def test_lo_stato_indicato_vince_sul_default(self, client_prop, mondo):
+        resp = _carica(client_prop, mondo, stato_firma="definitiva")
+        assert resp.json()["stato_firma"] == "definitiva"
+
+    def test_niente_stato_firma_sui_documenti_personali(self, client_prop, mondo):
+        resp = _carica(
+            client_prop, mondo, tipo="carta_identita", stato_firma="definitiva"
+        )
+        assert resp.status_code == 400
+        assert "stato_firma" in resp.json()
+
+    def test_la_voce_mette_davanti_la_versione_piu_avanzata(
+        self, client_prop, client_inq, mondo
+    ):
+        self._genera(client_prop, mondo)
+        _carica(client_prop, mondo)
+        _carica(client_inq, mondo)
+        voce = self._voce(client_prop, mondo)
+        assert voce["versioni"] is True
+        assert voce["stato_firma"] == "definitiva"
+        assert [p["stato_firma"] for p in voce["pagine"]] == [
+            "definitiva", "firmata_proprieta", "bozza",
+        ]
+        assert voce["pagine"][1]["etichetta"] == "firmata dalla proprietà"
+
+    def test_i_documenti_personali_restano_pagine(self, client_prop, mondo):
+        _carica(client_prop, mondo, tipo="carta_identita", descrizione="fronte")
+        resp = client_prop.get(FASCICOLO, {"tenant": mondo["tenant"].pk})
+        voce = resp.json()["voci"][0]
+        assert voce["versioni"] is False
+        assert voce["pagine"][0]["etichetta"] == "fronte"
+
+    def test_la_proprieta_corregge_lo_stato(self, client_prop, mondo):
+        doc = _carica(client_prop, mondo).json()
+        resp = client_prop.patch(
+            f"{DOCUMENTI}{doc['id']}/", {"stato_firma": "definitiva"}, format="json"
+        )
+        assert resp.status_code == 200, resp.content
+        assert TenantDocument.objects.get(pk=doc["id"]).stato_firma == "definitiva"
+
+    def test_linquilino_non_elimina_la_copia_della_proprieta(
+        self, client_prop, client_inq, mondo
+    ):
+        doc = _carica(client_prop, mondo).json()
+        assert client_inq.delete(f"{DOCUMENTI}{doc['id']}/").status_code == 403
+        assert client_inq.patch(
+            f"{DOCUMENTI}{doc['id']}/", {"stato_firma": "bozza"}, format="json"
+        ).status_code == 403
+        assert TenantDocument.objects.filter(pk=doc["id"]).exists()
+        voce = self._voce(client_inq, mondo)
+        assert voce["pagine"][0]["modificabile"] is False
+
+    def test_linquilino_elimina_la_propria_versione(self, client_inq, mondo):
+        doc = _carica(client_inq, mondo).json()
+        assert self._voce(client_inq, mondo)["pagine"][0]["modificabile"] is True
+        assert client_inq.delete(f"{DOCUMENTI}{doc['id']}/").status_code == 204
+
+    def test_la_proprieta_elimina_qualunque_versione(
+        self, client_prop, client_inq, mondo
+    ):
+        doc = _carica(client_inq, mondo).json()
+        assert client_prop.delete(f"{DOCUMENTI}{doc['id']}/").status_code == 204
+
+    def test_sui_documenti_personali_linquilino_resta_padrone(
+        self, client_prop, client_inq, mondo
+    ):
+        """La restrizione vale solo per le versioni firmate: la carta
+        d'identità caricata dal proprietario l'inquilino la può togliere."""
+        doc = _carica(client_prop, mondo, tipo="carta_identita").json()
+        assert client_inq.delete(f"{DOCUMENTI}{doc['id']}/").status_code == 204
+
+
+# ---------------------------------------------------------------------------
 # Elenco dei documenti generabili (l'azione "Genera documento")
 # ---------------------------------------------------------------------------
 

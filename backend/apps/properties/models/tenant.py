@@ -277,6 +277,24 @@ class TenantDocument(TimestampedModel):
         )
         ALTRO = "altro", "Altro"
 
+    class StatoFirma(models.TextChoices):
+        """A che punto è la firma di un documento che passa di mano.
+
+        L'atto si genera, la proprietà lo firma e lo mette a disposizione,
+        l'inquilino lo firma a sua volta e lo ricarica: tre file dello
+        stesso tipo che sono **versioni**, non pagine.
+        """
+
+        BOZZA = "bozza", "bozza"
+        FIRMATA_PROPRIETA = "firmata_proprieta", "firmata dalla proprietà"
+        DEFINITIVA = "definitiva", "definitiva"
+
+    #: Tipi i cui file sono versioni successive dello stesso documento
+    #: (con uno ``stato_firma``) invece che pagine di uno solo.
+    TIPI_FIRMATI = frozenset(
+        {Tipo.ATTO_SUBENTRO_LOCAZIONE, Tipo.CESSIONE_FABBRICATO}
+    )
+
     tenant = models.ForeignKey(
         TenantProfile,
         on_delete=models.CASCADE,
@@ -328,6 +346,16 @@ class TenantDocument(TimestampedModel):
         blank=True,
         related_name="documenti_inquilini_caricati",
         verbose_name="caricato da",
+    )
+    stato_firma = models.CharField(
+        max_length=20,
+        choices=StatoFirma.choices,
+        blank=True,
+        verbose_name="stato della firma",
+        help_text=(
+            "Solo per i documenti che si firmano a più mani (atto di "
+            "subentro, cessione di fabbricato). Vuoto: non indicato."
+        ),
     )
 
     class Meta:

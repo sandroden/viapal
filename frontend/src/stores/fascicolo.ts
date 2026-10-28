@@ -7,7 +7,13 @@ import { api } from 'boot/axios';
  *  "in attesa": ciò che si può generare sta nell'azione apposita. */
 export type StatoDocumento = 'ok' | 'scadenza' | 'scaduto';
 
-/** Un file: le voci fronte/retro sono due pagine dello stesso documento. */
+/** A che punto è la firma di un documento che passa di mano (atto di
+ *  subentro, cessione di fabbricato). Vuoto sugli altri tipi, e sulle copie
+ *  caricate prima che lo stato esistesse. */
+export type StatoFirma = '' | 'bozza' | 'firmata_proprieta' | 'definitiva';
+
+/** Un file: le voci fronte/retro sono due pagine dello stesso documento;
+ *  per i documenti firmati sono invece **versioni** successive. */
 export interface PaginaDocumento {
   id: number;
   file: string;
@@ -18,6 +24,13 @@ export interface PaginaDocumento {
   etichetta: string;
   data_scadenza: string | null;
   stato: StatoDocumento;
+  stato_firma: StatoFirma;
+  stato_firma_display: string;
+  /** PDF prodotto dall'applicazione (la bozza). */
+  generato: boolean;
+  /** Chi guarda può modificarlo o eliminarlo: l'inquilino non tocca le
+   *  versioni firmate caricate dalla proprietà. */
+  modificabile: boolean;
   created_at: string;
 }
 
@@ -32,7 +45,15 @@ export interface VoceFascicolo {
   stato_display: string;
   data_scadenza: string | null;
   giorni_alla_scadenza: number | null;
+  /** Data della prima pagina; per le voci con ``versioni`` quella della
+   *  versione principale. */
   caricato_il: string | null;
+  /** I file sono versioni dello stesso documento (bozza → firmata dalla
+   *  proprietà → definitiva), non pagine: ``pagine[0]`` è la più avanzata. */
+  versioni: boolean;
+  /** Stato della firma della versione principale ('' senza versioni). */
+  stato_firma: StatoFirma;
+  stato_firma_display: string;
   pagine: PaginaDocumento[];
   /** Solo per i documenti fuori checklist ("Altro"). */
   titolo?: string;

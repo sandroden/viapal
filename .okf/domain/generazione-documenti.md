@@ -12,7 +12,7 @@ resources:
 tags: [domain, documenti, pdf, proprietari]
 generated:
   by: process:okf-migrate
-  at: 2026-09-05T00:00:00Z
+  at: 2026-10-28T00:00:00Z
 ---
 
 # Overview
@@ -146,6 +146,10 @@ autorizzazioni `/media-private/`, visore interno e fascicolo. Il campo
 reale è genera → stampa → firma → scansiona → ricarica sotto lo stesso tipo:
 senza quel filtro un "Rigenera" distruggerebbe l'unico originale firmato,
 dal database e dallo storage, senza undo.
+
+Il PDF generato nasce con `stato_firma = bozza`; le copie firmate che
+seguono sono versioni dello stesso documento, non pagine — vedi
+[Fascicolo documenti](/domain/fascicolo-documenti.md#versioni-firmate-2026-10-28).
 
 # Da dove si parte
 

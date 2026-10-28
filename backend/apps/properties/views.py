@@ -460,7 +460,7 @@ class TenantDocumentViewSet(ModelViewSet):
             tenant = getattr(request.user, "tenant_profile", None)
             if tenant is None:
                 raise PermissionDenied("Nessun profilo inquilino associato all'utente.")
-        return Response(costruisci_fascicolo(tenant, documenti))
+        return Response(costruisci_fascicolo(tenant, documenti, utente=request.user))
 
     @action(detail=False, methods=["get"], url_path="generabili")
     def generabili(self, request):
@@ -609,6 +609,7 @@ class TenantDocumentViewSet(ModelViewSet):
                 file=ContentFile(pdf, name=nome_file),
                 descrizione=f"generato il {datetime.date.today():%d/%m/%Y}",
                 generato=True,
+                stato_firma=TenantDocument.StatoFirma.BOZZA,
                 caricato_da=request.user,
             )
 
@@ -630,7 +631,45 @@ class TenantDocumentViewSet(ModelViewSet):
                 from rest_framework.exceptions import PermissionDenied
 
                 raise PermissionDenied("Nessun profilo inquilino associato all'utente.")
-        serializer.save(tenant=tenant, caricato_da=user)
+        extra = {}
+        tipo = serializer.validated_data.get("tipo")
+        if (
+            tipo in TenantDocument.TIPI_FIRMATI
+            and not serializer.validated_data.get("stato_firma")
+        ):
+            # Chi carica senza dirlo sta facendo il passo che gli tocca: la
+            # proprietà mette a disposizione la sua firma, l'inquilino
+            # chiude il giro.
+            extra["stato_firma"] = (
+                TenantDocument.StatoFirma.FIRMATA_PROPRIETA
+                if _is_gestione(user)
+                else TenantDocument.StatoFirma.DEFINITIVA
+            )
+        serializer.save(tenant=tenant, caricato_da=user, **extra)
+
+    def _verifica_modificabile(self, documento):
+        """L'inquilino non tocca le versioni firmate che non ha caricato lui.
+
+        Sui documenti personali (CI, CF…) resta padrone di tutto; su quelli
+        che passano di mano la copia della proprietà non è sua.
+        """
+        from rest_framework.exceptions import PermissionDenied
+
+        from properties.fascicolo import modificabile_da
+
+        if not modificabile_da(documento, self.request.user):
+            raise PermissionDenied(
+                "Questa versione l'ha caricata la proprietà: solo lei può "
+                "modificarla o eliminarla."
+            )
+
+    def perform_update(self, serializer):
+        self._verifica_modificabile(serializer.instance)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._verifica_modificabile(instance)
+        instance.delete()
 
 
 class PropertyDocumentViewSet(ProtectedDestroyMixin, ModelViewSet):
