@@ -342,9 +342,13 @@ class TenantProfileWriteSerializer(serializers.ModelSerializer):
 class TenantSelfUpdateSerializer(serializers.ModelSerializer):
     """Serializer ristretto con cui l'inquilino aggiorna i propri dati.
 
-    Espone in sola lettura username/email e in scrittura solo i campi che
-    l'inquilino può modificare da solo. I campi sensibili (deposito, giorno
-    pagamento, ciclo, ecc.) restano gestiti dai proprietari via admin.
+    Espone in sola lettura username/email e in scrittura i dati che
+    l'inquilino conosce meglio di chiunque altro: recapiti, anagrafica estesa
+    ed estremi del documento d'identità. Sono gli stessi che chiedono i
+    documenti generati (atto di subentro, cessione di fabbricato): così
+    l'inquilino li compila da sé al primo accesso e il proprietario corregge
+    solo se serve. I campi economici (deposito, giorno pagamento, ciclo,
+    ecc.) restano dei proprietari.
     """
 
     username = serializers.CharField(source="user.username", read_only=True)
@@ -359,6 +363,20 @@ class TenantSelfUpdateSerializer(serializers.ModelSerializer):
             "nominativo",
             "telefono",
             "codice_fiscale",
+            "cognome",
+            "nome",
+            "data_nascita",
+            "comune_nascita",
+            "provincia_nascita",
+            "cittadinanza",
+            "residenza_via",
+            "residenza_comune",
+            "residenza_provincia",
+            "residenza_cap",
+            "documento_tipo",
+            "documento_numero",
+            "documento_autorita",
+            "documento_data_rilascio",
         ]
 
 

@@ -383,7 +383,7 @@ class TenantProfileViewSet(
         """Profilo dell'inquilino loggato, con aggiornamento self-service.
 
         GET restituisce i propri dati; PATCH consente di modificare solo i
-        campi concessi (nominativo, telefono, codice fiscale) tramite
+        campi concessi (recapiti, anagrafica, documento d'identità) tramite
         ``TenantSelfUpdateSerializer``.
         """
         tenant = getattr(request.user, "tenant_profile", None)

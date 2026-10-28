@@ -830,15 +830,46 @@ class TestTenantCrud:
         tenant.cognome, tenant.nome = "Rossi", "Mario"
         assert tenant.nome_completo == "Rossi Mario"
 
-    def test_self_service_non_tocca_anagrafica_estesa(self, client_inquilino, tenant):
-        """L'inquilino non compila da sé i dati dei documenti: il posto è la
-        scheda inquilino lato proprietario."""
+    def test_self_service_compila_anagrafica_estesa(self, client_inquilino, tenant):
+        """L'inquilino compila da sé i dati che servono ai documenti generati."""
+        payload = {
+            "cognome": "Bouchane",
+            "nome": "Oussama",
+            "data_nascita": "1998-10-03",
+            "comune_nascita": "El Oulfa",
+            "provincia_nascita": "Marocco",
+            "cittadinanza": "marocchina",
+            "residenza_via": "Via Palestrina 20",
+            "residenza_comune": "Monza",
+            "residenza_provincia": "MB",
+            "residenza_cap": "20900",
+            "documento_tipo": "passaporto",
+            "documento_numero": "XY123456",
+            "documento_autorita": "Regno del Marocco",
+            "documento_data_rilascio": "2024-03-22",
+        }
+        resp = client_inquilino.patch("/api/v1/tenants/me/", payload, format="json")
+        assert resp.status_code == 200, resp.content
+        tenant.refresh_from_db()
+        assert tenant.cognome == "Bouchane"
+        assert tenant.data_nascita == datetime.date(1998, 10, 3)
+        assert tenant.documento_tipo == "passaporto"
+        assert tenant.residenza_cap == "20900"
+        letto = client_inquilino.get("/api/v1/tenants/me/").json()
+        assert letto["cittadinanza"] == "marocchina"
+
+    def test_self_service_non_tocca_campi_economici(self, client_inquilino, tenant):
+        giorno = tenant.giorno_pagamento_affitto
+        deposito = tenant.deposito_versato
         resp = client_inquilino.patch(
-            "/api/v1/tenants/me/", {"cognome": "Hacker"}, format="json"
+            "/api/v1/tenants/me/",
+            {"giorno_pagamento_affitto": 27, "deposito_versato": "1.00"},
+            format="json",
         )
         assert resp.status_code == 200
         tenant.refresh_from_db()
-        assert tenant.cognome == ""
+        assert tenant.giorno_pagamento_affitto == giorno
+        assert tenant.deposito_versato == deposito
 
 
 class TestTenantInvita:

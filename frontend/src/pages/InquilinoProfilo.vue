@@ -16,14 +16,17 @@
             :rules="[(v) => !!v || 'Il nominativo è obbligatorio']"
           />
           <q-input v-model="form.telefono" label="Telefono" outlined dense />
-          <q-input
-            v-model="form.codice_fiscale"
-            label="Codice fiscale"
-            outlined
-            dense
-            maxlength="16"
-            style="text-transform: uppercase"
-          />
+
+          <div>
+            <div class="vp-section-title q-mt-sm">Anagrafica</div>
+            <div class="vp-hint q-mb-sm">
+              Servono per preparare il contratto (atto di subentro e
+              comunicazione di cessione di fabbricato). Inserisci quelli che
+              hai: il resto lo completa la proprietà.
+            </div>
+            <AnagraficaPersonaCampi v-model="anagrafica" />
+          </div>
+
           <q-banner v-if="datiErrore" class="text-white bg-red-7" rounded dense>
             {{ datiErrore }}
           </q-banner>
@@ -126,6 +129,13 @@ import { useFormatoEuro } from 'src/composables/useFormatoEuro';
 import { useFormatoData } from 'src/composables/useFormatoData';
 import NotifichePushPannello from 'components/profilo/NotifichePushPannello.vue';
 import CambioPasswordPannello from 'components/profilo/CambioPasswordPannello.vue';
+import AnagraficaPersonaCampi from 'components/inquilini/AnagraficaPersonaCampi.vue';
+import {
+  anagraficaVuota,
+  payloadAnagrafica,
+  riempi,
+  type AnagraficaPersona,
+} from 'components/inquilini/anagrafica';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -142,12 +152,13 @@ const labelUnita = computed(() =>
 );
 
 // --- Dati editabili (fonte autorevole: /tenants/me/) ---
-interface DatiMe {
+interface Recapiti {
   nominativo: string;
   telefono: string;
-  codice_fiscale: string;
 }
-const form = reactive<DatiMe>({ nominativo: '', telefono: '', codice_fiscale: '' });
+type DatiMe = Recapiti & AnagraficaPersona;
+const form = reactive<Recapiti>({ nominativo: '', telefono: '' });
+const anagrafica = ref<AnagraficaPersona>(anagraficaVuota());
 const datiForm = ref<QForm | null>(null);
 const datiErrore = ref('');
 const datiLoading = ref(false);
@@ -160,12 +171,16 @@ const nominativo = computed(
     '—',
 );
 
+function applica(data: Partial<DatiMe>) {
+  form.nominativo = data.nominativo ?? '';
+  form.telefono = data.telefono ?? '';
+  anagrafica.value = riempi(anagraficaVuota(), data);
+}
+
 async function caricaDati() {
   try {
     const { data } = await api.get<DatiMe>('/api/v1/tenants/me/');
-    form.nominativo = data.nominativo ?? '';
-    form.telefono = data.telefono ?? '';
-    form.codice_fiscale = data.codice_fiscale ?? '';
+    applica(data);
   } catch {
     // Profilo non disponibile (es. proprietario in anteprima): lascia vuoto.
   }
@@ -183,11 +198,9 @@ async function salvaDati() {
     const { data } = await api.patch<DatiMe>('/api/v1/tenants/me/', {
       nominativo: form.nominativo,
       telefono: form.telefono,
-      codice_fiscale: form.codice_fiscale.toUpperCase(),
+      ...payloadAnagrafica(anagrafica.value),
     });
-    form.nominativo = data.nominativo ?? '';
-    form.telefono = data.telefono ?? '';
-    form.codice_fiscale = data.codice_fiscale ?? '';
+    applica(data);
     // Aggiorna i dati mostrati altrove (home, ecc.).
     void store.loadInquilino();
     $q.notify({ type: 'positive', message: 'Dati aggiornati.' });

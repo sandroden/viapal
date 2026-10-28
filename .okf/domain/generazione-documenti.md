@@ -5,6 +5,7 @@ description: Atto di subentro nel contratto e comunicazione di cessione di fabbr
 resource: backend/apps/properties/documenti/base.py
 resources:
   - backend/apps/properties/documenti/base.py
+  - frontend/src/components/inquilini/AnagraficaPersonaCampi.vue
   - backend/apps/properties/documenti/__init__.py
   - backend/apps/properties/documenti/atto_subentro.py
   - backend/apps/properties/documenti/cessione_fabbricato.py
@@ -12,7 +13,7 @@ resources:
 tags: [domain, documenti, pdf, proprietari]
 generated:
   by: process:okf-migrate
-  at: 2026-10-28T00:00:00Z
+  at: 2026-10-28T12:00:00Z
 ---
 
 # Overview
@@ -28,6 +29,17 @@ Il vincolo che dà forma a tutto: **i dati non si chiedono in un form**.
 Vengono dall'archivio, e dove non esisteva il posto per metterli è stato
 creato (vedi [Modelli properties](/models/properties.md)). Quando un dato
 manca, l'applicazione non lo domanda: dice *dove* si compila e ci porta.
+
+L'anagrafica dell'inquilino (nascita, cittadinanza, residenza, estremi del
+documento) la può compilare **anche l'inquilino stesso** dal proprio
+profilo (`/i/profilo`, `PATCH /tenants/me/`, dal 2026-10-28): sono dati che
+conosce solo lui, e prima della firma il proprietario non deve più
+ricopiarli. Fino a quel giorno il self-service era volutamente limitato a
+nominativo/telefono/CF e un test lo blindava; la decisione è stata
+rovesciata da Sandro. Restano fuori dal self-service i campi economici
+(deposito, giorno di pagamento, ciclo, frequenza conguagli). I campi sono un
+unico componente (`AnagraficaPersonaCampi.vue`) condiviso col dialog lato
+proprietario, così le due maschere non divergono.
 
 # I campi sono la dichiarazione
 
@@ -83,7 +95,7 @@ già così; l'atto di subentro anteponeva un altro `Via` e produceva
 
 | Fonte | Dove | Esterno |
 |---|---|---|
-| `tenant` / `uscente` | scheda inquilino → Profilo, dialog anagrafica sul campo indicato | no |
+| `tenant` / `uscente` | scheda inquilino → Profilo, dialog anagrafica sul campo indicato (l'inquilino li compila anche da `/i/profilo`) | no |
 | `property` | Immobile → Dati, sul campo indicato | no |
 | `contract` | Immobile → Contratti, col dialog del contratto aperto | no |
 | `assignment` | assegnazione stanza (admin) | **sì** |
