@@ -275,7 +275,7 @@ class TestSnapshotDashboardInquilino:
                 "beneficiario": "Owner Snap",
                 "iban": IBAN_OK,
                 "banca": "Banca Snap",
-                "causale": "Saldo Viapal - Snap Rossi",
+                "causale": "Saldo Viapal Snap Rossi",
             },
         }
 

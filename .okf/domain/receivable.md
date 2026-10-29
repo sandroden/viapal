@@ -14,7 +14,7 @@ resources:
 tags: [domain, receivable, billing]
 generated:
   by: process:okf-migrate
-  at: 2026-10-18T00:00:00Z
+  at: 2026-10-29T00:00:00Z
 ---
 
 # Overview
@@ -129,6 +129,10 @@ usa `Receivable.etichetta` («Utenze Ago 2026: 39,26 €»), non `str()`, che
 ripeterebbe inquilino, importo col punto e stato.
 
 # Conto di destinazione
+
+La **causale** del bonifico (`causale_bonifico` in `billing/_payments.py`, e
+l'equivalente `causaleSicura` in `InquilinoHome.vue`) contiene solo lettere,
+cifre e spazi: Poste rifiuta il trattino, quindi niente simboli né accenti.
 
 Su quale conto va versato un addebito lo decide `conto_per_receivable`
 (`billing/_payments.py`): override `assignment.bank_account_affitto` per

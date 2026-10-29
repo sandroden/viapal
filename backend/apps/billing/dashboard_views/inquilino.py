@@ -10,6 +10,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from billing._payments import causale_bonifico
+
 from accounts.permissions import IsInquilino
 from billing.calc.posizione import posizione_inquilino
 from billing.models import Receivable, StatoPagamento, TenantCondominioRate
@@ -81,7 +83,7 @@ class DashboardInquilinoView(APIView):
                 "beneficiario": conto_cum.intestatario,
                 "iban": conto_cum.iban,
                 "banca": conto_cum.banca,
-                "causale": f"Saldo Viapal - {tenant.nominativo}"[:140],
+                "causale": causale_bonifico("Saldo Viapal", tenant.nominativo),
             }
 
         assignments = RoomAssignment.objects.filter(tenant=tenant)

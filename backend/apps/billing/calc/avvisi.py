@@ -24,7 +24,7 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 
 from billing._dates import format_mese_anno
-from billing._payments import conto_per_receivable, iban_valido
+from billing._payments import causale_bonifico, conto_per_receivable, iban_valido
 from billing.calc._email import (  # noqa: F401 — riesportati per i chiamanti storici
     _applica,
     _email_inquilino,
@@ -174,7 +174,7 @@ def _dati_bonifico(receivable) -> dict | None:
         receivable.assignment.tenant.nominativo if receivable.assignment_id else ""
     )
     descrizione = f"Utenze {format_mese_anno(_competenza_base(receivable))}"
-    causale = f"{descrizione} - {nominativo}".strip(" -")[:140]
+    causale = causale_bonifico(descrizione, nominativo)
     return {
         "beneficiario": conto.intestatario,
         "iban": conto.iban,

@@ -5,7 +5,7 @@ import datetime
 from decimal import Decimal
 
 from billing._dates import format_mese_anno
-from billing._payments import conto_per_receivable, iban_valido
+from billing._payments import causale_bonifico, conto_per_receivable, iban_valido
 from billing.models import BankTransactionAllocation, Receivable, StatoPagamento
 
 # ---------------------------------------------------------------------------
@@ -102,7 +102,7 @@ def _dati_pagamento(r: Receivable, descrizione: str) -> dict | None:
     if not conto or not iban_valido(conto.iban):
         return None
     nominativo = r.assignment.tenant.nominativo if r.assignment_id else ""
-    causale = f"{descrizione} - {nominativo}".strip(" -")[:140]
+    causale = causale_bonifico(descrizione, nominativo)
     return {
         "beneficiario": conto.intestatario,
         "iban": conto.iban,

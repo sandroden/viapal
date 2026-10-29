@@ -5,6 +5,7 @@ inquilino deve versare un dato Receivable, e valida l'IBAN prima di esporlo
 (evita di generare QR su IBAN placeholder).
 """
 import re
+import unicodedata
 
 from billing.models import Receivable
 
@@ -28,6 +29,20 @@ def conto_per_receivable(r: Receivable):
     room = assignment.room
     prop = getattr(room, "property", None) if room else None
     return prop.bank_account_utenze if prop else None
+
+
+def causale_bonifico(*parti: str, max_len: int = 140) -> str:
+    """Causale per bonifico, ridotta ai soli caratteri accettati da tutte le
+    banche (Poste rifiuta ad esempio il trattino): lettere, cifre e spazi.
+
+    Gli accenti vengono tolti, ogni altro simbolo diventa uno spazio e le
+    parti vuote sono saltate.
+    """
+    testo = " ".join(p for p in parti if p)
+    testo = unicodedata.normalize("NFKD", testo)
+    testo = "".join(c for c in testo if not unicodedata.combining(c))
+    testo = re.sub(r"[^A-Za-z0-9 ]+", " ", testo)
+    return re.sub(r"\s+", " ", testo).strip()[:max_len]
 
 
 # Lunghezze IBAN per codice paese (ISO 13616). Sottoinsieme SEPA + comuni.

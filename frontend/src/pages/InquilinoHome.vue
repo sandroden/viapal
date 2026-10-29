@@ -264,13 +264,22 @@ const causaleDinamica = computed(() => {
 // Nome dell'inquilino in coda alla causale, per facilitare la riconciliazione.
 // Intero se ci sta nei 140 char dello standard EPC, altrimenti solo il cognome.
 const CAUSALE_MAX = 140;
+// Solo lettere, cifre e spazi: Poste e altre banche rifiutano i simboli (es. "-").
+function causaleSicura(testo: string): string {
+  return testo
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 function conNome(descrizione: string, nominativo: string): string {
   const nome = nominativo.trim();
-  if (!nome) return descrizione.slice(0, CAUSALE_MAX);
-  const intero = `${descrizione} - ${nome}`;
+  if (!nome) return causaleSicura(descrizione).slice(0, CAUSALE_MAX);
+  const intero = causaleSicura(`${descrizione} ${nome}`);
   if (intero.length <= CAUSALE_MAX) return intero;
   const cognome = nome.split(/\s+/).pop() ?? nome;
-  return `${descrizione} - ${cognome}`.slice(0, CAUSALE_MAX);
+  return causaleSicura(`${descrizione} ${cognome}`).slice(0, CAUSALE_MAX);
 }
 
 // Pagamento per il QR: stesso conto del saldo totale, ma con la causale
