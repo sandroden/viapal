@@ -12,7 +12,7 @@ resources:
 tags: [domain, utenze, utility, billing]
 generated:
   by: process:okf-migrate
-  at: 2026-10-22T00:00:00Z
+  at: 2026-10-29T00:00:00Z
 ---
 
 # Overview
@@ -187,8 +187,9 @@ Due regole imparate sul campo:
 # Emissione e avvisi
 
 `billing/calc/avvisi.py`: `costruisci_avvisi_utenze` / `invia_avvisi_utenze`
-generano gli avvisi per inquilino (email HTML + testo) con QR EPC (GiroCode) per
-il bonifico. Flusso frontend in `/p/utenze`; anteprima per-mese prima dell'emissione.
+generano gli avvisi per inquilino (email HTML + testo) con IBAN e causale per
+il bonifico. Il QR EPC (GiroCode) è disattivato perché nessuna banca italiana lo
+legge (`QR_BONIFICO_VISIBILE` in `avvisi.py`, `MOSTRA_QR` in `QrBonifico.vue`). Flusso frontend in `/p/utenze`; anteprima per-mese prima dell'emissione.
 
 ## Completezza e ripartizione parziale forzata
 

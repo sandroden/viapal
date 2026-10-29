@@ -1,11 +1,8 @@
 <template>
   <q-card class="vp-qr">
     <div class="vp-eyebrow">Paga con bonifico</div>
-    <p class="vp-qr__hint">
-      Inquadra il QR con l'app della tua banca: il bonifico si precompila con importo e causale.
-    </p>
-
-    <div class="vp-qr__wrap">
+    <!-- QR EPC nascosto: nessuna banca italiana lo legge (riattivare con MOSTRA_QR) -->
+    <div v-if="MOSTRA_QR" class="vp-qr__wrap">
       <img v-if="qrDataUrl" :src="qrDataUrl" alt="QR bonifico" class="vp-qr__img" />
     </div>
 
@@ -62,6 +59,7 @@ const epcDati = computed<EpcDati | null>(() => ({
   importo: props.importo || 0,
 }));
 const { dataUrl: qrDataUrl } = useEpcQr(epcDati);
+const MOSTRA_QR = false;
 
 async function copia(testo: string, msg: string) {
   try {

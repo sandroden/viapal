@@ -165,7 +165,7 @@ function onFlag(q: QuotaView): void {
             <div v-if="q.bonifico" class="bonifico">
               <div class="bonifico-eyebrow">Paga con bonifico (nell'email)</div>
               <div class="bonifico-row">
-                <img v-if="qrOpen" :src="qrOpen" alt="QR bonifico" class="bonifico-qr" />
+                <img v-if="false && qrOpen" :src="qrOpen" alt="QR bonifico" class="bonifico-qr" />
                 <div class="bonifico-dati">
                   <div class="bd"><span>Beneficiario</span><b>{{ q.bonifico.beneficiario }}</b></div>
                   <div class="bd">

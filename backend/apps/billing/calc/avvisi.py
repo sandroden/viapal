@@ -151,6 +151,10 @@ def _nota_esclusioni_html(totale_escluso, motivi: list[str]) -> str:
     return f'<p style="color:#666;font-size:13px">{escape(frase)}</p>'
 
 
+# Il QR EPC non è letto da nessuna banca italiana: per ora non va in email.
+QR_BONIFICO_VISIBILE = False
+
+
 # ── Bonifico: QR EPC (GiroCode) + IBAN/causale, come la pagina inquilino ──
 
 
@@ -224,8 +228,7 @@ def _bonifico_testo(b: dict) -> str:
         f"  Beneficiario: {b['beneficiario']}\n"
         f"  IBAN: {b['iban']}\n"
         f"  Causale: {b['causale']}\n"
-        f"  Importo: {_eur(b['importo'])} €\n"
-        "Oppure inquadra il QR nella versione HTML di questa email."
+        f"  Importo: {_eur(b['importo'])} €"
     )
 
 
@@ -235,9 +238,14 @@ def _bonifico_html(b: dict, cid: str) -> str:
         'border-radius:12px;background:#fbf7f0">'
         '<div style="font-weight:600;margin-bottom:10px;color:#3a2f24">'
         "Paga con bonifico</div>"
-        f'<img src="cid:{cid}" alt="QR bonifico" width="180" height="180" '
-        'style="display:block;background:#fff;padding:6px;border-radius:8px;'
-        'margin-bottom:12px" />'
+        + (
+            f'<img src="cid:{cid}" alt="QR bonifico" width="180" height="180" '
+            'style="display:block;background:#fff;padding:6px;border-radius:8px;'
+            'margin-bottom:12px" />'
+            if QR_BONIFICO_VISIBILE
+            else ""
+        )
+        +
         '<table style="border-collapse:collapse;font-size:14px">'
         '<tr><td style="color:#888;padding:2px 14px 2px 0">Beneficiario</td>'
         f'<td style="font-weight:500">{escape(b["beneficiario"])}</td></tr>'
@@ -248,8 +256,6 @@ def _bonifico_html(b: dict, cid: str) -> str:
         '<tr><td style="color:#888;padding:2px 14px 2px 0">Importo</td>'
         f'<td style="font-weight:600">{_eur(b["importo"])} €</td></tr>'
         "</table>"
-        '<div style="color:#999;font-size:12px;margin-top:10px">Inquadra il QR '
-        "con l'app della tua banca: importo e causale si precompilano.</div>"
         "</div>"
     )
 
@@ -462,7 +468,7 @@ def invia_avvisi_utenze(period, dry_run: bool = False, escludi_ids=None) -> dict
             msg.attach_alternative(a["corpo_html"], "text/html")
             # QR bonifico inline (cid). Django 6 usa l'API moderna email:
             # un MIMEPart con Content-ID, referenziato da <img src="cid:…">.
-            if a.get("bonifico"):
+            if a.get("bonifico") and QR_BONIFICO_VISIBILE:
                 qr = MIMEPart()
                 qr.set_content(
                     _qr_png(_epc_payload(a["bonifico"])),
