@@ -386,6 +386,30 @@ class TestRoomAssignmentCrud:
         assert resp.status_code == 400
         assert "Sovrapposizione" in str(resp.json())
 
+    def test_create_fine_nel_giorno_di_inizio_altrui_400(
+        self, client_operativo, room, tenant, tenant2
+    ):
+        # Date inclusive: finire il giorno in cui un altro entra è un giorno
+        # di occupazione doppia.
+        RoomAssignment.objects.create(
+            room=room, tenant=tenant, valid_from=datetime.date(2027, 1, 1),
+            canone_mensile=Decimal("400.00"),
+        )
+        payload = {
+            "room": room.id,
+            "tenant": tenant2.id,
+            "valid_from": "2026-11-01",
+            "valid_to": "2027-01-01",
+            "canone_mensile": "450.00",
+        }
+        resp = client_operativo.post("/api/v1/room-assignments/", payload, format="json")
+        assert resp.status_code == 400
+        assert "Sovrapposizione" in str(resp.json())
+
+        payload["valid_to"] = "2026-12-31"
+        resp = client_operativo.post("/api/v1/room-assignments/", payload, format="json")
+        assert resp.status_code == 201, resp.content
+
     def test_create_room_altrui_400(self, client_operativo, tenant, mondo_b):
         resp = client_operativo.post(
             "/api/v1/room-assignments/",

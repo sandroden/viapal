@@ -838,25 +838,18 @@ class RoomAssignment(TimestampedModel):
             .exclude(rinunciata=True)
         )
 
-        # Un'assegnazione esistente si sovrappone se:
-        # inizia prima della fine di questa E finisce dopo l'inizio di questa
+        # Le date sono inclusive (valid_to è l'ultimo giorno occupato, come
+        # nel pro-rata dei canoni): due assegnazioni si sovrappongono se
+        # condividono anche un solo giorno, cioè
+        # this_from <= a_to AND a_from <= this_to, con None = infinito.
+        # Il subentro apre la nuova dal giorno dopo la fine della vecchia.
         for assignment in qs:
             a_from = assignment.valid_from
             a_to = assignment.valid_to  # None = ancora aperta
-
-            # questa inizia prima della fine dell'esistente?
             this_to = self.valid_to
 
-            # overlap: not (this_to <= a_from or a_to <= this_from)
-            # ovvero: this_from < a_to AND a_from < this_to
-            # con None = infinito
-            this_ends_after_a_starts = True  # this_from < a_to (a_to None = inf)
-            if a_to is not None and self.valid_from >= a_to:
-                this_ends_after_a_starts = False
-
-            a_starts_before_this_ends = True  # a_from < this_to (this_to None = inf)
-            if this_to is not None and a_from >= this_to:
-                a_starts_before_this_ends = False
+            this_ends_after_a_starts = a_to is None or self.valid_from <= a_to
+            a_starts_before_this_ends = this_to is None or a_from <= this_to
 
             if this_ends_after_a_starts and a_starts_before_this_ends:
                 raise ValidationError(

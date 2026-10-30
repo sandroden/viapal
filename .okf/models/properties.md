@@ -12,7 +12,7 @@ resources:
 tags: [models, properties]
 generated:
   by: process:okf-migrate
-  at: 2026-10-28T00:00:00Z
+  at: 2026-10-30T00:00:00Z
 ---
 
 # Overview
@@ -66,6 +66,15 @@ residenza).
 - FE: dialog "Modifica assegnazione" (ex "Correggi") nel dettaglio inquilino,
   anche sulle assegnazioni chiuse; rigenera gli addebiti solo se cambia un
   campo che li determina. Vedi anche [Deposito](/domain/deposito.md).
+
+# Sovrapposizioni (`RoomAssignment._valida_no_overlap`)
+
+- Date **inclusive** (`valid_to` è l'ultimo giorno occupato, come nel
+  pro-rata): due assegnazioni della stessa stanza si sovrappongono se
+  condividono anche un solo giorno. Il subentro apre la nuova dal giorno
+  dopo. Fino al 2026-10-30 il controllo era semiaperto e ammetteva un giorno
+  in comune (fine = inizio dell'altra); nessun dato esistente lo sfruttava.
+- Le rinunce non contano, in nessuno dei due versi.
 
 # Vedi anche
 
