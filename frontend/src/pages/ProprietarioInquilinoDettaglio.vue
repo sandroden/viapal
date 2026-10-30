@@ -439,6 +439,21 @@
                       <q-item-label>{{ situazione.tenant.nominativo }}</q-item-label>
                     </q-item-section>
                   </q-item>
+                  <!-- Cognome e nome separati servono agli atti (subentro,
+                       cessione di fabbricato): si mostrano anche vuoti, così
+                       si vede cosa manca. -->
+                  <q-item>
+                    <q-item-section>
+                      <q-item-label caption>Cognome</q-item-label>
+                      <q-item-label>{{ situazione.tenant.cognome || '—' }}</q-item-label>
+                    </q-item-section>
+                  </q-item>
+                  <q-item>
+                    <q-item-section>
+                      <q-item-label caption>Nome</q-item-label>
+                      <q-item-label>{{ situazione.tenant.nome || '—' }}</q-item-label>
+                    </q-item-section>
+                  </q-item>
                   <q-item v-if="situazione.tenant.codice_fiscale">
                     <q-item-section>
                       <q-item-label caption>Codice fiscale</q-item-label>
