@@ -48,6 +48,19 @@
           dense
           data-testid="assegna-data-inizio"
         />
+        <q-input
+          v-model="form.validTo"
+          label="Data fine"
+          type="date"
+          outlined
+          dense
+          clearable
+          :max="fineMassima ?? undefined"
+          :hint="hintDataFine"
+          :error="!!fineMassima && !form.validTo"
+          :error-message="hintDataFine"
+          data-testid="assegna-data-fine"
+        />
         <div>
           <div class="vp-asg__label">Ciclo di fatturazione</div>
           <q-btn-toggle
@@ -276,6 +289,7 @@ interface Form {
   room: number | null;
   contract: number | null;
   validFrom: string;
+  validTo: string | null;
   ciclo: CicloFatturazione;
   canoneMensile: string;
   quotaCondominio: string;
@@ -289,6 +303,7 @@ function formVuoto(): Form {
     room: null,
     contract: null,
     validFrom: oggiISO(),
+    validTo: null,
     ciclo: 'solare',
     canoneMensile: '',
     quotaCondominio: props.quotaGenerica !== null ? String(props.quotaGenerica) : '',
@@ -335,26 +350,52 @@ function contrattoAllaData(data: string): number | null {
   return candidati[0]?.id ?? null;
 }
 
-// Stato di occupazione per stanza: si mostrano solo le stanze libere alla
-// data di inizio scelta o liberabili entro 2 mesi da oggi (fine assegnazione
-// già fissata). Le occupate a tempo indeterminato non compaiono: per il
+// Stato di occupazione per stanza: si mostrano le stanze libere alla data di
+// inizio scelta o liberabili entro 2 mesi da oggi (fine assegnazione già
+// fissata). Una stanza libera ma già promessa a un altro da una data futura
+// è assegnabile fino al giorno prima del suo arrivo: la data fine diventa
+// obbligatoria. Le occupate a tempo indeterminato non compaiono: per il
 // subentro c'è il wizard Cessione.
 const ORIZZONTE_MESI = 2;
 
-function liberaDal(roomId: number): string | null | undefined {
-  // undefined = occupata a tempo indeterminato; null = libera (mai occupata
-  // o solo assegnazioni chiuse nel passato... la data la calcola il chiamante)
+interface Finestra {
+  /** Primo giorno libero; null = libera da sempre. */
+  dal: string | null;
+  /** Ultimo giorno libero; null = libera senza limite. */
+  al: string | null;
+}
+
+function spostaGiorni(iso: string, giorni: number): string {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + giorni);
+  return d.toISOString().slice(0, 10);
+}
+
+function finestreLibere(roomId: number): Finestra[] {
   // Le rinunce non sono occupazione: si scartano del tutto, altrimenti la
   // stanza risulterebbe "libera dal giorno dopo la rinuncia" invece che
-  // semplicemente libera.
-  const delle = assignments.value.filter((a) => a.room === roomId && !a.rinunciata);
-  if (delle.some((a) => a.valid_to === null)) return undefined;
-  const fini = delle.map((a) => a.valid_to as string).sort();
-  const ultimaFine = fini[fini.length - 1];
-  if (!ultimaFine) return null;
-  const giornoDopo = new Date(ultimaFine + 'T00:00:00Z');
-  giornoDopo.setUTCDate(giornoDopo.getUTCDate() + 1);
-  return giornoDopo.toISOString().slice(0, 10);
+  // semplicemente libera. Date inclusive, come nel backend.
+  const delle = assignments.value
+    .filter((a) => a.room === roomId && !a.rinunciata)
+    .sort((a, b) => a.valid_from.localeCompare(b.valid_from));
+  const finestre: Finestra[] = [];
+  let dal: string | null = null;
+  for (const a of delle) {
+    if (dal === null || a.valid_from > dal) {
+      finestre.push({ dal, al: spostaGiorni(a.valid_from, -1) });
+    }
+    if (a.valid_to === null) return finestre;
+    const dopo = spostaGiorni(a.valid_to, 1);
+    if (dal === null || dopo > dal) dal = dopo;
+  }
+  finestre.push({ dal, al: null });
+  return finestre;
+}
+
+function finestraAl(roomId: number, data: string): Finestra | undefined {
+  return finestreLibere(roomId).find(
+    (f) => (f.dal === null || f.dal <= data) && (f.al === null || data <= f.al),
+  );
 }
 
 const opzioniStanze = computed(() => {
@@ -363,23 +404,46 @@ const opzioniStanze = computed(() => {
   const inizio = form.value.validFrom || oggi;
   const opzioni: { label: string; value: number; disable?: boolean }[] = [];
   for (const s of stanze.value) {
-    const dal = liberaDal(s.id);
-    if (dal === undefined) continue; // occupata senza fine nota: non mostrata
-    if (dal === null || dal <= oggi) {
-      // Già libera oggi: nessuna annotazione.
-      opzioni.push({ label: s.nome, value: s.id });
-    } else if (dal <= limite || dal <= inizio) {
-      // Si libera in futuro (entro l'orizzonte o comunque prima della data
-      // scelta): selezionabile solo se l'inizio è dopo la liberazione.
+    const libera = finestraAl(s.id, inizio);
+    if (libera) {
+      const note: string[] = [];
+      if (libera.dal !== null && libera.dal > oggi) note.push(`libera dal ${formattaDataIt(libera.dal)}`);
+      if (libera.al !== null) note.push(`fino al ${formattaDataIt(libera.al)}`);
+      opzioni.push({ label: note.length ? `${s.nome} — ${note.join(' ')}` : s.nome, value: s.id });
+      continue;
+    }
+    // Occupata alla data scelta: si mostra (non selezionabile) se si libera
+    // entro l'orizzonte, così si sa da quando spostare l'inizio.
+    const prossima = finestreLibere(s.id).find((f) => f.dal !== null && f.dal > inizio);
+    if (prossima?.dal && prossima.dal <= limite) {
       opzioni.push({
-        label: `${s.nome} — libera dal ${formattaDataIt(dal)}`,
+        label: `${s.nome} — libera dal ${formattaDataIt(prossima.dal)}`,
         value: s.id,
-        disable: dal > inizio,
+        disable: true,
       });
     }
-    // Si libera oltre l'orizzonte e dopo la data scelta: non mostrata.
   }
   return opzioni;
+});
+
+// Ultimo giorno assegnabile per la stanza scelta alla data d'inizio: c'è
+// solo se la stanza è già promessa a un altro da una data futura.
+const fineMassima = computed<string | null>(() => {
+  const roomId = isUnitaIntera.value ? stanze.value[0]?.id : form.value.room;
+  if (!roomId || !form.value.validFrom) return null;
+  return finestraAl(roomId, form.value.validFrom)?.al ?? null;
+});
+
+const hintDataFine = computed(() =>
+  fineMassima.value
+    ? `Obbligatoria: la stanza è già assegnata ad altri dal ${formattaDataIt(spostaGiorni(fineMassima.value, 1))}.`
+    : 'Vuota: assegnazione a tempo indeterminato.',
+);
+
+// Scegliendo una stanza prenotata si propone la fine massima; resta
+// accorciabile.
+watch(fineMassima, (max) => {
+  if (max && (!form.value.validTo || form.value.validTo > max)) form.value.validTo = max;
 });
 
 function formattaDataIt(iso: string): string {
@@ -387,15 +451,14 @@ function formattaDataIt(iso: string): string {
   return `${d}/${m}/${y}`;
 }
 
-// Unità intera: l'unica stanza è l'appartamento implicito. È "occupata" se ha
-// un'assegnazione a tempo indeterminato o che finisce nel futuro. In quel caso
-// non si assegna da qui: il subentro passa dal wizard Cessione.
+// Unità intera: l'unica stanza è l'appartamento implicito. È "occupata" se
+// oggi non è libera. In quel caso non si assegna da qui: il subentro passa
+// dal wizard Cessione.
 const unitaOccupata = computed(() => {
   if (!isUnitaIntera.value) return false;
   const room = stanze.value[0];
   if (!room) return false;
-  const dal = liberaDal(room.id);
-  return dal === undefined || (typeof dal === 'string' && dal > oggiISO());
+  return finestraAl(room.id, oggiISO()) === undefined;
 });
 
 // Se cambiando la data di inizio la stanza scelta non è più selezionabile,
@@ -550,6 +613,18 @@ async function salva(): Promise<void> {
     errore.value = 'La data di inizio è obbligatoria.';
     return;
   }
+  if (fineMassima.value && !f.validTo) {
+    errore.value = `Indicare la data fine: la stanza è libera solo fino al ${formattaDataIt(fineMassima.value)}.`;
+    return;
+  }
+  if (f.validTo && f.validTo <= f.validFrom) {
+    errore.value = 'La data fine deve essere successiva alla data di inizio.';
+    return;
+  }
+  if (f.validTo && fineMassima.value && f.validTo > fineMassima.value) {
+    errore.value = `La stanza è libera solo fino al ${formattaDataIt(fineMassima.value)}.`;
+    return;
+  }
   if (f.canoneMensile === '' || Number(f.canoneMensile) < 0) {
     errore.value = 'Indicare il canone mensile.';
     return;
@@ -562,6 +637,7 @@ async function salva(): Promise<void> {
   const payload: Record<string, unknown> = {
     tenant: props.tenantId,
     valid_from: f.validFrom,
+    valid_to: f.validTo || null,
     canone_mensile: f.canoneMensile,
     ciclo_fatturazione: f.ciclo,
   };

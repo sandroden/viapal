@@ -1219,6 +1219,7 @@ class RoomAssignmentViewSet(ProtectedDestroyMixin, ModelViewSet):
                 tenant=tenant,
                 contract=contract,
                 valid_from=valid_from,
+                valid_to=v.get("valid_to"),
                 canone_mensile=v["canone_mensile"],
             )
             self._full_clean_o_400(nuovo)

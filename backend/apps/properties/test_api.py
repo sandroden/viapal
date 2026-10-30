@@ -1010,6 +1010,30 @@ class TestPrimaAssegnazioneAPI:
         tenant_2.refresh_from_db()
         assert tenant_2.ciclo_fatturazione == "solare"
 
+    def test_stanza_prenotata_in_futuro_richiede_data_fine(
+        self, client_prop, tenant_1, tenant_2, room_2
+    ):
+        # Il caso reale: stanza libera oggi, già promessa a un altro da una
+        # data futura a tempo indeterminato. Senza fine si sovrappone; con
+        # fine il giorno prima dell'arrivo dell'altro passa.
+        inizio = self._primo_del_mese()
+        arrivo_altro = (inizio + datetime.timedelta(days=95)).replace(day=1)
+        RoomAssignment.objects.create(
+            room=room_2, tenant=tenant_1, valid_from=arrivo_altro,
+            canone_mensile=Decimal("400.00"),
+        )
+        payload = self._payload(tenant_2.id, room_2.id)
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 400
+        assert "Sovrapposizione" in str(resp.json())
+
+        fine = arrivo_altro - datetime.timedelta(days=1)
+        payload["valid_to"] = fine.isoformat()
+        resp = client_prop.post(self.URL, payload, format="json")
+        assert resp.status_code == 201, resp.content
+        nuovo = RoomAssignment.objects.get(tenant=tenant_2)
+        assert nuovo.valid_to == fine
+
     def test_quota_diversa_dalla_generica_crea_specifica(
         self, client_prop, tenant_2, room_2, contract
     ):

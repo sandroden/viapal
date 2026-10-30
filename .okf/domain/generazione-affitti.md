@@ -12,7 +12,7 @@ resources:
 tags: [domain, affitti, rent, billing]
 generated:
   by: process:okf-migrate
-  at: 2026-09-03T00:00:00Z
+  at: 2026-10-30T00:00:00Z
 ---
 
 # Overview
@@ -72,6 +72,17 @@ anche sulle assegnazioni già chiuse — altrimenti una data sbagliata non si
 correggerebbe più — e la rigenerazione parte solo se cambia qualcosa che
 determina gli addebiti (canone, date, rinuncia), non per un contratto
 attaccato a un'assegnazione storica.
+
+Dal 2026-10 anche la **prima assegnazione** accetta una data fine
+(`valid_to` facoltativo in `POST room-assignments/prima-assegnazione/`).
+Caso reale: stanza libera oggi ma già promessa a un altro da una data
+futura a tempo indeterminato; prima il dialog `AssegnaStanzaDialog` la
+nascondeva (bastava un'assegnazione aperta, anche futura) e il backend
+avrebbe comunque rifiutato un'assegnazione aperta per sovrapposizione. Ora
+il dialog calcola le finestre libere per stanza: una stanza libera alla
+data d'inizio ma prenotata dopo compare come "fino al <giorno prima>", la
+data fine viene proposta e diventa obbligatoria entro quel limite.
+L'autorità resta il no-overlap del `full_clean` sul modello.
 
 # Rinuncia
 

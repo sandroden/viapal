@@ -789,6 +789,9 @@ class PrimaAssegnazioneSerializer(serializers.Serializer):
         queryset=Contract.objects.all(), required=False, allow_null=True
     )
     valid_from = serializers.DateField()
+    # Facoltativa: obbligata di fatto quando la stanza è già prenotata da un
+    # altro in futuro. Il no-overlap lo verifica il full_clean del modello.
+    valid_to = serializers.DateField(required=False, allow_null=True)
     canone_mensile = serializers.DecimalField(
         max_digits=10, decimal_places=2, min_value=Decimal("0")
     )
