@@ -469,6 +469,44 @@
                       <q-item-label class="vp-mono">{{ situazione.tenant.username }}</q-item-label>
                     </q-item-section>
                   </q-item>
+                  <!-- Accesso all'app: l'invito si proponeva solo alla
+                       creazione; chi aveva scelto "Più tardi" restava senza
+                       modo di mandarlo. -->
+                  <q-item v-if="situazione.accesso" data-testid="accesso-app">
+                    <q-item-section>
+                      <q-item-label caption>Accesso app</q-item-label>
+                      <q-item-label>{{ situazione.accesso.attivo ? 'Attivo' : 'Non attivato' }}</q-item-label>
+                      <q-item-label v-if="!situazione.accesso.attivo" caption>
+                        {{
+                          situazione.accesso.ultimo_invito
+                            ? `Invito inviato il ${formattaData(situazione.accesso.ultimo_invito)}`
+                            : 'Invito mai inviato'
+                        }}
+                      </q-item-label>
+                    </q-item-section>
+                    <q-item-section v-if="puoModificare && !situazione.accesso.attivo" side>
+                      <q-btn
+                        outline
+                        dense
+                        no-caps
+                        color="primary"
+                        icon="mail"
+                        :label="situazione.accesso.ultimo_invito ? 'Reinvia' : 'Invia'"
+                        :loading="invitando"
+                        :disable="!situazione.accesso.email_invito"
+                        data-testid="invia-invito"
+                        @click="inviaInvito"
+                      >
+                        <q-tooltip>
+                          {{
+                            situazione.accesso.email_invito
+                              ? `Email di invito a ${situazione.accesso.email_invito}`
+                              : 'Nessuna email: aggiungila con "Modifica" per poter invitare.'
+                          }}
+                        </q-tooltip>
+                      </q-btn>
+                    </q-item-section>
+                  </q-item>
                 </q-list>
               </q-card-section>
             </q-card>
@@ -1829,6 +1867,27 @@ const propStore = usePropertiesStore();
 const puoModificare = computed(
   () => propStore.mioRuolo === 'proprietario' || propStore.mioRuolo === 'gestore',
 );
+
+// --- Invito all'app --------------------------------------------------------
+const invitando = ref(false);
+
+async function inviaInvito(): Promise<void> {
+  invitando.value = true;
+  try {
+    const { data } = await api.post<{ esito: string; email: string }>(
+      `/api/v1/tenants/${tenantId.value}/invita/`,
+    );
+    $q.notify({ type: 'positive', message: `Invito inviato a ${data.email}.` });
+    await store.loadSituazione(tenantId.value, annoSelezionato.value, true);
+  } catch (e: unknown) {
+    $q.notify({
+      type: 'negative',
+      message: messaggioErrore(e, "Invio dell'invito non riuscito."),
+    });
+  } finally {
+    invitando.value = false;
+  }
+}
 const labels = computed(() => propStore.labels);
 
 // --- Assegna stanza (prima assegnazione, nessun assignment attivo) --------

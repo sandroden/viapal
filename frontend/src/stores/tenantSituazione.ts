@@ -108,8 +108,17 @@ export interface ContractInfo {
   default_pagatore_bollette: string | null;
 }
 
+/** Stato dell'accesso all'app; presente solo per chi gestisce l'immobile. */
+export interface AccessoInquilino {
+  /** Ha impostato una password: invito completato. */
+  attivo: boolean;
+  email_invito: string | null;
+  ultimo_invito: string | null;
+}
+
 export interface TenantSituazione {
   tenant: TenantInfo;
+  accesso?: AccessoInquilino | null;
   anno: number;
   assignments: AssignmentRiga[];
   contract: ContractInfo | null;

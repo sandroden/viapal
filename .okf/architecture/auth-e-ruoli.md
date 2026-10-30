@@ -12,7 +12,7 @@ resources:
 tags: [architecture, auth, permissions]
 generated:
   by: process:okf-migrate
-  at: 2026-09-05T00:00:00Z
+  at: 2026-10-30T00:00:00Z
 ---
 
 # Overview
@@ -47,6 +47,15 @@ axios (immobile attivo dello store `properties`).
 
 - Invito inquilino da azione admin **o** da `POST /tenants/<id>/invita/` (FE);
   token allauth (base36) riusato come token d'invito.
+- FE: l'invito si propone alla creazione dell'inquilino (se c'è l'email) e,
+  dal 2026-10-30, dalla riga "Accesso app" della card Anagrafica (tab
+  "Profilo & contratto" del dettaglio inquilino): stato sempre visibile,
+  pulsante "Invia invito" / "Reinvia invito" finché l'accesso non è attivo.
+  Prima chi sceglieva "Più tardi" poteva invitare solo dall'admin. Il dato
+  viene da `situazione/` → `accesso` (`attivo` = `has_usable_password()`,
+  `email_invito`, `ultimo_invito` dalla `Notification` `invito_inquilino`),
+  esposto solo a chi gestisce l'immobile: fuori da `TenantProfileSerializer`
+  per non aggiungere una query per riga alle liste.
 - Invito membro (`POST properties/<id>/inviti/`): crea utente + membership e
   manda l'email. Il link imposta-password si manda a chi **non ha una
   password utilizzabile** (`has_usable_password()`), non solo a chi è appena

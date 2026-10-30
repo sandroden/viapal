@@ -1286,6 +1286,30 @@ class TestTenantSituazione:
         assert resp.status_code == 200
         assert resp.json()["tenant"]["id"] == tenant_1.id
 
+    def test_situazione_accesso_per_la_gestione(self, client_prop, tenant_1):
+        # Il pulsante "Invia invito" si basa su questo blocco: accesso non
+        # attivo finché l'inquilino non ha impostato una password.
+        from accounts.inviti import invia_invito_inquilino
+
+        tenant_1.user.set_unusable_password()
+        tenant_1.user.save()
+        url = f"/api/v1/tenants/{tenant_1.id}/situazione/"
+        accesso = client_prop.get(url).json()["accesso"]
+        assert accesso == {
+            "attivo": False, "email_invito": "i1@v.it", "ultimo_invito": None,
+        }
+
+        assert invia_invito_inquilino(tenant_1)["esito"] == "inviato"
+        accesso = client_prop.get(url).json()["accesso"]
+        assert accesso["attivo"] is False
+        assert accesso["ultimo_invito"] is not None
+
+    def test_situazione_accesso_non_esposto_all_inquilino(
+        self, client_inq_1, tenant_1
+    ):
+        resp = client_inq_1.get(f"/api/v1/tenants/{tenant_1.id}/situazione/")
+        assert resp.json()["accesso"] is None
+
     def test_situazione_inquilino_non_accede_ad_altri_403(
         self, client_inq_1, tenant_2
     ):

@@ -131,6 +131,26 @@ class DashboardInquilinoView(APIView):
 # Situazione per inquilino (drilldown)
 # ---------------------------------------------------------------------------
 
+def _accesso_inquilino(tenant) -> dict:
+    """Stato dell'accesso all'app, per il pulsante "Invia invito" del
+    dettaglio inquilino: chi non ha ancora una password utilizzabile non ha
+    completato l'invito (o non l'ha mai ricevuto)."""
+    from accounts.inviti import TEMPLATE_CODICE, _email_inquilino
+    from notifications.models import Notification
+
+    ultimo = (
+        Notification.objects.filter(user=tenant.user, codice=TEMPLATE_CODICE)
+        .order_by("-inviata_at")
+        .values_list("inviata_at", flat=True)
+        .first()
+    )
+    return {
+        "attivo": tenant.user.has_usable_password(),
+        "email_invito": _email_inquilino(tenant) or None,
+        "ultimo_invito": ultimo.isoformat() if ultimo else None,
+    }
+
+
 class TenantSituazioneView(APIView):
     """
     GET /api/v1/tenants/<tenant_id>/situazione/?anno=YYYY
@@ -492,6 +512,7 @@ class TenantSituazioneView(APIView):
 
         return Response({
             "tenant": TenantProfileSerializer(tenant).data,
+            "accesso": _accesso_inquilino(tenant) if is_gestione else None,
             "anno": anno,
             "assignments": assignments_payload,
             "contract": contract_payload,
